@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Football Math!</title>
+<link rel="stylesheet" href="../shared/fonts.css">
+<link rel="stylesheet" href="../shared/reset.css">
+<link rel="stylesheet" href="football.css">
+</head>
+<body>
+<div id="wrap">
+  <div id="status">
+    <div class="stat">
+      <div class="stat-label">Down &amp; Distance</div>
+      <div class="stat-value" id="s-down">1st &amp; 10</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">Yard Line</div>
+      <div class="stat-value" id="s-yd">20</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">Plays</div>
+      <div class="stat-value" id="s-plays">0 / 10</div>
+    </div>
+  </div>
+
+  <div id="field-wrap">
+    <div class="ezlbl" style="left:7px">OWN</div>
+    <div class="ezlbl" style="right:7px">GOAL</div>
+    <div id="fd-line"></div>
+    <div id="ball">🏈</div>
+  </div>
+
+  <div id="play-label">Get ready…</div>
+  <div id="question"></div>
+  <div id="btn-row">
+    <button class="ans-btn" id="b0" onclick="handleAnswer(0)">–</button>
+    <button class="ans-btn" id="b1" onclick="handleAnswer(1)">–</button>
+    <button class="ans-btn" id="b2" onclick="handleAnswer(2)">–</button>
+  </div>
+  <div id="feedback"></div>
+</div>
+
+<div class="overlay" id="ov-td">
+  <div class="ov-emoji">🏆</div>
+  <div class="ov-title">TOUCHDOWN!</div>
+  <div class="ov-sub" id="ov-td-sub"></div>
+  <button class="ov-btn" onclick="afterTouchdown()">Keep Going!</button>
+</div>
+<div class="overlay" id="ov-end">
+  <div class="ov-emoji">⭐</div>
+  <div class="ov-title">Great Drive!</div>
+  <div class="ov-sub">You crushed it! 🏈</div>
+  <button class="ov-btn" onclick="restart()">Play Again!</button>
+</div>
+
+<script src="football.js"></script>
+</body>
+</html>

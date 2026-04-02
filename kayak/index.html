@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Sydney & Michael's Kayak Adventures 🛶</title>
+<link rel="stylesheet" href="../shared/reset.css">
+<link rel="stylesheet" href="kayak.css">
+</head>
+<body>
+<div id="gameContainer">
+  <canvas id="gameCanvas"></canvas>
+
+  <div id="hud">
+    <div class="lbl">Collected</div>
+    <div class="sc"><span id="colDisplay">0</span> / <span id="colTotal">9</span></div>
+    <div class="best">Best: <span id="highScoreDisplay">0</span></div>
+    <button id="newGameBtn">New Game</button>
+  </div>
+
+  <div id="lvlBanner">🛶 Level 1 · Parque Jaime Duque</div>
+
+  <!-- Overlay (postcard + map) -->
+  <div id="overlay" class="hidden">
+    <canvas id="mapCanvas" width="340" height="220"></canvas>
+    <div style="height:12px"></div>
+    <div class="postcard" id="postcard">
+      <div class="stamp" id="pc-stamp">🏝️</div>
+      <div class="pc-title" id="pc-title">Location</div>
+      <div class="pc-sub" id="pc-sub">Colombia</div>
+      <div class="pc-fact" id="pc-fact">Fun fact here.</div>
+      <div class="pc-love" id="pc-love">💕 Sydney & Michael were here</div>
+      <button id="nextLvlBtn">Next Destination →</button>
+      <button class="sec" id="replayBtn">Replay Level</button>
+    </div>
+  </div>
+
+  <!-- D-Pad -->
+  <div id="dpad">
+    <div></div>
+    <div class="dpad-btn" id="btn-up" style="grid-column:2;grid-row:1">▲</div>
+    <div></div>
+    <div class="dpad-btn" id="btn-left" style="grid-column:1;grid-row:2">◀</div>
+    <div class="dpad-center" style="grid-column:2;grid-row:2"></div>
+    <div class="dpad-btn" id="btn-right" style="grid-column:3;grid-row:2">▶</div>
+    <div></div>
+    <div class="dpad-btn" id="btn-down" style="grid-column:2;grid-row:3">▼</div>
+    <div></div>
+  </div>
+</div>
+
+<script src="kayak.js"></script>
+<script src="physics.js"></script>
+<script src="renderer.js"></script>
+<script src="levels.js"></script>
+<script>
+  initLevel(false);
+  requestAnimationFrame(loop);
+</script>
+</body>
+</html>

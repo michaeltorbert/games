@@ -1,0 +1,29 @@
+const GAMES = [
+  {
+    id: 'football',
+    title: 'Football Math',
+    subtitle: 'Answer math questions to drive down the field',
+    emoji: '🏈',
+    color: '#12285c',
+    accent: '#ffd700',
+    url: 'football/',
+  },
+  {
+    id: 'kayak',
+    title: "Kayak Adventures",
+    subtitle: 'Paddle across 12 real-world destinations',
+    emoji: '🛶',
+    color: '#0a3a5c',
+    accent: '#8B6914',
+    url: 'kayak/',
+  },
+  {
+    id: 'prague',
+    title: 'Prague Bike Panic',
+    subtitle: 'Endless runner through a rainy Czech park',
+    emoji: '🚲',
+    color: '#111827',
+    accent: '#99ccff',
+    url: 'prague/',
+  },
+];

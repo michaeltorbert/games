@@ -1,0 +1,84 @@
+body {
+  background: #0a3a5c;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  overflow: hidden;
+  font-family: 'Georgia', serif;
+}
+#gameContainer { position: relative; display: inline-block; }
+canvas { display: block; border: 4px solid #8B6914; border-radius: 4px; box-shadow: 0 0 40px rgba(0,0,0,0.7); }
+
+/* HUD */
+#hud {
+  position: absolute; top: 10px; left: 10px;
+  background: rgba(255,255,255,0.90); border: 3px solid #8B6914;
+  border-radius: 8px; padding: 7px 12px; pointer-events: none;
+  color: #5a3800; font-weight: bold;
+}
+#hud .lbl { font-size: 9px; text-transform: uppercase; letter-spacing: 2px; color: #8B6914; }
+#hud .sc { font-size: 24px; line-height: 1.1; }
+#hud .best { font-size: 10px; color: #8B6914; margin-top: 2px; }
+#newGameBtn {
+  pointer-events: all; margin-top: 5px; background: #8B6914; color: white;
+  border: none; border-radius: 5px; padding: 4px 9px; font-size: 10px;
+  font-family: 'Georgia', serif; cursor: pointer; display: block; width: 100%;
+}
+#newGameBtn:hover { background: #a07820; }
+
+/* Level banner */
+#lvlBanner {
+  position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
+  background: rgba(255,255,255,0.90); border: 3px solid #8B6914;
+  border-radius: 8px; padding: 5px 14px; font-size: 12px; font-weight: bold;
+  color: #5a3800; letter-spacing: 0.5px; white-space: nowrap; pointer-events: none;
+  text-align: center; max-width: 280px;
+}
+
+/* Overlay screens */
+#overlay {
+  position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+  display: flex; align-items: center; justify-content: center;
+  flex-direction: column; pointer-events: all;
+}
+#overlay.hidden { display: none; }
+
+/* Postcard */
+.postcard {
+  background: #fffdf4; border: 4px solid #8B6914; border-radius: 10px;
+  padding: 20px 24px; max-width: 86%; text-align: center;
+  box-shadow: 4px 4px 0 #8B6914;
+}
+.postcard .stamp { font-size: 32px; margin-bottom: 4px; }
+.postcard .pc-title { font-size: 18px; font-weight: bold; color: #5a3800; margin-bottom: 4px; }
+.postcard .pc-sub { font-size: 11px; color: #8B6914; text-transform: uppercase; letter-spacing: 2px; margin-bottom: 10px; }
+.postcard .pc-fact { font-size: 13px; color: #333; line-height: 1.5; margin-bottom: 14px; font-style: italic; }
+.postcard .pc-love { font-size: 12px; color: #c04060; margin-bottom: 14px; }
+.postcard button {
+  background: #8B6914; color: white; border: none; border-radius: 6px;
+  padding: 8px 20px; font-size: 13px; font-family: 'Georgia', serif;
+  cursor: pointer; margin: 4px;
+}
+.postcard button:hover { background: #a07820; }
+.postcard button.sec { background: #4a8a6a; }
+.postcard button.sec:hover { background: #3a7a5a; }
+
+/* Map screen */
+#mapCanvas { border-radius: 8px; border: 3px solid #8B6914; }
+
+/* D-pad */
+#dpad {
+  position: absolute; bottom: 14px; right: 14px;
+  width: 112px; height: 112px;
+  display: grid; grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(3, 1fr); gap: 3px; opacity: 0.75;
+}
+.dpad-btn {
+  background: rgba(255,255,255,0.6); border: 2px solid #8B6914;
+  border-radius: 6px; display: flex; align-items: center; justify-content: center;
+  font-size: 17px; cursor: pointer; user-select: none; -webkit-user-select: none;
+  touch-action: none;
+}
+.dpad-btn.pressed, .dpad-btn:active { background: rgba(139,105,20,0.5); }
+.dpad-center { background: rgba(255,255,255,0.2); border: none; }

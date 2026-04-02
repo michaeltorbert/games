@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Prague Bike Panic</title>
+<link rel="stylesheet" href="../shared/reset.css">
+<link rel="stylesheet" href="prague.css">
+</head>
+<body>
+<div id="wrap">
+<canvas id="c" width="800" height="500"></canvas>
+<div id="mob">
+  <button class="mb" id="bl">◀</button>
+  <button class="mb" id="jb">JUMP</button>
+  <button class="mb" id="br">▶</button>
+</div>
+</div>
+
+<script src="prague.js"></script>
+<script src="chars.js"></script>
+<script src="obstacles.js"></script>
+<script src="renderer.js"></script>
+<script>loop();</script>
+</body>
+</html>
