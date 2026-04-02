@@ -112,6 +112,14 @@ const keys = {};
 document.addEventListener('keydown', e => {
   keys[e.key] = true;
   if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' '].includes(e.key)) e.preventDefault();
+  if (e.key === 'g' || e.key === 'G') {
+    const input = prompt(`Go to level (1–${LEVELS.length}):`);
+    const n = parseInt(input, 10);
+    if (!isNaN(n) && n >= 1 && n <= LEVELS.length) {
+      currentLevel = n - 1;
+      initLevel(false);
+    }
+  }
 });
 document.addEventListener('keyup', e => { keys[e.key] = false; });
 
