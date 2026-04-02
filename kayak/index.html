@@ -35,6 +35,13 @@
     </div>
   </div>
 
+  <!-- Dev level jump -->
+  <div id="levelJump" style="display:none;position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(0,0,0,0.85);border:2px solid #8B6914;border-radius:8px;padding:16px 20px;color:#fff;font-family:Georgia,serif;z-index:100;text-align:center;">
+    <div style="margin-bottom:8px;font-size:14px;">Go to level:</div>
+    <input id="levelJumpInput" type="number" min="1" max="12" style="width:60px;font-size:18px;text-align:center;border-radius:4px;border:1px solid #8B6914;padding:4px;">
+    <button id="levelJumpGo" style="margin-left:8px;padding:5px 12px;background:#8B6914;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:14px;">Go</button>
+  </div>
+
   <!-- D-Pad -->
   <div id="dpad">
     <div></div>
@@ -56,6 +63,21 @@
 <script>
   initLevel(false);
   requestAnimationFrame(loop);
+
+  function doLevelJump() {
+    const n = parseInt(document.getElementById('levelJumpInput').value, 10);
+    if (!isNaN(n) && n >= 1 && n <= LEVELS.length) {
+      currentLevel = n - 1;
+      initLevel(false);
+    }
+    document.getElementById('levelJump').style.display = 'none';
+  }
+  document.getElementById('levelJumpGo').addEventListener('click', doLevelJump);
+  document.getElementById('levelJumpInput').addEventListener('keydown', e => {
+    if (e.key === 'Enter') doLevelJump();
+    if (e.key === 'Escape') document.getElementById('levelJump').style.display = 'none';
+    e.stopPropagation();
+  });
 </script>
 </body>
 </html>
