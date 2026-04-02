@@ -96,3 +96,8 @@ body {
   border: none; border-radius: 20px; padding: 16px 52px;
   cursor: pointer; box-shadow: 0 6px 0 #9a7800;
 }
+
+#version-display {
+  font-size: 10px; font-weight: 700; color: #7090cc;
+  letter-spacing: 1px; text-align: right; opacity: 0.6;
+}

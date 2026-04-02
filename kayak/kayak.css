@@ -26,6 +26,10 @@ canvas { display: block; border: 4px solid #8B6914; border-radius: 4px; box-shad
   font-family: 'Georgia', serif; cursor: pointer; display: block; width: 100%;
 }
 #newGameBtn:hover { background: #a07820; }
+#version-display {
+  font-size: 8px; color: #8B6914; margin-top: 5px;
+  text-align: center; opacity: 0.6; letter-spacing: 1px;
+}
 
 /* Level banner */
 #lvlBanner {

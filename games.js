@@ -7,6 +7,7 @@ const GAMES = [
     color: '#12285c',
     accent: '#ffd700',
     url: 'football/',
+    version: '1.0.0',
   },
   {
     id: 'kayak',
@@ -16,6 +17,7 @@ const GAMES = [
     color: '#0a3a5c',
     accent: '#8B6914',
     url: 'kayak/',
+    version: '1.0.0',
   },
   {
     id: 'prague',
@@ -25,5 +27,6 @@ const GAMES = [
     color: '#111827',
     accent: '#99ccff',
     url: 'prague/',
+    version: '1.0.0',
   },
 ];

@@ -1,3 +1,4 @@
+const GAME_VERSION = '1.0.0';
 const EZ = 5;
 function yardToPct(y) { return EZ + (y / 100) * (100 - 2 * EZ); }
 const DOWN_NAMES  = ["","1st","2nd","3rd","4th"];
