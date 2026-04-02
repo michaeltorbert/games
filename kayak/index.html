@@ -16,7 +16,7 @@
     <div class="sc"><span id="colDisplay">0</span> / <span id="colTotal">9</span></div>
     <div class="best">Best: <span id="highScoreDisplay">0</span></div>
     <button id="newGameBtn">New Game</button>
-    <div id="version-display">v1.0.0</div>
+    <div id="version-display"></div>
   </div>
 
   <div id="lvlBanner">🛶 Level 1 · Parque Jaime Duque</div>
@@ -58,6 +58,9 @@
 </div>
 
 <script src="kayak.js"></script>
+<script>
+  document.getElementById('version-display').textContent = `v${GAME_VERSION}`;
+</script>
 <script src="physics.js"></script>
 <script src="renderer.js"></script>
 <script src="levels.js"></script>
