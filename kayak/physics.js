@@ -83,6 +83,9 @@ let audioCtx = null;
 let audioEnabled = false;
 let audioUnlockPromise = null;
 let lastKnownAudioState = 'locked';
+let silentAudioEl = null;
+
+const SILENT_WAV_DATA_URI = 'data:audio/wav;base64,UklGRjQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YRAAAAAAAAAAAAAAAAAAAAAA';
 
 function getAudioDebugElement() {
   return document.getElementById('audio-debug');
@@ -118,6 +121,17 @@ function ensureAudioContext() {
   return audioCtx;
 }
 
+function ensureSilentAudioElement() {
+  if (silentAudioEl) return silentAudioEl;
+  const audio = document.createElement('audio');
+  audio.src = SILENT_WAV_DATA_URI;
+  audio.preload = 'auto';
+  audio.playsInline = true;
+  audio.setAttribute('webkit-playsinline', 'true');
+  silentAudioEl = audio;
+  return silentAudioEl;
+}
+
 function primeAudioContext(ctx) {
   const buf = ctx.createBuffer(1, 1, 22050);
   const src = ctx.createBufferSource();
@@ -127,7 +141,24 @@ function primeAudioContext(ctx) {
 }
 
 function isTrustedUnlockEvent(event) {
-  return !!(event && event.isTrusted && ['keydown', 'mousedown', 'pointerdown', 'touchstart'].includes(event.type));
+  return !!(event && event.isTrusted && ['keydown', 'mousedown', 'mouseup', 'click', 'pointerdown', 'pointerup', 'touchstart', 'touchend'].includes(event.type));
+}
+
+function primeHtmlAudio() {
+  const el = ensureSilentAudioElement();
+  if (!el) return Promise.resolve(false);
+  try {
+    el.currentTime = 0;
+  } catch (e) {}
+  return el.play()
+    .then(() => {
+      el.pause();
+      try {
+        el.currentTime = 0;
+      } catch (e) {}
+      return true;
+    })
+    .catch(() => false);
 }
 
 function resumeAudioAfterInterruption() {
@@ -174,15 +205,28 @@ function unlockAudio(event) {
     return Promise.resolve(false);
   }
   if (audioUnlockPromise) return audioUnlockPromise;
-  if (isTrustedUnlockEvent(event)) {
-    try {
-      primeAudioContext(ctx);
-    } catch (e) {}
-  }
-  audioUnlockPromise = ctx.resume()
+  const bootPromise = isTrustedUnlockEvent(event)
+    ? primeHtmlAudio().then(() => {
+        try {
+          primeAudioContext(ctx);
+        } catch (e) {}
+      })
+    : Promise.resolve();
+  audioUnlockPromise = bootPromise
+    .then(() => ctx.resume())
     .then(() => {
       syncAudioState();
-      return ctx.state === 'running';
+      if (ctx.state !== 'running') return false;
+      try {
+        const warmOsc = ctx.createOscillator();
+        const warmGain = ctx.createGain();
+        warmGain.gain.setValueAtTime(0.00001, ctx.currentTime);
+        warmOsc.connect(warmGain);
+        warmGain.connect(ctx.destination);
+        warmOsc.start(ctx.currentTime);
+        warmOsc.stop(ctx.currentTime + 0.01);
+      } catch (e) {}
+      return true;
     })
     .catch(() => {
       syncAudioState();
@@ -205,8 +249,12 @@ window.__kayakAudioState = () => ({
 
 document.addEventListener('keydown', unlockAudio);
 document.addEventListener('mousedown', unlockAudio);
+document.addEventListener('mouseup', unlockAudio);
+document.addEventListener('click', unlockAudio);
 document.addEventListener('pointerdown', unlockAudio);
+document.addEventListener('pointerup', unlockAudio);
 document.addEventListener('touchstart', unlockAudio, { passive: true });
+document.addEventListener('touchend', unlockAudio, { passive: true });
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) {
     syncAudioState();

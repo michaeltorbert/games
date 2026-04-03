@@ -1,4 +1,4 @@
-const GAME_VERSION = '1.1.18';
+const GAME_VERSION = '1.1.19';
 const CANVAS_BORDER = 4;
 const BOTTOM_BAR_RATIO = 0.03;
 
@@ -163,12 +163,20 @@ const touchKeys = {};
     touchKeys[dir]=true;
     btn.classList.add('pressed');
   }, {passive:false});
-  btn.addEventListener('touchend',   e => { e.preventDefault(); touchKeys[dir]=false; btn.classList.remove('pressed'); }, {passive:false});
+  btn.addEventListener('touchend', e => {
+    if (typeof unlockAudio === 'function') unlockAudio(e);
+    e.preventDefault();
+    touchKeys[dir]=false;
+    btn.classList.remove('pressed');
+  }, {passive:false});
   btn.addEventListener('mousedown',  e => {
     if (typeof unlockAudio === 'function') unlockAudio(e);
     touchKeys[dir]=true;
   });
-  btn.addEventListener('mouseup',    () => touchKeys[dir]=false);
+  btn.addEventListener('mouseup',    e => {
+    if (typeof unlockAudio === 'function') unlockAudio(e);
+    touchKeys[dir]=false;
+  });
 });
 function isKey(...k) { return k.some(x => keys[x] || touchKeys[x]); }
 
