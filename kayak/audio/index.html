@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Kayak Audio Diagnostics</title>
+<meta name="application-name" content="Kayak Audio Test">
+<meta name="apple-mobile-web-app-title" content="Kayak Audio Test">
+<link rel="stylesheet" href="../../shared/reset.css?v=1.1.23">
+<link rel="stylesheet" href="audio.css?v=1.1.23">
+</head>
+<body>
+<main class="audio-page">
+  <section class="hero">
+    <p class="eyebrow">Kayak Diagnostics</p>
+    <h1>Audio Test Panel</h1>
+    <p class="intro">
+      Use this page on iPhone Safari and the home-screen app. Turn Silent mode off and raise volume before testing.
+    </p>
+    <div class="hero-actions">
+      <a class="nav-btn" href="../">Back To Game</a>
+      <button id="copy-results" class="nav-btn nav-btn-alt">Copy Results</button>
+    </div>
+  </section>
+
+  <section class="status-grid">
+    <article class="status-card">
+      <h2>Environment</h2>
+      <dl id="environment-list" class="details-list"></dl>
+    </article>
+    <article class="status-card">
+      <h2>Audio Status</h2>
+      <dl id="audio-state-list" class="details-list"></dl>
+    </article>
+  </section>
+
+  <section class="controls-card">
+    <h2>Controls</h2>
+    <p class="hint">
+      Press each button once, then use <span>Copy Results</span> and paste the report back.
+    </p>
+    <div class="controls-grid">
+      <button id="unlock-press" data-control="unlock-press">Unlock on Press</button>
+      <button id="unlock-release" data-control="unlock-release">Unlock on Release</button>
+      <button id="web-tone" data-control="web-tone">Play Web Tone</button>
+      <button id="html-audio" data-control="html-audio">Play HTML Audio</button>
+      <button id="paddle-sfx" data-control="paddle-sfx">Play Paddle SFX</button>
+      <button id="collect-sfx" data-control="collect-sfx">Play Collect SFX</button>
+      <button id="reset-audio" data-control="reset-audio">Reset Audio</button>
+    </div>
+  </section>
+
+  <section class="log-card">
+    <div class="log-header">
+      <h2>Event Log</h2>
+      <button id="clear-log" class="small-btn">Clear</button>
+    </div>
+    <pre id="event-log" class="event-log">No actions yet.</pre>
+  </section>
+</main>
+
+<script src="audio.js?v=1.1.23"></script>
+</body>
+</html>

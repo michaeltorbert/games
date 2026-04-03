@@ -27,3 +27,11 @@ Original prompt: yes, do all you need to do to get started
 - the page loaded cleanly with no reported automation errors;
 - `#audio-debug` transitioned from `audio: locked` to `audio: running` after a trusted `#btn-up` click;
 - `window.__kayakAudioState()` reported `{ hasContext: true, enabled: true, state: "running", unlockPending: false }`.
+- Added a dedicated diagnostics route at `/kayak/audio/` for iPhone audio isolation:
+- standalone minimal audio harness with `unlock`, Web Audio tone, HTML audio clip, paddle sample, collect sample, reset, and copy-results actions;
+- event log captures timestamps, control name, DOM event type, context state before/after, promise outcome, and standalone/tab mode;
+- main kayak page now links to `audio/` via an `Audio Test` control without changing the current game audio logic.
+- Bumped `kayak` to `1.1.23` for GitHub Pages cache busting.
+- Verification:
+- `node --check kayak/audio/audio.js` and `node --check kayak/kayak.js` passed.
+- Browser automation against `http://127.0.0.1:8001/kayak/audio/` loaded the diagnostics page, found all test controls, transitioned context from `not-created` to `running` via `Unlock on Release`, and logged a successful `Play Web Tone` action.

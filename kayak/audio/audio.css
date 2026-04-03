@@ -1,0 +1,205 @@
+body {
+  margin: 0;
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at top, rgba(142, 215, 247, 0.24), transparent 30%),
+    linear-gradient(180deg, #08263e 0%, #0a3a5c 45%, #114f71 100%);
+  color: #f4f0e6;
+  font-family: 'Georgia', serif;
+}
+
+.audio-page {
+  width: min(960px, calc(100vw - 28px));
+  margin: 0 auto;
+  padding: 24px 0 40px;
+}
+
+.hero,
+.status-card,
+.controls-card,
+.log-card {
+  background: rgba(255,255,255,0.1);
+  border: 1px solid rgba(255,255,255,0.16);
+  border-radius: 18px;
+  box-shadow: 0 18px 40px rgba(0,0,0,0.22);
+  backdrop-filter: blur(12px);
+}
+
+.hero {
+  padding: 24px 24px 20px;
+}
+
+.eyebrow {
+  margin: 0 0 8px;
+  font-size: 11px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: #ffcf7d;
+}
+
+h1,
+h2 {
+  margin: 0;
+  font-weight: 700;
+}
+
+h1 {
+  font-size: clamp(30px, 6vw, 42px);
+  line-height: 1.05;
+}
+
+.intro,
+.hint {
+  margin: 12px 0 0;
+  max-width: 58ch;
+  font-size: 15px;
+  line-height: 1.5;
+  color: rgba(244,240,230,0.88);
+}
+
+.hint span {
+  color: #ffcf7d;
+}
+
+.hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.nav-btn,
+.controls-grid button,
+.small-btn {
+  appearance: none;
+  border: none;
+  border-radius: 999px;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.nav-btn,
+.controls-grid button {
+  padding: 10px 14px;
+  font-size: 14px;
+  background: #ffcf7d;
+  color: #203246;
+}
+
+.nav-btn {
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.nav-btn-alt {
+  background: rgba(255,255,255,0.16);
+  color: #f4f0e6;
+  border: 1px solid rgba(255,255,255,0.14);
+}
+
+.status-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.status-card,
+.controls-card,
+.log-card {
+  padding: 18px;
+}
+
+.details-list {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 10px 14px;
+  margin-top: 14px;
+  font-size: 13px;
+}
+
+.details-list dt {
+  color: #ffcf7d;
+}
+
+.details-list dd {
+  margin: 0;
+  color: rgba(244,240,230,0.92);
+  word-break: break-word;
+}
+
+.controls-card {
+  margin-top: 16px;
+}
+
+.controls-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.controls-grid button {
+  min-height: 52px;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.controls-grid button:active,
+.nav-btn:active,
+.small-btn:active {
+  transform: translateY(1px);
+}
+
+.log-card {
+  margin-top: 16px;
+}
+
+.log-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.small-btn {
+  padding: 8px 12px;
+  background: rgba(255,255,255,0.14);
+  color: #f4f0e6;
+  border: 1px solid rgba(255,255,255,0.12);
+}
+
+.event-log {
+  margin-top: 16px;
+  min-height: 240px;
+  max-height: 44vh;
+  overflow: auto;
+  padding: 14px;
+  border-radius: 14px;
+  background: rgba(6, 17, 28, 0.72);
+  color: #cce8f5;
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
+@media (max-width: 760px) {
+  .audio-page {
+    width: calc(100vw - 20px);
+    padding-top: 18px;
+  }
+
+  .status-grid,
+  .controls-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .hero,
+  .status-card,
+  .controls-card,
+  .log-card {
+    border-radius: 16px;
+  }
+}
