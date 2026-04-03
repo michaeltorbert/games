@@ -141,6 +141,44 @@ function playLevelCompleteSound() {
 // RIPPLES & SPLASH
 // ═══════════════════════════════════════════════════════════════
 function addRipple(x,y) { ripples.push({x,y,r:0,alpha:0.55,age:0}); }
+function kayakLocalPoint(localX, localY) {
+  const a = kayak.angle + Math.PI/2;
+  return {
+    x: kayak.x + localX*Math.cos(a) - localY*Math.sin(a),
+    y: kayak.y + localX*Math.sin(a) + localY*Math.cos(a)
+  };
+}
+function addWakeParticle(x, y, heading, curve, size, life, alpha) {
+  wakeParticles.push({ x, y, heading, curve, size, life, alpha, age:0 });
+}
+function addWake(speed01, t) {
+  if (t - lastWakeSpawn < Math.max(0.055, 0.14 - speed01*0.06)) return;
+  lastWakeSpawn = t;
+  const s = sc();
+  const baseCurve = -kayak.vAngle * (0.55 + speed01*0.45);
+  const sternY = 34*s;
+  [-1, 1].forEach(side => {
+    const wakePoint = kayakLocalPoint(side*9*s, sternY);
+    addWakeParticle(
+      wakePoint.x,
+      wakePoint.y,
+      kayak.angle + Math.PI/2 + side*0.08,
+      baseCurve + side*kayak.vAngle*0.18,
+      (5.5 + speed01*5.5) * s,
+      0.45 + speed01*0.35,
+      0.12 + speed01*0.10
+    );
+  });
+}
+function updateWake(dt) {
+  wakeParticles = wakeParticles.filter(p => p.alpha > 0.015);
+  wakeParticles.forEach(p => {
+    p.age += dt;
+    p.heading += p.curve * dt;
+    p.size += 14*sc()*dt;
+    p.alpha -= dt / p.life;
+  });
+}
 function updateRipples(dt) {
   ripples=ripples.filter(r=>r.alpha>0.02);
   ripples.forEach(r=>{ r.r+=22*sc()*dt; r.alpha-=0.55*dt; r.age+=dt; });
@@ -163,6 +201,32 @@ function updateSplash(dt) {
   splashParticles=splashParticles.filter(p=>p.alpha>0.05);
   splashParticles.forEach(p=>{ p.x+=p.vx*dt; p.y+=p.vy*dt; p.vy+=55*sc()*dt; p.alpha-=dt/p.life; });
 }
+function addPaddleSplash(side, pivotTurn, speed01) {
+  const s = sc();
+  const sideDir = side === 0 ? 1 : side;
+  const splashPoints = [-18*s, 2*s];
+  const sideX = Math.cos(kayak.angle + Math.PI/2);
+  const sideY = Math.sin(kayak.angle + Math.PI/2);
+  const forwardX = Math.cos(kayak.angle);
+  const forwardY = Math.sin(kayak.angle);
+  splashPoints.forEach(localY => {
+    const point = kayakLocalPoint(sideDir*(pivotTurn ? 28*s : 24*s), localY);
+    const count = pivotTurn ? 6 : 4;
+    for (let i=0; i<count; i++) {
+      const spread = (Math.random()-0.5) * (pivotTurn ? 0.8 : 0.55);
+      const speedBoost = (22 + Math.random()*24 + speed01*18) * s;
+      splashParticles.push({
+        x: point.x,
+        y: point.y,
+        vx: sideX * sideDir * speedBoost + forwardX * (6*s + spread*10*s),
+        vy: sideY * sideDir * speedBoost + forwardY * (8*s + spread*10*s) - (12 + Math.random()*18 + speed01*8) * s,
+        alpha: 0.95,
+        life: 0.28 + Math.random()*0.18
+      });
+    }
+    addRipple(point.x, point.y);
+  });
+}
 function drawSplash() {
   splashParticles.forEach(p=>{
     ctx.save(); ctx.globalAlpha=p.alpha; ctx.fillStyle='#AADDF5';
@@ -173,8 +237,12 @@ function drawSplash() {
 // ═══════════════════════════════════════════════════════════════
 // PHYSICS UPDATE
 // ═══════════════════════════════════════════════════════════════
-const TURN_SPEED=2.0, ACCEL_BASE=180, ACCEL_MAX=680, ACCEL_RAMP=2.6;
-const DRAG=0.89, ANGULAR_DRAG=0.80;
+const TURN_BASE_ACCEL=1.18, TURN_SPEED_ACCEL=5.00, TURN_SPEED_REF=220;
+const COAST_TURN_FACTOR_SLOW=0.90, COAST_TURN_FACTOR_FAST=0.52;
+const REVERSE_TURN_FACTOR=0.80, MAX_TURN_RATE=1.60;
+const MAX_TILT=0.20, TILT_RESPONSE=8.0;
+const ACCEL_BASE=180, ACCEL_MAX=680, ACCEL_RAMP=2.6;
+const PADDLE_DRAG=0.89, COAST_DRAG=0.982, ANGULAR_DRAG=0.955;
 const SPEED_DISPLAY_SCALE=0.1;
 
 function update(dt, t) {
@@ -184,7 +252,8 @@ function update(dt, t) {
   const down=isKey('ArrowDown','s','S','down');
   const left=isKey('ArrowLeft','a','A','left');
   const right=isKey('ArrowRight','d','D','right');
-  const moving=up||down;
+  const turnInput=(right?1:0)-(left?1:0);
+  const paddling=up||down;
 
   holdTime = up ? Math.min(holdTime+dt,ACCEL_RAMP) : Math.max(holdTime-dt*4,0);
   holdTimeBack = down ? Math.min(holdTimeBack+dt,ACCEL_RAMP) : Math.max(holdTimeBack-dt*4,0);
@@ -193,25 +262,54 @@ function update(dt, t) {
   const accel=ACCEL_BASE+(ACCEL_MAX-ACCEL_BASE)*(t01*t01);
   const accelBack=ACCEL_BASE+(ACCEL_MAX-ACCEL_BASE)*(t01b*t01b);
 
-  if(left) kayak.vAngle-=TURN_SPEED*dt;
-  if(right) kayak.vAngle+=TURN_SPEED*dt;
   if(up){ kayak.vx+=Math.cos(kayak.angle)*accel*dt; kayak.vy+=Math.sin(kayak.angle)*accel*dt; kayak.paddlePhase+=(4+t01*8)*dt; }
   if(down){ kayak.vx-=Math.cos(kayak.angle)*accelBack*dt; kayak.vy-=Math.sin(kayak.angle)*accelBack*dt; kayak.paddlePhase-=(4+t01b*8)*dt; }
 
-  kayak.vx*=Math.pow(DRAG,dt*60); kayak.vy*=Math.pow(DRAG,dt*60);
+  const waterDrag=paddling ? PADDLE_DRAG : COAST_DRAG;
+  kayak.vx*=Math.pow(waterDrag,dt*60); kayak.vy*=Math.pow(waterDrag,dt*60);
+  const speed=Math.hypot(kayak.vx,kayak.vy);
+  const speed01=Math.min(speed/TURN_SPEED_REF,1);
+  const sweepTurn=!up&&turnInput!==0;
+  const coastTurnFactor=COAST_TURN_FACTOR_FAST+(1-speed01)*(COAST_TURN_FACTOR_SLOW-COAST_TURN_FACTOR_FAST);
+  if (speed > 16) addWake(speed01, t);
+  const paddleTurnFactor=up ? 1 : (down ? REVERSE_TURN_FACTOR : coastTurnFactor);
+  const turnAccel=turnInput*(TURN_BASE_ACCEL+TURN_SPEED_ACCEL*speed01)*paddleTurnFactor;
+
+  if(sweepTurn) kayak.paddlePhase+=(2.8+speed01*1.3)*dt;
+  kayak.strokeing=paddling||sweepTurn;
+  kayak.pivotTurn=sweepTurn&&speed<42;
+  const targetPaddleBias=turnInput===0 ? 0 : (sweepTurn ? -turnInput : -turnInput*0.55);
+  kayak.paddleBias+=(targetPaddleBias-kayak.paddleBias)*Math.min(1,dt*(kayak.pivotTurn?8:4.5));
+
+  kayak.vAngle+=turnAccel*dt;
   kayak.vAngle*=Math.pow(ANGULAR_DRAG,dt*60);
-  kayak.angle+=kayak.vAngle;
+  kayak.vAngle=Math.max(-MAX_TURN_RATE,Math.min(MAX_TURN_RATE,kayak.vAngle));
+  kayak.angle+=kayak.vAngle*dt;
+
+  const targetTilt=Math.max(
+    -MAX_TILT,
+    Math.min(MAX_TILT, turnInput*(0.045+speed01*0.085)+kayak.vAngle*0.055)
+  );
+  kayak.tilt+=(targetTilt-kayak.tilt)*Math.min(1,dt*TILT_RESPONSE);
 
   const nx=kayak.x+kayak.vx*dt, ny=kayak.y+kayak.vy*dt;
-  if(isInLake(nx,kayak.y)) kayak.x=nx; else { kayak.vx*=-0.3; holdTime=0; holdTimeBack=0; }
-  if(isInLake(kayak.x,ny)) kayak.y=ny; else { kayak.vy*=-0.3; holdTime=0; holdTimeBack=0; }
+  if(isInLake(nx,kayak.y)) kayak.x=nx; else { kayak.vx*=-0.3; kayak.vAngle*=0.55; kayak.tilt*=0.65; holdTime=0; holdTimeBack=0; }
+  if(isInLake(kayak.x,ny)) kayak.y=ny; else { kayak.vy*=-0.3; kayak.vAngle*=0.55; kayak.tilt*=0.65; holdTime=0; holdTimeBack=0; }
 
-  const speed=Math.hypot(kayak.vx,kayak.vy);
   document.getElementById('speedDisplay').textContent = Math.round(speed * SPEED_DISPLAY_SCALE);
-  if(moving&&speed>15&&Math.random()<dt*(4+t01*8)) addRipple(kayak.x,kayak.y);
+  if(kayak.strokeing&&(speed>15||kayak.pivotTurn)&&Math.random()<dt*(kayak.pivotTurn?3.2:(4+t01*8))) {
+    addRipple(kayak.x,kayak.y);
+  }
 
   const soundInt=Math.max(0.12,0.35-t01*0.2);
-  if(moving&&t-lastPaddleSound>soundInt){ playPaddleSound(); lastPaddleSound=t; }
+  if(kayak.strokeing&&t-lastPaddleSound>soundInt){
+    const strokeSide = Math.abs(kayak.paddleBias) > 0.2
+      ? Math.sign(kayak.paddleBias)
+      : (Math.sin(kayak.paddlePhase) >= 0 ? 1 : -1);
+    addPaddleSplash(strokeSide, kayak.pivotTurn, speed01);
+    playPaddleSound();
+    lastPaddleSound=t;
+  }
 
   let collectedCount=0;
   collectibles.forEach(c=>{
@@ -232,5 +330,5 @@ function update(dt, t) {
     gamePhase='completing';
   }
 
-  updateRipples(dt); updateSplash(dt);
+  updateWake(dt); updateRipples(dt); updateSplash(dt);
 }

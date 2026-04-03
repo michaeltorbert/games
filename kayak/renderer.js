@@ -40,9 +40,41 @@ function drawWater(w, h, poly, c1, c2, t) {
   ctx.restore();
 }
 
-function drawKayak(x, y, angle, paddlePhase) {
+function drawWake() {
+  wakeParticles.forEach(p => {
+    const age01 = Math.min(1, p.age / p.life);
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, p.alpha) * (1 - age01 * 0.35);
+    ctx.strokeStyle = 'rgba(235, 250, 255, 0.9)';
+    ctx.lineWidth = Math.max(1.2*sc(), p.size * 0.10);
+    ctx.beginPath();
+    ctx.ellipse(
+      p.x,
+      p.y,
+      p.size * (1.15 + age01 * 0.35),
+      p.size * (0.38 + age01 * 0.08),
+      p.heading,
+      0,
+      Math.PI*2
+    );
+    ctx.stroke();
+    ctx.restore();
+  });
+}
+
+function drawKayak(x, y, angle, paddlePhase, tilt=0, paddleBias=0, pivotTurn=false, strokeing=false) {
   const s=sc();
+  const clampedTilt = Math.max(-0.20, Math.min(0.20, tilt));
+  const bias = Math.max(-1, Math.min(1, paddleBias));
+  const frontPulse = Math.sin(paddlePhase);
+  const rearPulse = Math.sin(paddlePhase + 0.65);
+  const frontDrive = Math.max(0, frontPulse);
+  const rearDrive = Math.max(0, rearPulse);
+  const frontStroke = (frontPulse + 1) * 0.5;
+  const rearStroke = (rearPulse + 1) * 0.5;
   ctx.save(); ctx.translate(x,y); ctx.rotate(angle+Math.PI/2);
+  ctx.rotate(clampedTilt * 0.18);
+  ctx.transform(1, 0, clampedTilt * 1.35, 1, 0, 0);
   // shadow
   ctx.save(); ctx.translate(3*s,5*s); ctx.globalAlpha=0.22; ctx.fillStyle='#002244';
   ctx.beginPath(); ctx.ellipse(0,0,15*s,46*s,0,0,Math.PI*2); ctx.fill(); ctx.restore();
@@ -76,9 +108,24 @@ function drawKayak(x, y, angle, paddlePhase) {
   ctx.fillStyle='#3A2510';
   ctx.beginPath(); ctx.ellipse(0,-8*s,5.5*s,3.5*s,0,0,Math.PI); ctx.fill();
   // ── Paddles ──
-  const swing = Math.sin(paddlePhase) * 0.55;
+  const frontBase = strokeing ? bias * 0.22 : bias * 0.10;
+  const rearBase = strokeing ? bias * 0.28 : bias * 0.12;
+  let frontRotate = frontBase + frontPulse * (0.40 - Math.abs(bias) * 0.10);
+  let rearRotate = rearBase + rearPulse * (0.55 - Math.abs(bias) * 0.12);
+  let frontShiftX = bias * 4*s;
+  let rearShiftX = bias * 5*s;
+  let frontShiftY = -18*s;
+  let rearShiftY = 2*s;
+  if (pivotTurn) {
+    frontRotate = bias * (0.78 + frontStroke * 1.02);
+    rearRotate = bias * (0.92 + rearStroke * 1.08);
+    frontShiftX = bias * (10 + frontStroke * 15) * s;
+    rearShiftX = bias * (12 + rearStroke * 17) * s;
+    frontShiftY = (-22 + frontStroke * 8) * s;
+    rearShiftY = (-1 + rearStroke * 9) * s;
+  }
   // Sydney's paddle (front)
-  ctx.save(); ctx.translate(0,-18*s); ctx.rotate(swing * 0.7);
+  ctx.save(); ctx.translate(frontShiftX,frontShiftY); ctx.rotate(frontRotate);
   ctx.strokeStyle='#4070D0'; ctx.lineWidth=2*s;
   ctx.beginPath(); ctx.moveTo(-30*s,0); ctx.lineTo(30*s,0); ctx.stroke();
   ctx.fillStyle='#2050A0'; ctx.strokeStyle='#1A3A80'; ctx.lineWidth=1*s;
@@ -86,7 +133,7 @@ function drawKayak(x, y, angle, paddlePhase) {
   ctx.beginPath(); ctx.ellipse(30*s,0,9*s,4*s,0.25,0,Math.PI*2); ctx.fill(); ctx.stroke();
   ctx.restore();
   // Michael's paddle (rear)
-  ctx.save(); ctx.translate(0,2*s); ctx.rotate(swing);
+  ctx.save(); ctx.translate(rearShiftX,rearShiftY); ctx.rotate(rearRotate);
   ctx.strokeStyle='#4070D0'; ctx.lineWidth=2.5*s;
   ctx.beginPath(); ctx.moveTo(-36*s,0); ctx.lineTo(36*s,0); ctx.stroke();
   ctx.fillStyle='#2050A0'; ctx.strokeStyle='#1A3A80'; ctx.lineWidth=1*s;

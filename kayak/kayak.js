@@ -1,4 +1,4 @@
-const GAME_VERSION = '1.1.2';
+const GAME_VERSION = '1.1.11';
 const CANVAS_BORDER = 4;
 const BOTTOM_BAR_RATIO = 0.03;
 
@@ -55,13 +55,18 @@ function persist() {
 // ═══════════════════════════════════════════════════════════════
 // GAME STATE
 // ═══════════════════════════════════════════════════════════════
-const kayak = { x:0, y:0, angle:0, vx:0, vy:0, vAngle:0, paddlePhase:0 };
+const kayak = {
+  x:0, y:0, angle:0, vx:0, vy:0, vAngle:0, paddlePhase:0, tilt:0,
+  paddleBias:0, pivotTurn:false, strokeing:false
+};
 let collectibles = [];
 let ripples = [];
+let wakeParticles = [];
 let splashParticles = [];
 let waterTime = 0;
 let holdTime = 0, holdTimeBack = 0;
 let lastPaddleSound = 0;
+let lastWakeSpawn = 0;
 let gamePhase = 'playing'; // 'playing' | 'levelcomplete' | 'completing'
 
 // ═══════════════════════════════════════════════════════════════
@@ -104,9 +109,11 @@ function initLevel(reset) {
   const [sx, sy] = getKayakStart();
   kayak.x = sx; kayak.y = sy;
   kayak.angle = -Math.PI/2;
-  kayak.vx = 0; kayak.vy = 0; kayak.vAngle = 0; kayak.paddlePhase = 0;
+  kayak.vx = 0; kayak.vy = 0; kayak.vAngle = 0; kayak.paddlePhase = 0; kayak.tilt = 0;
+  kayak.paddleBias = 0; kayak.pivotTurn = false; kayak.strokeing = false;
   holdTime = 0; holdTimeBack = 0;
-  ripples = []; splashParticles = [];
+  ripples = []; wakeParticles = []; splashParticles = [];
+  lastWakeSpawn = 0;
   gamePhase = 'playing';
 
   const lvl = getLevelDef();
@@ -187,9 +194,18 @@ function render(t) {
   ctx.clearRect(0,0,w,h);
   const lvl=getLevelDef();
   lvl.drawScene(w,h,t);
-  drawRipples(); drawSplash();
+  drawWake(); drawRipples(); drawSplash();
   drawCollectibles(t);
-  drawKayak(kayak.x,kayak.y,kayak.angle,kayak.paddlePhase);
+  drawKayak(
+    kayak.x,
+    kayak.y,
+    kayak.angle,
+    kayak.paddlePhase,
+    kayak.tilt,
+    kayak.paddleBias,
+    kayak.pivotTurn,
+    kayak.strokeing
+  );
 }
 
 // ═══════════════════════════════════════════════════════════════
