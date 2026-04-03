@@ -83,18 +83,29 @@ let audioCtx = null;
 let audioEnabled = false;
 let audioUnlockPromise = null;
 let lastKnownAudioState = 'locked';
-let silentAudioEl = null;
-
-const SILENT_WAV_DATA_URI = 'data:audio/wav;base64,UklGRjQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YRAAAAAAAAAAAAAAAAAAAAAA';
 
 function getAudioDebugElement() {
   return document.getElementById('audio-debug');
+}
+
+function getAudioToggleElement() {
+  return document.getElementById('audio-toggle');
 }
 
 function updateAudioDebugLabel() {
   const label = getAudioDebugElement();
   if (!label) return;
   label.textContent = `audio: ${lastKnownAudioState}`;
+
+  const toggle = getAudioToggleElement();
+  if (!toggle) return;
+  if (lastKnownAudioState === 'running') {
+    toggle.textContent = 'Sound On';
+  } else if (audioUnlockPromise) {
+    toggle.textContent = 'Enabling...';
+  } else {
+    toggle.textContent = 'Enable Sound';
+  }
 }
 
 function syncAudioState() {
@@ -121,22 +132,14 @@ function ensureAudioContext() {
   return audioCtx;
 }
 
-function ensureSilentAudioElement() {
-  if (silentAudioEl) return silentAudioEl;
-  const audio = document.createElement('audio');
-  audio.src = SILENT_WAV_DATA_URI;
-  audio.preload = 'auto';
-  audio.playsInline = true;
-  audio.setAttribute('webkit-playsinline', 'true');
-  silentAudioEl = audio;
-  return silentAudioEl;
-}
-
 function primeAudioContext(ctx) {
   const buf = ctx.createBuffer(1, 1, 22050);
   const src = ctx.createBufferSource();
+  const gain = ctx.createGain();
   src.buffer = buf;
-  src.connect(ctx.destination);
+  gain.gain.setValueAtTime(0, ctx.currentTime);
+  src.connect(gain);
+  gain.connect(ctx.destination);
   src.start(0);
 }
 
@@ -144,21 +147,19 @@ function isTrustedUnlockEvent(event) {
   return !!(event && event.isTrusted && ['keydown', 'mousedown', 'mouseup', 'click', 'pointerdown', 'pointerup', 'touchstart', 'touchend'].includes(event.type));
 }
 
-function primeHtmlAudio() {
-  const el = ensureSilentAudioElement();
-  if (!el) return Promise.resolve(false);
-  try {
-    el.currentTime = 0;
-  } catch (e) {}
-  return el.play()
-    .then(() => {
-      el.pause();
-      try {
-        el.currentTime = 0;
-      } catch (e) {}
-      return true;
-    })
-    .catch(() => false);
+function resetAudioContext() {
+  const ctx = audioCtx;
+  audioCtx = null;
+  audioEnabled = false;
+  audioUnlockPromise = null;
+  lastKnownAudioState = 'locked';
+  if (ctx && typeof ctx.close === 'function') {
+    try {
+      ctx.onstatechange = null;
+      ctx.close().catch(() => {});
+    } catch (e) {}
+  }
+  updateAudioDebugLabel();
 }
 
 function resumeAudioAfterInterruption() {
@@ -205,22 +206,22 @@ function unlockAudio(event) {
     return Promise.resolve(false);
   }
   if (audioUnlockPromise) return audioUnlockPromise;
-  const bootPromise = isTrustedUnlockEvent(event)
-    ? primeHtmlAudio().then(() => {
-        try {
-          primeAudioContext(ctx);
-        } catch (e) {}
-      })
-    : Promise.resolve();
-  audioUnlockPromise = bootPromise
-    .then(() => ctx.resume())
+  if (isTrustedUnlockEvent(event)) {
+    try {
+      primeAudioContext(ctx);
+    } catch (e) {}
+  }
+  audioUnlockPromise = ctx.resume()
     .then(() => {
       syncAudioState();
-      if (ctx.state !== 'running') return false;
+      if (ctx.state !== 'running') {
+        resetAudioContext();
+        return false;
+      }
       try {
         const warmOsc = ctx.createOscillator();
         const warmGain = ctx.createGain();
-        warmGain.gain.setValueAtTime(0.00001, ctx.currentTime);
+        warmGain.gain.setValueAtTime(0, ctx.currentTime);
         warmOsc.connect(warmGain);
         warmGain.connect(ctx.destination);
         warmOsc.start(ctx.currentTime);
@@ -229,6 +230,7 @@ function unlockAudio(event) {
       return true;
     })
     .catch(() => {
+      resetAudioContext();
       syncAudioState();
       return false;
     })
@@ -264,6 +266,15 @@ document.addEventListener('visibilitychange', () => {
 });
 window.addEventListener('pageshow', () => { resumeAudioAfterInterruption(); });
 syncAudioState();
+
+const audioToggle = getAudioToggleElement();
+if (audioToggle) {
+  ['click', 'touchend', 'pointerup', 'mouseup'].forEach((eventName) => {
+    audioToggle.addEventListener(eventName, (event) => {
+      unlockAudio(event);
+    }, eventName.startsWith('touch') ? { passive: true } : undefined);
+  });
+}
 
 function canPlayAudio() {
   syncAudioState();
