@@ -47,3 +47,13 @@ Original prompt: yes, do all you need to do to get started
 - Added direct in-game audio probe buttons for the actual game SFX path:
 - `Test Paddle` and `Test Collect` now live on the main kayak page and invoke `playPaddleSound()` / `playCollectSound()` after release-phase unlock.
 - Bumped `kayak` to `1.1.26` so iPhone testing can distinguish “main page SFX works” from “gameplay-triggered SFX works.”
+- Consensus branch rewrite on `codex/kayak-audio-probes`:
+- replaced the layered `kayak/physics.js` audio state with the minimal `AudioContext` pattern from `fix/ios-audio-unlock`, but kept release-phase unlock only (`keydown`, `mouseup`, `click`, `pointerup`, `touchend`);
+- removed the temporary in-game `Test Paddle` / `Test Collect` buttons while keeping the separate `/kayak/audio/` diagnostics page;
+- updated the main game UI to report technical context state (`context: ...`) and `Audio Ready` instead of implying audible success;
+- bumped `kayak` and diagnostics assets to `1.1.27`.
+- Verification:
+- `$HOME/.local/node/current/bin/node --check kayak/physics.js`, `kayak/kayak.js`, and `kayak/audio/audio.js` all passed.
+- Local Playwright smoke test against `http://127.0.0.1:8000/kayak/` and `http://127.0.0.1:8000/kayak/audio/` passed after sandbox escalation:
+- the game page loaded as `v1.1.27`, exposed `Audio Test`, and transitioned from `context: locked` / `Enable Sound` to `context: running` / `Audio Ready` after clicking `#audio-toggle`;
+- the diagnostics page loaded as `1.1.27` with the expected control set intact.

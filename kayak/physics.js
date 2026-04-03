@@ -80,8 +80,6 @@ function spawnCollectibles() {
 // AUDIO
 // ═══════════════════════════════════════════════════════════════
 let audioCtx = null;
-let audioUnlocked = false;
-let lastKnownAudioState = 'locked';
 
 function getAudioDebugElement() {
   return document.getElementById('audio-debug');
@@ -91,24 +89,16 @@ function getAudioToggleElement() {
   return document.getElementById('audio-toggle');
 }
 
-function updateAudioDebugLabel() {
-  const label = getAudioDebugElement();
-  if (!label) return;
-  label.textContent = `audio: ${lastKnownAudioState}`;
-
-  const toggle = getAudioToggleElement();
-  if (!toggle) return;
-  if (audioCtx && audioCtx.state === 'running') {
-    toggle.textContent = 'Sound On';
-  } else {
-    toggle.textContent = 'Enable Sound';
-  }
-}
-
 function updateAudioUI() {
-  lastKnownAudioState = audioCtx ? audioCtx.state : 'locked';
-  audioUnlocked = !!(audioCtx && audioCtx.state === 'running');
-  updateAudioDebugLabel();
+  const state = audioCtx ? audioCtx.state : 'locked';
+  const label = getAudioDebugElement();
+  if (label) {
+    label.textContent = `context: ${state}`;
+  }
+  const toggle = getAudioToggleElement();
+  if (toggle) {
+    toggle.textContent = state === 'running' ? 'Audio Ready' : 'Enable Sound';
+  }
 }
 
 function ensureAudioContext() {
@@ -121,58 +111,25 @@ function ensureAudioContext() {
   return audioCtx;
 }
 
-function isTrustedUnlockEvent(event) {
-  return !!(event && event.isTrusted && ['keydown', 'mouseup', 'click', 'pointerup', 'touchend'].includes(event.type));
-}
-
-function resumeAudioAfterInterruption() {
-  if (!audioUnlocked) {
-    updateAudioUI();
-    return Promise.resolve(false);
-  }
-  const ctx = ensureAudioContext();
-  if (!ctx) return Promise.resolve(false);
-  if (ctx.state === 'running') {
-    updateAudioUI();
-    return Promise.resolve(true);
-  }
-  if (ctx.state !== 'suspended' && ctx.state !== 'interrupted') {
-    updateAudioUI();
-    return Promise.resolve(false);
-  }
-  return ctx.resume()
-    .then(() => {
-      updateAudioUI();
-      return ctx.state === 'running';
-    })
-    .catch(() => {
-      updateAudioUI();
-      return false;
-    });
-}
-
 function unlockAudio(event) {
-  if (!isTrustedUnlockEvent(event)) return Promise.resolve(false);
+  if (event && !event.isTrusted) return;
   const ctx = ensureAudioContext();
-  if (!ctx) return Promise.resolve(false);
+  if (!ctx) return;
   if (ctx.state === 'running') {
-    audioUnlocked = true;
     updateAudioUI();
-    return Promise.resolve(true);
+    return;
   }
   if (ctx.state === 'suspended' || ctx.state === 'interrupted') {
-    return ctx.resume()
+    ctx.resume()
       .then(() => {
         updateAudioUI();
-        return ctx.state === 'running';
       })
       .catch(() => {
         updateAudioUI();
-        return false;
       });
+    return;
   }
   updateAudioUI();
-  return Promise.resolve(false);
 }
 
 document.addEventListener('keydown', unlockAudio);
@@ -180,36 +137,43 @@ document.addEventListener('mouseup', unlockAudio);
 document.addEventListener('click', unlockAudio);
 document.addEventListener('pointerup', unlockAudio);
 document.addEventListener('touchend', unlockAudio, { passive: true });
-document.addEventListener('visibilitychange', () => {
-  if (!document.hidden) {
-    resumeAudioAfterInterruption();
-  } else {
+
+document.addEventListener('visibilitychange', function() {
+  if (!audioCtx) {
     updateAudioUI();
+    return;
   }
+  if (!document.hidden && (audioCtx.state === 'suspended' || audioCtx.state === 'interrupted')) {
+    audioCtx.resume().then(updateAudioUI).catch(function() {
+      updateAudioUI();
+    });
+    return;
+  }
+  updateAudioUI();
 });
-window.addEventListener('pageshow', () => { resumeAudioAfterInterruption(); });
-updateAudioUI();
 
 const audioToggle = getAudioToggleElement();
 if (audioToggle) {
   ['click', 'touchend', 'pointerup', 'mouseup'].forEach((eventName) => {
-    audioToggle.addEventListener(eventName, (event) => {
-      unlockAudio(event);
-    }, eventName.startsWith('touch') ? { passive: true } : undefined);
+    audioToggle.addEventListener(eventName, unlockAudio, eventName === 'touchend' ? { passive: true } : undefined);
   });
 }
 
-function bindAudioTestButton(id, callback) {
-  const button = document.getElementById(id);
-  if (!button) return;
-  ['click', 'touchend', 'pointerup', 'mouseup'].forEach((eventName) => {
-    button.addEventListener(eventName, (event) => {
-      unlockAudio(event).finally(() => {
-        callback();
-      });
-    }, eventName.startsWith('touch') ? { passive: true } : undefined);
-  });
-}
+window.addEventListener('pageshow', function() {
+  if (!audioCtx) {
+    updateAudioUI();
+    return;
+  }
+  if (audioCtx.state === 'suspended' || audioCtx.state === 'interrupted') {
+    audioCtx.resume().then(updateAudioUI).catch(function() {
+      updateAudioUI();
+    });
+    return;
+  }
+  updateAudioUI();
+});
+
+updateAudioUI();
 
 function canPlayAudio() {
   return !!audioCtx && audioCtx.state === 'running';
@@ -258,9 +222,6 @@ function playLevelCompleteSound() {
     });
   } catch(e){}
 }
-
-bindAudioTestButton('audio-paddle-test', playPaddleSound);
-bindAudioTestButton('audio-collect-test', playCollectSound);
 
 // ═══════════════════════════════════════════════════════════════
 // RIPPLES & SPLASH
