@@ -8,6 +8,12 @@ const BOTTOM_BAR_RATIO = 0.03;
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 const bottomBar = document.getElementById('bottomBar');
+const IS_IOS_IPADOS = window.IS_IOS_IPADOS = (() => {
+  const ua = navigator.userAgent || '';
+  const platform = navigator.platform || '';
+  const touchPoints = navigator.maxTouchPoints || 0;
+  return /iPad|iPhone|iPod/.test(ua) || (platform === 'MacIntel' && touchPoints > 1);
+})();
 
 function syncBottomBar() {
   const bandHeight = Math.max(26, Math.round(canvas.height * BOTTOM_BAR_RATIO));

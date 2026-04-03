@@ -237,6 +237,7 @@ function drawSplash() {
 // ═══════════════════════════════════════════════════════════════
 // PHYSICS UPDATE
 // ═══════════════════════════════════════════════════════════════
+const IOS_LEGACY_TURN_SPEED=2.0, IOS_LEGACY_ANGULAR_DRAG=0.80;
 const TURN_BASE_ACCEL=1.18, TURN_SPEED_ACCEL=5.00, TURN_SPEED_REF=220;
 const COAST_TURN_FACTOR_SLOW=0.90, COAST_TURN_FACTOR_FAST=0.52;
 const REVERSE_TURN_FACTOR=0.80, MAX_TURN_RATE=1.60;
@@ -272,6 +273,7 @@ function update(dt, t) {
   const sweepTurn=!up&&turnInput!==0;
   const coastTurnFactor=COAST_TURN_FACTOR_FAST+(1-speed01)*(COAST_TURN_FACTOR_SLOW-COAST_TURN_FACTOR_FAST);
   if (speed > 16) addWake(speed01, t);
+  const useLegacyIosSteering = IS_IOS_IPADOS;
   const paddleTurnFactor=up ? 1 : (down ? REVERSE_TURN_FACTOR : coastTurnFactor);
   const turnAccel=turnInput*(TURN_BASE_ACCEL+TURN_SPEED_ACCEL*speed01)*paddleTurnFactor;
 
@@ -281,10 +283,19 @@ function update(dt, t) {
   const targetPaddleBias=turnInput===0 ? 0 : (sweepTurn ? -turnInput : -turnInput*0.55);
   kayak.paddleBias+=(targetPaddleBias-kayak.paddleBias)*Math.min(1,dt*(kayak.pivotTurn?8:4.5));
 
-  kayak.vAngle+=turnAccel*dt;
-  kayak.vAngle*=Math.pow(ANGULAR_DRAG,dt*60);
-  kayak.vAngle=Math.max(-MAX_TURN_RATE,Math.min(MAX_TURN_RATE,kayak.vAngle));
-  kayak.angle+=kayak.vAngle*dt;
+  if (useLegacyIosSteering) {
+    kayak.strokeing=paddling;
+    kayak.pivotTurn=false;
+    if(left) kayak.vAngle-=IOS_LEGACY_TURN_SPEED*dt;
+    if(right) kayak.vAngle+=IOS_LEGACY_TURN_SPEED*dt;
+    kayak.vAngle*=Math.pow(IOS_LEGACY_ANGULAR_DRAG,dt*60);
+    kayak.angle+=kayak.vAngle;
+  } else {
+    kayak.vAngle+=turnAccel*dt;
+    kayak.vAngle*=Math.pow(ANGULAR_DRAG,dt*60);
+    kayak.vAngle=Math.max(-MAX_TURN_RATE,Math.min(MAX_TURN_RATE,kayak.vAngle));
+    kayak.angle+=kayak.vAngle*dt;
+  }
 
   const targetTilt=Math.max(
     -MAX_TILT,
