@@ -1,10 +1,21 @@
 const GAME_VERSION = '1.1.2';
+const CANVAS_BORDER = 4;
+const BOTTOM_BAR_RATIO = 0.03;
 
 // ═══════════════════════════════════════════════════════════════
 // CANVAS SETUP
 // ═══════════════════════════════════════════════════════════════
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
+const bottomBar = document.getElementById('bottomBar');
+
+function syncBottomBar() {
+  const bandHeight = Math.max(26, Math.round(canvas.height * BOTTOM_BAR_RATIO));
+  bottomBar.style.left = `${CANVAS_BORDER}px`;
+  bottomBar.style.right = `${CANVAS_BORDER}px`;
+  bottomBar.style.bottom = `${CANVAS_BORDER}px`;
+  bottomBar.style.height = `${bandHeight}px`;
+}
 
 function setSize() {
   const maxW = Math.min(window.innerWidth - 8, 500);
@@ -14,6 +25,7 @@ function setSize() {
   if (h > maxH) { h = maxH; w = h*ratio; }
   canvas.width = Math.floor(w);
   canvas.height = Math.floor(h);
+  syncBottomBar();
 }
 setSize();
 window.addEventListener('resize', setSize);

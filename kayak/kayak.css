@@ -22,15 +22,36 @@ canvas { display: block; border: 4px solid #8B6914; border-radius: 4px; box-shad
 #hud .sc { font-size: 24px; line-height: 1.1; }
 #hud .speed { font-size: 18px; line-height: 1.1; color: #2b5f8a; }
 #hud .best { font-size: 10px; color: #8B6914; margin-top: 2px; }
+
+#bottomBar {
+  position: absolute;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
 #newGameBtn {
-  pointer-events: all; margin-top: 5px; background: #8B6914; color: white;
-  border: none; border-radius: 5px; padding: 4px 9px; font-size: 10px;
-  font-family: 'Georgia', serif; cursor: pointer; display: block; width: 100%;
+  position: static;
+  background: #8B6914;
+  color: white;
+  border: none;
+  border-radius: 5px;
+  padding: 4px 9px;
+  font-size: 10px;
+  font-family: 'Georgia', serif;
+  cursor: pointer;
+  pointer-events: auto;
 }
 #newGameBtn:hover { background: #a07820; }
 #version-display {
-  font-size: 8px; color: #8B6914; margin-top: 5px;
-  text-align: center; opacity: 0.6; letter-spacing: 1px;
+  position: absolute;
+  left: 10px;
+  font-size: 8px;
+  color: rgba(255,255,255,0.55);
+  letter-spacing: 1px;
+  pointer-events: none;
 }
 
 /* Level banner */
