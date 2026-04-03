@@ -35,3 +35,9 @@ Original prompt: yes, do all you need to do to get started
 - Verification:
 - `node --check kayak/audio/audio.js` and `node --check kayak/kayak.js` passed.
 - Browser automation against `http://127.0.0.1:8001/kayak/audio/` loaded the diagnostics page, found all test controls, transitioned context from `not-created` to `running` via `Unlock on Release`, and logged a successful `Play Web Tone` action.
+- Simplified the main game audio path to match the working diagnostics harness:
+- replaced the layered `kayak/physics.js` audio state machine with a minimal `AudioContext` + trusted `resume()` flow;
+- kept the existing `Enable Sound` control and diagnostics page, and bumped `kayak` to `1.1.24`.
+- Verification:
+- `node --check kayak/physics.js` and `node --check kayak/audio/audio.js` passed.
+- Browser automation against `http://127.0.0.1:8001/kayak/` confirmed the main game now transitions from `audio: locked` to `audio: running` after clicking `Enable Sound` on `v1.1.24`.

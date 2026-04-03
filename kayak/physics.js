@@ -80,12 +80,8 @@ function spawnCollectibles() {
 // AUDIO
 // ═══════════════════════════════════════════════════════════════
 let audioCtx = null;
-let audioEnabled = false;
-let audioUnlockPromise = null;
+let audioUnlocked = false;
 let lastKnownAudioState = 'locked';
-let silentAudioEl = null;
-
-const SILENT_WAV_DATA_URI = 'data:audio/wav;base64,UklGRjQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YRAAAAAAAAAAAAAAAAAAAAAA';
 
 function getAudioDebugElement() {
   return document.getElementById('audio-debug');
@@ -102,26 +98,16 @@ function updateAudioDebugLabel() {
 
   const toggle = getAudioToggleElement();
   if (!toggle) return;
-  if (lastKnownAudioState === 'running') {
+  if (audioCtx && audioCtx.state === 'running') {
     toggle.textContent = 'Sound On';
-  } else if (audioUnlockPromise) {
-    toggle.textContent = 'Enabling...';
   } else {
     toggle.textContent = 'Enable Sound';
   }
 }
 
-function syncAudioState() {
-  if (!audioCtx) {
-    lastKnownAudioState = 'locked';
-  } else if (audioCtx.state === 'running') {
-    lastKnownAudioState = 'running';
-    audioEnabled = true;
-  } else if (audioCtx.state === 'suspended' && !audioEnabled) {
-    lastKnownAudioState = 'locked';
-  } else {
-    lastKnownAudioState = audioCtx.state;
-  }
+function updateAudioUI() {
+  lastKnownAudioState = audioCtx ? audioCtx.state : 'locked';
+  audioUnlocked = !!(audioCtx && audioCtx.state === 'running');
   updateAudioDebugLabel();
 }
 
@@ -130,184 +116,64 @@ function ensureAudioContext() {
   const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
   if (!AudioContextCtor) return null;
   audioCtx = new AudioContextCtor();
-  audioCtx.onstatechange = syncAudioState;
-  syncAudioState();
+  audioCtx.onstatechange = updateAudioUI;
+  updateAudioUI();
   return audioCtx;
-}
-
-function ensureSilentAudioElement() {
-  if (silentAudioEl) return silentAudioEl;
-  const audio = document.createElement('audio');
-  audio.src = SILENT_WAV_DATA_URI;
-  audio.preload = 'auto';
-  audio.muted = true;
-  audio.volume = 0;
-  audio.playsInline = true;
-  audio.setAttribute('webkit-playsinline', 'true');
-  silentAudioEl = audio;
-  return silentAudioEl;
-}
-
-function primeHtmlAudio() {
-  const audio = ensureSilentAudioElement();
-  if (!audio) return;
-  try {
-    audio.currentTime = 0;
-  } catch (e) {}
-  try {
-    const playResult = audio.play();
-    if (playResult && typeof playResult.then === 'function') {
-      playResult.then(() => {
-        audio.pause();
-        try {
-          audio.currentTime = 0;
-        } catch (e) {}
-      }).catch(() => {});
-    }
-  } catch (e) {}
-}
-
-function primeAudioContext(ctx) {
-  const buf = ctx.createBuffer(1, 1, 22050);
-  const src = ctx.createBufferSource();
-  const gain = ctx.createGain();
-  src.buffer = buf;
-  gain.gain.setValueAtTime(0, ctx.currentTime);
-  src.connect(gain);
-  gain.connect(ctx.destination);
-  src.start(0);
 }
 
 function isTrustedUnlockEvent(event) {
   return !!(event && event.isTrusted && ['keydown', 'mousedown', 'mouseup', 'click', 'pointerdown', 'pointerup', 'touchstart', 'touchend'].includes(event.type));
 }
 
-function resetAudioContext() {
-  const ctx = audioCtx;
-  audioCtx = null;
-  audioEnabled = false;
-  audioUnlockPromise = null;
-  lastKnownAudioState = 'locked';
-  if (ctx && typeof ctx.close === 'function') {
-    try {
-      ctx.onstatechange = null;
-      ctx.close().catch(() => {});
-    } catch (e) {}
-  }
-  updateAudioDebugLabel();
-}
-
-function waitForAudioRunning(ctx, timeoutMs = 1200) {
-  return new Promise((resolve) => {
-    const startedAt = Date.now();
-    function poll() {
-      if (audioCtx !== ctx) {
-        resolve(false);
-        return;
-      }
-      syncAudioState();
-      if (ctx.state === 'running') {
-        resolve(true);
-        return;
-      }
-      if (Date.now() - startedAt >= timeoutMs) {
-        resolve(false);
-        return;
-      }
-      setTimeout(poll, 50);
-    }
-    poll();
-  });
-}
-
 function resumeAudioAfterInterruption() {
-  const ctx = ensureAudioContext();
-  if (!ctx || !audioEnabled) {
-    syncAudioState();
+  if (!audioUnlocked) {
+    updateAudioUI();
     return Promise.resolve(false);
   }
-  if (ctx.state === 'running') {
-    syncAudioState();
-    return Promise.resolve(true);
-  }
-  if (audioUnlockPromise) return audioUnlockPromise;
-  if (ctx.state !== 'suspended' && ctx.state !== 'interrupted') {
-    syncAudioState();
-    return Promise.resolve(false);
-  }
-  audioUnlockPromise = ctx.resume()
-    .then(() => {
-      syncAudioState();
-      return ctx.state === 'running';
-    })
-    .catch(() => {
-      syncAudioState();
-      return false;
-    })
-    .finally(() => {
-      audioUnlockPromise = null;
-      syncAudioState();
-    });
-  return audioUnlockPromise;
-}
-
-function unlockAudio(event) {
   const ctx = ensureAudioContext();
   if (!ctx) return Promise.resolve(false);
   if (ctx.state === 'running') {
-    audioEnabled = true;
-    syncAudioState();
+    updateAudioUI();
     return Promise.resolve(true);
   }
-  if (!audioEnabled && !isTrustedUnlockEvent(event)) {
-    syncAudioState();
+  if (ctx.state !== 'suspended' && ctx.state !== 'interrupted') {
+    updateAudioUI();
     return Promise.resolve(false);
   }
-  if (audioUnlockPromise) return audioUnlockPromise;
-  if (isTrustedUnlockEvent(event)) {
-    primeHtmlAudio();
-    try {
-      primeAudioContext(ctx);
-    } catch (e) {}
-  }
-  try {
-    const resumeResult = ctx.resume();
-    if (resumeResult && typeof resumeResult.catch === 'function') {
-      resumeResult.catch(() => {});
-    }
-  } catch (e) {}
-  audioUnlockPromise = waitForAudioRunning(ctx)
-    .then((isRunning) => {
-      syncAudioState();
-      if (!isRunning || ctx.state !== 'running') {
-        resetAudioContext();
-        return false;
-      }
-      try {
-        const warmOsc = ctx.createOscillator();
-        const warmGain = ctx.createGain();
-        warmGain.gain.setValueAtTime(0, ctx.currentTime);
-        warmOsc.connect(warmGain);
-        warmGain.connect(ctx.destination);
-        warmOsc.start(ctx.currentTime);
-        warmOsc.stop(ctx.currentTime + 0.01);
-      } catch (e) {}
-      return true;
+  return ctx.resume()
+    .then(() => {
+      updateAudioUI();
+      return ctx.state === 'running';
     })
-    .finally(() => {
-      audioUnlockPromise = null;
-      syncAudioState();
+    .catch(() => {
+      updateAudioUI();
+      return false;
     });
-  syncAudioState();
-  return audioUnlockPromise;
 }
 
-window.__kayakAudioState = () => ({
-  hasContext: !!audioCtx,
-  enabled: audioEnabled,
-  state: lastKnownAudioState,
-  unlockPending: audioUnlockPromise !== null
-});
+function unlockAudio(event) {
+  if (!isTrustedUnlockEvent(event)) return Promise.resolve(false);
+  const ctx = ensureAudioContext();
+  if (!ctx) return Promise.resolve(false);
+  if (ctx.state === 'running') {
+    audioUnlocked = true;
+    updateAudioUI();
+    return Promise.resolve(true);
+  }
+  if (ctx.state === 'suspended' || ctx.state === 'interrupted') {
+    return ctx.resume()
+      .then(() => {
+        updateAudioUI();
+        return ctx.state === 'running';
+      })
+      .catch(() => {
+        updateAudioUI();
+        return false;
+      });
+  }
+  updateAudioUI();
+  return Promise.resolve(false);
+}
 
 document.addEventListener('keydown', unlockAudio);
 document.addEventListener('mousedown', unlockAudio);
@@ -318,14 +184,14 @@ document.addEventListener('pointerup', unlockAudio);
 document.addEventListener('touchstart', unlockAudio, { passive: true });
 document.addEventListener('touchend', unlockAudio, { passive: true });
 document.addEventListener('visibilitychange', () => {
-  if (document.hidden) {
-    syncAudioState();
-    return;
+  if (!document.hidden) {
+    resumeAudioAfterInterruption();
+  } else {
+    updateAudioUI();
   }
-  resumeAudioAfterInterruption();
 });
 window.addEventListener('pageshow', () => { resumeAudioAfterInterruption(); });
-syncAudioState();
+updateAudioUI();
 
 const audioToggle = getAudioToggleElement();
 if (audioToggle) {
@@ -337,7 +203,6 @@ if (audioToggle) {
 }
 
 function canPlayAudio() {
-  syncAudioState();
   return !!audioCtx && audioCtx.state === 'running';
 }
 
