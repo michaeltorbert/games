@@ -220,12 +220,75 @@ function render(t) {
 let lastTime=null;
 function loop(ts) {
   const t=ts/1000;
-  const dt=lastTime===null?0.016:Math.min(t-lastTime,0.05);
+  const rawDt = lastTime===null ? 0.016 : t - lastTime;
+  const dt = Math.max(0, Math.min(rawDt, 0.05));
   lastTime=t;
   update(dt,t);
   render(t);
   requestAnimationFrame(loop);
 }
+
+function getVisibleCollectibles() {
+  return collectibles
+    .filter(c => !c.collected)
+    .map(c => ({
+      x: Math.round(c.x),
+      y: Math.round(c.y),
+      type: c.type
+    }));
+}
+
+function getKayakTextState() {
+  return JSON.stringify({
+    mode: gamePhase,
+    level: {
+      index: currentLevel,
+      number: currentLevel + 1,
+      name: getLevelDef().name
+    },
+    coordinateSystem: {
+      origin: 'top-left',
+      xDirection: 'right',
+      yDirection: 'down',
+      units: 'canvas pixels'
+    },
+    canvas: {
+      width: W(),
+      height: H()
+    },
+    kayak: {
+      x: Math.round(kayak.x),
+      y: Math.round(kayak.y),
+      angle: Number(kayak.angle.toFixed(3)),
+      vx: Number(kayak.vx.toFixed(3)),
+      vy: Number(kayak.vy.toFixed(3)),
+      vAngle: Number(kayak.vAngle.toFixed(3)),
+      speed: Number(Math.hypot(kayak.vx, kayak.vy).toFixed(3))
+    },
+    collectibles: {
+      remaining: collectibles.filter(c => !c.collected).length,
+      total: collectibles.length,
+      visible: getVisibleCollectibles()
+    },
+    score: {
+      total: totalScore,
+      high: highScore
+    }
+  });
+}
+
+window.render_game_to_text = getKayakTextState;
+window.advanceTime = (ms) => {
+  const frameMs = 1000 / 60;
+  const steps = Math.max(1, Math.round(ms / frameMs));
+  const dt = ms > 0 ? ms / 1000 / steps : 1 / 60;
+  for (let i = 0; i < steps; i++) {
+    waterTime += dt;
+    update(dt, waterTime);
+  }
+  lastTime = waterTime;
+  render(waterTime);
+};
 
 // ═══════════════════════════════════════════════════════════════
 // BUTTON WIRING

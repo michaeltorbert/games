@@ -43,6 +43,9 @@ function drawWater(w, h, poly, c1, c2, t) {
 function drawWake() {
   wakeParticles.forEach(p => {
     const age01 = Math.min(1, p.age / p.life);
+    const rx = p.size * (1.15 + age01 * 0.35);
+    const ry = p.size * (0.38 + age01 * 0.08);
+    if (!Number.isFinite(rx) || !Number.isFinite(ry) || rx <= 0 || ry <= 0) return;
     ctx.save();
     ctx.globalAlpha = Math.max(0, p.alpha) * (1 - age01 * 0.35);
     ctx.strokeStyle = 'rgba(235, 250, 255, 0.9)';
@@ -51,8 +54,8 @@ function drawWake() {
     ctx.ellipse(
       p.x,
       p.y,
-      p.size * (1.15 + age01 * 0.35),
-      p.size * (0.38 + age01 * 0.08),
+      rx,
+      ry,
       p.heading,
       0,
       Math.PI*2
