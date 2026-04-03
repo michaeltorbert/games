@@ -215,9 +215,12 @@ function updateRipples(dt) {
 }
 function drawRipples() {
   ripples.forEach(r=>{
+    const rx = Math.max(0, r.r);
+    const ry = Math.max(0, r.r * 0.4);
+    if (!Number.isFinite(rx) || !Number.isFinite(ry) || rx <= 0 || ry <= 0) return;
     ctx.save(); ctx.strokeStyle=`rgba(255,255,255,${r.alpha})`;
     ctx.lineWidth=1.5*sc();
-    ctx.beginPath(); ctx.ellipse(r.x,r.y,r.r,r.r*0.4,0,0,Math.PI*2); ctx.stroke();
+    ctx.beginPath(); ctx.ellipse(r.x,r.y,rx,ry,0,0,Math.PI*2); ctx.stroke();
     ctx.restore();
   });
 }
