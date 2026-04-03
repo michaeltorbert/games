@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <title>Prague Bike Panic</title>
 <link rel="stylesheet" href="../shared/reset.css">
-<link rel="stylesheet" href="prague.css">
+<link rel="stylesheet" href="prague.css?v=1.0.0">
 </head>
 <body>
 <div id="wrap">
@@ -18,13 +18,14 @@
 </div>
 </div>
 
-<script src="prague.js"></script>
+<script src="prague.js?v=1.0.0"></script>
 <script>
   document.getElementById('version-display').textContent = `v${GAME_VERSION}`;
 </script>
-<script src="chars.js"></script>
-<script src="obstacles.js"></script>
-<script src="renderer.js"></script>
+<script src="../shared/updater.js?v=1.0.0"></script>
+<script src="chars.js?v=1.0.0"></script>
+<script src="obstacles.js?v=1.0.0"></script>
+<script src="renderer.js?v=1.0.0"></script>
 <script>loop();</script>
 </body>
 </html>
