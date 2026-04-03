@@ -83,6 +83,9 @@ let audioCtx = null;
 let audioEnabled = false;
 let audioUnlockPromise = null;
 let lastKnownAudioState = 'locked';
+let silentAudioEl = null;
+
+const SILENT_WAV_DATA_URI = 'data:audio/wav;base64,UklGRjQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YRAAAAAAAAAAAAAAAAAAAAAA';
 
 function getAudioDebugElement() {
   return document.getElementById('audio-debug');
@@ -132,6 +135,38 @@ function ensureAudioContext() {
   return audioCtx;
 }
 
+function ensureSilentAudioElement() {
+  if (silentAudioEl) return silentAudioEl;
+  const audio = document.createElement('audio');
+  audio.src = SILENT_WAV_DATA_URI;
+  audio.preload = 'auto';
+  audio.muted = true;
+  audio.volume = 0;
+  audio.playsInline = true;
+  audio.setAttribute('webkit-playsinline', 'true');
+  silentAudioEl = audio;
+  return silentAudioEl;
+}
+
+function primeHtmlAudio() {
+  const audio = ensureSilentAudioElement();
+  if (!audio) return;
+  try {
+    audio.currentTime = 0;
+  } catch (e) {}
+  try {
+    const playResult = audio.play();
+    if (playResult && typeof playResult.then === 'function') {
+      playResult.then(() => {
+        audio.pause();
+        try {
+          audio.currentTime = 0;
+        } catch (e) {}
+      }).catch(() => {});
+    }
+  } catch (e) {}
+}
+
 function primeAudioContext(ctx) {
   const buf = ctx.createBuffer(1, 1, 22050);
   const src = ctx.createBufferSource();
@@ -160,6 +195,29 @@ function resetAudioContext() {
     } catch (e) {}
   }
   updateAudioDebugLabel();
+}
+
+function waitForAudioRunning(ctx, timeoutMs = 1200) {
+  return new Promise((resolve) => {
+    const startedAt = Date.now();
+    function poll() {
+      if (audioCtx !== ctx) {
+        resolve(false);
+        return;
+      }
+      syncAudioState();
+      if (ctx.state === 'running') {
+        resolve(true);
+        return;
+      }
+      if (Date.now() - startedAt >= timeoutMs) {
+        resolve(false);
+        return;
+      }
+      setTimeout(poll, 50);
+    }
+    poll();
+  });
 }
 
 function resumeAudioAfterInterruption() {
@@ -207,14 +265,21 @@ function unlockAudio(event) {
   }
   if (audioUnlockPromise) return audioUnlockPromise;
   if (isTrustedUnlockEvent(event)) {
+    primeHtmlAudio();
     try {
       primeAudioContext(ctx);
     } catch (e) {}
   }
-  audioUnlockPromise = ctx.resume()
-    .then(() => {
+  try {
+    const resumeResult = ctx.resume();
+    if (resumeResult && typeof resumeResult.catch === 'function') {
+      resumeResult.catch(() => {});
+    }
+  } catch (e) {}
+  audioUnlockPromise = waitForAudioRunning(ctx)
+    .then((isRunning) => {
       syncAudioState();
-      if (ctx.state !== 'running') {
+      if (!isRunning || ctx.state !== 'running') {
         resetAudioContext();
         return false;
       }
@@ -228,11 +293,6 @@ function unlockAudio(event) {
         warmOsc.stop(ctx.currentTime + 0.01);
       } catch (e) {}
       return true;
-    })
-    .catch(() => {
-      resetAudioContext();
-      syncAudioState();
-      return false;
     })
     .finally(() => {
       audioUnlockPromise = null;
