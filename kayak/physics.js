@@ -199,6 +199,18 @@ if (audioToggle) {
   });
 }
 
+function bindAudioTestButton(id, callback) {
+  const button = document.getElementById(id);
+  if (!button) return;
+  ['click', 'touchend', 'pointerup', 'mouseup'].forEach((eventName) => {
+    button.addEventListener(eventName, (event) => {
+      unlockAudio(event).finally(() => {
+        callback();
+      });
+    }, eventName.startsWith('touch') ? { passive: true } : undefined);
+  });
+}
+
 function canPlayAudio() {
   return !!audioCtx && audioCtx.state === 'running';
 }
@@ -246,6 +258,9 @@ function playLevelCompleteSound() {
     });
   } catch(e){}
 }
+
+bindAudioTestButton('audio-paddle-test', playPaddleSound);
+bindAudioTestButton('audio-collect-test', playCollectSound);
 
 // ═══════════════════════════════════════════════════════════════
 // RIPPLES & SPLASH

@@ -44,3 +44,6 @@ Original prompt: yes, do all you need to do to get started
 - Follow-up from device testing:
 - iPhone diagnostics proved press-phase unlock is still bad while release-phase unlock works for Web Audio and game SFX.
 - Updated the game to attempt unlock only on release/click events and bumped `kayak` to `1.1.25`.
+- Added direct in-game audio probe buttons for the actual game SFX path:
+- `Test Paddle` and `Test Collect` now live on the main kayak page and invoke `playPaddleSound()` / `playCollectSound()` after release-phase unlock.
+- Bumped `kayak` to `1.1.26` so iPhone testing can distinguish “main page SFX works” from “gameplay-triggered SFX works.”
