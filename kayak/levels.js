@@ -107,7 +107,7 @@ const LEVELS = [
     waterColor: ['#08E8E0','#08A0B0'],
     skyColor: ['#80D8F8','#C0F0FF'],
     bgColor: '#084858',
-    collectibles: ['🐠','🐡','🦑','🌺','😘','💐','🦀','⭐','🐚'],
+    collectibles: ['⭐','🐠','🐡','🐟','🐚','💋','🦀','🪸','🌺'],
     drawScene: drawPiscinaNatural
   },
   {
