@@ -5,9 +5,9 @@
   var bannerShown = false;
 
   var versionUrl = new URL('../version.json', document.currentScript.src).href;
-
-  var segments = location.pathname.split('/').filter(Boolean);
-  var gameId = segments[0] || '';
+  var currentDir = new URL('.', location.href);
+  var segments = currentDir.pathname.split('/').filter(Boolean);
+  var gameId = segments[segments.length - 1] || '';
 
   function dismissKey(remoteVersion) {
     return 'updater_dismissed:' + gameId + ':' + remoteVersion;
@@ -38,7 +38,7 @@
     ].join(';');
 
     var msg = document.createElement('span');
-    msg.textContent = 'Update available!';
+    msg.textContent = 'Update available: v' + remoteVersion;
 
     var reload = document.createElement('button');
     reload.textContent = 'Reload';
@@ -55,6 +55,7 @@
     dismiss.style.cssText = 'background:none;border:none;color:#aaa;font-size:18px;cursor:pointer;padding:0 4px;line-height:1;';
     dismiss.onclick = function () {
       sessionStorage.setItem(dismissKey(remoteVersion), '1');
+      bannerShown = false;
       banner.remove();
     };
 
