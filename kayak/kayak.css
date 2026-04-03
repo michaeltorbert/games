@@ -53,6 +53,15 @@ canvas { display: block; border: 4px solid #8B6914; border-radius: 4px; box-shad
   letter-spacing: 1px;
   pointer-events: none;
 }
+#audio-debug {
+  position: absolute;
+  right: 10px;
+  font-size: 8px;
+  color: rgba(255,255,255,0.72);
+  letter-spacing: 1px;
+  text-transform: lowercase;
+  pointer-events: none;
+}
 
 /* Level banner */
 #lvlBanner {
