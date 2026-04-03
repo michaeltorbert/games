@@ -18,7 +18,9 @@ canvas { display: block; border: 4px solid #8B6914; border-radius: 4px; box-shad
   color: #5a3800; font-weight: bold;
 }
 #hud .lbl { font-size: 9px; text-transform: uppercase; letter-spacing: 2px; color: #8B6914; }
+#hud .speed-lbl { margin-top: 4px; }
 #hud .sc { font-size: 24px; line-height: 1.1; }
+#hud .speed { font-size: 18px; line-height: 1.1; color: #2b5f8a; }
 #hud .best { font-size: 10px; color: #8B6914; margin-top: 2px; }
 #newGameBtn {
   pointer-events: all; margin-top: 5px; background: #8B6914; color: white;

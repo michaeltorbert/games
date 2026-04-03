@@ -1,4 +1,4 @@
-const GAME_VERSION = '1.0.0';
+const GAME_VERSION = '1.1.2';
 
 // ═══════════════════════════════════════════════════════════════
 // CANVAS SETUP
@@ -101,6 +101,7 @@ function initLevel(reset) {
   document.getElementById('lvlBanner').textContent =
     `🛶 Level ${currentLevel+1} · ${lvl.name}`;
   document.getElementById('colDisplay').textContent = '0';
+  document.getElementById('speedDisplay').textContent = '0';
   document.getElementById('highScoreDisplay').textContent = highScore;
   document.getElementById('overlay').classList.add('hidden');
 

@@ -80,13 +80,24 @@ function spawnCollectibles() {
 // AUDIO
 // ═══════════════════════════════════════════════════════════════
 const audioCtx = new (window.AudioContext||window.webkitAudioContext)();
-let audioUnlocked = false;
-function unlockAudio() { if (!audioUnlocked) { audioCtx.resume(); audioUnlocked=true; } }
+function unlockAudio() {
+  if (audioCtx.state === 'running') return;
+  audioCtx.resume().catch(() => {});
+}
 document.addEventListener('keydown', unlockAudio);
+document.addEventListener('mousedown', unlockAudio);
+document.addEventListener('pointerdown', unlockAudio);
+document.addEventListener('touchstart', unlockAudio, { passive: true });
 canvas.addEventListener('touchstart', unlockAudio);
 
+function canPlayAudio() {
+  if (audioCtx.state === 'running') return true;
+  unlockAudio();
+  return false;
+}
+
 function playPaddleSound() {
-  if (!audioUnlocked) return;
+  if (!canPlayAudio()) return;
   try {
     const o=audioCtx.createOscillator(), g=audioCtx.createGain();
     o.connect(g); g.connect(audioCtx.destination);
@@ -98,7 +109,7 @@ function playPaddleSound() {
   } catch(e){}
 }
 function playCollectSound() {
-  if (!audioUnlocked) return;
+  if (!canPlayAudio()) return;
   try {
     [523,659,784,1047].forEach((freq,i)=>{
       const o=audioCtx.createOscillator(), g=audioCtx.createGain();
@@ -112,7 +123,7 @@ function playCollectSound() {
   } catch(e){}
 }
 function playLevelCompleteSound() {
-  if (!audioUnlocked) return;
+  if (!canPlayAudio()) return;
   try {
     [392,494,587,784,988].forEach((freq,i)=>{
       const o=audioCtx.createOscillator(), g=audioCtx.createGain();
@@ -162,8 +173,9 @@ function drawSplash() {
 // ═══════════════════════════════════════════════════════════════
 // PHYSICS UPDATE
 // ═══════════════════════════════════════════════════════════════
-const TURN_SPEED=2.0, ACCEL_BASE=160, ACCEL_MAX=600, ACCEL_RAMP=2.8;
-const DRAG=0.88, ANGULAR_DRAG=0.80;
+const TURN_SPEED=2.0, ACCEL_BASE=180, ACCEL_MAX=680, ACCEL_RAMP=2.6;
+const DRAG=0.89, ANGULAR_DRAG=0.80;
+const SPEED_DISPLAY_SCALE=0.1;
 
 function update(dt, t) {
   if (gamePhase !== 'playing') return;
@@ -195,6 +207,7 @@ function update(dt, t) {
   if(isInLake(kayak.x,ny)) kayak.y=ny; else { kayak.vy*=-0.3; holdTime=0; holdTimeBack=0; }
 
   const speed=Math.hypot(kayak.vx,kayak.vy);
+  document.getElementById('speedDisplay').textContent = Math.round(speed * SPEED_DISPLAY_SCALE);
   if(moving&&speed>15&&Math.random()<dt*(4+t01*8)) addRipple(kayak.x,kayak.y);
 
   const soundInt=Math.max(0.12,0.35-t01*0.2);
