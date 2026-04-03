@@ -6,8 +6,8 @@
 <title>Sydney & Michael's Kayak Adventures 🛶</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='5' fill='%230a3a5c'/><ellipse cx='16' cy='16' rx='3.5' ry='13' fill='%23c49a28'/><ellipse cx='16' cy='11' rx='2' ry='3' fill='%235a3200'/><ellipse cx='16' cy='21' rx='2' ry='3' fill='%235a3200'/><line x1='2' y1='11' x2='30' y2='11' stroke='%23c49a28' stroke-width='1.8' stroke-linecap='round'/><ellipse cx='3.5' cy='11' rx='3' ry='1.5' fill='%23e8b840'/><ellipse cx='28.5' cy='11' rx='3' ry='1.5' fill='%23e8b840'/><line x1='2' y1='21' x2='30' y2='21' stroke='%23c49a28' stroke-width='1.8' stroke-linecap='round'/><ellipse cx='3.5' cy='21' rx='3' ry='1.5' fill='%23e8b840'/><ellipse cx='28.5' cy='21' rx='3' ry='1.5' fill='%23e8b840'/></svg>">
-<link rel="stylesheet" href="../shared/reset.css?v=1.1.17">
-<link rel="stylesheet" href="kayak.css?v=1.1.17">
+<link rel="stylesheet" href="../shared/reset.css?v=1.1.18">
+<link rel="stylesheet" href="kayak.css?v=1.1.18">
 </head>
 <body>
 <div id="gameContainer">
@@ -23,6 +23,7 @@
 
   <div id="bottomBar">
     <div id="version-display"></div>
+    <div id="audio-debug">audio: locked</div>
     <button id="newGameBtn">New Game</button>
   </div>
   <div id="lvlBanner">🛶 Level 1 · Parque Jaime Duque</div>
@@ -63,14 +64,14 @@
   </div>
 </div>
 
-<script src="kayak.js?v=1.1.17"></script>
+<script src="kayak.js?v=1.1.18"></script>
 <script>
   document.getElementById('version-display').textContent = `v${GAME_VERSION}`;
 </script>
-<script src="../shared/updater.js?v=1.1.17"></script>
-<script src="physics.js?v=1.1.17"></script>
-<script src="renderer.js?v=1.1.17"></script>
-<script src="levels.js?v=1.1.17"></script>
+<script src="../shared/updater.js?v=1.1.18"></script>
+<script src="physics.js?v=1.1.18"></script>
+<script src="renderer.js?v=1.1.18"></script>
+<script src="levels.js?v=1.1.18"></script>
 <script>
   initLevel(false);
   requestAnimationFrame(loop);

@@ -79,90 +79,189 @@ function spawnCollectibles() {
 // ═══════════════════════════════════════════════════════════════
 // AUDIO
 // ═══════════════════════════════════════════════════════════════
-const audioCtx = new (window.AudioContext||window.webkitAudioContext)();
-let _audioUnlocked = audioCtx.state === 'running';
-let _audioUnlockPromise = null;
-function primeAudioContext() {
-  const buf = audioCtx.createBuffer(1, 1, 22050);
-  const src = audioCtx.createBufferSource();
+let audioCtx = null;
+let audioEnabled = false;
+let audioUnlockPromise = null;
+let lastKnownAudioState = 'locked';
+
+function getAudioDebugElement() {
+  return document.getElementById('audio-debug');
+}
+
+function updateAudioDebugLabel() {
+  const label = getAudioDebugElement();
+  if (!label) return;
+  label.textContent = `audio: ${lastKnownAudioState}`;
+}
+
+function syncAudioState() {
+  if (!audioCtx) {
+    lastKnownAudioState = 'locked';
+  } else if (audioCtx.state === 'running') {
+    lastKnownAudioState = 'running';
+    audioEnabled = true;
+  } else if (audioCtx.state === 'suspended' && !audioEnabled) {
+    lastKnownAudioState = 'locked';
+  } else {
+    lastKnownAudioState = audioCtx.state;
+  }
+  updateAudioDebugLabel();
+}
+
+function ensureAudioContext() {
+  if (audioCtx) return audioCtx;
+  const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContextCtor) return null;
+  audioCtx = new AudioContextCtor();
+  audioCtx.onstatechange = syncAudioState;
+  syncAudioState();
+  return audioCtx;
+}
+
+function primeAudioContext(ctx) {
+  const buf = ctx.createBuffer(1, 1, 22050);
+  const src = ctx.createBufferSource();
   src.buffer = buf;
-  src.connect(audioCtx.destination);
+  src.connect(ctx.destination);
   src.start(0);
 }
-function unlockAudio(fromGesture) {
-  if (audioCtx.state === 'running') {
-    _audioUnlocked = true;
+
+function isTrustedUnlockEvent(event) {
+  return !!(event && event.isTrusted && ['keydown', 'mousedown', 'pointerdown', 'touchstart'].includes(event.type));
+}
+
+function resumeAudioAfterInterruption() {
+  const ctx = ensureAudioContext();
+  if (!ctx || !audioEnabled) {
+    syncAudioState();
+    return Promise.resolve(false);
+  }
+  if (ctx.state === 'running') {
+    syncAudioState();
     return Promise.resolve(true);
   }
-  if (_audioUnlockPromise) return _audioUnlockPromise;
-  if (fromGesture) {
+  if (audioUnlockPromise) return audioUnlockPromise;
+  if (ctx.state !== 'suspended' && ctx.state !== 'interrupted') {
+    syncAudioState();
+    return Promise.resolve(false);
+  }
+  audioUnlockPromise = ctx.resume()
+    .then(() => {
+      syncAudioState();
+      return ctx.state === 'running';
+    })
+    .catch(() => {
+      syncAudioState();
+      return false;
+    })
+    .finally(() => {
+      audioUnlockPromise = null;
+      syncAudioState();
+    });
+  return audioUnlockPromise;
+}
+
+function unlockAudio(event) {
+  const ctx = ensureAudioContext();
+  if (!ctx) return Promise.resolve(false);
+  if (ctx.state === 'running') {
+    audioEnabled = true;
+    syncAudioState();
+    return Promise.resolve(true);
+  }
+  if (!audioEnabled && !isTrustedUnlockEvent(event)) {
+    syncAudioState();
+    return Promise.resolve(false);
+  }
+  if (audioUnlockPromise) return audioUnlockPromise;
+  if (isTrustedUnlockEvent(event)) {
     try {
-      primeAudioContext();
+      primeAudioContext(ctx);
     } catch (e) {}
   }
-  _audioUnlockPromise = audioCtx.resume()
+  audioUnlockPromise = ctx.resume()
     .then(() => {
-      _audioUnlocked = audioCtx.state === 'running';
-      return _audioUnlocked;
+      syncAudioState();
+      return ctx.state === 'running';
     })
-    .catch(() => false)
-    .finally(() => { _audioUnlockPromise = null; });
-  return _audioUnlockPromise;
+    .catch(() => {
+      syncAudioState();
+      return false;
+    })
+    .finally(() => {
+      audioUnlockPromise = null;
+      syncAudioState();
+    });
+  syncAudioState();
+  return audioUnlockPromise;
 }
+
+window.__kayakAudioState = () => ({
+  hasContext: !!audioCtx,
+  enabled: audioEnabled,
+  state: lastKnownAudioState,
+  unlockPending: audioUnlockPromise !== null
+});
+
 document.addEventListener('keydown', unlockAudio);
 document.addEventListener('mousedown', unlockAudio);
 document.addEventListener('pointerdown', unlockAudio);
 document.addEventListener('touchstart', unlockAudio, { passive: true });
 document.addEventListener('visibilitychange', () => {
-  if (!document.hidden && _audioUnlocked && audioCtx.state !== 'running') audioCtx.resume().catch(() => {});
+  if (document.hidden) {
+    syncAudioState();
+    return;
+  }
+  resumeAudioAfterInterruption();
 });
+window.addEventListener('pageshow', () => { resumeAudioAfterInterruption(); });
+syncAudioState();
 
 function canPlayAudio() {
-  if (audioCtx.state === 'running') {
-    _audioUnlocked = true;
-    return true;
-  }
-  unlockAudio();
-  return _audioUnlocked || _audioUnlockPromise !== null;
+  syncAudioState();
+  return !!audioCtx && audioCtx.state === 'running';
 }
 
 function playPaddleSound() {
-  if (!canPlayAudio()) return;
+  const ctx = audioCtx;
+  if (!ctx || !canPlayAudio()) return;
   try {
-    const o=audioCtx.createOscillator(), g=audioCtx.createGain();
-    o.connect(g); g.connect(audioCtx.destination);
-    o.frequency.setValueAtTime(180+Math.random()*60, audioCtx.currentTime);
-    o.frequency.exponentialRampToValueAtTime(80, audioCtx.currentTime+0.18);
-    g.gain.setValueAtTime(0.07, audioCtx.currentTime);
-    g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime+0.18);
-    o.start(); o.stop(audioCtx.currentTime+0.18);
+    const o=ctx.createOscillator(), g=ctx.createGain();
+    o.connect(g); g.connect(ctx.destination);
+    o.frequency.setValueAtTime(180+Math.random()*60, ctx.currentTime);
+    o.frequency.exponentialRampToValueAtTime(80, ctx.currentTime+0.18);
+    g.gain.setValueAtTime(0.07, ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime+0.18);
+    o.start(); o.stop(ctx.currentTime+0.18);
   } catch(e){}
 }
 function playCollectSound() {
-  if (!canPlayAudio()) return;
+  const ctx = audioCtx;
+  if (!ctx || !canPlayAudio()) return;
   try {
     [523,659,784,1047].forEach((freq,i)=>{
-      const o=audioCtx.createOscillator(), g=audioCtx.createGain();
-      o.connect(g); g.connect(audioCtx.destination);
+      const o=ctx.createOscillator(), g=ctx.createGain();
+      o.connect(g); g.connect(ctx.destination);
       o.type='sine'; o.frequency.value=freq;
-      g.gain.setValueAtTime(0, audioCtx.currentTime+i*0.07);
-      g.gain.linearRampToValueAtTime(0.1, audioCtx.currentTime+i*0.07+0.02);
-      g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime+i*0.07+0.2);
-      o.start(audioCtx.currentTime+i*0.07); o.stop(audioCtx.currentTime+i*0.07+0.22);
+      g.gain.setValueAtTime(0, ctx.currentTime+i*0.07);
+      g.gain.linearRampToValueAtTime(0.1, ctx.currentTime+i*0.07+0.02);
+      g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime+i*0.07+0.2);
+      o.start(ctx.currentTime+i*0.07); o.stop(ctx.currentTime+i*0.07+0.22);
     });
   } catch(e){}
 }
 function playLevelCompleteSound() {
-  if (!canPlayAudio()) return;
+  const ctx = audioCtx;
+  if (!ctx || !canPlayAudio()) return;
   try {
     [392,494,587,784,988].forEach((freq,i)=>{
-      const o=audioCtx.createOscillator(), g=audioCtx.createGain();
-      o.connect(g); g.connect(audioCtx.destination);
+      const o=ctx.createOscillator(), g=ctx.createGain();
+      o.connect(g); g.connect(ctx.destination);
       o.type='sine'; o.frequency.value=freq;
-      g.gain.setValueAtTime(0, audioCtx.currentTime+i*0.12);
-      g.gain.linearRampToValueAtTime(0.15, audioCtx.currentTime+i*0.12+0.04);
-      g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime+i*0.12+0.35);
-      o.start(audioCtx.currentTime+i*0.12); o.stop(audioCtx.currentTime+i*0.12+0.4);
+      g.gain.setValueAtTime(0, ctx.currentTime+i*0.12);
+      g.gain.linearRampToValueAtTime(0.15, ctx.currentTime+i*0.12+0.04);
+      g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime+i*0.12+0.35);
+      o.start(ctx.currentTime+i*0.12); o.stop(ctx.currentTime+i*0.12+0.4);
     });
   } catch(e){}
 }

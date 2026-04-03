@@ -1,4 +1,4 @@
-const GAME_VERSION = '1.1.17';
+const GAME_VERSION = '1.1.18';
 const CANVAS_BORDER = 4;
 const BOTTOM_BAR_RATIO = 0.03;
 
@@ -157,9 +157,17 @@ const touchKeys = {};
 ['btn-up','btn-down','btn-left','btn-right'].forEach(id => {
   const btn = document.getElementById(id);
   const dir = id.split('-')[1];
-  btn.addEventListener('touchstart', e => { e.preventDefault(); touchKeys[dir]=true; btn.classList.add('pressed'); }, {passive:false});
+  btn.addEventListener('touchstart', e => {
+    e.preventDefault();
+    if (typeof unlockAudio === 'function') unlockAudio(e);
+    touchKeys[dir]=true;
+    btn.classList.add('pressed');
+  }, {passive:false});
   btn.addEventListener('touchend',   e => { e.preventDefault(); touchKeys[dir]=false; btn.classList.remove('pressed'); }, {passive:false});
-  btn.addEventListener('mousedown',  () => touchKeys[dir]=true);
+  btn.addEventListener('mousedown',  e => {
+    if (typeof unlockAudio === 'function') unlockAudio(e);
+    touchKeys[dir]=true;
+  });
   btn.addEventListener('mouseup',    () => touchKeys[dir]=false);
 });
 function isKey(...k) { return k.some(x => keys[x] || touchKeys[x]); }
