@@ -1,4 +1,4 @@
-const GAME_VERSION = '1.1.12';
+const GAME_VERSION = '1.1.13';
 const CANVAS_BORDER = 4;
 const BOTTOM_BAR_RATIO = 0.03;
 
