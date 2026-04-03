@@ -80,28 +80,50 @@ function spawnCollectibles() {
 // AUDIO
 // ═══════════════════════════════════════════════════════════════
 const audioCtx = new (window.AudioContext||window.webkitAudioContext)();
-let _audioUnlocked = false;
-function unlockAudio() {
-  if (_audioUnlocked) return;
-  _audioUnlocked = true;
+let _audioUnlocked = audioCtx.state === 'running';
+let _audioUnlockPromise = null;
+function primeAudioContext() {
   const buf = audioCtx.createBuffer(1, 1, 22050);
   const src = audioCtx.createBufferSource();
   src.buffer = buf;
   src.connect(audioCtx.destination);
   src.start(0);
-  audioCtx.resume().catch(() => {});
+}
+function unlockAudio(fromGesture) {
+  if (audioCtx.state === 'running') {
+    _audioUnlocked = true;
+    return Promise.resolve(true);
+  }
+  if (_audioUnlockPromise) return _audioUnlockPromise;
+  if (fromGesture) {
+    try {
+      primeAudioContext();
+    } catch (e) {}
+  }
+  _audioUnlockPromise = audioCtx.resume()
+    .then(() => {
+      _audioUnlocked = audioCtx.state === 'running';
+      return _audioUnlocked;
+    })
+    .catch(() => false)
+    .finally(() => { _audioUnlockPromise = null; });
+  return _audioUnlockPromise;
 }
 document.addEventListener('keydown', unlockAudio);
 document.addEventListener('mousedown', unlockAudio);
 document.addEventListener('pointerdown', unlockAudio);
 document.addEventListener('touchstart', unlockAudio, { passive: true });
 document.addEventListener('visibilitychange', () => {
-  if (!document.hidden && audioCtx.state === 'suspended') audioCtx.resume().catch(() => {});
+  if (!document.hidden && _audioUnlocked && audioCtx.state !== 'running') audioCtx.resume().catch(() => {});
 });
 
 function canPlayAudio() {
-  if (audioCtx.state !== 'running') audioCtx.resume().catch(() => {});
-  return true;
+  if (audioCtx.state === 'running') {
+    _audioUnlocked = true;
+    return true;
+  }
+  unlockAudio();
+  return _audioUnlocked || _audioUnlockPromise !== null;
 }
 
 function playPaddleSound() {
