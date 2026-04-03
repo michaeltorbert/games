@@ -17,7 +17,7 @@ const GAMES = [
     color: '#0a3a5c',
     accent: '#8B6914',
     url: 'kayak/',
-    version: '1.0.0',
+    version: '1.1.16',
   },
   {
     id: 'prague',
