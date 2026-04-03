@@ -122,7 +122,7 @@ function ensureAudioContext() {
 }
 
 function isTrustedUnlockEvent(event) {
-  return !!(event && event.isTrusted && ['keydown', 'mousedown', 'mouseup', 'click', 'pointerdown', 'pointerup', 'touchstart', 'touchend'].includes(event.type));
+  return !!(event && event.isTrusted && ['keydown', 'mouseup', 'click', 'pointerup', 'touchend'].includes(event.type));
 }
 
 function resumeAudioAfterInterruption() {
@@ -176,12 +176,9 @@ function unlockAudio(event) {
 }
 
 document.addEventListener('keydown', unlockAudio);
-document.addEventListener('mousedown', unlockAudio);
 document.addEventListener('mouseup', unlockAudio);
 document.addEventListener('click', unlockAudio);
-document.addEventListener('pointerdown', unlockAudio);
 document.addEventListener('pointerup', unlockAudio);
-document.addEventListener('touchstart', unlockAudio, { passive: true });
 document.addEventListener('touchend', unlockAudio, { passive: true });
 document.addEventListener('visibilitychange', () => {
   if (!document.hidden) {
