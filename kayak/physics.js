@@ -80,20 +80,28 @@ function spawnCollectibles() {
 // AUDIO
 // ═══════════════════════════════════════════════════════════════
 const audioCtx = new (window.AudioContext||window.webkitAudioContext)();
+let _audioUnlocked = false;
 function unlockAudio() {
-  if (audioCtx.state === 'running') return;
+  if (_audioUnlocked) return;
+  _audioUnlocked = true;
+  const buf = audioCtx.createBuffer(1, 1, 22050);
+  const src = audioCtx.createBufferSource();
+  src.buffer = buf;
+  src.connect(audioCtx.destination);
+  src.start(0);
   audioCtx.resume().catch(() => {});
 }
 document.addEventListener('keydown', unlockAudio);
 document.addEventListener('mousedown', unlockAudio);
 document.addEventListener('pointerdown', unlockAudio);
 document.addEventListener('touchstart', unlockAudio, { passive: true });
-canvas.addEventListener('touchstart', unlockAudio);
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && audioCtx.state === 'suspended') audioCtx.resume().catch(() => {});
+});
 
 function canPlayAudio() {
-  if (audioCtx.state === 'running') return true;
-  unlockAudio();
-  return false;
+  if (audioCtx.state !== 'running') audioCtx.resume().catch(() => {});
+  return true;
 }
 
 function playPaddleSound() {
