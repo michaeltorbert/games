@@ -147,7 +147,3 @@ const LEVELS = [
     drawScene: drawDouro
   }
 ];
-
-// Random bonus levels (after all 12 done)
-const BONUS_STAMPS = ['🌍','🗺️','⚓','🌊','🏄','🚣'];
-const BONUS_NAMES = ['Mystery Lagoon','Hidden Cove','Secret River','Lost Lake','The Blue Grotto','Enchanted Bay'];
