@@ -1,5 +1,6 @@
 
 const GAME_VERSION = '1.1.35';
+const PHONE_HOME_URL = ''; // Set to your logging endpoint (e.g. a Netlify function URL)
 const CANVAS_BORDER = 4;
 const BOTTOM_BAR_RATIO = 0.03;
 
@@ -60,6 +61,28 @@ function persist() {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// TELEMETRY
+// ═══════════════════════════════════════════════════════════════
+function phoneHome(event, extra) {
+  if (!PHONE_HOME_URL) return;
+  const payload = JSON.stringify(Object.assign({
+    event,
+    v: GAME_VERSION,
+    level: currentLevel,
+    levelName: getLevelDef ? getLevelDef().name : '',
+    score: totalScore,
+    ts: Date.now()
+  }, extra || {}));
+  try {
+    if (navigator.sendBeacon) {
+      navigator.sendBeacon(PHONE_HOME_URL, new Blob([payload], {type: 'application/json'}));
+    } else {
+      fetch(PHONE_HOME_URL, {method: 'POST', body: payload, headers: {'Content-Type': 'application/json'}, keepalive: true}).catch(function(){});
+    }
+  } catch(e) {}
+}
+
+// ═══════════════════════════════════════════════════════════════
 // GAME STATE
 // ═══════════════════════════════════════════════════════════════
 const kayak = {
@@ -101,6 +124,7 @@ function initLevel(reset) {
     persist();
   }
   currentLevel = Number.isFinite(currentLevel) ? ((currentLevel % LEVELS.length) + LEVELS.length) % LEVELS.length : 0;
+  phoneHome(reset ? 'game_start' : 'level_start');
   const [sx, sy] = getKayakStart();
   kayak.x = sx; kayak.y = sy;
   kayak.angle = -Math.PI/2;
@@ -176,6 +200,7 @@ function showLevelComplete() {
 
   if (!visitedLevels.includes(currentLevel)) visitedLevels.push(currentLevel);
   persist();
+  phoneHome('level_complete', {collected: collectibles.length});
   drawMapScreen();
 
   const lvl = getLevelDef();
