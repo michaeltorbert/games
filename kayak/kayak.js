@@ -164,7 +164,6 @@ const touchKeys = {};
     btn.classList.add('pressed');
   }, {passive:false});
   btn.addEventListener('touchend', e => {
-    if (typeof unlockAudio === 'function') unlockAudio(e);
     e.preventDefault();
     touchKeys[dir]=false;
     btn.classList.remove('pressed');
@@ -173,8 +172,7 @@ const touchKeys = {};
     if (typeof unlockAudio === 'function') unlockAudio(e);
     touchKeys[dir]=true;
   });
-  btn.addEventListener('mouseup',    e => {
-    if (typeof unlockAudio === 'function') unlockAudio(e);
+  btn.addEventListener('mouseup',    () => {
     touchKeys[dir]=false;
   });
 });
