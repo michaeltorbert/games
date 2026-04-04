@@ -81,33 +81,16 @@ function spawnCollectibles() {
 // ═══════════════════════════════════════════════════════════════
 let audioCtx = null;
 
-function getAudioDebugElement() {
-  return document.getElementById('audio-debug');
-}
-
-function getAudioToggleElement() {
-  return document.getElementById('audio-toggle');
-}
-
-function updateAudioUI() {
-  const state = audioCtx ? audioCtx.state : 'locked';
-  const label = getAudioDebugElement();
-  if (label) {
-    label.textContent = `context: ${state}`;
-  }
-  const toggle = getAudioToggleElement();
-  if (toggle) {
-    toggle.textContent = state === 'running' ? 'Audio Ready' : 'Enable Sound';
-  }
-}
-
 function ensureAudioContext() {
   if (audioCtx) return audioCtx;
-  const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
-  if (!AudioContextCtor) return null;
-  audioCtx = new AudioContextCtor();
-  audioCtx.onstatechange = updateAudioUI;
-  updateAudioUI();
+  const Ctor = window.AudioContext || window.webkitAudioContext;
+  if (!Ctor) return null;
+  try {
+    if (navigator.audioSession && 'type' in navigator.audioSession) {
+      navigator.audioSession.type = 'playback';
+    }
+  } catch (e) {}
+  audioCtx = new Ctor();
   return audioCtx;
 }
 
@@ -115,82 +98,27 @@ function unlockAudio(event) {
   if (event && !event.isTrusted) return;
   const ctx = ensureAudioContext();
   if (!ctx) return;
-  if (ctx.state === 'running') {
-    updateAudioUI();
-    return;
-  }
+  if (ctx.state === 'running') return;
   if (ctx.state === 'suspended' || ctx.state === 'interrupted') {
-    ctx.resume()
-      .then(() => {
-        updateAudioUI();
-        // iOS can report a running AudioContext before the speaker path is
-        // actually primed. A silent oscillator started inside the gesture
-        // helps wake hardware output so later game-loop SFX are audible.
-        if (ctx.state === 'running') {
-          try {
-            const osc = ctx.createOscillator();
-            const gain = ctx.createGain();
-            gain.gain.value = 0;
-            osc.connect(gain);
-            gain.connect(ctx.destination);
-            osc.start();
-            osc.stop(ctx.currentTime + 0.001);
-          } catch (e) {}
-        }
-      })
-      .catch(() => {
-        updateAudioUI();
-      });
-    return;
+    ctx.resume().catch(function() {});
   }
-  updateAudioUI();
 }
 
 document.addEventListener('keydown', unlockAudio);
-document.addEventListener('mousedown', unlockAudio);
-document.addEventListener('pointerdown', unlockAudio);
-document.addEventListener('touchstart', unlockAudio, { passive: true });
-document.addEventListener('mouseup', unlockAudio);
-document.addEventListener('click', unlockAudio);
-document.addEventListener('pointerup', unlockAudio);
-document.addEventListener('touchend', unlockAudio, { passive: true });
 
 document.addEventListener('visibilitychange', function() {
-  if (!audioCtx) {
-    updateAudioUI();
-    return;
+  if (audioCtx && !document.hidden &&
+      (audioCtx.state === 'suspended' || audioCtx.state === 'interrupted')) {
+    audioCtx.resume().catch(function() {});
   }
-  if (!document.hidden && (audioCtx.state === 'suspended' || audioCtx.state === 'interrupted')) {
-    audioCtx.resume().then(updateAudioUI).catch(function() {
-      updateAudioUI();
-    });
-    return;
-  }
-  updateAudioUI();
 });
-
-const audioToggle = getAudioToggleElement();
-if (audioToggle) {
-  ['mousedown', 'pointerdown', 'touchstart', 'click', 'touchend', 'pointerup', 'mouseup'].forEach((eventName) => {
-    audioToggle.addEventListener(eventName, unlockAudio, eventName.startsWith('touch') ? { passive: true } : undefined);
-  });
-}
 
 window.addEventListener('pageshow', function() {
-  if (!audioCtx) {
-    updateAudioUI();
-    return;
+  if (audioCtx &&
+      (audioCtx.state === 'suspended' || audioCtx.state === 'interrupted')) {
+    audioCtx.resume().catch(function() {});
   }
-  if (audioCtx.state === 'suspended' || audioCtx.state === 'interrupted') {
-    audioCtx.resume().then(updateAudioUI).catch(function() {
-      updateAudioUI();
-    });
-    return;
-  }
-  updateAudioUI();
 });
-
-updateAudioUI();
 
 function canPlayAudio() {
   return !!audioCtx && audioCtx.state === 'running';
