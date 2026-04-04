@@ -57,3 +57,11 @@ Original prompt: yes, do all you need to do to get started
 - Local Playwright smoke test against `http://127.0.0.1:8000/kayak/` and `http://127.0.0.1:8000/kayak/audio/` passed after sandbox escalation:
 - the game page loaded as `v1.1.27`, exposed `Audio Test`, and transitioned from `context: locked` / `Enable Sound` to `context: running` / `Audio Ready` after clicking `#audio-toggle`;
 - the diagnostics page loaded as `1.1.27` with the expected control set intact.
+- Follow-up after `1.1.27` reached `main`:
+- user reported iOS game audio still failed while the diagnostics page worked for both `Unlock on Press` and `Unlock on Release`;
+- root cause from code path: main game was still only unlocking on release, but paddling starts on press and the paddle SFX is emitted during held strokes before release;
+- updated the main game and audio toggle to unlock on press again (`touchstart`, `mousedown`, `pointerdown`) while keeping the simplified audio core and the release listeners;
+- bumped `kayak` and diagnostics assets to `1.1.28`.
+- Verification:
+- `$HOME/.local/node/current/bin/node --check kayak/physics.js`, `kayak/kayak.js`, and `kayak/audio/audio.js` all passed.
+- Local Playwright verification confirmed `#btn-up` moves the game from `context: locked` to `context: running` during `mousedown`, before `mouseup`, on `v1.1.28`.

@@ -133,6 +133,9 @@ function unlockAudio(event) {
 }
 
 document.addEventListener('keydown', unlockAudio);
+document.addEventListener('mousedown', unlockAudio);
+document.addEventListener('pointerdown', unlockAudio);
+document.addEventListener('touchstart', unlockAudio, { passive: true });
 document.addEventListener('mouseup', unlockAudio);
 document.addEventListener('click', unlockAudio);
 document.addEventListener('pointerup', unlockAudio);
@@ -154,8 +157,8 @@ document.addEventListener('visibilitychange', function() {
 
 const audioToggle = getAudioToggleElement();
 if (audioToggle) {
-  ['click', 'touchend', 'pointerup', 'mouseup'].forEach((eventName) => {
-    audioToggle.addEventListener(eventName, unlockAudio, eventName === 'touchend' ? { passive: true } : undefined);
+  ['mousedown', 'pointerdown', 'touchstart', 'click', 'touchend', 'pointerup', 'mouseup'].forEach((eventName) => {
+    audioToggle.addEventListener(eventName, unlockAudio, eventName.startsWith('touch') ? { passive: true } : undefined);
   });
 }
 
