@@ -65,3 +65,10 @@ Original prompt: yes, do all you need to do to get started
 - Verification:
 - `$HOME/.local/node/current/bin/node --check kayak/physics.js`, `kayak/kayak.js`, and `kayak/audio/audio.js` all passed.
 - Local Playwright verification confirmed `#btn-up` moves the game from `context: locked` to `context: running` during `mousedown`, before `mouseup`, on `v1.1.28`.
+- Follow-up after comparing against Claude's warm-up theory:
+- diagnostics page behavior suggested iOS may require a real audio node during the trusted gesture even when `AudioContext.state` already reaches `running`;
+- kept the `1.1.28` press-phase gameplay unlock and added a silent 1ms oscillator warm-up immediately after `ctx.resume()` succeeds inside `unlockAudio()`;
+- bumped `kayak` and diagnostics assets to `1.1.29`.
+- Verification:
+- `$HOME/.local/node/current/bin/node --check kayak/physics.js`, `kayak/kayak.js`, and `kayak/audio/audio.js` all passed.
+- Local Playwright smoke test confirmed the game still reaches `context: running` during D-pad press on `v1.1.29`, and the diagnostics page still loads with the expected control set.

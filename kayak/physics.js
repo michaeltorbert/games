@@ -123,6 +123,20 @@ function unlockAudio(event) {
     ctx.resume()
       .then(() => {
         updateAudioUI();
+        // iOS can report a running AudioContext before the speaker path is
+        // actually primed. A silent oscillator started inside the gesture
+        // helps wake hardware output so later game-loop SFX are audible.
+        if (ctx.state === 'running') {
+          try {
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            gain.gain.value = 0;
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            osc.start();
+            osc.stop(ctx.currentTime + 0.001);
+          } catch (e) {}
+        }
       })
       .catch(() => {
         updateAudioUI();
