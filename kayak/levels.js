@@ -23,7 +23,7 @@ const LEVELS = [
     waterColor: ['#4A9EC8','#1A5A80'],
     skyColor: ['#5AB8E8','#8ADAF8'],
     bgColor: '#2a5a3a',
-    collectibles: ['☕','🌹','🎭','💐','😘','🍵','🌸','🥟','🚣','🪁'],
+    collectibles: ['☕','🌹','🎭','💐','😘','🍵','🌸','🥟','🚣','🪁','🧺'],
     drawScene: drawSimonBolivar
   },
   {
