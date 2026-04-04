@@ -1,8 +1,7 @@
-const GAME_VERSION = '1.0.4';
+const GAME_VERSION = '1.0.5';
 const EZ = 5;
 function yardToPct(y) { return EZ + (y / 100) * (100 - 2 * EZ); }
 const DOWN_NAMES  = ["","1st","2nd","3rd","4th"];
-const DOWN_SUFFIX = ["","st","nd","rd","th"];
 
 let state = {};
 let advTimer = null;
@@ -52,7 +51,7 @@ function buildType2(s, g) {
   }
   return { q:`It's ${DOWN_NAMES[s.down]} & ${s.ytg}. You gain ${g} yards.\nWhat down is it now?`,
     correct:newDown, choices:makeChoices(newDown,true), isDown:true,
-    fmt: v => `${DOWN_NAMES[v]}${DOWN_SUFFIX[v]}` };
+    fmt: v => DOWN_NAMES[v] };
 }
 function buildType3(s, g) {
   const newYd = s.yd + g, correct = newYd - s.driveStart;
