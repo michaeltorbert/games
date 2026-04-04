@@ -1,6 +1,6 @@
 
 const GAME_VERSION = '1.1.35';
-const PHONE_HOME_URL = ''; // Set to your logging endpoint (e.g. a Netlify function URL)
+const PHONE_HOME_URL = 'https://eoqil5wgr24002.m.pipedream.net';
 const CANVAS_BORDER = 4;
 const BOTTOM_BAR_RATIO = 0.03;
 
