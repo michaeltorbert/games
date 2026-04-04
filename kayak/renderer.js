@@ -152,8 +152,9 @@ function drawCollectibles(t) {
     const bob=Math.sin(t*1.5+c.bob)*3*sc();
     ctx.save();
     if(c.collected) ctx.globalAlpha=Math.max(0,1-c.fadeOut*3);
-    ctx.font=`${Math.floor(20*sc()*c.scale)}px serif`;
+    ctx.font=`${Math.floor(20*sc()*c.scale)}px sans-serif`;
     ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillStyle='black';
     ctx.shadowColor='rgba(255,255,255,0.8)'; ctx.shadowBlur=6;
     ctx.fillText(c.type, c.x, c.y+bob);
     ctx.restore();
