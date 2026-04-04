@@ -11,7 +11,7 @@ const LEVELS = [
     waterColor: ['#3AA8D8','#1A6090'],
     skyColor: ['#3EB0E8','#7DD4F5'],
     bgColor: '#1a6b3a',
-    collectibles: ['🌸','🌺','🦆','🪷','�','🥟','😘','☕','🌼','🍬'],
+    collectibles: ['🌸','🌺','🦆','🪷','🐒','🥟','😘','☕','🌼','🍬'],
     drawScene: drawJaimeDuque
   },
   {
@@ -71,7 +71,7 @@ const LEVELS = [
     waterColor: ['#18D8C8','#0898A8'],
     skyColor: ['#60C8F8','#A0E0FF'],
     bgColor: '#0a4a6a',
-    collectibles: ['🌴','🐚','🌺','🦀','😘','🍹','�','🩴','🏖️','🪸'],
+    collectibles: ['🌴','🐚','🌺','🦀','😘','🍹','🐠','🩴','🏖️','🪸'],
     drawScene: drawPuntaCana
   },
   {
@@ -95,7 +95,7 @@ const LEVELS = [
     waterColor: ['#10E0D0','#0898A8'],
     skyColor: ['#78D8F8','#B8EEFF'],
     bgColor: '#0a4858',
-    collectibles: ['⭐','🐚','🌺','🦈','😘','�','🌴','🦀','🐟','🏝️'],
+    collectibles: ['⭐','🐚','🌺','🦈','😘','🐠','🌴','🦀','🐟','🏝️'],
     drawScene: drawSaona
   },
   {
@@ -107,7 +107,7 @@ const LEVELS = [
     waterColor: ['#08E8E0','#08A0B0'],
     skyColor: ['#80D8F8','#C0F0FF'],
     bgColor: '#084858',
-    collectibles: ['⭐','🐠','🐡','🐟','🐚','💋','�','🌺','🤿'],
+    collectibles: ['⭐','🐠','🐡','🐟','🐚','💋','🪸','🌺','🤿'],
     drawScene: drawPiscinaNatural
   },
   {
