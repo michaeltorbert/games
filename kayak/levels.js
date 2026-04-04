@@ -35,7 +35,7 @@ const LEVELS = [
     waterColor: ['#20C8E0','#0888A8'],
     skyColor: ['#FFB040','#FF7820'],
     bgColor: '#1a4a6a',
-    collectibles: ['🐚','🦀','🌺','💐','😘','🍹','🌊','⭐','🐠'],
+    collectibles: ['🐚','🦀','🦐','🌺','💐','😘','🍹','🌊','⭐','🐠'],
     drawScene: drawCartagena
   },
   {
