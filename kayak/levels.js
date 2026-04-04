@@ -11,7 +11,7 @@ const LEVELS = [
     waterColor: ['#3AA8D8','#1A6090'],
     skyColor: ['#3EB0E8','#7DD4F5'],
     bgColor: '#1a6b3a',
-    collectibles: ['🌸','🌺','🦆','🪷','💐','😘','☕','🌼','🍬'],
+    collectibles: ['🌸','🌺','🦆','🪷','�','🥟','😘','☕','🌼','🍬'],
     drawScene: drawJaimeDuque
   },
   {
@@ -23,7 +23,7 @@ const LEVELS = [
     waterColor: ['#4A9EC8','#1A5A80'],
     skyColor: ['#5AB8E8','#8ADAF8'],
     bgColor: '#2a5a3a',
-    collectibles: ['🥐','☕','🌹','🎭','💐','😘','🍵','🌸','🥟'],
+    collectibles: ['☕','🌹','🎭','💐','😘','🍵','🌸','🥟','🚣','🪁'],
     drawScene: drawSimonBolivar
   },
   {
@@ -35,7 +35,7 @@ const LEVELS = [
     waterColor: ['#20C8E0','#0888A8'],
     skyColor: ['#FFB040','#FF7820'],
     bgColor: '#1a4a6a',
-    collectibles: ['🐚','🦀','🦐','🌺','💐','😘','🍹','🌊','⭐','🐠'],
+    collectibles: ['🐚','🌺','💐','😘','🍹','🌊','⭐','🐠','🥟'],
     drawScene: drawCartagena
   },
   {
@@ -47,7 +47,7 @@ const LEVELS = [
     waterColor: ['#4A7A9A','#2A4A6A'],
     skyColor: ['#8090A8','#B0C0D8'],
     bgColor: '#2a3a4a',
-    collectibles: ['🦢','🥨','🍺','🌹','😘','💐','🗝️','🎻','🌸'],
+    collectibles: ['🦢','🥨','🍺','🌹','😘','💐','🗝️','🎻','🌸','🚣‍♂️','🕰️','🥮'],
     drawScene: drawVltava
   },
   {
@@ -59,7 +59,7 @@ const LEVELS = [
     waterColor: ['#2A88B8','#0A5888'],
     skyColor: ['#4AA8D8','#78C8F0'],
     bgColor: '#1a3a5a',
-    collectibles: ['⛰️','🌺','💐','🎣','😘','☕','🦋','🌸','🍃'],
+    collectibles: ['⛰️','🌺','💐','🎣','😘','☕','🦋','🌸','🍃','🚤','🪨'],
     drawScene: drawGuatape
   },
   {
@@ -71,7 +71,7 @@ const LEVELS = [
     waterColor: ['#18D8C8','#0898A8'],
     skyColor: ['#60C8F8','#A0E0FF'],
     bgColor: '#0a4a6a',
-    collectibles: ['🌴','🐚','🌺','🦀','😘','🍹','💐','⭐','🐠'],
+    collectibles: ['🌴','🐚','🌺','🦀','😘','🍹','�','🩴','🏖️','🪸'],
     drawScene: drawPuntaCana
   },
   {
@@ -83,7 +83,7 @@ const LEVELS = [
     waterColor: ['#20C0C0','#108080'],
     skyColor: ['#70D0F0','#A8E8FF'],
     bgColor: '#105050',
-    collectibles: ['🍹','🌺','😘','💐','🦜','🌊','🥥','🍓','✨'],
+    collectibles: ['🍹','🌺','😘','💐','🦜','🌊','🥥','🍓','✨','🛟'],
     drawScene: drawLazyRiver
   },
   {
@@ -95,7 +95,7 @@ const LEVELS = [
     waterColor: ['#10E0D0','#0898A8'],
     skyColor: ['#78D8F8','#B8EEFF'],
     bgColor: '#0a4858',
-    collectibles: ['⭐','🐚','🌺','🦈','😘','💐','🐠','🌴','🦀'],
+    collectibles: ['⭐','🐚','🌺','🦈','😘','�','🌴','🦀','🐟','🏝️'],
     drawScene: drawSaona
   },
   {
@@ -107,7 +107,7 @@ const LEVELS = [
     waterColor: ['#08E8E0','#08A0B0'],
     skyColor: ['#80D8F8','#C0F0FF'],
     bgColor: '#084858',
-    collectibles: ['⭐','🐠','🐡','🐟','🐚','💋','🦀','🪸','🌺'],
+    collectibles: ['⭐','🐠','🐡','🐟','🐚','💋','�','🌺','🤿'],
     drawScene: drawPiscinaNatural
   },
   {
@@ -131,7 +131,7 @@ const LEVELS = [
     waterColor: ['#2888C8','#0858A8'],
     skyColor: ['#F8B840','#F88820'],
     bgColor: '#1a3a6a',
-    collectibles: ['🥘','🍊','🌹','😘','💐','🥂','🌺','⭐','🎸'],
+    collectibles: ['🥘','🍊','🌹','😘','💐','🥂','🌺','⭐','�'],
     drawScene: drawMalvarrosa
   },
   {
@@ -143,7 +143,7 @@ const LEVELS = [
     waterColor: ['#6A7A5A','#3A4A3A'],
     skyColor: ['#E8A060','#D06030'],
     bgColor: '#3a2a1a',
-    collectibles: ['🍷','🎸','🌹','😘','💐','🥐','🐟','🌸','🫒'],
+    collectibles: ['🍷','🎸','🌹','😘','💐','🥐','🐟','🌸','🫒','🚤'],
     drawScene: drawDouro
   }
 ];
