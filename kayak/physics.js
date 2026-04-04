@@ -123,6 +123,20 @@ function unlockAudio(event) {
     ctx.resume()
       .then(() => {
         updateAudioUI();
+        // iOS can report a running AudioContext before the speaker path is
+        // actually primed. A silent oscillator started inside the gesture
+        // helps wake hardware output so later game-loop SFX are audible.
+        if (ctx.state === 'running') {
+          try {
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            gain.gain.value = 0;
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            osc.start();
+            osc.stop(ctx.currentTime + 0.001);
+          } catch (e) {}
+        }
       })
       .catch(() => {
         updateAudioUI();
@@ -133,6 +147,9 @@ function unlockAudio(event) {
 }
 
 document.addEventListener('keydown', unlockAudio);
+document.addEventListener('mousedown', unlockAudio);
+document.addEventListener('pointerdown', unlockAudio);
+document.addEventListener('touchstart', unlockAudio, { passive: true });
 document.addEventListener('mouseup', unlockAudio);
 document.addEventListener('click', unlockAudio);
 document.addEventListener('pointerup', unlockAudio);
@@ -154,8 +171,8 @@ document.addEventListener('visibilitychange', function() {
 
 const audioToggle = getAudioToggleElement();
 if (audioToggle) {
-  ['click', 'touchend', 'pointerup', 'mouseup'].forEach((eventName) => {
-    audioToggle.addEventListener(eventName, unlockAudio, eventName === 'touchend' ? { passive: true } : undefined);
+  ['mousedown', 'pointerdown', 'touchstart', 'click', 'touchend', 'pointerup', 'mouseup'].forEach((eventName) => {
+    audioToggle.addEventListener(eventName, unlockAudio, eventName.startsWith('touch') ? { passive: true } : undefined);
   });
 }
 

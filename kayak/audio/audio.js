@@ -1,4 +1,4 @@
-const AUDIO_DIAGNOSTIC_VERSION = '1.1.27';
+const AUDIO_DIAGNOSTIC_VERSION = '1.1.29';
 
 const environmentList = document.getElementById('environment-list');
 const audioStateList = document.getElementById('audio-state-list');

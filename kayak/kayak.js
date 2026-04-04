@@ -1,4 +1,4 @@
-const GAME_VERSION = '1.1.27';
+const GAME_VERSION = '1.1.29';
 const CANVAS_BORDER = 4;
 const BOTTOM_BAR_RATIO = 0.03;
 
@@ -159,6 +159,7 @@ const touchKeys = {};
   const dir = id.split('-')[1];
   btn.addEventListener('touchstart', e => {
     e.preventDefault();
+    if (typeof unlockAudio === 'function') unlockAudio(e);
     touchKeys[dir]=true;
     btn.classList.add('pressed');
   }, {passive:false});
@@ -168,7 +169,8 @@ const touchKeys = {};
     touchKeys[dir]=false;
     btn.classList.remove('pressed');
   }, {passive:false});
-  btn.addEventListener('mousedown',  () => {
+  btn.addEventListener('mousedown',  e => {
+    if (typeof unlockAudio === 'function') unlockAudio(e);
     touchKeys[dir]=true;
   });
   btn.addEventListener('mouseup',    e => {
