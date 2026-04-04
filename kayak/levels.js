@@ -47,7 +47,7 @@ const LEVELS = [
     waterColor: ['#4A7A9A','#2A4A6A'],
     skyColor: ['#8090A8','#B0C0D8'],
     bgColor: '#2a3a4a',
-    collectibles: ['🦢','🥨','🍺','🌹','😘','💐','🗝️','🎻','🌸','🚣‍♂️','🕰️','🥮'],
+    collectibles: ['🦢','🥨','🍺','🌹','😘','💐','🗝️','🎻','🌸','🚣‍♂️','🕰️','🥮','🪼'],
     drawScene: drawVltava
   },
   {
