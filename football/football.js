@@ -36,10 +36,12 @@ function makeChoices(correct, isDown=false) {
   return shuffle([...set]);
 }
 
+function ydLabel(y) { return y <= 50 ? y : 100 - y; }
+
 function buildType1(s, g) {
   const correct = s.yd + g;
-  return { q:`You're on the ${s.yd} yard line and gain ${g} yards.\nWhat yard line are you on now?`,
-    correct, choices:makeChoices(correct), isDown:false, fmt:null };
+  return { q:`You're on the ${ydLabel(s.yd)} yard line and gain ${g} yards.\nWhat yard line are you on now?`,
+    correct, choices:makeChoices(correct), isDown:false, fmt:v => ydLabel(v) };
 }
 function buildType2(s, g) {
   const newYtg = s.ytg - g, newDown = s.down + 1;
@@ -54,12 +56,12 @@ function buildType2(s, g) {
 }
 function buildType3(s, g) {
   const newYd = s.yd + g, correct = newYd - s.driveStart;
-  return { q:`Drive started at the ${s.driveStart}. Now at the ${newYd}.\nHow many yards gained this drive?`,
+  return { q:`Drive started at the ${ydLabel(s.driveStart)}. Now at the ${ydLabel(newYd)}.\nHow many yards gained this drive?`,
     correct, choices:makeChoices(correct), isDown:false, fmt:null };
 }
 function buildType4(s, g) {
   const newYd = s.yd + g, correct = 100 - newYd;
-  return { q:`You're on the ${newYd} yard line.\nHow many yards to the end zone?`,
+  return { q:`You're on the ${ydLabel(newYd)} yard line.\nHow many yards to the end zone?`,
     correct, choices:makeChoices(correct), isDown:false, fmt:null };
 }
 
