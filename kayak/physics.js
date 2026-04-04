@@ -81,33 +81,11 @@ function spawnCollectibles() {
 // ═══════════════════════════════════════════════════════════════
 let audioCtx = null;
 
-function getAudioDebugElement() {
-  return document.getElementById('audio-debug');
-}
-
-function getAudioToggleElement() {
-  return document.getElementById('audio-toggle');
-}
-
-function updateAudioUI() {
-  const state = audioCtx ? audioCtx.state : 'locked';
-  const label = getAudioDebugElement();
-  if (label) {
-    label.textContent = `context: ${state}`;
-  }
-  const toggle = getAudioToggleElement();
-  if (toggle) {
-    toggle.textContent = state === 'running' ? 'Audio Ready' : 'Enable Sound';
-  }
-}
-
 function ensureAudioContext() {
   if (audioCtx) return audioCtx;
-  const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
-  if (!AudioContextCtor) return null;
-  audioCtx = new AudioContextCtor();
-  audioCtx.onstatechange = updateAudioUI;
-  updateAudioUI();
+  const Ctor = window.AudioContext || window.webkitAudioContext;
+  if (!Ctor) return null;
+  audioCtx = new Ctor();
   return audioCtx;
 }
 
@@ -115,85 +93,58 @@ function unlockAudio(event) {
   if (event && !event.isTrusted) return;
   const ctx = ensureAudioContext();
   if (!ctx) return;
-  if (ctx.state === 'running') {
-    updateAudioUI();
-    return;
-  }
+  if (ctx.state === 'running') return;
   if (ctx.state === 'suspended' || ctx.state === 'interrupted') {
-    ctx.resume()
-      .then(() => {
-        updateAudioUI();
-        // iOS can report a running AudioContext before the speaker path is
-        // actually primed. A silent oscillator started inside the gesture
-        // helps wake hardware output so later game-loop SFX are audible.
-        if (ctx.state === 'running') {
-          try {
-            const osc = ctx.createOscillator();
-            const gain = ctx.createGain();
-            gain.gain.value = 0;
-            osc.connect(gain);
-            gain.connect(ctx.destination);
-            osc.start();
-            osc.stop(ctx.currentTime + 0.001);
-          } catch (e) {}
-        }
-      })
-      .catch(() => {
-        updateAudioUI();
-      });
-    return;
+    ctx.resume().catch(function() {});
   }
-  updateAudioUI();
 }
 
 document.addEventListener('keydown', unlockAudio);
-document.addEventListener('mousedown', unlockAudio);
-document.addEventListener('pointerdown', unlockAudio);
-document.addEventListener('touchstart', unlockAudio, { passive: true });
-document.addEventListener('mouseup', unlockAudio);
-document.addEventListener('click', unlockAudio);
-document.addEventListener('pointerup', unlockAudio);
-document.addEventListener('touchend', unlockAudio, { passive: true });
 
 document.addEventListener('visibilitychange', function() {
-  if (!audioCtx) {
-    updateAudioUI();
-    return;
+  if (audioCtx && !document.hidden &&
+      (audioCtx.state === 'suspended' || audioCtx.state === 'interrupted')) {
+    audioCtx.resume().catch(function() {});
   }
-  if (!document.hidden && (audioCtx.state === 'suspended' || audioCtx.state === 'interrupted')) {
-    audioCtx.resume().then(updateAudioUI).catch(function() {
-      updateAudioUI();
-    });
-    return;
-  }
-  updateAudioUI();
 });
-
-const audioToggle = getAudioToggleElement();
-if (audioToggle) {
-  ['mousedown', 'pointerdown', 'touchstart', 'click', 'touchend', 'pointerup', 'mouseup'].forEach((eventName) => {
-    audioToggle.addEventListener(eventName, unlockAudio, eventName.startsWith('touch') ? { passive: true } : undefined);
-  });
-}
 
 window.addEventListener('pageshow', function() {
-  if (!audioCtx) {
-    updateAudioUI();
-    return;
+  if (audioCtx &&
+      (audioCtx.state === 'suspended' || audioCtx.state === 'interrupted')) {
+    audioCtx.resume().catch(function() {});
   }
-  if (audioCtx.state === 'suspended' || audioCtx.state === 'interrupted') {
-    audioCtx.resume().then(updateAudioUI).catch(function() {
-      updateAudioUI();
-    });
-    return;
-  }
-  updateAudioUI();
 });
-
-updateAudioUI();
 
 function canPlayAudio() {
   return !!audioCtx && audioCtx.state === 'running';
+}
+
+// On iOS, show a one-time mute-switch hint after audio is unlocked.
+// There is no API to detect the hardware silent switch, so we just
+// remind the user once per session.
+if (IS_IOS_IPADOS) {
+  let _muteHintShown = false;
+  const _origUnlock = unlockAudio;
+  unlockAudio = function(event) {
+    _origUnlock(event);
+    if (_muteHintShown) return;
+    if (audioCtx && audioCtx.state === 'running') {
+      _muteHintShown = true;
+      const hint = document.createElement('div');
+      hint.textContent = '🔇 No sound? Check your silent switch';
+      hint.style.cssText = [
+        'position:fixed', 'bottom:60px', 'left:50%',
+        'transform:translateX(-50%)',
+        'background:rgba(0,0,0,0.82)', 'color:#fff',
+        'padding:8px 16px', 'border-radius:20px',
+        'font:13px Georgia,serif', 'z-index:9999',
+        'opacity:1', 'transition:opacity 0.6s'
+      ].join(';');
+      document.body.appendChild(hint);
+      setTimeout(function() { hint.style.opacity = '0'; }, 3000);
+      setTimeout(function() { hint.remove(); }, 3800);
+    }
+  };
 }
 
 function playPaddleSound() {
