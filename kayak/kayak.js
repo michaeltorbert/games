@@ -94,7 +94,11 @@ function phoneHome(event, extra) {
       score: totalScore,
       ts: Date.now()
     }, getDeviceInfo(), extra || {}));
-    fetch(PHONE_HOME_URL, {method: 'POST', body: payload, headers: {'Content-Type': 'text/plain'}, keepalive: true}).catch(function(){});
+    if (navigator.sendBeacon) {
+      navigator.sendBeacon(PHONE_HOME_URL, payload);
+    } else {
+      fetch(PHONE_HOME_URL, {method: 'POST', body: payload, headers: {'Content-Type': 'text/plain'}}).catch(function(){});
+    }
   } catch(e) {}
 }
 
