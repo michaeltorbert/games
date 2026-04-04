@@ -131,7 +131,7 @@ const LEVELS = [
     waterColor: ['#2888C8','#0858A8'],
     skyColor: ['#F8B840','#F88820'],
     bgColor: '#1a3a6a',
-    collectibles: ['🥘','🍊','🌹','😘','💐','🥂','🌺','⭐','�'],
+    collectibles: ['🥘','🍊','🌹','😘','💐','🥂','🌺','⭐','🍤','🪼'],
     drawScene: drawMalvarrosa
   },
   {
