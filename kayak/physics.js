@@ -119,34 +119,6 @@ function canPlayAudio() {
   return !!audioCtx && audioCtx.state === 'running';
 }
 
-// On iOS, show a one-time mute-switch hint after audio is unlocked.
-// There is no API to detect the hardware silent switch, so we just
-// remind the user once per session.
-if (IS_IOS_IPADOS) {
-  let _muteHintShown = false;
-  const _origUnlock = unlockAudio;
-  unlockAudio = function(event) {
-    _origUnlock(event);
-    if (_muteHintShown) return;
-    if (audioCtx && audioCtx.state === 'running') {
-      _muteHintShown = true;
-      const hint = document.createElement('div');
-      hint.textContent = '🔇 No sound? Check your silent switch';
-      hint.style.cssText = [
-        'position:fixed', 'bottom:60px', 'left:50%',
-        'transform:translateX(-50%)',
-        'background:rgba(0,0,0,0.82)', 'color:#fff',
-        'padding:8px 16px', 'border-radius:20px',
-        'font:13px Georgia,serif', 'z-index:9999',
-        'opacity:1', 'transition:opacity 0.6s'
-      ].join(';');
-      document.body.appendChild(hint);
-      setTimeout(function() { hint.style.opacity = '0'; }, 3000);
-      setTimeout(function() { hint.remove(); }, 3800);
-    }
-  };
-}
-
 function playPaddleSound() {
   const ctx = audioCtx;
   if (!ctx || !canPlayAudio()) return;
