@@ -85,6 +85,11 @@ function ensureAudioContext() {
   if (audioCtx) return audioCtx;
   const Ctor = window.AudioContext || window.webkitAudioContext;
   if (!Ctor) return null;
+  try {
+    if (navigator.audioSession && 'type' in navigator.audioSession) {
+      navigator.audioSession.type = 'playback';
+    }
+  } catch (e) {}
   audioCtx = new Ctor();
   return audioCtx;
 }
