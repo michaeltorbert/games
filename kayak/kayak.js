@@ -63,22 +63,38 @@ function persist() {
 // ═══════════════════════════════════════════════════════════════
 // TELEMETRY
 // ═══════════════════════════════════════════════════════════════
+function getDeviceInfo() {
+  try {
+    const ua = navigator.userAgent || '';
+    const w = screen.width || 0, h = screen.height || 0;
+    const touch = navigator.maxTouchPoints > 0;
+    let deviceType = 'desktop';
+    if (touch && (w <= 768 || /iPhone|Android.*Mobile/.test(ua))) deviceType = 'phone';
+    else if (touch) deviceType = 'tablet';
+    return {
+      ua,
+      deviceType,
+      screen: w + 'x' + h,
+      lang: navigator.language || '',
+      tz: Intl && Intl.DateTimeFormat ? Intl.DateTimeFormat().resolvedOptions().timeZone : '',
+      platform: navigator.platform || '',
+      referrer: document.referrer || ''
+    };
+  } catch(e) { return {}; }
+}
+
 function phoneHome(event, extra) {
   if (!PHONE_HOME_URL) return;
-  const payload = JSON.stringify(Object.assign({
-    event,
-    v: GAME_VERSION,
-    level: currentLevel,
-    levelName: getLevelDef ? getLevelDef().name : '',
-    score: totalScore,
-    ts: Date.now()
-  }, extra || {}));
   try {
-    if (navigator.sendBeacon) {
-      navigator.sendBeacon(PHONE_HOME_URL, new Blob([payload], {type: 'application/json'}));
-    } else {
-      fetch(PHONE_HOME_URL, {method: 'POST', body: payload, headers: {'Content-Type': 'application/json'}, keepalive: true}).catch(function(){});
-    }
+    const payload = JSON.stringify(Object.assign({
+      event,
+      v: GAME_VERSION,
+      level: currentLevel,
+      levelName: getLevelDef ? getLevelDef().name : '',
+      score: totalScore,
+      ts: Date.now()
+    }, getDeviceInfo(), extra || {}));
+    fetch(PHONE_HOME_URL, {method: 'POST', body: payload, headers: {'Content-Type': 'text/plain'}, keepalive: true}).catch(function(){});
   } catch(e) {}
 }
 
