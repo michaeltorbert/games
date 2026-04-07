@@ -235,6 +235,10 @@ function directionFor(possession) {
   return possession === 'offense' ? 1 : -1;
 }
 
+function oppositePossession(possession) {
+  return possession === 'offense' ? 'defense' : 'offense';
+}
+
 function startingYardFor(possession) {
   return possession === 'offense' ? START_YARD : 100 - START_YARD;
 }
@@ -687,8 +691,8 @@ const QUESTION_BANK = [
   },
   {
     id: 'drive-yards',
-    rating: 2,
-    weight: 2,
+    rating: 5,
+    weight: 1,
     canUse: (s, p, level) => p.driveYards > 3 && fitsLevelNumber(p.driveYards, level),
     build: (s, p, level) => ({
       q: `Drive started at ${ydLabel(s.driveStart)}. After this play, the ball would be at ${ydLabel(p.newYd)}.\nHow many yards is that drive?`,
@@ -1191,21 +1195,29 @@ function showQuarterEnd(message) {
   Object.assign(state, blankPlayState(), { phase: 'quarter' });
   document.getElementById('ov-quarter-title').textContent = `End of ${QUARTER_NAMES[state.quarter]} Quarter`;
   document.getElementById('ov-quarter-sub').textContent =
-    `${message} Score: ${state.playerScore} - ${state.opponentScore}`;
+    `${message} Same possession after the break. Score: ${state.playerScore} - ${state.opponentScore}`;
   document.getElementById('ov-quarter').classList.add('show');
 }
 
 function showHalftime(message) {
   Object.assign(state, blankPlayState(), { phase: 'halftime' });
   document.getElementById('ov-halftime-sub').textContent =
-    `${message} Score: ${state.playerScore} - ${state.opponentScore}`;
+    `${message} Halftime changes possession. Score: ${state.playerScore} - ${state.opponentScore}`;
   document.getElementById('ov-halftime').classList.add('show');
 }
 
 function nextQuarter() {
+  const endingQuarter = state.quarter;
+  const currentPossession = state.possession;
   hideOverlays();
   state.quarter = Math.min(state.quarter + 1, 4);
-  startDrive('offense');
+
+  if (endingQuarter === 2) {
+    startDrive(oppositePossession(currentPossession));
+    return;
+  }
+
+  showCallPrompt();
 }
 
 function showGameOver() {

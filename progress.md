@@ -114,3 +114,10 @@ Original prompt: yes, do all you need to do to get started
 - `/tmp/football_one_shot_check.mjs` passed, covering one-shot offensive misses, play-specific miss text, explanation text, and defense-call-selected question rating;
 - `/tmp/football_flow_check.mjs` and `/tmp/football_full_game_check.mjs` passed after the adjustment;
 - `/tmp/football_wrong_offense_visual.mjs` generated and inspected `output/football-v2/offense-wrong.png`, confirming wrong-answer feedback is visible with no ball gain and down advancement.
+- Follow-up football period/question tuning:
+- changed Q1/Q3 quarter break handling so the next-quarter button resumes the current possession/down/distance instead of starting a new drive; halftime still flips possession;
+- moved the cumulative `drive-yards` question to rating 5 / lowest weight so long cross-midfield drive math is reserved for the hardest play calls.
+- Verification:
+- `$HOME/.local/node/current/bin/node --check football/football.js` and `git diff --check` passed;
+- `/tmp/football_period_check.mjs` passed, confirming Q1 resumes the same possession/yard/down/distance, halftime flips possession, and `drive-yards` is rating 5;
+- inspected `output/football-period-check/q1-quarter.png` and `output/football-period-check/q1-resumed.png`.
