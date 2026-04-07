@@ -72,3 +72,21 @@ Original prompt: yes, do all you need to do to get started
 - Verification:
 - `$HOME/.local/node/current/bin/node --check kayak/physics.js`, `kayak/kayak.js`, and `kayak/audio/audio.js` all passed.
 - Local Playwright smoke test confirmed the game still reaches `context: running` during D-pad press on `v1.1.29`, and the diagnostics page still loads with the expected control set.
+
+2026-04-06
+- Started implementing the Football Math difficulty overhaul:
+- replaced the old `buildType1`-`buildType4` branching with a weighted `QUESTION_BANK`;
+- added four levels (`Warm-Up`, `Rookie`, `Starter`, `Pro`) with exact gain ranges and rating gates;
+- added explicit `own` / `50` / `opponent` yard labels, a difficulty picker, wrong-answer explanations, and `window.render_game_to_text`;
+- bumped football assets to `1.5.0`.
+- Verification so far:
+- `$HOME/.local/node/current/bin/node --check football/football.js` passed.
+- Follow-up adjustment:
+- changed football versioning from `2.0.0` to `1.5.0`;
+- spelled out opponent-side labels as `opponent 40` instead of `opp 40`.
+- Verification:
+- `$HOME/.local/node/current/bin/node --check football/football.js` passed after the adjustment.
+- Playwright smoke test against `http://127.0.0.1:8000/football/` passed, selected `Rookie`, rendered `v1.5.0`, and showed no stale updater banner.
+- Targeted Playwright checks passed for all four exact gain ranges, canonical yard labels, touchdown-over-first-down priority, `is-touchdown` actual-touchdown gating, no `is-first-down` on touchdown plays, unique yard-label choices, wrong-answer explanations, restart-to-picker flow, and forced touchdown overlay flow.
+- Added a dedicated `makeDownDistanceChoices()` helper for later compound answers like `3rd & 4` so future prompts do not reuse numeric-only distractor logic.
+- Re-ran `$HOME/.local/node/current/bin/node --check football/football.js` and the targeted Playwright gating check after the helper addition; both passed.
