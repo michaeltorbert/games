@@ -1,5 +1,6 @@
 
-const GAME_VERSION = '1.1.35';
+const GAME_VERSION = '1.1.37';
+const PHONE_HOME_URL = 'https://eoqil5wgr24002.m.pipedream.net';
 const CANVAS_BORDER = 4;
 const BOTTOM_BAR_RATIO = 0.03;
 
@@ -60,6 +61,48 @@ function persist() {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// TELEMETRY
+// ═══════════════════════════════════════════════════════════════
+function getDeviceInfo() {
+  try {
+    const ua = navigator.userAgent || '';
+    const w = screen.width || 0, h = screen.height || 0;
+    const touch = navigator.maxTouchPoints > 0;
+    let deviceType = 'desktop';
+    if (touch && (w <= 768 || /iPhone|Android.*Mobile/.test(ua))) deviceType = 'phone';
+    else if (touch) deviceType = 'tablet';
+    return {
+      ua,
+      deviceType,
+      screen: w + 'x' + h,
+      lang: navigator.language || '',
+      tz: Intl && Intl.DateTimeFormat ? Intl.DateTimeFormat().resolvedOptions().timeZone : '',
+      platform: navigator.platform || '',
+      referrer: document.referrer || ''
+    };
+  } catch(e) { return {}; }
+}
+
+function phoneHome(event, extra) {
+  if (!PHONE_HOME_URL) return;
+  try {
+    const payload = JSON.stringify(Object.assign({
+      event,
+      v: GAME_VERSION,
+      level: currentLevel,
+      levelName: getLevelDef ? getLevelDef().name : '',
+      score: totalScore,
+      ts: Date.now()
+    }, getDeviceInfo(), extra || {}));
+    if (navigator.sendBeacon) {
+      navigator.sendBeacon(PHONE_HOME_URL, payload);
+    } else {
+      fetch(PHONE_HOME_URL, {method: 'POST', body: payload, headers: {'Content-Type': 'text/plain'}}).catch(function(){});
+    }
+  } catch(e) {}
+}
+
+// ═══════════════════════════════════════════════════════════════
 // GAME STATE
 // ═══════════════════════════════════════════════════════════════
 const kayak = {
@@ -80,20 +123,7 @@ let gamePhase = 'playing'; // 'playing' | 'levelcomplete' | 'completing'
 // LEVEL HELPERS
 // ═══════════════════════════════════════════════════════════════
 function getLevelDef() {
-  if (currentLevel < LEVELS.length) return LEVELS[currentLevel];
-  // Bonus random level
-  const idx = (currentLevel - LEVELS.length) % BONUS_NAMES.length;
-  return {
-    name: BONUS_NAMES[idx], sub: 'Mystery Destination ✨',
-    stamp: BONUS_STAMPS[idx % BONUS_STAMPS.length],
-    fact: 'A surprise destination unlocked after completing all 12 stops on Sydney & Michael\'s adventure!',
-    collectibles: ['💕','😘','✨','🌸','💐','🌺','🦋','⭐','💫'],
-    mapDot: [0.5 + Math.random()*0.3, 0.3 + Math.random()*0.3],
-    waterColor: ['#3AB8D8','#1A7890'],
-    skyColor: ['#68C8F0','#A0E0FF'],
-    bgColor: '#1a3a5a',
-    drawScene: drawGenericBeach
-  };
+  return LEVELS[currentLevel];
 }
 
 function getKayakStart() {
@@ -113,6 +143,8 @@ function initLevel(reset) {
     visitedLevels = [];
     persist();
   }
+  currentLevel = Number.isFinite(currentLevel) ? ((currentLevel % LEVELS.length) + LEVELS.length) % LEVELS.length : 0;
+  phoneHome(reset ? 'game_start' : 'level_start');
   const [sx, sy] = getKayakStart();
   kayak.x = sx; kayak.y = sy;
   kayak.angle = -Math.PI/2;
@@ -188,6 +220,7 @@ function showLevelComplete() {
 
   if (!visitedLevels.includes(currentLevel)) visitedLevels.push(currentLevel);
   persist();
+  phoneHome('level_complete', {collected: collectibles.length});
   drawMapScreen();
 
   const lvl = getLevelDef();
@@ -198,11 +231,8 @@ function showLevelComplete() {
 
   const nextLvl = currentLevel + 1;
   const nextBtn = document.getElementById('nextLvlBtn');
-  if (nextLvl < LEVELS.length) {
-    nextBtn.textContent = `Next: ${LEVELS[nextLvl].name} →`;
-  } else {
-    nextBtn.textContent = `Bonus Round! ✨ →`;
-  }
+  const wrappedNextLvl = nextLvl % LEVELS.length;
+  nextBtn.textContent = `Next: ${LEVELS[wrappedNextLvl].name} →`;
 
   document.getElementById('overlay').classList.remove('hidden');
 }
@@ -310,7 +340,7 @@ window.advanceTime = (ms) => {
 // ═══════════════════════════════════════════════════════════════
 document.getElementById('newGameBtn').addEventListener('click', () => initLevel(true));
 document.getElementById('nextLvlBtn').addEventListener('click', () => {
-  currentLevel++;
+  currentLevel = (currentLevel + 1) % LEVELS.length;
   persist();
   initLevel(false);
 });
