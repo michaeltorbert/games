@@ -46,7 +46,23 @@
     reload.onclick = function () {
       var url = new URL(location.href);
       url.searchParams.set('r', Date.now().toString());
-      location.href = url.toString();
+      url.searchParams.set('v', remoteVersion);
+
+      function reloadNow() {
+        location.replace(url.toString());
+      }
+
+      if ('caches' in window && caches.keys) {
+        caches.keys()
+          .then(function (keys) {
+            return Promise.all(keys.map(function (key) { return caches.delete(key); }));
+          })
+          .then(reloadNow)
+          .catch(reloadNow);
+        return;
+      }
+
+      reloadNow();
     };
 
     var dismiss = document.createElement('button');
