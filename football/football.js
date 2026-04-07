@@ -1,83 +1,104 @@
 const GAME_VERSION = '1.5.0';
 const EZ = 5;
 function yardToPct(y) { return EZ + (y / 100) * (100 - 2 * EZ); }
-const DOWN_NAMES = ["", "1st", "2nd", "3rd", "4th"];
-const RESULT_CHOICES = ["Touchdown", "First Down", "Neither"];
 
-const LEVELS = {
-  warmup: {
-    key: 'warmup',
-    label: 'Warm-Up',
-    desc: 'Tiny numbers',
-    gRange: [1, 3],
-    maxRating: 1,
-    choiceCount: 2,
-    numberMax: 10,
-    startYds: [90],
-    tdThreshold: 90,
+const DOWN_NAMES = ["", "1st", "2nd", "3rd", "4th"];
+const QUARTER_NAMES = ["", "1st", "2nd", "3rd", "4th"];
+const RESULT_CHOICES = ["Touchdown", "First Down", "Neither"];
+const START_YARD = 20;
+const TD_POINTS = 7;
+
+const OFFENSE_CALLS = {
+  shortRun: {
+    key: 'shortRun',
+    label: 'Short Run',
+    desc: 'Easy · 2-4 yds',
+    risk: 'easy',
+    rating: 1,
+    gRange: [2, 4],
   },
-  rookie: {
-    key: 'rookie',
-    label: 'Rookie',
-    desc: 'James target',
-    gRange: [1, 5],
-    maxRating: 2,
-    choiceCount: 3,
-    numberMax: 20,
-    startYds: [50, 60, 65, 70, 75, 80],
-    tdThreshold: 80,
+  shortPass: {
+    key: 'shortPass',
+    label: 'Short Pass',
+    desc: 'Easy · 4-7 yds',
+    risk: 'easy',
+    rating: 2,
+    gRange: [4, 7],
   },
-  starter: {
-    key: 'starter',
-    label: 'Starter',
-    desc: 'Field position',
-    gRange: [1, 7],
-    maxRating: 3,
-    choiceCount: 3,
-    numberMax: 50,
-    startYds: [20, 35, 45, 50, 60, 75],
-    tdThreshold: 75,
+  longRun: {
+    key: 'longRun',
+    label: 'Long Run',
+    desc: 'Medium · 6-12 yds',
+    risk: 'medium',
+    rating: 3,
+    gRange: [6, 12],
   },
-  pro: {
-    key: 'pro',
-    label: 'Pro',
-    desc: 'Full model',
-    gRange: [1, 9],
-    maxRating: 5,
-    choiceCount: 3,
-    numberMax: 100,
-    startYds: [20],
-    tdThreshold: 70,
+  mediumPass: {
+    key: 'mediumPass',
+    label: 'Medium Pass',
+    desc: 'Hard · 8-16 yds',
+    risk: 'hard',
+    rating: 4,
+    gRange: [8, 16],
+  },
+  longPass: {
+    key: 'longPass',
+    label: 'Long Pass',
+    desc: 'Very hard · 12-25 yds',
+    risk: 'very-hard',
+    rating: 5,
+    gRange: [12, 25],
   },
 };
 
-let state = {};
-let currentLevelKey = null;
-let advTimer = null;
+const DEFENSE_CALLS = {
+  run: {
+    key: 'run',
+    label: 'Run Defense',
+    desc: 'Stops runs',
+    risk: 'easy',
+    covers: ['shortRun', 'longRun'],
+  },
+  shortPass: {
+    key: 'shortPass',
+    label: 'Short Pass D',
+    desc: 'Covers quick throws',
+    risk: 'easy',
+    covers: ['shortPass'],
+  },
+  mediumPass: {
+    key: 'mediumPass',
+    label: 'Medium Pass D',
+    desc: 'Covers middle',
+    risk: 'medium',
+    covers: ['mediumPass'],
+  },
+  deepPass: {
+    key: 'deepPass',
+    label: 'Deep Pass D',
+    desc: 'Stops long pass',
+    risk: 'hard',
+    covers: ['longPass'],
+  },
+};
 
-function getCurrentLevel() {
-  return LEVELS[currentLevelKey] || LEVELS.rookie;
-}
+const OPPONENT_CALL_WEIGHTS = [
+  { key: 'shortRun', weight: 1 },
+  { key: 'shortPass', weight: 1 },
+  { key: 'longRun', weight: 2 },
+  { key: 'mediumPass', weight: 3 },
+  { key: 'longPass', weight: 3 },
+];
+
+let state = {};
+let advTimer = null;
 
 function choose(a) {
   return a[Math.floor(Math.random() * a.length)];
 }
 
-function initBase() {
-  const level = getCurrentLevel();
-  const yd = choose(level.startYds);
-  const fdYd = Math.min(yd + 10, 100);
-  return {
-    yd,
-    fdYd,
-    down: 1,
-    ytg: fdYd - yd,
-    driveStart: yd,
-    plays: 0,
-    tds: 0,
-    animYd: yd,
-    phase: currentLevelKey ? 'ready' : 'picker',
-  };
+function randomInt(min, max) {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
 function shuffle(a) {
@@ -93,10 +114,6 @@ function clamp(n, min, max) {
   return Math.max(min, Math.min(max, n));
 }
 
-function yardNumber(y) {
-  return y <= 50 ? y : 100 - y;
-}
-
 function ydLabel(y, short) {
   const v = clamp(Math.round(y), 0, 100);
   const opp = short ? 'opp' : 'opponent';
@@ -105,19 +122,134 @@ function ydLabel(y, short) {
   return `${opp} ${100 - v}`;
 }
 
-function yds(n) { return n === 1 ? '1 yard' : `${n} yards`; }
+function fieldNumber(y) {
+  return y <= 50 ? y : 100 - y;
+}
+
+function yds(n) {
+  return n === 1 ? '1 yard' : `${n} yards`;
+}
 
 function downDistanceLabel(down, ytg) {
   return `${DOWN_NAMES[down]} & ${ytg}`;
+}
+
+function halfLabel(quarter) {
+  return quarter <= 2 ? '1st' : '2nd';
+}
+
+function directionFor(possession) {
+  return possession === 'offense' ? 1 : -1;
+}
+
+function startingYardFor(possession) {
+  return possession === 'offense' ? START_YARD : 100 - START_YARD;
+}
+
+function nextFirstDownLine(yd, direction) {
+  return direction === 1 ? Math.min(yd + 10, 100) : Math.max(yd - 10, 0);
+}
+
+function distanceToMarker(yd, fdYd, direction) {
+  return direction === 1 ? Math.max(fdYd - yd, 0) : Math.max(yd - fdYd, 0);
+}
+
+function moveYards(yd, gain, direction) {
+  return clamp(yd + gain * direction, 0, 100);
+}
+
+function reachesGoal(yd, direction) {
+  return direction === 1 ? yd >= 100 : yd <= 0;
+}
+
+function reachesMarker(yd, fdYd, direction) {
+  return direction === 1 ? yd >= fdYd : yd <= fdYd;
+}
+
+function yardsToGoal(yd, direction) {
+  return direction === 1 ? 100 - yd : yd;
+}
+
+function gameSnapshot() {
+  return {
+    quarter: state.quarter || 1,
+    playerScore: state.playerScore || 0,
+    opponentScore: state.opponentScore || 0,
+    plays: state.plays || 0,
+    tds: state.tds || 0,
+    opponentTds: state.opponentTds || 0,
+    defenseStops: state.defenseStops || 0,
+  };
+}
+
+function blankPlayState() {
+  return {
+    g: null,
+    label: null,
+    callKey: null,
+    defenseCallKey: null,
+    opponentCallKey: null,
+    matchup: null,
+    questionId: null,
+    question: null,
+    correct: null,
+    choices: [],
+    choiceType: 'number',
+    explain: null,
+    play: null,
+  };
+}
+
+function makeDriveState(possession) {
+  const direction = directionFor(possession);
+  const yd = startingYardFor(possession);
+  const fdYd = nextFirstDownLine(yd, direction);
+  return {
+    possession,
+    direction,
+    yd,
+    fdYd,
+    down: 1,
+    ytg: distanceToMarker(yd, fdYd, direction),
+    driveStart: yd,
+    drivePlays: 0,
+    animYd: yd,
+  };
+}
+
+function createGameState() {
+  return {
+    quarter: 1,
+    playerScore: 0,
+    opponentScore: 0,
+    plays: 0,
+    tds: 0,
+    opponentTds: 0,
+    defenseStops: 0,
+    phase: 'start',
+    ...makeDriveState('offense'),
+    ...blankPlayState(),
+  };
+}
+
+function sortedOrShuffled(values, level) {
+  if (level.key === 'easy') return [...values].sort((a, b) => a - b);
+  return shuffle(values);
 }
 
 function fitsLevelNumber(value, level) {
   return value <= level.numberMax;
 }
 
-function sortedOrShuffled(values, level) {
-  if (level.key === 'warmup' || level.key === 'rookie') return [...values].sort((a, b) => a - b);
-  return shuffle(values);
+function makeQuestionProfile(callKey, ratingAdjust = 0) {
+  const call = OFFENSE_CALLS[callKey] || OFFENSE_CALLS.shortRun;
+  const rating = clamp(call.rating + ratingAdjust, 1, 5);
+  return {
+    key: rating <= 2 ? 'easy' : 'hard',
+    maxRating: rating,
+    choiceCount: 4,
+    numberMax: rating <= 1 ? 10 : rating <= 2 ? 20 : rating <= 3 ? 50 : 100,
+  };
 }
 
 function makeNumericChoices(correct, level, opts = {}) {
@@ -146,20 +278,27 @@ function makeNumericChoices(correct, level, opts = {}) {
   return sortedOrShuffled([...set].slice(0, count), level);
 }
 
+function makeFixedNumericChoices(values, level) {
+  return level.key === 'easy' ? [...values].sort((a, b) => a - b) : shuffle(values);
+}
+
 function makeDownChoices(correctDown, level) {
-  const count = Math.min(level.choiceCount, 4);
   const values = new Set([correctDown]);
   [correctDown + 1, correctDown - 1, 1, 2, 3, 4].forEach((d) => {
-    if (d >= 1 && d <= 4 && values.size < count) values.add(d);
+    if (d >= 1 && d <= 4 && values.size < level.choiceCount) values.add(d);
   });
-  const ordered = level.key === 'warmup' || level.key === 'rookie'
-    ? [...values].sort((a, b) => a - b)
-    : shuffle([...values]);
+  const ordered = level.key === 'easy' ? [...values].sort((a, b) => a - b) : shuffle([...values]);
   return ordered.map((d) => DOWN_NAMES[d]);
 }
 
+function makeQuarterChoices(correctQuarter, level) {
+  const values = new Set([correctQuarter]);
+  [1, 2, 3, 4].forEach((q) => values.add(q));
+  const ordered = level.key === 'easy' ? [...values].sort((a, b) => a - b) : shuffle([...values]);
+  return ordered.slice(0, 4).map((q) => QUARTER_NAMES[q]);
+}
+
 function makeDownDistanceChoices(correctDown, correctYtg, level) {
-  const count = level.choiceCount;
   const byLabel = new Map();
   const add = (down, ytg) => {
     if (down < 1 || down > 4 || ytg < 1) return;
@@ -174,8 +313,8 @@ function makeDownDistanceChoices(correctDown, correctYtg, level) {
   add(correctDown, Math.max(1, correctYtg - 1));
   add(1, 10);
 
-  const ordered = [...byLabel.entries()].slice(0, count);
-  if (level.key === 'warmup' || level.key === 'rookie') {
+  const ordered = [...byLabel.entries()].slice(0, level.choiceCount);
+  if (level.key === 'easy') {
     ordered.sort((a, b) => a[1].down - b[1].down || a[1].ytg - b[1].ytg);
   } else {
     return shuffle(ordered).map(([label]) => label);
@@ -188,7 +327,6 @@ function makeYesNoChoices() {
 }
 
 function makeYardChoices(correctYd, level, anchors = []) {
-  const count = level.choiceCount;
   const byLabel = new Map();
   const add = (v) => {
     const yd = clamp(Math.round(v), 0, 100);
@@ -199,20 +337,32 @@ function makeYardChoices(correctYd, level, anchors = []) {
   add(correctYd);
   anchors.forEach(add);
   [1, 2, 3, 5, 10, -1, -2, -3, -5, -10, 15, -15].forEach((d) => {
-    if (byLabel.size < count) add(correctYd + d);
+    if (byLabel.size < level.choiceCount) add(correctYd + d);
   });
 
   let scan = 0;
-  while (byLabel.size < count && scan <= 100) {
+  while (byLabel.size < level.choiceCount && scan <= 100) {
     add(scan);
     scan += 5;
   }
 
-  const entries = [...byLabel.entries()].slice(0, count);
-  const ordered = level.key === 'warmup' || level.key === 'rookie'
+  const entries = [...byLabel.entries()].slice(0, level.choiceCount);
+  const ordered = level.key === 'easy'
     ? entries.sort((a, b) => a[1] - b[1])
     : shuffle(entries);
   return ordered.map(([label]) => label);
+}
+
+function gainSentence(s, p) {
+  if (s.possession === 'defense') return `The opponent could gain ${yds(p.gain)}`;
+  return `You gain ${yds(p.gain)}`;
+}
+
+function locationGainSentence(s, p) {
+  if (s.possession === 'defense') {
+    return `The opponent is on ${ydLabel(p.oldYd)} and could gain ${yds(p.gain)}`;
+  }
+  return `You're on ${ydLabel(p.oldYd)} and gain ${yds(p.gain)}`;
 }
 
 function playResult(play) {
@@ -221,43 +371,102 @@ function playResult(play) {
   return 'Neither';
 }
 
-function makePlaySnapshot(s, gain) {
+function makePlaySnapshot(s, gain, call) {
   const oldYd = s.yd;
-  const newYd = Math.min(oldYd + gain, 100);
-  const isTouchdown = newYd >= 100;
-  const reachedMarker = newYd >= s.fdYd;
+  const newYd = moveYards(oldYd, gain, s.direction);
+  const isTouchdown = reachesGoal(newYd, s.direction);
+  const reachedMarker = reachesMarker(newYd, s.fdYd, s.direction);
   const gotFirstDown = !isTouchdown && reachedMarker;
+  const isTurnoverOnDowns = !isTouchdown && !gotFirstDown && s.down >= 4;
+  const newFdYd = gotFirstDown ? nextFirstDownLine(newYd, s.direction) : s.fdYd;
   const newDown = gotFirstDown ? 1 : Math.min(s.down + 1, 4);
-  const newYtg = gotFirstDown ? 10 : Math.max(s.fdYd - newYd, 0);
+  const newYtg = gotFirstDown
+    ? Math.max(distanceToMarker(newYd, newFdYd, s.direction), 1)
+    : Math.max(distanceToMarker(newYd, s.fdYd, s.direction), 0);
 
   return {
     gain,
-    label: Math.random() < 0.5 ? 'Run' : 'Pass',
+    label: call.label,
+    callKey: call.key,
     oldYd,
     newYd,
     oldDown: s.down,
     oldYtg: s.ytg,
     newDown,
     newYtg,
+    newFdYd,
     gotFirstDown,
     isTouchdown,
-    crossedMidfield: oldYd < 50 && newYd >= 50,
-    driveYards: newYd - s.driveStart,
+    isTurnoverOnDowns,
+    crossedMidfield: s.direction === 1 ? oldYd < 50 && newYd >= 50 : oldYd > 50 && newYd <= 50,
+    driveYards: Math.abs(newYd - s.driveStart),
   };
 }
 
 const QUESTION_BANK = [
+  {
+    id: 'what-quarter',
+    rating: 1,
+    weight: 0.35,
+    canUse: (s) => s.quarter >= 1,
+    build: (s, p, level) => ({
+      q: 'What quarter are we in?',
+      correct: QUARTER_NAMES[s.quarter],
+      choices: makeQuarterChoices(s.quarter, level),
+      choiceType: 'down',
+      explain: `The scoreboard says Q${s.quarter}, so it is the ${QUARTER_NAMES[s.quarter]} quarter.`,
+    }),
+  },
+  {
+    id: 'what-half',
+    rating: 1,
+    weight: 0.3,
+    canUse: (s) => s.quarter >= 1,
+    build: (s) => ({
+      q: 'What half are we in?',
+      correct: halfLabel(s.quarter),
+      choices: ['1st', '2nd'],
+      choiceType: 'down',
+      explain: `Quarters 1 and 2 are the 1st half. Quarters 3 and 4 are the 2nd half.`,
+    }),
+  },
+  {
+    id: 'quarters-in-half',
+    rating: 1,
+    weight: 0.25,
+    canUse: (s) => s.quarter >= 1,
+    build: (s, p, level) => ({
+      q: 'How many quarters are in one half?',
+      correct: 2,
+      choices: makeFixedNumericChoices([1, 2, 3, 4], level),
+      choiceType: 'number',
+      explain: 'One half has 2 quarters.',
+    }),
+  },
+  {
+    id: 'quarters-left',
+    rating: 1,
+    weight: 0.25,
+    canUse: (s) => s.quarter >= 1,
+    build: (s, p, level) => ({
+      q: 'How many quarters are left after this one?',
+      correct: 4 - s.quarter,
+      choices: makeFixedNumericChoices([0, 1, 2, 3], level),
+      choiceType: 'number',
+      explain: `There are ${4 - s.quarter} quarters left after Q${s.quarter}.`,
+    }),
+  },
   {
     id: 'what-down',
     rating: 1,
     weight: 3,
     canUse: (s, p) => p.gain < s.ytg && s.down < 4,
     build: (s, p, level) => ({
-      q: `It's ${downDistanceLabel(s.down, s.ytg)}. You gain ${yds(p.gain)}.\nWhat down is it now?`,
+      q: `It's ${downDistanceLabel(s.down, s.ytg)}. ${gainSentence(s, p)}.\nWhat down is it now?`,
       correct: DOWN_NAMES[s.down + 1],
       choices: makeDownChoices(s.down + 1, level),
       choiceType: 'down',
-      explain: `You were on ${DOWN_NAMES[s.down]} down. The next down is ${DOWN_NAMES[s.down + 1]}.`,
+      explain: `It was ${DOWN_NAMES[s.down]} down. The next down is ${DOWN_NAMES[s.down + 1]}.`,
     }),
   },
   {
@@ -268,13 +477,13 @@ const QUESTION_BANK = [
     build: (s, p) => {
       const correct = p.gotFirstDown ? 'Yes' : 'No';
       return {
-        q: `It's ${downDistanceLabel(s.down, s.ytg)}. You gain ${yds(p.gain)}.\nDid you get a first down?`,
+        q: `It's ${downDistanceLabel(s.down, s.ytg)}. ${gainSentence(s, p)}.\nIs that a first down?`,
         correct,
         choices: makeYesNoChoices(),
         choiceType: 'category',
         explain: p.gotFirstDown
-          ? `${p.gain} is enough for ${s.ytg} yards, so yes: first down.`
-          : `${p.gain} is less than ${s.ytg}, so not yet.`,
+          ? `${yds(p.gain)} is enough for ${yds(s.ytg)}, so yes: first down.`
+          : `${yds(p.gain)} is less than ${yds(s.ytg)}, so not yet.`,
       };
     },
   },
@@ -284,7 +493,7 @@ const QUESTION_BANK = [
     weight: 2,
     canUse: (s) => s.ytg > 0,
     build: (s, p, level) => ({
-      q: `It's ${downDistanceLabel(s.down, s.ytg)}.\nHow many yards do you need for a first down?`,
+      q: `It's ${downDistanceLabel(s.down, s.ytg)}.\nHow many yards are needed for a first down?`,
       correct: s.ytg,
       choices: makeNumericChoices(s.ytg, level, { min: 1, max: 10 }),
       choiceType: 'number',
@@ -295,18 +504,18 @@ const QUESTION_BANK = [
     id: 'is-touchdown',
     rating: 1,
     weight: 2,
-    canUse: (s, p, level) => p.oldYd >= level.tdThreshold,
+    canUse: (s, p, level) => yardsToGoal(p.oldYd, s.direction) <= Math.min(level.numberMax, 30),
     build: (s, p) => {
       const correct = p.isTouchdown ? 'Yes' : 'No';
-      const yardsToGo = 100 - p.oldYd;
+      const needed = yardsToGoal(p.oldYd, s.direction);
       return {
-        q: `You're on ${ydLabel(p.oldYd)} and gain ${yds(p.gain)}.\nTouchdown?`,
+        q: `${locationGainSentence(s, p)}.\nTouchdown?`,
         correct,
         choices: makeYesNoChoices(),
         choiceType: 'category',
         explain: p.isTouchdown
-          ? `You need ${yardsToGo} yards and gained ${p.gain}. ${p.gain} >= ${yardsToGo}, so yes!`
-          : `You need ${yardsToGo} yards but only gained ${p.gain}. Not enough.`,
+          ? `The goal line is ${yds(needed)} away, and ${yds(p.gain)} reaches it.`
+          : `The goal line is ${yds(needed)} away, and ${yds(p.gain)} is not enough.`,
       };
     },
   },
@@ -318,11 +527,11 @@ const QUESTION_BANK = [
     build: (s, p, level) => {
       const correct = s.ytg - p.gain;
       return {
-        q: `It's ${downDistanceLabel(s.down, s.ytg)}. You gain ${yds(p.gain)}.\nHow many yards left for a first down?`,
+        q: `It's ${downDistanceLabel(s.down, s.ytg)}. ${gainSentence(s, p)}.\nHow many yards are left for a first down?`,
         correct,
         choices: makeNumericChoices(correct, level, { min: 1, max: 10 }),
         choiceType: 'number',
-        explain: `${s.ytg} - ${p.gain} = ${correct}, so ${correct} yards are left.`,
+        explain: `${s.ytg} - ${p.gain} = ${correct}, so ${yds(correct)} are left.`,
       };
     },
   },
@@ -334,11 +543,11 @@ const QUESTION_BANK = [
     build: (s, p, level) => {
       const correct = 10 - p.gain;
       return {
-        q: `It's 1st & 10. You gain ${yds(p.gain)}.\nHow many more for a first down?`,
+        q: `It's 1st & 10. ${gainSentence(s, p)}.\nHow many more for a first down?`,
         correct,
         choices: makeNumericChoices(correct, level, { min: 1, max: 10 }),
         choiceType: 'number',
-        explain: `10 - ${p.gain} = ${correct}, so you need ${correct} more.`,
+        explain: `10 - ${p.gain} = ${correct}, so ${yds(correct)} more are needed.`,
       };
     },
   },
@@ -346,15 +555,11 @@ const QUESTION_BANK = [
     id: 'new-yard-line',
     rating: 2,
     weight: 3,
-    canUse: (s, p, level) => {
-      if (p.isTouchdown) return false;
-      if (level.key === 'warmup') return false;
-      return yardNumber(p.newYd) <= level.numberMax;
-    },
+    canUse: (s, p, level) => !p.isTouchdown && level.maxRating >= 2 && fieldNumber(p.newYd) <= level.numberMax,
     build: (s, p, level) => {
       const correct = ydLabel(p.newYd);
       return {
-        q: `You're on ${ydLabel(p.oldYd)} and gain ${yds(p.gain)}.\nWhat yard line are you on now?`,
+        q: `${locationGainSentence(s, p)}.\nWhat yard line is the ball on?`,
         correct,
         choices: makeYardChoices(p.newYd, level, [p.oldYd]),
         choiceType: 'yard',
@@ -370,11 +575,11 @@ const QUESTION_BANK = [
     build: (s, p, level) => {
       const correct = s.ytg - p.gain;
       return {
-        q: `It's ${downDistanceLabel(s.down, s.ytg)}. You gain ${yds(p.gain)}.\nHow many yards short of the marker are you?`,
+        q: `It's ${downDistanceLabel(s.down, s.ytg)}. ${gainSentence(s, p)}.\nHow many yards short of the marker is that?`,
         correct,
         choices: makeNumericChoices(correct, level, { min: 1, max: 10 }),
         choiceType: 'number',
-        explain: `${s.ytg} - ${p.gain} = ${correct}, so you're ${correct} yards short.`,
+        explain: `${s.ytg} - ${p.gain} = ${correct}, so the play is ${yds(correct)} short.`,
       };
     },
   },
@@ -384,58 +589,67 @@ const QUESTION_BANK = [
     weight: 2,
     canUse: (s, p, level) => p.driveYards > 3 && fitsLevelNumber(p.driveYards, level),
     build: (s, p, level) => ({
-      q: `Drive started at ${ydLabel(s.driveStart)}. Now you're at ${ydLabel(p.newYd)}.\nHow many yards gained this drive?`,
+      q: `Drive started at ${ydLabel(s.driveStart)}. After this play, the ball would be at ${ydLabel(p.newYd)}.\nHow many yards is that drive?`,
       correct: p.driveYards,
       choices: makeNumericChoices(p.driveYards, level, { min: 1, max: level.numberMax }),
       choiceType: 'number',
-      explain: `From ${ydLabel(s.driveStart)} to ${ydLabel(p.newYd)} is ${p.driveYards} yards gained.`,
+      explain: `From ${ydLabel(s.driveStart)} to ${ydLabel(p.newYd)} is ${yds(p.driveYards)}.`,
     }),
   },
   {
-    id: 'yards-to-endzone-opp',
+    id: 'yards-to-endzone-near',
     rating: 3,
     weight: 3,
-    canUse: (s, p, level) => !p.isTouchdown && p.newYd > 50 && fitsLevelNumber(100 - p.newYd, level),
+    canUse: (s, p, level) => !p.isTouchdown && yardsToGoal(p.newYd, s.direction) <= 50 && fitsLevelNumber(yardsToGoal(p.newYd, s.direction), level),
     build: (s, p, level) => {
-      const correct = 100 - p.newYd;
+      const correct = yardsToGoal(p.newYd, s.direction);
       return {
-        q: `You're on ${ydLabel(p.newYd)}.\nHow many yards to the end zone?`,
+        q: `The ball would be on ${ydLabel(p.newYd)}.\nHow many yards to the end zone?`,
         correct,
         choices: makeNumericChoices(correct, level, { min: 1, max: level.numberMax }),
         choiceType: 'number',
-        explain: `The end zone is at 0 on the opponent side. ${ydLabel(p.newYd)} means ${correct} yards to go.`,
+        explain: `From ${ydLabel(p.newYd)}, the end zone is ${yds(correct)} away.`,
       };
     },
   },
   {
-    id: 'yards-to-endzone-own',
+    id: 'yards-to-endzone-far',
     rating: 5,
     weight: 2,
-    canUse: (s, p, level) => !p.isTouchdown && p.newYd <= 50 && fitsLevelNumber(100 - p.newYd, level),
+    canUse: (s, p, level) => !p.isTouchdown && yardsToGoal(p.newYd, s.direction) > 50 && fitsLevelNumber(yardsToGoal(p.newYd, s.direction), level),
     build: (s, p, level) => {
-      const correct = 100 - p.newYd;
+      const correct = yardsToGoal(p.newYd, s.direction);
       return {
-        q: `You're on ${ydLabel(p.newYd)}.\nHow many yards to the end zone?`,
+        q: `The ball would be on ${ydLabel(p.newYd)}.\nHow many yards to the end zone?`,
         correct,
         choices: makeNumericChoices(correct, level, { min: 1, max: level.numberMax }),
         choiceType: 'number',
-        explain: `From ${ydLabel(p.newYd)} you still have ${correct} yards to the end zone.`,
+        explain: `From ${ydLabel(p.newYd)}, the end zone is ${yds(correct)} away.`,
       };
     },
+  },
+  {
+    id: 'down-distance',
+    rating: 3,
+    weight: 1,
+    canUse: (s, p) => !p.isTouchdown && !p.gotFirstDown && !p.isTurnoverOnDowns && p.newYtg > 0,
+    build: (s, p, level) => ({
+      q: `It's ${downDistanceLabel(s.down, s.ytg)}. ${gainSentence(s, p)}.\nWhat is the new down and distance?`,
+      correct: downDistanceLabel(p.newDown, p.newYtg),
+      choices: makeDownDistanceChoices(p.newDown, p.newYtg, level),
+      choiceType: 'category',
+      explain: `The next play would be ${downDistanceLabel(p.newDown, p.newYtg)}.`,
+    }),
   },
   {
     id: 'what-happened',
     rating: 2,
     weight: 1,
-    canUse: (s, p, level) => {
-      if (level.key === 'warmup') return false;
-      if (level.key === 'rookie') return (p.isTouchdown || p.gotFirstDown) && s.down <= 2;
-      return true;
-    },
+    canUse: () => true,
     build: (s, p) => {
       const correct = playResult(p);
       return {
-        q: `It's ${downDistanceLabel(s.down, s.ytg)} from ${ydLabel(p.oldYd)}. You gain ${yds(p.gain)}.\nWhat happened?`,
+        q: `It's ${downDistanceLabel(s.down, s.ytg)} from ${ydLabel(p.oldYd)}. ${gainSentence(s, p)}.\nWhat happens?`,
         correct,
         choices: RESULT_CHOICES,
         choiceType: 'category',
@@ -467,14 +681,21 @@ function pickQuestion(s, play, level) {
   return { id: entry.id, ...entry.build(s, play, level) };
 }
 
-function buildPlay(s) {
-  const level = getCurrentLevel();
-  const maxG = Math.min(level.gRange[1], 100 - s.yd);
-  const minG = Math.min(level.gRange[0], maxG);
-  const gain = Math.max(1, Math.floor(Math.random() * (maxG - minG + 1)) + minG);
-  const play = makePlaySnapshot(s, gain);
-  const question = pickQuestion(s, play, level);
-  return { ...play, ...question };
+function buildPlay(callKey, opts = {}) {
+  const call = OFFENSE_CALLS[callKey] || OFFENSE_CALLS.shortRun;
+  const maxPossible = state.direction === 1 ? 100 - state.yd : state.yd;
+  const maxG = Math.max(1, Math.min(call.gRange[1], maxPossible));
+  const minG = Math.max(1, Math.min(call.gRange[0], maxG));
+  let gain = randomInt(minG, maxG);
+
+  if (opts.gainMultiplier) {
+    gain = clamp(Math.round(gain * opts.gainMultiplier), 1, maxPossible);
+  }
+
+  const play = makePlaySnapshot(state, gain, call);
+  const profile = makeQuestionProfile(callKey, opts.ratingAdjust || 0);
+  const question = pickQuestion(state, play, profile);
+  return { ...play, ...question, callKey, questionRating: profile.maxRating };
 }
 
 // -- Field --------------------------------------------------------------------
@@ -494,7 +715,7 @@ function buildField() {
     fw.appendChild(ln);
     const lb = document.createElement('div');
     lb.className = 'ylabel'; lb.style.left = yardToPct(y) + '%';
-    lb.textContent = y <= 50 ? y : 100 - y;
+    lb.textContent = fieldNumber(y);
     fw.appendChild(lb);
   });
 }
@@ -502,26 +723,45 @@ function buildField() {
 function updateField(animated) {
   const ball = document.getElementById('ball');
   const fdl = document.getElementById('fd-line');
+  const fw = document.getElementById('field-wrap');
+  fw.classList.toggle('defense', state.possession === 'defense');
   if (!animated) {
     ball.style.transition = 'none'; fdl.style.transition = 'none';
     requestAnimationFrame(() => { ball.style.transition = ''; fdl.style.transition = ''; });
   }
   ball.style.left = (yardToPct(state.animYd) - 2.2) + '%';
-  fdl.style.left = yardToPct(Math.min(state.fdYd, 100)) + '%';
+  fdl.style.left = yardToPct(clamp(state.fdYd, 0, 100)) + '%';
 }
 
 function updateStatus() {
-  const level = currentLevelKey ? getCurrentLevel().label : 'Pick Level';
   document.getElementById('s-down').textContent = downDistanceLabel(state.down, state.ytg);
   document.getElementById('s-yd').textContent = ydLabel(state.yd, true);
-  document.getElementById('s-plays').textContent = `${state.plays} / 10`;
-  document.getElementById('s-level').textContent = level;
+  document.getElementById('s-quarter').textContent = `Q${state.quarter}`;
+  document.getElementById('s-score').textContent = `${state.playerScore} - ${state.opponentScore}`;
 }
 
 function setFeedback(t) { document.getElementById('feedback').textContent = t; }
 
+function hideAnswerButtons() {
+  document.getElementById('btn-row').classList.add('hidden');
+  [0, 1, 2, 3].forEach(i => {
+    const b = document.getElementById('b' + i);
+    b.disabled = true;
+    b.textContent = '';
+    b.classList.remove('wrong');
+  });
+}
+
+function hideCallGrid() {
+  const grid = document.getElementById('call-grid');
+  grid.classList.add('hidden');
+  grid.innerHTML = '';
+}
+
 function renderButtons() {
-  [0, 1, 2].forEach(i => {
+  hideCallGrid();
+  document.getElementById('btn-row').classList.remove('hidden');
+  [0, 1, 2, 3].forEach(i => {
     const b = document.getElementById('b' + i);
     const hasChoice = i < state.choices.length;
     b.classList.toggle('hidden', !hasChoice);
@@ -532,18 +772,65 @@ function renderButtons() {
       return;
     }
     b.textContent = state.choices[i];
-    b.style.fontSize = state.choiceType === 'number' ? '36px' : state.choiceType === 'down' ? '30px' : '22px';
+    b.style.fontSize = state.choiceType === 'number' ? '34px' : state.choiceType === 'down' ? '28px' : state.choiceType === 'yard' ? '18px' : '20px';
   });
 }
 
+function renderCallGrid(calls, onPick) {
+  hideAnswerButtons();
+  const grid = document.getElementById('call-grid');
+  grid.innerHTML = '';
+  grid.classList.remove('hidden');
+  calls.forEach((call) => {
+    const btn = document.createElement('button');
+    btn.className = 'call-btn';
+    btn.dataset.risk = call.risk || 'medium';
+    btn.innerHTML = `<span class="call-label">${call.label}</span><span class="call-desc">${call.desc}</span>`;
+    btn.addEventListener('click', () => onPick(call.key));
+    grid.appendChild(btn);
+  });
+}
+
+function disableAnswers() {
+  [0, 1, 2, 3].forEach(i => document.getElementById('b' + i).disabled = true);
+}
+
 // -- Play flow ----------------------------------------------------------------
-function startPlay() {
-  if (!currentLevelKey) { showDifficultyPicker(); return; }
-  if (state.plays >= 10 || state.tds >= 2) { showEnd(); return; }
-  const p = buildPlay(state);
+function showCallPrompt() {
+  clearTimeout(advTimer);
+  Object.assign(state, blankPlayState(), { phase: 'call' });
+  updateStatus();
+  if (state.possession === 'offense') {
+    document.getElementById('play-label').textContent = `Your Ball: ${downDistanceLabel(state.down, state.ytg)}`;
+    document.getElementById('question').textContent = 'Pick your play. Short plays are easier; long plays are harder.';
+    renderCallGrid(Object.values(OFFENSE_CALLS), selectOffenseCall);
+  } else {
+    document.getElementById('play-label').textContent = `Opponent Ball: ${downDistanceLabel(state.down, state.ytg)}`;
+    document.getElementById('question').textContent = 'Pick your defense. Matching their play makes the question easier.';
+    renderCallGrid(Object.values(DEFENSE_CALLS), selectDefenseCall);
+  }
+  setFeedback('');
+}
+
+function startDrive(possession) {
+  clearTimeout(advTimer);
+  hideOverlays();
+  state = {
+    ...gameSnapshot(),
+    ...makeDriveState(possession),
+    ...blankPlayState(),
+    phase: 'call',
+  };
+  updateField(false);
+  updateStatus();
+  showCallPrompt();
+}
+
+function prepareQuestion(p, labelHtml) {
   Object.assign(state, {
     g: p.gain,
     label: p.label,
+    callKey: p.callKey,
     questionId: p.id,
     question: p.q,
     correct: p.correct,
@@ -553,14 +840,44 @@ function startPlay() {
     play: p,
     phase: 'question',
   });
-  document.getElementById('play-label').innerHTML = `${state.label} for <span>${yds(state.g)}!</span>`;
+  document.getElementById('play-label').innerHTML = labelHtml;
   document.getElementById('question').textContent = state.question;
   setFeedback('');
   renderButtons();
-  setTimeout(() => {
-    state.animYd = Math.min(state.yd + state.g, 100);
-    updateField(true);
-  }, 200);
+}
+
+function selectOffenseCall(callKey) {
+  if (state.phase !== 'call' || state.possession !== 'offense') return;
+  const p = buildPlay(callKey);
+  prepareQuestion(p, `${p.label} attempt for <span>${yds(p.gain)}</span>`);
+}
+
+function pickOpponentCall() {
+  return weightedPick(OPPONENT_CALL_WEIGHTS).key;
+}
+
+function defenseMatches(defenseCallKey, opponentCallKey) {
+  const call = DEFENSE_CALLS[defenseCallKey];
+  return call && call.covers.includes(opponentCallKey);
+}
+
+function selectDefenseCall(defenseCallKey) {
+  if (state.phase !== 'call' || state.possession !== 'defense') return;
+  const opponentCallKey = pickOpponentCall();
+  const matched = defenseMatches(defenseCallKey, opponentCallKey);
+  const p = buildPlay(opponentCallKey, {
+    ratingAdjust: matched ? -1 : 1,
+    gainMultiplier: matched ? 0.65 : 1.2,
+  });
+  Object.assign(state, {
+    defenseCallKey,
+    opponentCallKey,
+    matchup: matched ? 'matched' : 'mismatch',
+  });
+  const call = OFFENSE_CALLS[opponentCallKey];
+  const read = matched ? 'Good matchup' : 'Mismatch';
+  prepareQuestion(p, `Opponent ${call.label.toLowerCase()} for <span>${yds(p.gain)}</span>`);
+  setFeedback(`${read}: ${DEFENSE_CALLS[defenseCallKey].label} vs ${call.label}`);
 }
 
 function handleAnswer(idx) {
@@ -569,6 +886,11 @@ function handleAnswer(idx) {
   if (!btn || btn.disabled || btn.classList.contains('hidden')) return;
   const val = state.choices[idx];
 
+  if (state.possession === 'defense') {
+    handleDefenseAnswer(btn, val);
+    return;
+  }
+
   if (val !== state.correct) {
     btn.classList.add('wrong'); btn.disabled = true;
     setFeedback(state.explain || 'Try again!');
@@ -576,99 +898,237 @@ function handleAnswer(idx) {
     return;
   }
 
-  [0, 1, 2].forEach(i => document.getElementById('b' + i).disabled = true);
+  disableAnswers();
   state.phase = 'feedback';
+  resolveOffensePlay();
+}
+
+function handleDefenseAnswer(btn, val) {
+  disableAnswers();
+  state.phase = 'feedback';
+  if (val === state.correct) {
+    setFeedback('Great read! You stopped them.');
+    resolveDefenseStop();
+    return;
+  }
+
+  btn.classList.add('wrong');
+  setFeedback(`${state.explain || 'That answer misses it.'} Opponent gains ${yds(state.g)}.`);
+  setTimeout(() => { btn.classList.remove('wrong'); }, 700);
+  resolveDefenseGain();
+}
+
+function applyPlayState(p) {
+  state.yd = p.newYd;
+  state.fdYd = p.newFdYd;
+  state.down = p.newDown;
+  state.ytg = p.newYtg;
+  state.animYd = p.newYd;
+  state.drivePlays++;
   state.plays++;
-  const newYd = Math.min(state.yd + state.g, 100);
+  updateField(true);
+  updateStatus();
+}
 
-  if (newYd >= 100) {
-    state.tds++; state.yd = newYd; state.animYd = 100;
-    updateField(true); updateStatus(); setFeedback('🏈 Touchdown!');
-    setTimeout(() => { if (state.tds >= 2 || state.plays >= 10) showEnd(); else showTD(); }, 900);
+function resolveOffensePlay() {
+  const p = state.play;
+  applyPlayState(p);
+
+  if (p.isTouchdown) {
+    state.tds++;
+    state.playerScore += TD_POINTS;
+    updateStatus();
+    setFeedback('🏈 Touchdown!');
+    advTimer = setTimeout(showTD, 900);
     return;
   }
 
-  let newDown = state.down + 1;
-  let newYtg = Math.max(state.fdYd - newYd, 0);
-  let newFdYd = state.fdYd;
-  let fb = 'Correct! ✅';
-
-  if (newYd >= state.fdYd) {
-    newDown = 1;
-    newFdYd = Math.min(newYd + 10, 100);
-    newYtg = Math.max(newFdYd - newYd, 1);
-    fb = '🎉 First Down!';
-  } else if (newDown > 4) {
-    const saved = { plays: state.plays, tds: state.tds };
-    state = initBase();
-    state.plays = saved.plays; state.tds = saved.tds;
-    updateField(false); updateStatus(); setFeedback('Turnover on downs…');
-    clearTimeout(advTimer);
-    advTimer = setTimeout(() => { if (state.plays >= 10) showEnd(); else startPlay(); }, 1600);
+  if (p.isTurnoverOnDowns) {
+    setFeedback('Turnover on downs…');
+    advTimer = setTimeout(() => showDefenseTransition('Turnover on downs. Time to play defense!'), 1400);
     return;
   }
 
-  state.yd = newYd; state.fdYd = newFdYd; state.down = newDown; state.ytg = newYtg;
-  state.animYd = newYd;
-  updateField(true); updateStatus(); setFeedback(fb);
-  clearTimeout(advTimer);
-  advTimer = setTimeout(() => { if (state.plays >= 10) showEnd(); else startPlay(); }, 1600);
+  setFeedback(p.gotFirstDown ? '🎉 First Down!' : 'Correct! ✅');
+  advTimer = setTimeout(showCallPrompt, 1400);
 }
 
-function showDifficultyPicker() {
-  clearTimeout(advTimer);
-  document.getElementById('ov-end').classList.remove('show');
-  document.getElementById('ov-td').classList.remove('show');
-  document.getElementById('ov-diff').classList.add('show');
-  state.phase = 'picker';
+function resolveDefenseStop() {
+  state.drivePlays++;
+  state.plays++;
+  const nextDown = state.down + 1;
+
+  if (nextDown > 4) {
+    state.defenseStops++;
+    updateStatus();
+    advTimer = setTimeout(() => finishDefensePossession('Your defense held!'), 1200);
+    return;
+  }
+
+  state.down = nextDown;
+  state.ytg = distanceToMarker(state.yd, state.fdYd, state.direction);
+  updateStatus();
+  advTimer = setTimeout(showCallPrompt, 1200);
 }
 
-function pickLevel(key) {
-  if (!LEVELS[key]) return;
+function resolveDefenseGain() {
+  const p = state.play;
+  applyPlayState(p);
+
+  if (p.isTouchdown) {
+    state.opponentTds++;
+    state.opponentScore += TD_POINTS;
+    updateStatus();
+    setFeedback('Opponent touchdown.');
+    advTimer = setTimeout(() => finishDefensePossession('Opponent scored.'), 1300);
+    return;
+  }
+
+  if (p.isTurnoverOnDowns) {
+    state.defenseStops++;
+    setFeedback('Defense holds!');
+    advTimer = setTimeout(() => finishDefensePossession('Your defense held!'), 1300);
+    return;
+  }
+
+  setFeedback(p.gotFirstDown ? 'Opponent first down.' : `Opponent gains ${p.gain}.`);
+  advTimer = setTimeout(showCallPrompt, 1300);
+}
+
+function hideOverlays() {
+  ['ov-start', 'ov-td', 'ov-defense', 'ov-quarter', 'ov-halftime', 'ov-end'].forEach((id) => {
+    document.getElementById(id).classList.remove('show');
+  });
+}
+
+function showStart() {
   clearTimeout(advTimer);
-  currentLevelKey = key;
-  document.getElementById('ov-diff').classList.remove('show');
-  document.getElementById('ov-end').classList.remove('show');
-  document.getElementById('ov-td').classList.remove('show');
-  state = initBase();
-  updateField(false); updateStatus(); startPlay();
+  hideOverlays();
+  document.getElementById('ov-start').classList.add('show');
+  document.getElementById('play-label').textContent = 'Get ready…';
+  document.getElementById('question').textContent = '';
+  setFeedback('');
+  hideAnswerButtons();
+  hideCallGrid();
+  state.phase = 'start';
+}
+
+function startGame() {
+  clearTimeout(advTimer);
+  state = createGameState();
+  hideOverlays();
+  startDrive('offense');
 }
 
 function showTD() {
+  Object.assign(state, blankPlayState(), { phase: 'touchdown' });
   document.getElementById('ov-td-sub').textContent =
-    `${state.tds} touchdown${state.tds > 1 ? 's' : ''}! Keep going!`;
+    `Score: ${state.playerScore} - ${state.opponentScore}. ${state.tds} player TD${state.tds === 1 ? '' : 's'}!`;
   document.getElementById('ov-td').classList.add('show');
 }
 
 function afterTouchdown() {
   document.getElementById('ov-td').classList.remove('show');
-  const saved = { plays: state.plays, tds: state.tds };
-  state = initBase();
-  state.plays = saved.plays; state.tds = saved.tds;
-  updateField(false); updateStatus(); startPlay();
+  showDefenseTransition('You scored. Now stop the opponent!');
 }
 
-function showEnd() { document.getElementById('ov-end').classList.add('show'); }
+function showDefenseTransition(message) {
+  clearTimeout(advTimer);
+  Object.assign(state, blankPlayState(), { phase: 'transition' });
+  document.getElementById('ov-defense-sub').textContent =
+    `${message} Score: ${state.playerScore} - ${state.opponentScore}`;
+  document.getElementById('ov-defense').classList.add('show');
+}
+
+function startDefense() {
+  document.getElementById('ov-defense').classList.remove('show');
+  startDrive('defense');
+}
+
+function finishDefensePossession(message) {
+  state.phase = 'transition';
+  if (state.quarter >= 4) {
+    showGameOver();
+    return;
+  }
+  if (state.quarter === 2) {
+    showHalftime(message);
+    return;
+  }
+  showQuarterEnd(message);
+}
+
+function showQuarterEnd(message) {
+  Object.assign(state, blankPlayState(), { phase: 'quarter' });
+  document.getElementById('ov-quarter-title').textContent = `End of ${QUARTER_NAMES[state.quarter]} Quarter`;
+  document.getElementById('ov-quarter-sub').textContent =
+    `${message} Score: ${state.playerScore} - ${state.opponentScore}`;
+  document.getElementById('ov-quarter').classList.add('show');
+}
+
+function showHalftime(message) {
+  Object.assign(state, blankPlayState(), { phase: 'halftime' });
+  document.getElementById('ov-halftime-sub').textContent =
+    `${message} Score: ${state.playerScore} - ${state.opponentScore}`;
+  document.getElementById('ov-halftime').classList.add('show');
+}
+
+function nextQuarter() {
+  hideOverlays();
+  state.quarter = Math.min(state.quarter + 1, 4);
+  startDrive('offense');
+}
+
+function showGameOver() {
+  const diff = state.playerScore - state.opponentScore;
+  const title = diff > 0 ? 'You Win!' : diff < 0 ? 'Final Score' : 'Tie Game!';
+  const emoji = diff > 0 ? '🏆' : diff < 0 ? '🏈' : '🤝';
+  const detail = diff > 0
+    ? 'Great game.'
+    : diff < 0
+      ? 'Good effort. Try another game.'
+      : 'Both teams finished even.';
+
+  Object.assign(state, blankPlayState(), { phase: 'final' });
+  document.getElementById('ov-end-emoji').textContent = emoji;
+  document.getElementById('ov-end-title').textContent = title;
+  document.getElementById('ov-end-sub').textContent =
+    `Final Score: ${state.playerScore} - ${state.opponentScore}. ${detail} Player TDs: ${state.tds}.`;
+  document.getElementById('ov-end').classList.add('show');
+}
 
 function restart() {
-  currentLevelKey = null;
-  state = initBase();
-  updateField(false); updateStatus();
-  showDifficultyPicker();
+  state = createGameState();
+  updateField(false);
+  updateStatus();
+  showStart();
 }
 
 function renderGameToText() {
-  const level = currentLevelKey ? getCurrentLevel().label : null;
   return JSON.stringify({
     mode: state.phase,
-    level,
+    quarter: state.quarter,
+    half: halfLabel(state.quarter || 1),
+    possession: state.possession,
+    score: {
+      player: state.playerScore,
+      opponent: state.opponentScore,
+    },
     down: state.down,
     ytg: state.ytg,
     yardLine: ydLabel(state.yd),
     absoluteYard: state.yd,
     firstDownLine: ydLabel(state.fdYd),
+    direction: state.direction,
     plays: state.plays,
-    touchdowns: state.tds,
+    playerTouchdowns: state.tds,
+    opponentTouchdowns: state.opponentTds,
+    defenseStops: state.defenseStops,
+    drivePlays: state.drivePlays,
+    call: state.callKey,
+    defenseCall: state.defenseCallKey,
+    opponentCall: state.opponentCallKey,
+    matchup: state.matchup,
     gain: state.g ?? null,
     questionId: state.questionId || null,
     question: state.question || null,
@@ -679,10 +1139,11 @@ function renderGameToText() {
 }
 
 window.render_game_to_text = renderGameToText;
+window.advanceTime = () => {};
 
 // -- Init ---------------------------------------------------------------------
 buildField();
-state = initBase();
+state = createGameState();
 updateField(false);
 updateStatus();
-showDifficultyPicker();
+showStart();

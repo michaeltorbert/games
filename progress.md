@@ -90,3 +90,16 @@ Original prompt: yes, do all you need to do to get started
 - Targeted Playwright checks passed for all four exact gain ranges, canonical yard labels, touchdown-over-first-down priority, `is-touchdown` actual-touchdown gating, no `is-first-down` on touchdown plays, unique yard-label choices, wrong-answer explanations, restart-to-picker flow, and forced touchdown overlay flow.
 - Added a dedicated `makeDownDistanceChoices()` helper for later compound answers like `3rd & 4` so future prompts do not reuse numeric-only distractor logic.
 - Re-ran `$HOME/.local/node/current/bin/node --check football/football.js` and the targeted Playwright gating check after the helper addition; both passed.
+- Football Math 4-quarter/play-call overhaul:
+- fetched `origin/codex/football-add-difficulty-levels` and fast-forwarded to `b5ba1e0` before finalizing, preserving and adapting its Duke/Carolina end-zone labels, short `opp` status labels, plain field yard numbers, singular/plural yard text, touchdown yes/no gating, and end-zone distance questions;
+- replaced static difficulty levels and the `plays 0 / 10` ending with a 4-quarter game: each quarter has one player offensive possession and one defensive possession, Q2 leads to halftime, and Q4 defense leads to a final-score overlay;
+- replaced the level picker with per-snap offensive play calls (`Short Run`, `Short Pass`, `Long Run`, `Medium Pass`, `Long Pass`) and defensive calls (`Run Defense`, `Short Pass D`, `Medium Pass D`, `Deep Pass D`);
+- added one-shot defense: correct first answer stops the opponent with no gain, wrong answer immediately applies the opponent gain toward Duke's end zone;
+- generalized yard movement for offense and defense directions, added four answer buttons, delayed ball movement until after answers, added quarter/half questions at low weight, and updated `render_game_to_text` for quarter/score/possession/call state;
+- kept football at `1.5.0` across `football/index.html`, `football/football.js`, `games.js`, and `version.json`.
+- Verification:
+- `$HOME/.local/node/current/bin/node --check football/football.js` passed;
+- Playwright smoke test against `http://127.0.0.1:8000/football/` passed and rendered the post-start play-call screen;
+- `/tmp/football_flow_check.mjs` passed, covering offense-to-defense transition, no pre-answer offensive ball movement, defensive field orientation, one-shot wrong defensive gain, correct defensive stops, Q1 quarter-end overlay, and Q2 offense start;
+- `/tmp/football_visual_check.mjs` generated inspected screenshots for defense call and defense question states in `output/football-v2/`, with no stale updater banner after the `version.json`/`games.js` update;
+- `/tmp/football_full_game_check.mjs` passed, covering all 4 quarters, quarter-end overlays, halftime, and final-score overlay.
