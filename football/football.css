@@ -29,8 +29,16 @@ body {
 }
 .grass  { position: absolute; top: 0; bottom: 0; background: rgba(0,0,0,0.09); }
 .yline  { position: absolute; top: 0; bottom: 0; width: 2px; background: rgba(255,255,255,0.55); }
-.ylabel { position: absolute; bottom: 5px; transform: translateX(-50%); font-size: 9px; color: rgba(255,255,255,0.75); font-weight: 800; white-space: nowrap; }
-.ezlbl  { position: absolute; top: 50%; transform: translateY(-50%); font-size: 10px; color: rgba(255,255,255,0.6); font-weight: 800; letter-spacing: 1px; }
+.ylabel { position: absolute; bottom: 5px; transform: translateX(-50%); font-size: 11px; color: rgba(255,255,255,0.75); font-weight: 800; }
+.ez-text {
+  position: absolute; top: 50%;
+  font-family: Georgia, serif; font-weight: 900;
+  letter-spacing: 3px; white-space: nowrap;
+  text-shadow: 0 0 6px rgba(255,255,255,0.5);
+  z-index: 1; opacity: 0.9;
+}
+.ez-text.ez-left { left: 2.5%; font-size: 18px; transform: translate(-50%, -50%) rotate(-90deg); }
+.ez-text.ez-right { right: 2.5%; font-size: 12px; letter-spacing: 2px; transform: translate(50%, -50%) rotate(90deg); }
 #fd-line {
   position: absolute; top: 0; bottom: 0; width: 4px;
   background: #ffd700; box-shadow: 0 0 10px #ffd700;

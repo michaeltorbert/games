@@ -24,7 +24,7 @@ const LEVELS = {
     maxRating: 2,
     choiceCount: 3,
     numberMax: 20,
-    startYds: [20, 30, 40, 60, 70, 80],
+    startYds: [50, 60, 65, 70, 75, 80],
     tdThreshold: 80,
   },
   starter: {
@@ -97,12 +97,15 @@ function yardNumber(y) {
   return y <= 50 ? y : 100 - y;
 }
 
-function ydLabel(y) {
+function ydLabel(y, short) {
   const v = clamp(Math.round(y), 0, 100);
+  const opp = short ? 'opp' : 'opponent';
   if (v < 50) return `own ${v}`;
   if (v === 50) return '50';
-  return `opponent ${100 - v}`;
+  return `${opp} ${100 - v}`;
 }
+
+function yds(n) { return n === 1 ? '1 yard' : `${n} yards`; }
 
 function downDistanceLabel(down, ytg) {
   return `${DOWN_NAMES[down]} & ${ytg}`;
@@ -250,7 +253,7 @@ const QUESTION_BANK = [
     weight: 3,
     canUse: (s, p) => p.gain < s.ytg && s.down < 4,
     build: (s, p, level) => ({
-      q: `It's ${downDistanceLabel(s.down, s.ytg)}. You gain ${p.gain} yards.\nWhat down is it now?`,
+      q: `It's ${downDistanceLabel(s.down, s.ytg)}. You gain ${yds(p.gain)}.\nWhat down is it now?`,
       correct: DOWN_NAMES[s.down + 1],
       choices: makeDownChoices(s.down + 1, level),
       choiceType: 'down',
@@ -265,7 +268,7 @@ const QUESTION_BANK = [
     build: (s, p) => {
       const correct = p.gotFirstDown ? 'Yes' : 'No';
       return {
-        q: `It's ${downDistanceLabel(s.down, s.ytg)}. You gain ${p.gain} yards.\nDid you get a first down?`,
+        q: `It's ${downDistanceLabel(s.down, s.ytg)}. You gain ${yds(p.gain)}.\nDid you get a first down?`,
         correct,
         choices: makeYesNoChoices(),
         choiceType: 'category',
@@ -292,14 +295,20 @@ const QUESTION_BANK = [
     id: 'is-touchdown',
     rating: 1,
     weight: 2,
-    canUse: (s, p, level) => p.oldYd >= level.tdThreshold && p.oldYd + p.gain >= 100,
-    build: (s, p) => ({
-      q: `You're on ${ydLabel(p.oldYd)} and gain ${p.gain} yards.\nTouchdown?`,
-      correct: 'Yes',
-      choices: makeYesNoChoices(),
-      choiceType: 'category',
-      explain: `${ydLabel(p.oldYd)} plus ${p.gain} yards reaches the goal line. That's a touchdown.`,
-    }),
+    canUse: (s, p, level) => p.oldYd >= level.tdThreshold,
+    build: (s, p) => {
+      const correct = p.isTouchdown ? 'Yes' : 'No';
+      const yardsToGo = 100 - p.oldYd;
+      return {
+        q: `You're on ${ydLabel(p.oldYd)} and gain ${yds(p.gain)}.\nTouchdown?`,
+        correct,
+        choices: makeYesNoChoices(),
+        choiceType: 'category',
+        explain: p.isTouchdown
+          ? `You need ${yardsToGo} yards and gained ${p.gain}. ${p.gain} >= ${yardsToGo}, so yes!`
+          : `You need ${yardsToGo} yards but only gained ${p.gain}. Not enough.`,
+      };
+    },
   },
   {
     id: 'yards-left',
@@ -309,7 +318,7 @@ const QUESTION_BANK = [
     build: (s, p, level) => {
       const correct = s.ytg - p.gain;
       return {
-        q: `It's ${downDistanceLabel(s.down, s.ytg)}. You gain ${p.gain} yards.\nHow many yards left for a first down?`,
+        q: `It's ${downDistanceLabel(s.down, s.ytg)}. You gain ${yds(p.gain)}.\nHow many yards left for a first down?`,
         correct,
         choices: makeNumericChoices(correct, level, { min: 1, max: 10 }),
         choiceType: 'number',
@@ -325,7 +334,7 @@ const QUESTION_BANK = [
     build: (s, p, level) => {
       const correct = 10 - p.gain;
       return {
-        q: `It's 1st & 10. You gain ${p.gain} yards.\nHow many more for a first down?`,
+        q: `It's 1st & 10. You gain ${yds(p.gain)}.\nHow many more for a first down?`,
         correct,
         choices: makeNumericChoices(correct, level, { min: 1, max: 10 }),
         choiceType: 'number',
@@ -339,18 +348,17 @@ const QUESTION_BANK = [
     weight: 3,
     canUse: (s, p, level) => {
       if (p.isTouchdown) return false;
-      if (level.key === 'rookie') return p.oldYd < 50 && p.newYd <= 50 && yardNumber(p.newYd) <= level.numberMax;
       if (level.key === 'warmup') return false;
-      return true;
+      return yardNumber(p.newYd) <= level.numberMax;
     },
     build: (s, p, level) => {
       const correct = ydLabel(p.newYd);
       return {
-        q: `You're on ${ydLabel(p.oldYd)} and gain ${p.gain} yards.\nWhat yard line are you on now?`,
+        q: `You're on ${ydLabel(p.oldYd)} and gain ${yds(p.gain)}.\nWhat yard line are you on now?`,
         correct,
         choices: makeYardChoices(p.newYd, level, [p.oldYd]),
         choiceType: 'yard',
-        explain: `${ydLabel(p.oldYd)} plus ${p.gain} yards moves the ball to ${correct}.`,
+        explain: `${ydLabel(p.oldYd)} plus ${yds(p.gain)} moves the ball to ${correct}.`,
       };
     },
   },
@@ -362,7 +370,7 @@ const QUESTION_BANK = [
     build: (s, p, level) => {
       const correct = s.ytg - p.gain;
       return {
-        q: `It's ${downDistanceLabel(s.down, s.ytg)}. You gain ${p.gain} yards.\nHow many yards short of the marker are you?`,
+        q: `It's ${downDistanceLabel(s.down, s.ytg)}. You gain ${yds(p.gain)}.\nHow many yards short of the marker are you?`,
         correct,
         choices: makeNumericChoices(correct, level, { min: 1, max: 10 }),
         choiceType: 'number',
@@ -384,6 +392,38 @@ const QUESTION_BANK = [
     }),
   },
   {
+    id: 'yards-to-endzone-opp',
+    rating: 3,
+    weight: 3,
+    canUse: (s, p, level) => !p.isTouchdown && p.newYd > 50 && fitsLevelNumber(100 - p.newYd, level),
+    build: (s, p, level) => {
+      const correct = 100 - p.newYd;
+      return {
+        q: `You're on ${ydLabel(p.newYd)}.\nHow many yards to the end zone?`,
+        correct,
+        choices: makeNumericChoices(correct, level, { min: 1, max: level.numberMax }),
+        choiceType: 'number',
+        explain: `The end zone is at 0 on the opponent side. ${ydLabel(p.newYd)} means ${correct} yards to go.`,
+      };
+    },
+  },
+  {
+    id: 'yards-to-endzone-own',
+    rating: 5,
+    weight: 2,
+    canUse: (s, p, level) => !p.isTouchdown && p.newYd <= 50 && fitsLevelNumber(100 - p.newYd, level),
+    build: (s, p, level) => {
+      const correct = 100 - p.newYd;
+      return {
+        q: `You're on ${ydLabel(p.newYd)}.\nHow many yards to the end zone?`,
+        correct,
+        choices: makeNumericChoices(correct, level, { min: 1, max: level.numberMax }),
+        choiceType: 'number',
+        explain: `From ${ydLabel(p.newYd)} you still have ${correct} yards to the end zone.`,
+      };
+    },
+  },
+  {
     id: 'what-happened',
     rating: 2,
     weight: 1,
@@ -395,15 +435,15 @@ const QUESTION_BANK = [
     build: (s, p) => {
       const correct = playResult(p);
       return {
-        q: `It's ${downDistanceLabel(s.down, s.ytg)} from ${ydLabel(p.oldYd)}. You gain ${p.gain} yards.\nWhat happened?`,
+        q: `It's ${downDistanceLabel(s.down, s.ytg)} from ${ydLabel(p.oldYd)}. You gain ${yds(p.gain)}.\nWhat happened?`,
         correct,
         choices: RESULT_CHOICES,
         choiceType: 'category',
         explain: correct === 'Touchdown'
           ? 'Touchdown is the biggest result, so it is the answer.'
           : correct === 'First Down'
-            ? `${p.gain} yards reaches the marker, so it is a first down.`
-            : `${p.gain} yards does not reach the marker or the end zone.`,
+            ? `${yds(p.gain)} reaches the marker, so it is a first down.`
+            : `${yds(p.gain)} does not reach the marker or the end zone.`,
       };
     },
   },
@@ -454,7 +494,7 @@ function buildField() {
     fw.appendChild(ln);
     const lb = document.createElement('div');
     lb.className = 'ylabel'; lb.style.left = yardToPct(y) + '%';
-    lb.textContent = ydLabel(y);
+    lb.textContent = y <= 50 ? y : 100 - y;
     fw.appendChild(lb);
   });
 }
@@ -473,7 +513,7 @@ function updateField(animated) {
 function updateStatus() {
   const level = currentLevelKey ? getCurrentLevel().label : 'Pick Level';
   document.getElementById('s-down').textContent = downDistanceLabel(state.down, state.ytg);
-  document.getElementById('s-yd').textContent = ydLabel(state.yd);
+  document.getElementById('s-yd').textContent = ydLabel(state.yd, true);
   document.getElementById('s-plays').textContent = `${state.plays} / 10`;
   document.getElementById('s-level').textContent = level;
 }
@@ -513,7 +553,7 @@ function startPlay() {
     play: p,
     phase: 'question',
   });
-  document.getElementById('play-label').innerHTML = `${state.label} for <span>${state.g} yards!</span>`;
+  document.getElementById('play-label').innerHTML = `${state.label} for <span>${yds(state.g)}!</span>`;
   document.getElementById('question').textContent = state.question;
   setFeedback('');
   renderButtons();
