@@ -103,3 +103,14 @@ Original prompt: yes, do all you need to do to get started
 - `/tmp/football_flow_check.mjs` passed, covering offense-to-defense transition, no pre-answer offensive ball movement, defensive field orientation, one-shot wrong defensive gain, correct defensive stops, Q1 quarter-end overlay, and Q2 offense start;
 - `/tmp/football_visual_check.mjs` generated inspected screenshots for defense call and defense question states in `output/football-v2/`, with no stale updater banner after the `version.json`/`games.js` update;
 - `/tmp/football_full_game_check.mjs` passed, covering all 4 quarters, quarter-end overlays, halftime, and final-score overlay.
+- Follow-up football one-shot adjustment:
+- made offense wrong answers one-shot: wrong answer now means no gain, down advances, and 4th-down misses turn the ball over;
+- added rotating football outcome messages for offensive misses, defensive stops, and defensive gains, while keeping the math explanation visible after the result;
+- changed defensive question difficulty so it comes from the selected defensive call card instead of random matchup luck; matchup now affects gain size only;
+- exposed `questionRating` and `outcomeMessage` in `render_game_to_text`.
+- bumped football to `1.6.0` across `football/index.html`, `football/football.js`, `games.js`, and `version.json`.
+- Verification:
+- `$HOME/.local/node/current/bin/node --check football/football.js` passed;
+- `/tmp/football_one_shot_check.mjs` passed, covering one-shot offensive misses, play-specific miss text, explanation text, and defense-call-selected question rating;
+- `/tmp/football_flow_check.mjs` and `/tmp/football_full_game_check.mjs` passed after the adjustment;
+- `/tmp/football_wrong_offense_visual.mjs` generated and inspected `output/football-v2/offense-wrong.png`, confirming wrong-answer feedback is visible with no ball gain and down advancement.

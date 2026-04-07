@@ -1,4 +1,4 @@
-const GAME_VERSION = '1.5.0';
+const GAME_VERSION = '1.6.0';
 const EZ = 5;
 function yardToPct(y) { return EZ + (y / 100) * (100 - 2 * EZ); }
 
@@ -55,29 +55,33 @@ const DEFENSE_CALLS = {
   run: {
     key: 'run',
     label: 'Run Defense',
-    desc: 'Stops runs',
+    desc: 'Easy math · stops runs',
     risk: 'easy',
+    rating: 1,
     covers: ['shortRun', 'longRun'],
   },
   shortPass: {
     key: 'shortPass',
     label: 'Short Pass D',
-    desc: 'Covers quick throws',
+    desc: 'Easy math · quick throws',
     risk: 'easy',
+    rating: 2,
     covers: ['shortPass'],
   },
   mediumPass: {
     key: 'mediumPass',
     label: 'Medium Pass D',
-    desc: 'Covers middle',
+    desc: 'Medium math · middle',
     risk: 'medium',
+    rating: 3,
     covers: ['mediumPass'],
   },
   deepPass: {
     key: 'deepPass',
     label: 'Deep Pass D',
-    desc: 'Stops long pass',
+    desc: 'Hard math · deep ball',
     risk: 'hard',
+    rating: 4,
     covers: ['longPass'],
   },
 };
@@ -89,6 +93,95 @@ const OPPONENT_CALL_WEIGHTS = [
   { key: 'mediumPass', weight: 3 },
   { key: 'longPass', weight: 3 },
 ];
+
+const OFFENSE_MISS_MESSAGES = {
+  shortRun: [
+    'Your run was stuffed at the line.',
+    'The defense filled the gap. No gain.',
+    'A linebacker wrapped up the runner.',
+    'The pile went nowhere.',
+  ],
+  shortPass: [
+    'The short pass was batted down.',
+    'The receiver slipped, incomplete.',
+    'The defender jumped the route.',
+    'The pass fell incomplete.',
+  ],
+  longRun: [
+    'The edge was sealed off. No gain.',
+    'The defense strung out the run.',
+    'The runner got bottled up.',
+    'The cutback lane closed fast.',
+  ],
+  mediumPass: [
+    'The pass was broken up.',
+    'The quarterback had to throw it away.',
+    'The coverage was too tight.',
+    'The ball skipped incomplete.',
+  ],
+  longPass: [
+    'The deep ball sailed incomplete.',
+    'The safety knocked it away.',
+    'The receiver was double covered.',
+    'The pass was just out of reach.',
+  ],
+};
+
+const DEFENSE_STOP_MESSAGES = {
+  shortRun: [
+    'You stuffed the run at the line.',
+    'Your defense filled the gap.',
+    'Big tackle. No gain.',
+  ],
+  shortPass: [
+    'You batted down the short pass.',
+    'Great coverage on the quick throw.',
+    'The receiver was covered. Incomplete.',
+  ],
+  longRun: [
+    'You sealed the edge and stopped the run.',
+    'Your defense chased it down.',
+    'The runner had nowhere to go.',
+  ],
+  mediumPass: [
+    'You broke up the pass over the middle.',
+    'Tight coverage forced an incompletion.',
+    'Your defender got a hand on it.',
+  ],
+  longPass: [
+    'You knocked away the deep ball.',
+    'Great safety help over the top.',
+    'The deep pass fell incomplete.',
+  ],
+};
+
+const DEFENSE_GAIN_MESSAGES = {
+  shortRun: [
+    'The opponent found a small crease.',
+    'The runner squeezed through the line.',
+    'The opponent powered forward.',
+  ],
+  shortPass: [
+    'The opponent completed the quick pass.',
+    'The receiver found space underneath.',
+    'The short throw was complete.',
+  ],
+  longRun: [
+    'The runner bounced outside.',
+    'The opponent broke through the edge.',
+    'The run hit a big lane.',
+  ],
+  mediumPass: [
+    'The opponent hit the middle route.',
+    'The pass found a window in coverage.',
+    'The receiver caught it over the middle.',
+  ],
+  longPass: [
+    'The opponent connected deep.',
+    'The receiver got behind the defense.',
+    'The deep throw was complete.',
+  ],
+};
 
 let state = {};
 let advTimer = null;
@@ -196,6 +289,7 @@ function blankPlayState() {
     choices: [],
     choiceType: 'number',
     explain: null,
+    outcomeMessage: null,
     play: null,
   };
 }
@@ -241,15 +335,19 @@ function fitsLevelNumber(value, level) {
   return value <= level.numberMax;
 }
 
-function makeQuestionProfile(callKey, ratingAdjust = 0) {
-  const call = OFFENSE_CALLS[callKey] || OFFENSE_CALLS.shortRun;
-  const rating = clamp(call.rating + ratingAdjust, 1, 5);
+function makeQuestionProfileForRating(baseRating) {
+  const rating = clamp(baseRating, 1, 5);
   return {
     key: rating <= 2 ? 'easy' : 'hard',
     maxRating: rating,
     choiceCount: 4,
     numberMax: rating <= 1 ? 10 : rating <= 2 ? 20 : rating <= 3 ? 50 : 100,
   };
+}
+
+function makeQuestionProfile(callKey, ratingAdjust = 0) {
+  const call = OFFENSE_CALLS[callKey] || OFFENSE_CALLS.shortRun;
+  return makeQuestionProfileForRating(call.rating + ratingAdjust);
 }
 
 function makeNumericChoices(correct, level, opts = {}) {
@@ -351,6 +449,10 @@ function makeYardChoices(correctYd, level, anchors = []) {
     ? entries.sort((a, b) => a[1] - b[1])
     : shuffle(entries);
   return ordered.map(([label]) => label);
+}
+
+function outcomeMessage(messagesByCall, callKey) {
+  return choose(messagesByCall[callKey] || messagesByCall.shortRun);
 }
 
 function gainSentence(s, p) {
@@ -693,7 +795,9 @@ function buildPlay(callKey, opts = {}) {
   }
 
   const play = makePlaySnapshot(state, gain, call);
-  const profile = makeQuestionProfile(callKey, opts.ratingAdjust || 0);
+  const profile = opts.questionRating
+    ? makeQuestionProfileForRating(opts.questionRating)
+    : makeQuestionProfile(callKey, opts.ratingAdjust || 0);
   const question = pickQuestion(state, play, profile);
   return { ...play, ...question, callKey, questionRating: profile.maxRating };
 }
@@ -806,7 +910,7 @@ function showCallPrompt() {
     renderCallGrid(Object.values(OFFENSE_CALLS), selectOffenseCall);
   } else {
     document.getElementById('play-label').textContent = `Opponent Ball: ${downDistanceLabel(state.down, state.ytg)}`;
-    document.getElementById('question').textContent = 'Pick your defense. Matching their play makes the question easier.';
+    document.getElementById('question').textContent = 'Pick your defense. The card sets the math difficulty; matching their play cuts down the gain.';
     renderCallGrid(Object.values(DEFENSE_CALLS), selectDefenseCall);
   }
   setFeedback('');
@@ -837,6 +941,7 @@ function prepareQuestion(p, labelHtml) {
     choices: p.choices,
     choiceType: p.choiceType || 'number',
     explain: p.explain,
+    outcomeMessage: null,
     play: p,
     phase: 'question',
   });
@@ -865,8 +970,9 @@ function selectDefenseCall(defenseCallKey) {
   if (state.phase !== 'call' || state.possession !== 'defense') return;
   const opponentCallKey = pickOpponentCall();
   const matched = defenseMatches(defenseCallKey, opponentCallKey);
+  const defenseCall = DEFENSE_CALLS[defenseCallKey];
   const p = buildPlay(opponentCallKey, {
-    ratingAdjust: matched ? -1 : 1,
+    questionRating: defenseCall.rating,
     gainMultiplier: matched ? 0.65 : 1.2,
   });
   Object.assign(state, {
@@ -877,7 +983,7 @@ function selectDefenseCall(defenseCallKey) {
   const call = OFFENSE_CALLS[opponentCallKey];
   const read = matched ? 'Good matchup' : 'Mismatch';
   prepareQuestion(p, `Opponent ${call.label.toLowerCase()} for <span>${yds(p.gain)}</span>`);
-  setFeedback(`${read}: ${DEFENSE_CALLS[defenseCallKey].label} vs ${call.label}`);
+  setFeedback(`${read}: ${defenseCall.label} vs ${call.label}. Math level comes from your defense call.`);
 }
 
 function handleAnswer(idx) {
@@ -892,9 +998,14 @@ function handleAnswer(idx) {
   }
 
   if (val !== state.correct) {
-    btn.classList.add('wrong'); btn.disabled = true;
-    setFeedback(state.explain || 'Try again!');
+    const msg = outcomeMessage(OFFENSE_MISS_MESSAGES, state.callKey);
+    btn.classList.add('wrong');
+    disableAnswers();
+    state.phase = 'feedback';
+    state.outcomeMessage = msg;
+    setFeedback(`${msg} ${state.explain || 'That answer misses it.'}`);
     setTimeout(() => { btn.classList.remove('wrong'); }, 700);
+    resolveOffenseMiss();
     return;
   }
 
@@ -907,15 +1018,19 @@ function handleDefenseAnswer(btn, val) {
   disableAnswers();
   state.phase = 'feedback';
   if (val === state.correct) {
-    setFeedback('Great read! You stopped them.');
-    resolveDefenseStop();
+    const msg = outcomeMessage(DEFENSE_STOP_MESSAGES, state.opponentCallKey);
+    state.outcomeMessage = msg;
+    setFeedback(`${msg} ${state.explain || ''}`.trim());
+    resolveDefenseStop(msg);
     return;
   }
 
+  const msg = outcomeMessage(DEFENSE_GAIN_MESSAGES, state.opponentCallKey);
   btn.classList.add('wrong');
-  setFeedback(`${state.explain || 'That answer misses it.'} Opponent gains ${yds(state.g)}.`);
+  state.outcomeMessage = msg;
+  setFeedback(`${msg} ${state.explain || 'That answer misses it.'} Opponent gains ${yds(state.g)}.`);
   setTimeout(() => { btn.classList.remove('wrong'); }, 700);
-  resolveDefenseGain();
+  resolveDefenseGain(msg);
 }
 
 function applyPlayState(p) {
@@ -953,7 +1068,24 @@ function resolveOffensePlay() {
   advTimer = setTimeout(showCallPrompt, 1400);
 }
 
-function resolveDefenseStop() {
+function resolveOffenseMiss() {
+  state.drivePlays++;
+  state.plays++;
+  const nextDown = state.down + 1;
+
+  if (nextDown > 4) {
+    updateStatus();
+    advTimer = setTimeout(() => showDefenseTransition('Turnover on downs. Time to play defense!'), 1800);
+    return;
+  }
+
+  state.down = nextDown;
+  state.ytg = distanceToMarker(state.yd, state.fdYd, state.direction);
+  updateStatus();
+  advTimer = setTimeout(showCallPrompt, 1800);
+}
+
+function resolveDefenseStop(message) {
   state.drivePlays++;
   state.plays++;
   const nextDown = state.down + 1;
@@ -961,17 +1093,17 @@ function resolveDefenseStop() {
   if (nextDown > 4) {
     state.defenseStops++;
     updateStatus();
-    advTimer = setTimeout(() => finishDefensePossession('Your defense held!'), 1200);
+    advTimer = setTimeout(() => finishDefensePossession(message || 'Your defense held!'), 1500);
     return;
   }
 
   state.down = nextDown;
   state.ytg = distanceToMarker(state.yd, state.fdYd, state.direction);
   updateStatus();
-  advTimer = setTimeout(showCallPrompt, 1200);
+  advTimer = setTimeout(showCallPrompt, 1500);
 }
 
-function resolveDefenseGain() {
+function resolveDefenseGain(message) {
   const p = state.play;
   applyPlayState(p);
 
@@ -979,20 +1111,17 @@ function resolveDefenseGain() {
     state.opponentTds++;
     state.opponentScore += TD_POINTS;
     updateStatus();
-    setFeedback('Opponent touchdown.');
-    advTimer = setTimeout(() => finishDefensePossession('Opponent scored.'), 1300);
+    advTimer = setTimeout(() => finishDefensePossession(`${message || 'Opponent scored.'} Opponent touchdown.`), 1600);
     return;
   }
 
   if (p.isTurnoverOnDowns) {
     state.defenseStops++;
-    setFeedback('Defense holds!');
-    advTimer = setTimeout(() => finishDefensePossession('Your defense held!'), 1300);
+    advTimer = setTimeout(() => finishDefensePossession(`${message || 'Defense holds!'} Your defense held!`), 1600);
     return;
   }
 
-  setFeedback(p.gotFirstDown ? 'Opponent first down.' : `Opponent gains ${p.gain}.`);
-  advTimer = setTimeout(showCallPrompt, 1300);
+  advTimer = setTimeout(showCallPrompt, 1600);
 }
 
 function hideOverlays() {
@@ -1130,11 +1259,13 @@ function renderGameToText() {
     opponentCall: state.opponentCallKey,
     matchup: state.matchup,
     gain: state.g ?? null,
+    questionRating: state.play?.questionRating ?? null,
     questionId: state.questionId || null,
     question: state.question || null,
     choices: state.choices || [],
     correct: state.correct ?? null,
     explain: state.explain || null,
+    outcomeMessage: state.outcomeMessage || null,
   });
 }
 
