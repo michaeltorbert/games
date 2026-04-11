@@ -1,4 +1,4 @@
-const GAME_VERSION = '1.6.0';
+const GAME_VERSION = '1.7.0';
 const EZ = 5;
 function yardToPct(y) { return EZ + (y / 100) * (100 - 2 * EZ); }
 
@@ -7,6 +7,7 @@ const QUARTER_NAMES = ["", "1st", "2nd", "3rd", "4th"];
 const RESULT_CHOICES = ["Touchdown", "First Down", "Neither"];
 const START_YARD = 20;
 const TD_POINTS = 7;
+const POSSESSIONS_PER_QUARTER = 4;
 
 const OFFENSE_CALLS = {
   shortRun: {
@@ -276,6 +277,7 @@ function gameSnapshot() {
     tds: state.tds || 0,
     opponentTds: state.opponentTds || 0,
     defenseStops: state.defenseStops || 0,
+    quarterPossessions: state.quarterPossessions || 0,
   };
 }
 
@@ -295,6 +297,7 @@ function blankPlayState() {
     explain: null,
     outcomeMessage: null,
     play: null,
+    pendingNextPossession: null,
   };
 }
 
@@ -324,6 +327,7 @@ function createGameState() {
     tds: 0,
     opponentTds: 0,
     defenseStops: 0,
+    quarterPossessions: 0,
     phase: 'start',
     ...makeDriveState('offense'),
     ...blankPlayState(),
@@ -1064,7 +1068,7 @@ function resolveOffensePlay() {
 
   if (p.isTurnoverOnDowns) {
     setFeedback('Turnover on downs…');
-    advTimer = setTimeout(() => showDefenseTransition('Turnover on downs. Time to play defense!'), 1400);
+    advTimer = setTimeout(() => finishPossession('Turnover on downs. Time to play defense!'), 1400);
     return;
   }
 
@@ -1079,7 +1083,7 @@ function resolveOffenseMiss() {
 
   if (nextDown > 4) {
     updateStatus();
-    advTimer = setTimeout(() => showDefenseTransition('Turnover on downs. Time to play defense!'), 1800);
+    advTimer = setTimeout(() => finishPossession('Turnover on downs. Time to play defense!'), 1800);
     return;
   }
 
@@ -1097,7 +1101,7 @@ function resolveDefenseStop(message) {
   if (nextDown > 4) {
     state.defenseStops++;
     updateStatus();
-    advTimer = setTimeout(() => showOffenseTransition(message || 'Turnover on downs! Your ball!'), 1500);
+    advTimer = setTimeout(() => finishPossession(message || 'Turnover on downs! Your ball!'), 1500);
     return;
   }
 
@@ -1115,13 +1119,13 @@ function resolveDefenseGain(message) {
     state.opponentTds++;
     state.opponentScore += TD_POINTS;
     updateStatus();
-    advTimer = setTimeout(() => finishDefensePossession(`${message || 'Opponent scored.'} Opponent touchdown.`), 1600);
+    advTimer = setTimeout(() => finishPossession(`${message || 'Opponent scored.'} Opponent touchdown.`), 1600);
     return;
   }
 
   if (p.isTurnoverOnDowns) {
     state.defenseStops++;
-    advTimer = setTimeout(() => showOffenseTransition(`${message || 'Defense holds!'} Turnover on downs!`), 1600);
+    advTimer = setTimeout(() => finishPossession(`${message || 'Defense holds!'} Turnover on downs!`), 1600);
     return;
   }
 
@@ -1162,7 +1166,7 @@ function showTD() {
 
 function afterTouchdown() {
   document.getElementById('ov-td').classList.remove('show');
-  showDefenseTransition('You scored. Now stop the opponent!');
+  finishPossession('You scored! Now stop the opponent.');
 }
 
 function showDefenseTransition(message) {
@@ -1191,24 +1195,30 @@ function startOffense() {
   startDrive('offense');
 }
 
-function finishDefensePossession(message) {
-  state.phase = 'transition';
-  if (state.quarter >= 4) {
-    showGameOver();
+function finishPossession(message) {
+  state.quarterPossessions++;
+  const nextPossession = oppositePossession(state.possession);
+
+  if (state.quarterPossessions >= POSSESSIONS_PER_QUARTER) {
+    state.pendingNextPossession = nextPossession;
+    if (state.quarter >= 4) { showGameOver(); return; }
+    if (state.quarter === 2) { showHalftime(message); return; }
+    showQuarterEnd(message);
     return;
   }
-  if (state.quarter === 2) {
-    showHalftime(message);
-    return;
+
+  if (nextPossession === 'offense') {
+    showOffenseTransition(message);
+  } else {
+    showDefenseTransition(message);
   }
-  showQuarterEnd(message);
 }
 
 function showQuarterEnd(message) {
   Object.assign(state, blankPlayState(), { phase: 'quarter' });
   document.getElementById('ov-quarter-title').textContent = `End of ${QUARTER_NAMES[state.quarter]} Quarter`;
   document.getElementById('ov-quarter-sub').textContent =
-    `${message} Same possession after the break. Score: ${state.playerScore} - ${state.opponentScore}`;
+    `${message} Score: ${state.playerScore} - ${state.opponentScore}`;
   document.getElementById('ov-quarter').classList.add('show');
 }
 
@@ -1220,17 +1230,10 @@ function showHalftime(message) {
 }
 
 function nextQuarter() {
-  const endingQuarter = state.quarter;
-  const currentPossession = state.possession;
   hideOverlays();
   state.quarter = Math.min(state.quarter + 1, 4);
-
-  if (endingQuarter === 2) {
-    startDrive(oppositePossession(currentPossession));
-    return;
-  }
-
-  showCallPrompt();
+  state.quarterPossessions = 0;
+  startDrive(state.pendingNextPossession || 'offense');
 }
 
 function showGameOver() {
@@ -1278,6 +1281,8 @@ function renderGameToText() {
     playerTouchdowns: state.tds,
     opponentTouchdowns: state.opponentTds,
     defenseStops: state.defenseStops,
+    quarterPossessions: state.quarterPossessions,
+    pendingNextPossession: state.pendingNextPossession || null,
     drivePlays: state.drivePlays,
     call: state.callKey,
     defenseCall: state.defenseCallKey,
