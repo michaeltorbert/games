@@ -1097,7 +1097,7 @@ function resolveDefenseStop(message) {
   if (nextDown > 4) {
     state.defenseStops++;
     updateStatus();
-    advTimer = setTimeout(() => finishDefensePossession(message || 'Your defense held!'), 1500);
+    advTimer = setTimeout(() => showOffenseTransition(message || 'Turnover on downs! Your ball!'), 1500);
     return;
   }
 
@@ -1121,7 +1121,7 @@ function resolveDefenseGain(message) {
 
   if (p.isTurnoverOnDowns) {
     state.defenseStops++;
-    advTimer = setTimeout(() => finishDefensePossession(`${message || 'Defense holds!'} Your defense held!`), 1600);
+    advTimer = setTimeout(() => showOffenseTransition(`${message || 'Defense holds!'} Turnover on downs!`), 1600);
     return;
   }
 
@@ -1129,7 +1129,7 @@ function resolveDefenseGain(message) {
 }
 
 function hideOverlays() {
-  ['ov-start', 'ov-td', 'ov-defense', 'ov-quarter', 'ov-halftime', 'ov-end'].forEach((id) => {
+  ['ov-start', 'ov-td', 'ov-defense', 'ov-offense', 'ov-quarter', 'ov-halftime', 'ov-end'].forEach((id) => {
     document.getElementById(id).classList.remove('show');
   });
 }
@@ -1178,6 +1178,19 @@ function startDefense() {
   startDrive('defense');
 }
 
+function showOffenseTransition(message) {
+  clearTimeout(advTimer);
+  Object.assign(state, blankPlayState(), { phase: 'transition' });
+  document.getElementById('ov-offense-sub').textContent =
+    `${message} Score: ${state.playerScore} - ${state.opponentScore}`;
+  document.getElementById('ov-offense').classList.add('show');
+}
+
+function startOffense() {
+  document.getElementById('ov-offense').classList.remove('show');
+  startDrive('offense');
+}
+
 function finishDefensePossession(message) {
   state.phase = 'transition';
   if (state.quarter >= 4) {
@@ -1195,7 +1208,7 @@ function showQuarterEnd(message) {
   Object.assign(state, blankPlayState(), { phase: 'quarter' });
   document.getElementById('ov-quarter-title').textContent = `End of ${QUARTER_NAMES[state.quarter]} Quarter`;
   document.getElementById('ov-quarter-sub').textContent =
-    `${message} Your ball after the break! Score: ${state.playerScore} - ${state.opponentScore}`;
+    `${message} Same possession after the break. Score: ${state.playerScore} - ${state.opponentScore}`;
   document.getElementById('ov-quarter').classList.add('show');
 }
 
@@ -1217,7 +1230,7 @@ function nextQuarter() {
     return;
   }
 
-  startDrive('offense');
+  showCallPrompt();
 }
 
 function showGameOver() {
