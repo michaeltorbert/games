@@ -121,3 +121,18 @@ Original prompt: yes, do all you need to do to get started
 - `$HOME/.local/node/current/bin/node --check football/football.js` and `git diff --check` passed;
 - `/tmp/football_period_check.mjs` passed, confirming Q1 resumes the same possession/yard/down/distance, halftime flips possession, and `drive-yards` is rating 5;
 - inspected `output/football-period-check/q1-quarter.png` and `output/football-period-check/q1-resumed.png`.
+
+2026-04-11
+- Created branch `codex-fix-multiple-fourth-downs` from clean `main`.
+- Reworked Football Math possession timing around `DRIVES_PER_QUARTER = 4` and a central `endDrive(nextPossession, message)` helper:
+- touchdowns and turnovers on downs now complete exactly one drive;
+- mid-quarter completed drives show `Opponent's Ball` / `Your Ball` transition overlays;
+- every 4th completed drive shows quarter, halftime, or final-score overlays;
+- halftime forces the second half to start on defense, producing Q1/Q2 player-first and Q3/Q4 opponent-first ordering.
+- Added the `Your Ball` overlay, exposed `drives`, `drivesInQuarter`, and `pendingPossession` from `render_game_to_text`, and bumped football to `1.7.0`.
+- Verification:
+- `/Users/michaeltorbert/.local/node/current/bin/node --check football/football.js` passed;
+- `git diff --check` passed;
+- `/tmp/football_drive_counter_check.mjs` passed against `http://127.0.0.1:8000/football/`, covering mid-quarter defensive 4th-down stops, Q1 quarter boundary, Q2 halftime swap, Q4 final after drive 16, and player touchdown drive counting;
+- standard web-game Playwright smoke test passed and captured `output/football-drive-client/shot-0.png`;
+- inspected screenshots in `output/football-drive-counter/` for `Your Ball`, `Opponent's Ball`, quarter end, halftime, and final score overlays.

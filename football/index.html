@@ -4,11 +4,11 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <title>Football Math!</title>
-<link rel="apple-touch-icon" href="apple-touch-icon.png?v=1.6.0">
-<link rel="icon" type="image/png" href="apple-touch-icon.png?v=1.6.0">
-<link rel="stylesheet" href="../shared/fonts.css?v=1.6.0">
-<link rel="stylesheet" href="../shared/reset.css?v=1.6.0">
-<link rel="stylesheet" href="football.css?v=1.6.0">
+<link rel="apple-touch-icon" href="apple-touch-icon.png?v=1.7.0">
+<link rel="icon" type="image/png" href="apple-touch-icon.png?v=1.7.0">
+<link rel="stylesheet" href="../shared/fonts.css?v=1.7.0">
+<link rel="stylesheet" href="../shared/reset.css?v=1.7.0">
+<link rel="stylesheet" href="football.css?v=1.7.0">
 </head>
 <body>
 <div id="wrap">
@@ -61,13 +61,19 @@
   <div class="ov-emoji">🏆</div>
   <div class="ov-title">TOUCHDOWN!</div>
   <div class="ov-sub" id="ov-td-sub"></div>
-  <button class="ov-btn" onclick="afterTouchdown()">Play Defense!</button>
+  <button class="ov-btn" id="ov-td-btn" onclick="afterTouchdown()">Play Defense!</button>
 </div>
 <div class="overlay" id="ov-defense">
   <div class="ov-emoji">🛡️</div>
   <div class="ov-title">Opponent's Ball!</div>
   <div class="ov-sub" id="ov-defense-sub"></div>
   <button class="ov-btn" onclick="startDefense()">Play Defense!</button>
+</div>
+<div class="overlay" id="ov-offense">
+  <div class="ov-emoji">🏈</div>
+  <div class="ov-title">Your Ball!</div>
+  <div class="ov-sub" id="ov-offense-sub"></div>
+  <button class="ov-btn" onclick="startOffense()">Play Offense!</button>
 </div>
 <div class="overlay" id="ov-quarter">
   <div class="ov-emoji">📣</div>
@@ -88,10 +94,10 @@
   <button class="ov-btn" onclick="restart()">Play Again!</button>
 </div>
 
-<script src="football.js?v=1.6.0"></script>
+<script src="football.js?v=1.7.0"></script>
 <script>
   document.getElementById('version-display').textContent = `v${GAME_VERSION}`;
 </script>
-<script src="../shared/updater.js?v=1.6.0"></script>
+<script src="../shared/updater.js?v=1.7.0"></script>
 </body>
 </html>
