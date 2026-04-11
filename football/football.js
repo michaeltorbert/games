@@ -936,9 +936,9 @@ function startDrive(possession) {
     ...gameSnapshot(),
     ...makeDriveState(possession),
     ...blankPlayState(),
-    pendingNextPossession: null,
     phase: 'call',
   };
+  state.pendingNextPossession = null;
   updateField(false);
   updateStatus();
   showCallPrompt();
@@ -1216,26 +1216,20 @@ function finishPossession(message) {
   state.quarterPossessions++;
   updateStatus();
 
-  if (state.quarterPossessions < POSSESSIONS_PER_QUARTER) {
-    state.pendingNextPossession = null;
-    if (nextPossession === 'offense') {
-      showOffenseTransition(message);
-    } else {
-      showDefenseTransition(message);
-    }
+  if (state.quarterPossessions >= POSSESSIONS_PER_QUARTER) {
+    state.pendingNextPossession = state.quarter === 2 ? 'defense' : nextPossession;
+    if (state.quarter >= 4) { showGameOver(); return; }
+    if (state.quarter === 2) { showHalftime(message); return; }
+    showQuarterEnd(message);
     return;
   }
 
-  state.pendingNextPossession = state.quarter === 2 ? 'defense' : nextPossession;
-  if (state.quarter >= 4) {
-    showGameOver();
-    return;
+  state.pendingNextPossession = null;
+  if (nextPossession === 'offense') {
+    showOffenseTransition(message);
+  } else {
+    showDefenseTransition(message);
   }
-  if (state.quarter === 2) {
-    showHalftime(message);
-    return;
-  }
-  showQuarterEnd(message);
 }
 
 function showQuarterEnd(message) {

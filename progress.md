@@ -139,3 +139,6 @@ Original prompt: yes, do all you need to do to get started
 - Follow-up polish after comparing Claude's branch:
 - renamed the counter to `POSSESSIONS_PER_QUARTER` / `quarterPossessions` so the state mirrors the product rule;
 - changed `finishPossession()` to derive the next possession from `state.possession`, reducing call-site mistakes while preserving the pending-next-possession halftime fix.
+- Follow-up convergence with Claude's latest:
+- made `startDrive()` clear `pendingNextPossession` as an explicit statement after state rebuild;
+- reordered `finishPossession()` so quarter-boundary handling is checked before mid-quarter transitions.
