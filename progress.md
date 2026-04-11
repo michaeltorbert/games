@@ -124,12 +124,12 @@ Original prompt: yes, do all you need to do to get started
 
 2026-04-11
 - Created branch `codex-fix-multiple-fourth-downs` from clean `main`.
-- Reworked Football Math possession timing around `DRIVES_PER_QUARTER = 4` and a central `endDrive(nextPossession, message)` helper:
+- Reworked Football Math possession timing around `POSSESSIONS_PER_QUARTER = 4` and a central `finishPossession(message)` helper:
 - touchdowns and turnovers on downs now complete exactly one drive;
 - mid-quarter completed drives show `Opponent's Ball` / `Your Ball` transition overlays;
 - every 4th completed drive shows quarter, halftime, or final-score overlays;
 - halftime forces the second half to start on defense, producing Q1/Q2 player-first and Q3/Q4 opponent-first ordering.
-- Added the `Your Ball` overlay, exposed `drives`, `drivesInQuarter`, and `pendingPossession` from `render_game_to_text`, and bumped football to `1.7.0`.
+- Added the `Your Ball` overlay, exposed `quarterPossessions`, `possessionsPerQuarter`, and `pendingNextPossession` from `render_game_to_text`, and bumped football to `1.7.0`.
 - Verification:
 - `/Users/michaeltorbert/.local/node/current/bin/node --check football/football.js` passed;
 - `git diff --check` passed;
@@ -138,4 +138,4 @@ Original prompt: yes, do all you need to do to get started
 - inspected screenshots in `output/football-drive-counter/` for `Your Ball`, `Opponent's Ball`, quarter end, halftime, and final score overlays.
 - Follow-up polish after comparing Claude's branch:
 - renamed the counter to `POSSESSIONS_PER_QUARTER` / `quarterPossessions` so the state mirrors the product rule;
-- changed `endDrive()` to derive the next possession from `state.possession`, reducing call-site mistakes while preserving the pending-possession halftime fix.
+- changed `finishPossession()` to derive the next possession from `state.possession`, reducing call-site mistakes while preserving the pending-next-possession halftime fix.
