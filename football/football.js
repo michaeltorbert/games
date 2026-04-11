@@ -1125,6 +1125,7 @@ function resolveDefenseGain(message) {
 
   if (p.isTurnoverOnDowns) {
     state.defenseStops++;
+    updateStatus();
     advTimer = setTimeout(() => finishPossession(`${message || 'Defense holds!'} Turnover on downs!`), 1600);
     return;
   }
@@ -1157,10 +1158,19 @@ function startGame() {
   startDrive('offense');
 }
 
+function touchdownContinueLabel() {
+  if (state.quarterPossessions + 1 < POSSESSIONS_PER_QUARTER) return 'Play Defense!';
+  if (state.quarter >= 4) return 'Final Score';
+  if (state.quarter === 2) return 'Halftime!';
+  return 'Next Quarter';
+}
+
 function showTD() {
+  const button = document.getElementById('ov-td-btn');
   Object.assign(state, blankPlayState(), { phase: 'touchdown' });
   document.getElementById('ov-td-sub').textContent =
     `Score: ${state.playerScore} - ${state.opponentScore}. ${state.tds} player TD${state.tds === 1 ? '' : 's'}!`;
+  if (button) button.textContent = touchdownContinueLabel();
   document.getElementById('ov-td').classList.add('show');
 }
 
@@ -1200,7 +1210,7 @@ function finishPossession(message) {
   const nextPossession = oppositePossession(state.possession);
 
   if (state.quarterPossessions >= POSSESSIONS_PER_QUARTER) {
-    state.pendingNextPossession = nextPossession;
+    state.pendingNextPossession = state.quarter === 2 ? 'defense' : nextPossession;
     if (state.quarter >= 4) { showGameOver(); return; }
     if (state.quarter === 2) { showHalftime(message); return; }
     showQuarterEnd(message);
