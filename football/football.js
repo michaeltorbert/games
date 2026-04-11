@@ -1195,7 +1195,7 @@ function showQuarterEnd(message) {
   Object.assign(state, blankPlayState(), { phase: 'quarter' });
   document.getElementById('ov-quarter-title').textContent = `End of ${QUARTER_NAMES[state.quarter]} Quarter`;
   document.getElementById('ov-quarter-sub').textContent =
-    `${message} Same possession after the break. Score: ${state.playerScore} - ${state.opponentScore}`;
+    `${message} Your ball after the break! Score: ${state.playerScore} - ${state.opponentScore}`;
   document.getElementById('ov-quarter').classList.add('show');
 }
 
@@ -1217,7 +1217,7 @@ function nextQuarter() {
     return;
   }
 
-  showCallPrompt();
+  startDrive('offense');
 }
 
 function showGameOver() {
