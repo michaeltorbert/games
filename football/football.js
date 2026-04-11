@@ -7,7 +7,7 @@ const QUARTER_NAMES = ["", "1st", "2nd", "3rd", "4th"];
 const RESULT_CHOICES = ["Touchdown", "First Down", "Neither"];
 const START_YARD = 20;
 const TD_POINTS = 7;
-const DRIVES_PER_QUARTER = 4;
+const POSSESSIONS_PER_QUARTER = 4;
 
 const OFFENSE_CALLS = {
   shortRun: {
@@ -278,7 +278,7 @@ function gameSnapshot() {
     playerScore: state.playerScore || 0,
     opponentScore: state.opponentScore || 0,
     plays: state.plays || 0,
-    drives: state.drives || 0,
+    quarterPossessions: state.quarterPossessions || 0,
     tds: state.tds || 0,
     opponentTds: state.opponentTds || 0,
     defenseStops: state.defenseStops || 0,
@@ -328,7 +328,7 @@ function createGameState() {
     playerScore: 0,
     opponentScore: 0,
     plays: 0,
-    drives: 0,
+    quarterPossessions: 0,
     tds: 0,
     opponentTds: 0,
     defenseStops: 0,
@@ -1074,7 +1074,7 @@ function resolveOffensePlay() {
 
   if (p.isTurnoverOnDowns) {
     setFeedback('Turnover on downs…');
-    advTimer = setTimeout(() => endDrive('defense', 'Turnover on downs. Time to play defense!'), 1400);
+    advTimer = setTimeout(() => endDrive('Turnover on downs. Time to play defense!'), 1400);
     return;
   }
 
@@ -1089,7 +1089,7 @@ function resolveOffenseMiss() {
 
   if (nextDown > 4) {
     updateStatus();
-    advTimer = setTimeout(() => endDrive('defense', 'Turnover on downs. Time to play defense!'), 1800);
+    advTimer = setTimeout(() => endDrive('Turnover on downs. Time to play defense!'), 1800);
     return;
   }
 
@@ -1107,7 +1107,7 @@ function resolveDefenseStop(message) {
   if (nextDown > 4) {
     state.defenseStops++;
     updateStatus();
-    advTimer = setTimeout(() => endDrive('offense', `${message || 'Your defense held!'} Turnover on downs!`), 1500);
+    advTimer = setTimeout(() => endDrive(`${message || 'Your defense held!'} Turnover on downs!`), 1500);
     return;
   }
 
@@ -1125,14 +1125,14 @@ function resolveDefenseGain(message) {
     state.opponentTds++;
     state.opponentScore += TD_POINTS;
     updateStatus();
-    advTimer = setTimeout(() => endDrive('offense', `${message || 'Opponent scored.'} Opponent touchdown.`), 1600);
+    advTimer = setTimeout(() => endDrive(`${message || 'Opponent scored.'} Opponent touchdown.`), 1600);
     return;
   }
 
   if (p.isTurnoverOnDowns) {
     state.defenseStops++;
     updateStatus();
-    advTimer = setTimeout(() => endDrive('offense', `${message || 'Defense holds!'} Turnover on downs!`), 1600);
+    advTimer = setTimeout(() => endDrive(`${message || 'Defense holds!'} Turnover on downs!`), 1600);
     return;
   }
 
@@ -1175,7 +1175,7 @@ function showTD() {
 
 function afterTouchdown() {
   document.getElementById('ov-td').classList.remove('show');
-  endDrive('defense', 'You scored. Time to play defense!');
+  endDrive('You scored. Time to play defense!');
 }
 
 function showDefenseTransition(message) {
@@ -1205,17 +1205,18 @@ function startOffense() {
 }
 
 function touchdownContinueLabel() {
-  if ((state.drives + 1) % DRIVES_PER_QUARTER !== 0) return 'Play Defense!';
+  if (state.quarterPossessions + 1 < POSSESSIONS_PER_QUARTER) return 'Play Defense!';
   if (state.quarter >= 4) return 'Final Score';
   if (state.quarter === 2) return 'Halftime!';
   return 'Next Quarter';
 }
 
-function endDrive(nextPossession, message) {
-  state.drives++;
+function endDrive(message) {
+  const nextPossession = oppositePossession(state.possession);
+  state.quarterPossessions++;
   updateStatus();
 
-  if (state.drives % DRIVES_PER_QUARTER !== 0) {
+  if (state.quarterPossessions < POSSESSIONS_PER_QUARTER) {
     state.pendingPossession = null;
     if (nextPossession === 'offense') {
       showOffenseTransition(message);
@@ -1260,6 +1261,7 @@ function nextQuarter() {
   const nextPossession = state.pendingPossession || fallbackPossession;
   hideOverlays();
   state.quarter = Math.min(state.quarter + 1, 4);
+  state.quarterPossessions = 0;
   startDrive(nextPossession);
 }
 
@@ -1305,8 +1307,8 @@ function renderGameToText() {
     firstDownLine: ydLabel(state.fdYd),
     direction: state.direction,
     plays: state.plays,
-    drives: state.drives,
-    drivesInQuarter: state.drives % DRIVES_PER_QUARTER,
+    quarterPossessions: state.quarterPossessions,
+    possessionsPerQuarter: POSSESSIONS_PER_QUARTER,
     pendingPossession: state.pendingPossession || null,
     playerTouchdowns: state.tds,
     opponentTouchdowns: state.opponentTds,

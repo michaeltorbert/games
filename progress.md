@@ -136,3 +136,6 @@ Original prompt: yes, do all you need to do to get started
 - `/tmp/football_drive_counter_check.mjs` passed against `http://127.0.0.1:8000/football/`, covering mid-quarter defensive 4th-down stops, Q1 quarter boundary, Q2 halftime swap, Q4 final after drive 16, and player touchdown drive counting;
 - standard web-game Playwright smoke test passed and captured `output/football-drive-client/shot-0.png`;
 - inspected screenshots in `output/football-drive-counter/` for `Your Ball`, `Opponent's Ball`, quarter end, halftime, and final score overlays.
+- Follow-up polish after comparing Claude's branch:
+- renamed the counter to `POSSESSIONS_PER_QUARTER` / `quarterPossessions` so the state mirrors the product rule;
+- changed `endDrive()` to derive the next possession from `state.possession`, reducing call-site mistakes while preserving the pending-possession halftime fix.
