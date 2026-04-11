@@ -240,6 +240,10 @@ function oppositePossession(possession) {
   return possession === 'offense' ? 'defense' : 'offense';
 }
 
+function possessionTitle(possession) {
+  return possession === 'offense' ? 'Your ball' : "Opponent's ball";
+}
+
 function startingYardFor(possession) {
   return possession === 'offense' ? START_YARD : 100 - START_YARD;
 }
@@ -278,6 +282,7 @@ function gameSnapshot() {
     opponentTds: state.opponentTds || 0,
     defenseStops: state.defenseStops || 0,
     quarterPossessions: state.quarterPossessions || 0,
+    pendingNextPossession: state.pendingNextPossession || null,
   };
 }
 
@@ -297,7 +302,6 @@ function blankPlayState() {
     explain: null,
     outcomeMessage: null,
     play: null,
-    pendingNextPossession: null,
   };
 }
 
@@ -328,6 +332,7 @@ function createGameState() {
     opponentTds: 0,
     defenseStops: 0,
     quarterPossessions: 0,
+    pendingNextPossession: null,
     phase: 'start',
     ...makeDriveState('offense'),
     ...blankPlayState(),
@@ -933,6 +938,7 @@ function startDrive(possession) {
     ...blankPlayState(),
     phase: 'call',
   };
+  state.pendingNextPossession = null;
   updateField(false);
   updateStatus();
   showCallPrompt();
@@ -1206,6 +1212,7 @@ function startOffense() {
 }
 
 function finishPossession(message) {
+  updateStatus();
   state.quarterPossessions++;
   const nextPossession = oppositePossession(state.possession);
 
@@ -1227,15 +1234,17 @@ function finishPossession(message) {
 function showQuarterEnd(message) {
   Object.assign(state, blankPlayState(), { phase: 'quarter' });
   document.getElementById('ov-quarter-title').textContent = `End of ${QUARTER_NAMES[state.quarter]} Quarter`;
+  const next = possessionTitle(state.pendingNextPossession || 'offense');
   document.getElementById('ov-quarter-sub').textContent =
-    `${message} Score: ${state.playerScore} - ${state.opponentScore}`;
+    `${message} Next possession after the break: ${next}. Score: ${state.playerScore} - ${state.opponentScore}`;
   document.getElementById('ov-quarter').classList.add('show');
 }
 
 function showHalftime(message) {
   Object.assign(state, blankPlayState(), { phase: 'halftime' });
+  const next = possessionTitle(state.pendingNextPossession || 'defense');
   document.getElementById('ov-halftime-sub').textContent =
-    `${message} Halftime changes possession. Score: ${state.playerScore} - ${state.opponentScore}`;
+    `${message} Halftime swap: ${next} starts the 2nd half. Score: ${state.playerScore} - ${state.opponentScore}`;
   document.getElementById('ov-halftime').classList.add('show');
 }
 
@@ -1257,6 +1266,7 @@ function showGameOver() {
       : 'Both teams finished even.';
 
   Object.assign(state, blankPlayState(), { phase: 'final' });
+  state.pendingNextPossession = null;
   document.getElementById('ov-end-emoji').textContent = emoji;
   document.getElementById('ov-end-title').textContent = title;
   document.getElementById('ov-end-sub').textContent =
