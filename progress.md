@@ -145,3 +145,4 @@ Original prompt: yes, do all you need to do to get started
 
 2026-04-12
 - Verified Codex GitHub App attribution by creating a test issue and commenting on an existing issue as `codex-michaeltorbert[bot]`.
+- Corrected the local commit email to the bot account's noreply identity so GitHub can associate future commits with the app bot.
