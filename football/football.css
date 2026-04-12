@@ -107,7 +107,7 @@ body::before {
   position: absolute; top: 50%;
   width: 44px; height: 32px;
   font-size: 0; z-index: 6;
-  transform: translateY(-50%) rotate(var(--ball-rotation));
+  transform: translate(-50%, -50%) rotate(var(--ball-rotation));
   transform-origin: center;
   transition:
     left 0.75s cubic-bezier(0.25,0.46,0.45,0.94);
@@ -133,7 +133,7 @@ body::before {
   animation: ball-pop 420ms ease;
 }
 @keyframes ball-pop {
-  45% { transform: translateY(-54%) rotate(var(--ball-rotation)) scale(1.08); }
+  45% { transform: translate(-50%, -54%) rotate(var(--ball-rotation)) scale(1.08); }
 }
 
 #play-label {

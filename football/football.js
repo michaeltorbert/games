@@ -846,7 +846,7 @@ function updateField(animated) {
     requestAnimationFrame(() => { ball.style.transition = ''; fdl.style.transition = ''; });
   }
   const rotation = state.possession === 'defense' ? 18 : -18;
-  ball.style.left = (yardToPct(state.animYd) - 2.2) + '%';
+  ball.style.left = yardToPct(state.animYd) + '%';
   ball.style.setProperty('--ball-rotation', `${rotation}deg`);
   fdl.style.left = yardToPct(clamp(state.fdYd, 0, 100)) + '%';
   if (animated) {
