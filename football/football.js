@@ -1132,7 +1132,7 @@ function resolveOffensePlay() {
   }
 
   if (p.isTurnoverOnDowns) {
-    showFieldFloat('NO GAIN', 'negative');
+    showFieldFloat(p.gain > 0 ? '+' + p.gain + ' YDS' : 'NO GAIN', 'negative');
     setFeedback('Turnover on downs…');
     advTimer = setTimeout(() => finishPossession('Turnover on downs. Time to play defense!'), 1400);
     return;
