@@ -7,7 +7,7 @@ const GAMES = [
     color: '#12285c',
     accent: '#ffd700',
     url: 'football/',
-    version: '1.8.0',
+    version: '1.9.0',
   },
   {
     id: 'kayak',

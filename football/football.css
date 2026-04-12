@@ -29,14 +29,59 @@ body::before {
 #wrap { width: 100%; max-width: 680px; display: flex; flex-direction: column; gap: 10px; position: relative; z-index: 1; }
 .hidden { display: none !important; }
 
+/* ── Scorebug ── */
 #status {
-  background: #12285c; border: 3px solid #2a4a9a; border-radius: 18px;
-  padding: 10px 18px; display: flex; justify-content: space-between; gap: 10px;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+  background: linear-gradient(180deg, #102a66, #07183d);
+  border: 2px solid rgba(255,255,255,0.15);
+  border-radius: 8px;
+  padding: 0;
+  display: flex;
+  align-items: stretch;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.08);
+  overflow: hidden;
+  font-family: Impact, 'Arial Black', 'Nunito', sans-serif;
 }
-.stat { text-align: center; flex: 1; }
-.stat-label { font-size: 11px; letter-spacing: 1.2px; color: #7090cc; text-transform: uppercase; font-weight: 800; }
-.stat-value { font-size: 22px; color: #ffd700; font-weight: 900; }
+.sb-team {
+  display: flex; align-items: center; gap: 6px;
+  padding: 6px 10px;
+  font-weight: 900; letter-spacing: 1px;
+}
+.sb-duke { background: #003087; }
+.sb-unc  { background: #4a8db8; }
+.sb-name {
+  font-size: 11px; color: rgba(255,255,255,0.88);
+  letter-spacing: 1.5px; text-transform: uppercase;
+}
+.sb-score {
+  font-size: 22px; color: #ffd62e; line-height: 1;
+  min-width: 20px; text-align: center;
+}
+.sb-divider {
+  width: 2px; background: rgba(255,255,255,0.12);
+  align-self: stretch;
+}
+.sb-info {
+  display: flex; flex-direction: column; align-items: center;
+  justify-content: center;
+  padding: 4px 8px; flex: 1;
+  border-left: 1px solid rgba(255,255,255,0.08);
+}
+.sb-label {
+  font-size: 8px; letter-spacing: 1.2px; color: #7090cc;
+  text-transform: uppercase; font-weight: 700;
+  font-family: 'Nunito', sans-serif;
+}
+.sb-val {
+  font-size: 15px; color: white; font-weight: 900;
+  line-height: 1.2; white-space: nowrap;
+}
+.sb-poss {
+  display: flex; align-items: center; justify-content: center;
+  padding: 0 8px;
+  font-size: 14px; color: #ffd62e;
+  transition: transform 0.3s ease;
+}
+.sb-poss.poss-defense { transform: scaleX(-1); }
 
 #field-wrap {
   width: 100%; height: 210px;
@@ -137,19 +182,28 @@ body::before {
 }
 
 #play-label {
-  background: #12285c; border: 3px solid #2a4a9a; border-radius: 14px;
-  padding: 10px 16px; text-align: center;
-  font-size: 24px; font-weight: 800; color: white;
-  min-height: 52px; display: flex; align-items: center; justify-content: center;
+  background: linear-gradient(180deg, #0d2256, #07183d);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-left: 4px solid #ffd62e;
+  border-radius: 6px;
+  padding: 7px 14px; text-align: center;
+  font-family: Impact, 'Arial Black', 'Nunito', sans-serif;
+  font-size: 20px; font-weight: 800; color: white;
+  letter-spacing: 0.5px;
+  min-height: 36px; display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
 }
-#play-label span { color: #ffd700; font-weight: 900; margin-left: 4px; }
+#play-label span { color: #ffd62e; font-weight: 900; margin-left: 4px; }
 
 #question {
-  background: #12285c; border: 3px solid #ffd700; border-radius: 16px;
+  background: linear-gradient(180deg, #142e6e, #0e2054);
+  border: 2px solid #ffd62e; border-radius: 12px;
   padding: 14px 20px; text-align: center;
+  font-family: 'Nunito', sans-serif;
   font-size: 20px; font-weight: 800; color: white;
   min-height: 64px; display: flex; align-items: center; justify-content: center;
   line-height: 1.5; white-space: pre-line;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.35);
 }
 
 #call-grid {
@@ -230,9 +284,20 @@ body::before {
   .hash-mark { width: 12px; }
   .ez-text.ez-left { left: 4%; font-size: 16px; letter-spacing: 3px; }
   .ez-text.ez-right { right: 4%; font-size: 11px; }
-  #status { padding: 8px 10px; gap: 6px; }
-  .stat-label { font-size: 9px; letter-spacing: 0.8px; }
-  .stat-value { font-size: 17px; }
+  /* Scorebug: two-row layout on mobile */
+  #status {
+    display: grid;
+    grid-template-columns: auto auto 1px 1fr 1fr 1fr auto;
+    grid-template-rows: auto;
+  }
+  .sb-team { padding: 5px 7px; }
+  .sb-name { font-size: 10px; letter-spacing: 1px; }
+  .sb-score { font-size: 18px; }
+  .sb-info { padding: 3px 5px; }
+  .sb-label { font-size: 7px; }
+  .sb-val { font-size: 13px; }
+  .sb-poss { padding: 0 5px; font-size: 12px; }
+  #play-label { font-size: 17px; padding: 6px 10px; min-height: 30px; }
   #call-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
   .call-btn { min-height: 76px; }
   .call-label { font-size: 17px; }

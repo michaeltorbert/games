@@ -4,31 +4,28 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <title>Football Math!</title>
-<link rel="apple-touch-icon" href="apple-touch-icon.png?v=1.8.0">
-<link rel="icon" type="image/png" href="apple-touch-icon.png?v=1.8.0">
-<link rel="stylesheet" href="../shared/fonts.css?v=1.8.0">
-<link rel="stylesheet" href="../shared/reset.css?v=1.8.0">
-<link rel="stylesheet" href="football.css?v=1.8.0">
+<link rel="apple-touch-icon" href="apple-touch-icon.png?v=1.9.0">
+<link rel="icon" type="image/png" href="apple-touch-icon.png?v=1.9.0">
+<link rel="stylesheet" href="../shared/fonts.css?v=1.9.0">
+<link rel="stylesheet" href="../shared/reset.css?v=1.9.0">
+<link rel="stylesheet" href="football.css?v=1.9.0">
 </head>
 <body>
 <div id="wrap">
   <div id="status">
-    <div class="stat">
-      <div class="stat-label">Down &amp; Distance</div>
-      <div class="stat-value" id="s-down">1st &amp; 10</div>
+    <div class="sb-team sb-duke"><span class="sb-name">DUKE</span><span class="sb-score" id="s-pscore">0</span></div>
+    <div class="sb-team sb-unc"><span class="sb-name">UNC</span><span class="sb-score" id="s-oscore">0</span></div>
+    <div class="sb-divider"></div>
+    <div class="sb-info">
+      <span class="sb-label">QTR</span><span class="sb-val" id="s-quarter">1</span>
     </div>
-    <div class="stat">
-      <div class="stat-label">Yard Line</div>
-      <div class="stat-value" id="s-yd">20</div>
+    <div class="sb-info">
+      <span class="sb-label">DOWN</span><span class="sb-val" id="s-down">1st &amp; 10</span>
     </div>
-    <div class="stat">
-      <div class="stat-label">Quarter</div>
-      <div class="stat-value" id="s-quarter">Q1</div>
+    <div class="sb-info">
+      <span class="sb-label">BALL ON</span><span class="sb-val" id="s-yd">own 20</span>
     </div>
-    <div class="stat">
-      <div class="stat-label">Score</div>
-      <div class="stat-value" id="s-score">0 - 0</div>
-    </div>
+    <div id="sb-poss" class="sb-poss" aria-label="Possession">&#9654;</div>
   </div>
 
   <div id="field-wrap">
@@ -102,10 +99,10 @@
   <button class="ov-btn" onclick="restart()">Play Again!</button>
 </div>
 
-<script src="football.js?v=1.8.0"></script>
+<script src="football.js?v=1.9.0"></script>
 <script>
   document.getElementById('version-display').textContent = `v${GAME_VERSION}`;
 </script>
-<script src="../shared/updater.js?v=1.8.0"></script>
+<script src="../shared/updater.js?v=1.9.0"></script>
 </body>
 </html>

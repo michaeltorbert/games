@@ -1,4 +1,4 @@
-const GAME_VERSION = '1.8.0';
+const GAME_VERSION = '1.9.0';
 const EZ = 5;
 function yardToPct(y) { return EZ + (y / 100) * (100 - 2 * EZ); }
 
@@ -858,8 +858,13 @@ function updateField(animated) {
 function updateStatus() {
   document.getElementById('s-down').textContent = downDistanceLabel(state.down, state.ytg);
   document.getElementById('s-yd').textContent = ydLabel(state.yd, true);
-  document.getElementById('s-quarter').textContent = `Q${state.quarter}`;
-  document.getElementById('s-score').textContent = `${state.playerScore} - ${state.opponentScore}`;
+  document.getElementById('s-quarter').textContent = state.quarter;
+  document.getElementById('s-pscore').textContent = state.playerScore;
+  document.getElementById('s-oscore').textContent = state.opponentScore;
+  const status = document.getElementById('status');
+  status.dataset.possession = state.possession;
+  const poss = document.getElementById('sb-poss');
+  poss.classList.toggle('poss-defense', state.possession === 'defense');
 }
 
 function setFeedback(t) { document.getElementById('feedback').textContent = t; }
