@@ -142,3 +142,6 @@ Original prompt: yes, do all you need to do to get started
 - Follow-up convergence with Claude's latest:
 - made `startDrive()` clear `pendingNextPossession` as an explicit statement after state rebuild;
 - reordered `finishPossession()` so quarter-boundary handling is checked before mid-quarter transitions.
+
+2026-04-12
+- Verified Codex GitHub App attribution by creating a test issue and commenting on an existing issue as `codex-michaeltorbert[bot]`.
