@@ -1,4 +1,4 @@
-const GAME_VERSION = '1.9.0';
+const GAME_VERSION = '1.10.0';
 const EZ = 5;
 function yardToPct(y) { return EZ + (y / 100) * (100 - 2 * EZ); }
 
@@ -94,6 +94,28 @@ const OPPONENT_CALL_WEIGHTS = [
   { key: 'mediumPass', weight: 3 },
   { key: 'longPass', weight: 3 },
 ];
+
+// Play diagram SVGs for call tiles
+const PLAY_DIAGRAMS = {
+  // Offense: gold strokes
+  shortRun: `<svg viewBox="0 0 120 52"><line x1="60" y1="42" x2="60" y2="28" stroke="#ffd62e" stroke-width="2.5" stroke-linecap="round"/><circle cx="60" cy="44" r="4" fill="#ffd62e"/><circle cx="60" cy="22" r="3.5" fill="white" opacity="0.7"/><line x1="60" y1="22" x2="60" y2="8" stroke="#ffd62e" stroke-width="3" stroke-linecap="round" marker-end="url(#ah)"/><defs><marker id="ah" viewBox="0 0 6 6" refX="5" refY="3" markerWidth="5" markerHeight="5" orient="auto"><path d="M0,0 L6,3 L0,6z" fill="#ffd62e"/></marker></defs></svg>`,
+  shortPass: `<svg viewBox="0 0 120 52"><circle cx="60" cy="42" r="4" fill="#ffd62e"/><line x1="60" y1="38" x2="60" y2="28" stroke="#9ee7ff" stroke-width="2" stroke-dasharray="3,3"/><polyline points="60,28 78,12" fill="none" stroke="#9ee7ff" stroke-width="2.5" stroke-linecap="round"/><circle cx="80" cy="10" r="3" fill="#9ee7ff" opacity="0.8"/></svg>`,
+  longRun: `<svg viewBox="0 0 120 52"><circle cx="60" cy="42" r="4" fill="#ffd62e"/><path d="M60,38 Q60,28 44,18 Q36,12 28,8" fill="none" stroke="#ffd62e" stroke-width="3" stroke-linecap="round"/><circle cx="26" cy="7" r="3" fill="#ffd62e" opacity="0.8"/></svg>`,
+  mediumPass: `<svg viewBox="0 0 120 52"><circle cx="50" cy="42" r="4" fill="#ffd62e"/><line x1="50" y1="38" x2="50" y2="30" stroke="#9ee7ff" stroke-width="2" stroke-dasharray="3,3"/><polyline points="50,30 70,22 90,22" fill="none" stroke="#9ee7ff" stroke-width="2.5" stroke-linecap="round"/><circle cx="92" cy="22" r="3" fill="#9ee7ff" opacity="0.8"/></svg>`,
+  longPass: `<svg viewBox="0 0 120 52"><circle cx="60" cy="42" r="4" fill="#ffd62e"/><line x1="60" y1="38" x2="60" y2="30" stroke="#9ee7ff" stroke-width="2" stroke-dasharray="3,3"/><line x1="60" y1="30" x2="60" y2="6" stroke="#9ee7ff" stroke-width="2.5" stroke-linecap="round"/><circle cx="60" cy="4" r="3" fill="#9ee7ff" opacity="0.8"/></svg>`,
+  // Defense: orange strokes
+  run: `<svg viewBox="0 0 120 52"><line x1="20" y1="26" x2="100" y2="26" stroke="#ffb347" stroke-width="3" stroke-linecap="round" opacity="0.6"/><circle cx="40" cy="26" r="3.5" fill="white" opacity="0.7"/><circle cx="60" cy="26" r="3.5" fill="white" opacity="0.7"/><circle cx="80" cy="26" r="3.5" fill="white" opacity="0.7"/><line x1="60" y1="22" x2="60" y2="10" stroke="#ffb347" stroke-width="2.5" stroke-linecap="round"/><polygon points="56,11 60,4 64,11" fill="#ffb347"/></svg>`,
+  'defense-shortPass': `<svg viewBox="0 0 120 52"><circle cx="50" cy="14" r="3.5" fill="white" opacity="0.7"/><circle cx="70" cy="14" r="3.5" fill="white" opacity="0.7"/><path d="M50,18 Q50,32 60,38" fill="none" stroke="#ffb347" stroke-width="2" stroke-linecap="round"/><path d="M70,18 Q70,32 60,38" fill="none" stroke="#ffb347" stroke-width="2" stroke-linecap="round"/><circle cx="60" cy="40" r="3" fill="#ffb347" opacity="0.6"/></svg>`,
+  'defense-mediumPass': `<svg viewBox="0 0 120 52"><circle cx="36" cy="12" r="3.5" fill="white" opacity="0.7"/><circle cx="84" cy="12" r="3.5" fill="white" opacity="0.7"/><path d="M36,16 Q36,30 60,36" fill="none" stroke="#ffb347" stroke-width="2" stroke-linecap="round"/><path d="M84,16 Q84,30 60,36" fill="none" stroke="#ffb347" stroke-width="2" stroke-linecap="round"/><circle cx="60" cy="26" r="8" fill="none" stroke="#ffb347" stroke-width="1.5" stroke-dasharray="3,2" opacity="0.5"/></svg>`,
+  deepPass: `<svg viewBox="0 0 120 52"><circle cx="42" cy="10" r="3.5" fill="white" opacity="0.7"/><circle cx="78" cy="10" r="3.5" fill="white" opacity="0.7"/><line x1="42" y1="14" x2="42" y2="42" stroke="#ffb347" stroke-width="2" stroke-linecap="round"/><line x1="78" y1="14" x2="78" y2="42" stroke="#ffb347" stroke-width="2" stroke-linecap="round"/><line x1="30" y1="42" x2="90" y2="42" stroke="#ffb347" stroke-width="2.5" stroke-linecap="round" opacity="0.5"/></svg>`,
+};
+
+function playDiagramSvg(callKey, possession) {
+  if (possession === 'defense') {
+    return PLAY_DIAGRAMS['defense-' + callKey] || PLAY_DIAGRAMS[callKey] || '';
+  }
+  return PLAY_DIAGRAMS[callKey] || '';
+}
 
 const OFFENSE_MISS_MESSAGES = {
   shortRun: [
@@ -908,11 +930,16 @@ function renderCallGrid(calls, onPick) {
   const grid = document.getElementById('call-grid');
   grid.innerHTML = '';
   grid.classList.remove('hidden');
+  grid.dataset.possession = state.possession;
   calls.forEach((call) => {
     const btn = document.createElement('button');
     btn.className = 'call-btn';
     btn.dataset.risk = call.risk || 'medium';
-    btn.innerHTML = `<span class="call-label">${call.label}</span><span class="call-desc">${call.desc}</span>`;
+    const diagram = playDiagramSvg(call.key, state.possession);
+    btn.innerHTML =
+      `<span class="call-diagram" aria-hidden="true">${diagram}</span>` +
+      `<span class="call-label">${call.label}</span>` +
+      `<span class="call-desc">${call.desc}</span>`;
     btn.addEventListener('click', () => onPick(call.key));
     grid.appendChild(btn);
   });
@@ -927,6 +954,7 @@ function showCallPrompt() {
   clearTimeout(advTimer);
   Object.assign(state, blankPlayState(), { phase: 'call' });
   updateStatus();
+  document.getElementById('wrap').dataset.possession = state.possession;
   if (state.possession === 'offense') {
     document.getElementById('play-label').textContent = `Your Ball: ${downDistanceLabel(state.down, state.ytg)}`;
     document.getElementById('question').textContent = 'Pick your play. Short plays are easier; long plays are harder.';

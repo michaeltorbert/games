@@ -206,10 +206,11 @@ body::before {
   box-shadow: 0 4px 16px rgba(0,0,0,0.35);
 }
 
+/* ── Play-call tiles ── */
 #call-grid {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 10px;
+  gap: 8px;
 }
 .call-btn {
   min-height: 90px;
@@ -217,22 +218,66 @@ body::before {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 4px;
-  padding: 10px 8px;
+  gap: 2px;
+  padding: 6px 6px 8px;
   font-family: 'Nunito', sans-serif;
   color: white;
-  background: linear-gradient(180deg, #2455b8, #143273);
-  border: 4px solid #5f82d8;
-  border-radius: 18px;
+  background:
+    repeating-linear-gradient(90deg,
+      rgba(255,255,255,0.04) 0 1px, transparent 1px 25%),
+    linear-gradient(180deg, #153b76, #0b1f4a);
+  border: 2px solid rgba(255,255,255,0.18);
+  border-radius: 8px;
   cursor: pointer;
-  box-shadow: 0 6px 0 #07183d, 0 8px 18px rgba(0,0,0,0.35);
+  box-shadow: 0 4px 0 #040d22, 0 6px 14px rgba(0,0,0,0.35);
+  transition: transform 0.08s, box-shadow 0.08s;
 }
-.call-btn[data-risk="easy"] { border-color: #80e27e; }
-.call-btn[data-risk="medium"] { border-color: #ffd700; }
-.call-btn[data-risk="hard"] { border-color: #ff9a3d; }
-.call-btn[data-risk="very-hard"] { border-color: #ff6666; }
-.call-label { font-size: 20px; font-weight: 900; color: #ffd700; text-align: center; }
-.call-desc { font-size: 11px; font-weight: 800; color: #d7e2ff; text-align: center; line-height: 1.2; }
+.call-btn:active {
+  transform: translateY(2px);
+  box-shadow: 0 2px 0 #040d22, 0 3px 8px rgba(0,0,0,0.3);
+}
+.call-btn[data-risk="easy"]      { border-color: rgba(128,226,126,0.5); }
+.call-btn[data-risk="medium"]    { border-color: rgba(255,214,46,0.5); }
+.call-btn[data-risk="hard"]      { border-color: rgba(255,154,61,0.5); }
+.call-btn[data-risk="very-hard"] { border-color: rgba(255,102,102,0.5); }
+.call-diagram {
+  display: flex; align-items: center; justify-content: center;
+  width: 100%; height: 44px;
+  background: rgba(4,13,34,0.38);
+  border-radius: 4px;
+  margin-bottom: 2px;
+}
+.call-diagram svg { width: 100%; height: 100%; }
+.call-label {
+  font-family: Impact, 'Arial Black', 'Nunito', sans-serif;
+  font-size: 15px; font-weight: 900; color: #ffd62e;
+  text-align: center; line-height: 1.15;
+}
+.call-desc {
+  font-size: 10px; font-weight: 700; color: #b8c8e8;
+  text-align: center; line-height: 1.15;
+}
+
+/* ── Offense / Defense visual states ── */
+#wrap[data-possession="defense"] #play-label {
+  border-left-color: #ffb347;
+}
+#wrap[data-possession="defense"] #play-label span {
+  color: #ffb347;
+}
+#call-grid[data-possession="defense"] .call-btn {
+  background:
+    repeating-linear-gradient(90deg,
+      rgba(255,179,71,0.06) 0 1px, transparent 1px 25%),
+    linear-gradient(180deg, #3d2a10, #1f1608);
+  border-color: rgba(255,179,71,0.35);
+}
+#call-grid[data-possession="defense"] .call-label {
+  color: #ffb347;
+}
+#call-grid[data-possession="defense"] .call-desc {
+  color: #d4c0a0;
+}
 
 #btn-row { display: flex; gap: 10px; }
 .ans-btn {
@@ -317,10 +362,11 @@ body::before {
   .sb-val { font-size: 13px; }
   .sb-poss { padding: 0 5px; font-size: 12px; }
   #play-label { font-size: 17px; padding: 6px 10px; min-height: 30px; }
-  #call-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
-  .call-btn { min-height: 76px; }
-  .call-label { font-size: 17px; }
-  .call-desc { font-size: 10px; }
+  #call-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
+  .call-btn { min-height: 80px; padding: 5px 5px 6px; }
+  .call-diagram { height: 38px; }
+  .call-label { font-size: 14px; }
+  .call-desc { font-size: 9px; }
   #btn-row { gap: 7px; }
   .ans-btn { font-size: 28px; padding: 18px 4px; border-width: 3px; }
 }
