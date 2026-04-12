@@ -1,5 +1,6 @@
-const GAME_VERSION = '1.11.0';
+const GAME_VERSION = '1.12.0';
 let prevPlayerScore = -1, prevOpponentScore = -1;
+let playerRunTimer = 0, playerCelebrateTimer = 0, playerCelebrateDelayTimer = 0;
 const EZ = 5;
 function yardToPct(y) { return EZ + (y / 100) * (100 - 2 * EZ); }
 
@@ -876,6 +877,21 @@ function updateField(animated) {
     ball.classList.add('ball-moving');
     setTimeout(() => ball.classList.remove('ball-moving'), 400);
   }
+  const player = document.getElementById('player');
+  if (player) {
+    if (state.possession === 'offense') {
+      player.classList.remove('player-hidden');
+      const playerYd = Math.max(0, Math.min(100, state.animYd - 3));
+      player.style.left = yardToPct(playerYd) + '%';
+      player.style.setProperty('--player-dir', '1');
+      if (!animated) {
+        player.style.transition = 'none';
+        requestAnimationFrame(() => { player.style.transition = ''; });
+      }
+    } else {
+      player.classList.add('player-hidden');
+    }
+  }
 }
 
 function updateStatus() {
@@ -990,6 +1006,7 @@ function showCallPrompt() {
 function startDrive(possession) {
   clearTimeout(advTimer);
   hideOverlays();
+  resetPlayerAnimations();
   state = {
     ...gameSnapshot(),
     ...makeDriveState(possession),
@@ -1121,6 +1138,7 @@ function applyPlayState(p) {
 function resolveOffensePlay() {
   const p = state.play;
   applyPlayState(p);
+  if (p.gain > 0 || p.isTouchdown) startPlayerRun();
 
   if (p.isTouchdown) {
     state.tds++;
@@ -1142,6 +1160,8 @@ function resolveOffensePlay() {
     showFieldFloat('FIRST DOWN!', 'first-down');
     flashFdLine();
     setFeedback('🎉 First Down!');
+    clearTimeout(playerCelebrateDelayTimer);
+    playerCelebrateDelayTimer = setTimeout(startPlayerCelebrate, 700);
   } else {
     showFieldFloat('+' + (p.gain || 0) + ' YDS');
     setFeedback('Correct! ✅');
@@ -1210,6 +1230,39 @@ function resolveDefenseGain(message) {
   advTimer = setTimeout(showCallPrompt, 1600);
 }
 
+// ── Player sprite animations ────────────────────────────────────────────────
+function startPlayerRun() {
+  const player = document.getElementById('player');
+  if (!player || player.classList.contains('player-hidden')) return;
+  clearTimeout(playerRunTimer);
+  clearTimeout(playerCelebrateTimer);
+  clearTimeout(playerCelebrateDelayTimer);
+  player.classList.remove('player-celebrating', 'player-running');
+  void player.offsetWidth;
+  player.classList.add('player-running');
+  playerRunTimer = setTimeout(() => player.classList.remove('player-running'), 800);
+}
+
+function startPlayerCelebrate() {
+  const player = document.getElementById('player');
+  if (!player || player.classList.contains('player-hidden')) return;
+  clearTimeout(playerRunTimer);
+  clearTimeout(playerCelebrateTimer);
+  player.classList.remove('player-running');
+  void player.offsetWidth;
+  player.classList.add('player-celebrating');
+  playerCelebrateTimer = setTimeout(() => player.classList.remove('player-celebrating'), 550);
+}
+
+function resetPlayerAnimations() {
+  clearTimeout(playerRunTimer);
+  clearTimeout(playerCelebrateTimer);
+  clearTimeout(playerCelebrateDelayTimer);
+  const player = document.getElementById('player');
+  if (!player) return;
+  player.classList.remove('player-running', 'player-celebrating');
+}
+
 // ── Field outcome floats & confetti ──────────────────────────────────────────
 function showFieldFloat(text, cssClass) {
   const wrap = document.getElementById('field-wrap');
@@ -1270,6 +1323,7 @@ function hideOverlays() {
 function showStart() {
   clearTimeout(advTimer);
   hideOverlays();
+  resetPlayerAnimations();
   document.getElementById('ov-start').classList.add('show');
   document.getElementById('play-label').textContent = 'Get ready…';
   document.getElementById('question').textContent = '';
@@ -1412,6 +1466,7 @@ function showGameOver() {
 function restart() {
   clearConfetti('ov-td-confetti');
   clearConfetti('ov-end-confetti');
+  resetPlayerAnimations();
   state = createGameState();
   prevPlayerScore = -1;
   prevOpponentScore = -1;

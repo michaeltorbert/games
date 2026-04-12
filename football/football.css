@@ -187,6 +187,69 @@ body::before {
   45% { transform: translate(-50%, -54%) rotate(var(--ball-rotation)) scale(1.08); }
 }
 
+/* ── Player sprite ── */
+#player {
+  --player-dir: 1;
+  position: absolute; top: 54%;
+  width: 26px; height: 36px;
+  z-index: 5;
+  transform: translate(-50%, -50%) scaleX(var(--player-dir));
+  transform-origin: center;
+  transition: left 0.75s cubic-bezier(0.25,0.46,0.45,0.94);
+  pointer-events: none;
+}
+#player svg { width: 100%; height: 100%; overflow: visible; }
+#player.player-hidden { display: none; }
+
+.pl-leg-l, .pl-leg-r, .pl-arm-l, .pl-arm-r {
+  transform-box: fill-box;
+}
+.pl-leg-l { transform-origin: 8.5px 22px; }
+.pl-leg-r { transform-origin: 11.5px 22px; }
+.pl-arm-l { transform-origin: 5px 11px; }
+.pl-arm-r { transform-origin: 15px 11px; }
+
+#player.player-running {
+  animation: player-run-bounce 250ms ease-in-out infinite;
+}
+@keyframes player-run-bounce {
+  0%, 100% { transform: translate(-50%, -50%) scaleX(var(--player-dir)); }
+  50%      { transform: translate(-50%, -55%) scaleX(var(--player-dir)); }
+}
+#player.player-running .pl-leg-l {
+  animation: leg-swing 250ms ease-in-out infinite;
+}
+#player.player-running .pl-leg-r {
+  animation: leg-swing 250ms ease-in-out infinite 125ms;
+}
+@keyframes leg-swing {
+  0%, 100% { transform: rotate(-20deg); }
+  50%      { transform: rotate(20deg); }
+}
+
+#player.player-celebrating {
+  animation: player-celebrate-bounce 500ms ease forwards;
+}
+@keyframes player-celebrate-bounce {
+  0%, 100% { transform: translate(-50%, -50%) scaleX(var(--player-dir)); }
+  30%      { transform: translate(-50%, -65%) scaleX(var(--player-dir)) scale(1.12); }
+  60%      { transform: translate(-50%, -55%) scaleX(var(--player-dir)); }
+}
+#player.player-celebrating .pl-arm-l {
+  animation: arm-up-l 500ms ease forwards;
+}
+#player.player-celebrating .pl-arm-r {
+  animation: arm-up-r 500ms ease forwards;
+}
+@keyframes arm-up-l {
+  0%, 100% { transform: rotate(0); }
+  30%, 60% { transform: rotate(-60deg); }
+}
+@keyframes arm-up-r {
+  0%, 100% { transform: rotate(0); }
+  30%, 60% { transform: rotate(60deg); }
+}
+
 /* ── Field outcome floats ── */
 .field-float {
   position: absolute; top: 38%; z-index: 8;
@@ -431,6 +494,7 @@ body::before {
   .ans-btn { padding: 22px 8px; font-size: 38px; }
   .call-diagram { height: 48px; }
   .field-float { font-size: 20px; }
+  #player { width: 30px; height: 40px; }
 }
 
 @media (max-width: 560px) {
@@ -485,6 +549,7 @@ body::before {
   .ov-title { font-size: 38px; }
   .ov-sub { font-size: 18px; padding: 0 12px; }
   .ov-final-score { font-size: 48px; }
+  #player { width: 22px; height: 30px; }
 }
 
 /* ── Reduced motion ── */
@@ -507,4 +572,12 @@ body::before {
     100% { opacity: 0; }
   }
   .confetti-piece { display: none; }
+  #player.player-running,
+  #player.player-celebrating,
+  #player.player-running .pl-leg-l,
+  #player.player-running .pl-leg-r,
+  #player.player-celebrating .pl-arm-l,
+  #player.player-celebrating .pl-arm-r {
+    animation: none !important;
+  }
 }
