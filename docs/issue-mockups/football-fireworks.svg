@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="760" viewBox="0 0 1200 760" role="img" aria-labelledby="title desc">
+  <title id="title">Touchdown fireworks mockup</title>
+  <desc id="desc">A touchdown overlay with small fireworks in the upper corners, confetti below, score, and play defense button.</desc>
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="25%" r="80%">
+      <stop offset="0" stop-color="#142e6e"/>
+      <stop offset="1" stop-color="#061408"/>
+    </radialGradient>
+    <filter id="spark">
+      <feGaussianBlur stdDeviation="2" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <rect width="1200" height="760" rx="34" fill="url(#bg)"/>
+  <path d="M0 178 C190 122 420 154 600 190 C790 228 1000 128 1200 185 L1200 310 L0 310 Z" fill="#06120d" opacity="0.88"/>
+  <g stroke-linecap="round" filter="url(#spark)">
+    <g transform="translate(245 178)" stroke="#ffd62e" stroke-width="5">
+      <path d="M0 -70 V-22"/><path d="M0 22 V70"/><path d="M-70 0 H-22"/><path d="M22 0 H70"/>
+      <path d="M-50 -50 L-16 -16"/><path d="M16 16 L50 50"/><path d="M50 -50 L16 -16"/><path d="M-16 16 L-50 50"/>
+    </g>
+    <g transform="translate(955 185)" stroke="#7bafd4" stroke-width="5">
+      <path d="M0 -64 V-20"/><path d="M0 20 V64"/><path d="M-64 0 H-20"/><path d="M20 0 H64"/>
+      <path d="M-46 -46 L-15 -15"/><path d="M15 15 L46 46"/><path d="M46 -46 L15 -15"/><path d="M-15 15 L-46 46"/>
+    </g>
+  </g>
+  <g fill-opacity="0.9">
+    <rect x="190" y="580" width="9" height="18" rx="2" fill="#ffd62e" transform="rotate(18 190 580)"/>
+    <rect x="320" y="604" width="9" height="18" rx="2" fill="#ff6b6b" transform="rotate(-20 320 604)"/>
+    <rect x="850" y="596" width="9" height="18" rx="2" fill="#7bafd4" transform="rotate(28 850 596)"/>
+    <rect x="1010" y="572" width="9" height="18" rx="2" fill="#ffffff" transform="rotate(-12 1010 572)"/>
+    <rect x="605" y="618" width="9" height="18" rx="2" fill="#4dff4d" transform="rotate(32 605 618)"/>
+  </g>
+  <rect x="300" y="278" width="600" height="272" rx="22" fill="#07183d" stroke="#ffd62e" stroke-width="5"/>
+  <rect x="405" y="310" width="390" height="38" rx="6" fill="#cc1a1a"/>
+  <text x="600" y="337" font-family="Arial Black, Arial, sans-serif" font-size="21" text-anchor="middle" fill="#ffffff">TOUCHDOWN</text>
+  <text x="600" y="423" font-family="Arial Black, Arial, sans-serif" font-size="62" text-anchor="middle" fill="#ffd62e">DUKE SCORES</text>
+  <text x="600" y="478" font-family="Arial Black, Arial, sans-serif" font-size="34" text-anchor="middle" fill="#ffffff">DUKE 21  -  UNC 14</text>
+  <rect x="470" y="508" width="260" height="64" rx="10" fill="#ffd62e"/>
+  <text x="600" y="550" font-family="Arial Black, Arial, sans-serif" font-size="24" text-anchor="middle" fill="#12285c">PLAY DEFENSE</text>
+  <text x="600" y="680" font-family="Arial, sans-serif" font-size="20" text-anchor="middle" fill="#cde8d4">Fireworks stay in the upper corners so the score and button remain readable.</text>
+</svg>
