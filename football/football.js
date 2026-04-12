@@ -1,4 +1,4 @@
-const GAME_VERSION = '1.7.0';
+const GAME_VERSION = '1.8.0';
 const EZ = 5;
 function yardToPct(y) { return EZ + (y / 100) * (100 - 2 * EZ); }
 
@@ -847,7 +847,7 @@ function updateField(animated) {
   }
   const rotation = state.possession === 'defense' ? 18 : -18;
   ball.style.left = (yardToPct(state.animYd) - 2.2) + '%';
-  ball.style.transform = `translateY(-50%) rotate(${rotation}deg)`;
+  ball.style.setProperty('--ball-rotation', `${rotation}deg`);
   fdl.style.left = yardToPct(clamp(state.fdYd, 0, 100)) + '%';
   if (animated) {
     ball.classList.add('ball-moving');
