@@ -818,14 +818,7 @@ function buildPlay(callKey, opts = {}) {
 // -- Field --------------------------------------------------------------------
 function buildField() {
   const fw = document.getElementById('field-wrap');
-  fw.querySelectorAll('.grass,.yline,.ylabel').forEach(e => e.remove());
-  [0, 20, 40, 60, 80].forEach(y => {
-    const d = document.createElement('div');
-    d.className = 'grass';
-    d.style.left = yardToPct(y) + '%';
-    d.style.width = (yardToPct(10) - EZ) + '%';
-    fw.appendChild(d);
-  });
+  fw.querySelectorAll('.grass,.yline,.ylabel,.hash-mark').forEach(e => e.remove());
   [10, 20, 30, 40, 50, 60, 70, 80, 90].forEach(y => {
     const ln = document.createElement('div');
     ln.className = 'yline'; ln.style.left = yardToPct(y) + '%';
@@ -834,6 +827,12 @@ function buildField() {
     lb.className = 'ylabel'; lb.style.left = yardToPct(y) + '%';
     lb.textContent = fieldNumber(y);
     fw.appendChild(lb);
+    ['hash-top', 'hash-bottom'].forEach(cls => {
+      const hm = document.createElement('div');
+      hm.className = 'hash-mark ' + cls;
+      hm.style.left = yardToPct(y) + '%';
+      fw.appendChild(hm);
+    });
   });
 }
 
@@ -846,8 +845,14 @@ function updateField(animated) {
     ball.style.transition = 'none'; fdl.style.transition = 'none';
     requestAnimationFrame(() => { ball.style.transition = ''; fdl.style.transition = ''; });
   }
+  const rotation = state.possession === 'defense' ? 18 : -18;
   ball.style.left = (yardToPct(state.animYd) - 2.2) + '%';
+  ball.style.transform = `translateY(-50%) rotate(${rotation}deg)`;
   fdl.style.left = yardToPct(clamp(state.fdYd, 0, 100)) + '%';
+  if (animated) {
+    ball.classList.add('ball-moving');
+    setTimeout(() => ball.classList.remove('ball-moving'), 400);
+  }
 }
 
 function updateStatus() {
