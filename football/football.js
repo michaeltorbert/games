@@ -1,4 +1,5 @@
-const GAME_VERSION = '1.10.0';
+const GAME_VERSION = '1.11.0';
+let prevPlayerScore = -1, prevOpponentScore = -1;
 const EZ = 5;
 function yardToPct(y) { return EZ + (y / 100) * (100 - 2 * EZ); }
 
@@ -881,8 +882,27 @@ function updateStatus() {
   document.getElementById('s-down').textContent = downDistanceLabel(state.down, state.ytg);
   document.getElementById('s-yd').textContent = ydLabel(state.yd, true);
   document.getElementById('s-quarter').textContent = state.quarter;
-  document.getElementById('s-pscore').textContent = state.playerScore;
-  document.getElementById('s-oscore').textContent = state.opponentScore;
+  const pEl = document.getElementById('s-pscore');
+  const oEl = document.getElementById('s-oscore');
+  pEl.textContent = state.playerScore;
+  oEl.textContent = state.opponentScore;
+
+  // Score pulse — only when score actually changes, skip initial render
+  if (prevPlayerScore >= 0 && state.playerScore !== prevPlayerScore) {
+    pEl.classList.remove('score-pulse');
+    void pEl.offsetWidth;
+    pEl.classList.add('score-pulse');
+    setTimeout(() => pEl.classList.remove('score-pulse'), 500);
+  }
+  if (prevOpponentScore >= 0 && state.opponentScore !== prevOpponentScore) {
+    oEl.classList.remove('score-pulse');
+    void oEl.offsetWidth;
+    oEl.classList.add('score-pulse');
+    setTimeout(() => oEl.classList.remove('score-pulse'), 500);
+  }
+  prevPlayerScore = state.playerScore;
+  prevOpponentScore = state.opponentScore;
+
   const status = document.getElementById('status');
   status.dataset.possession = state.possession;
   const poss = document.getElementById('sb-poss');
@@ -897,7 +917,7 @@ function hideAnswerButtons() {
     const b = document.getElementById('b' + i);
     b.disabled = true;
     b.textContent = '';
-    b.classList.remove('wrong');
+    b.classList.remove('wrong', 'correct');
   });
 }
 
@@ -915,7 +935,7 @@ function renderButtons() {
     const hasChoice = i < state.choices.length;
     b.classList.toggle('hidden', !hasChoice);
     b.disabled = !hasChoice;
-    b.classList.remove('wrong');
+    b.classList.remove('wrong', 'correct');
     if (!hasChoice) {
       b.textContent = '';
       return;
@@ -1056,20 +1076,21 @@ function handleAnswer(idx) {
     state.phase = 'feedback';
     state.outcomeMessage = msg;
     setFeedback(`${msg} ${state.explain || 'That answer misses it.'}`);
-    setTimeout(() => { btn.classList.remove('wrong'); }, 700);
     resolveOffenseMiss();
     return;
   }
 
+  btn.classList.add('correct');
   disableAnswers();
   state.phase = 'feedback';
   resolveOffensePlay();
 }
 
 function handleDefenseAnswer(btn, val) {
-  disableAnswers();
   state.phase = 'feedback';
   if (val === state.correct) {
+    btn.classList.add('correct');
+    disableAnswers();
     const msg = outcomeMessage(DEFENSE_STOP_MESSAGES, state.opponentCallKey);
     state.outcomeMessage = msg;
     setFeedback(`${msg} ${state.explain || ''}`.trim());
@@ -1077,11 +1098,11 @@ function handleDefenseAnswer(btn, val) {
     return;
   }
 
-  const msg = outcomeMessage(DEFENSE_GAIN_MESSAGES, state.opponentCallKey);
   btn.classList.add('wrong');
+  disableAnswers();
+  const msg = outcomeMessage(DEFENSE_GAIN_MESSAGES, state.opponentCallKey);
   state.outcomeMessage = msg;
   setFeedback(`${msg} ${state.explain || 'That answer misses it.'} Opponent gains ${yds(state.g)}.`);
-  setTimeout(() => { btn.classList.remove('wrong'); }, 700);
   resolveDefenseGain(msg);
 }
 
@@ -1111,18 +1132,27 @@ function resolveOffensePlay() {
   }
 
   if (p.isTurnoverOnDowns) {
+    showFieldFloat('NO GAIN', 'negative');
     setFeedback('Turnover on downs…');
     advTimer = setTimeout(() => finishPossession('Turnover on downs. Time to play defense!'), 1400);
     return;
   }
 
-  setFeedback(p.gotFirstDown ? '🎉 First Down!' : 'Correct! ✅');
+  if (p.gotFirstDown) {
+    showFieldFloat('FIRST DOWN!', 'first-down');
+    flashFdLine();
+    setFeedback('🎉 First Down!');
+  } else {
+    showFieldFloat('+' + (p.gain || 0) + ' YDS');
+    setFeedback('Correct! ✅');
+  }
   advTimer = setTimeout(showCallPrompt, 1400);
 }
 
 function resolveOffenseMiss() {
   state.drivePlays++;
   state.plays++;
+  showFieldFloat('NO GAIN', 'negative');
   const nextDown = state.down + 1;
 
   if (nextDown > 4) {
@@ -1140,6 +1170,8 @@ function resolveOffenseMiss() {
 function resolveDefenseStop(message) {
   state.drivePlays++;
   state.plays++;
+  showFieldFloat('STOPPED', 'negative');
+  flashDefenseStop();
   const nextDown = state.down + 1;
 
   if (nextDown > 4) {
@@ -1157,6 +1189,7 @@ function resolveDefenseStop(message) {
 
 function resolveDefenseGain(message) {
   const p = state.play;
+  showFieldFloat('+' + (p.gain || 0) + ' YDS');
   applyPlayState(p);
 
   if (p.isTouchdown) {
@@ -1177,10 +1210,61 @@ function resolveDefenseGain(message) {
   advTimer = setTimeout(showCallPrompt, 1600);
 }
 
+// ── Field outcome floats & confetti ──────────────────────────────────────────
+function showFieldFloat(text, cssClass) {
+  const wrap = document.getElementById('field-wrap');
+  const ballLeft = parseFloat(document.getElementById('ball').style.left) || 50;
+  const clamped = Math.max(14, Math.min(86, ballLeft));
+  const el = document.createElement('div');
+  el.className = 'field-float' + (cssClass ? ' ' + cssClass : '');
+  el.textContent = text;
+  el.style.left = clamped + '%';
+  wrap.appendChild(el);
+  setTimeout(() => el.remove(), 950);
+}
+
+function flashFdLine() {
+  const fdl = document.getElementById('fd-line');
+  fdl.classList.remove('fd-flash');
+  void fdl.offsetWidth;
+  fdl.classList.add('fd-flash');
+  setTimeout(() => fdl.classList.remove('fd-flash'), 550);
+}
+
+function flashDefenseStop() {
+  const fw = document.getElementById('field-wrap');
+  fw.classList.remove('defense-stop-flash');
+  void fw.offsetWidth;
+  fw.classList.add('defense-stop-flash');
+  setTimeout(() => fw.classList.remove('defense-stop-flash'), 450);
+}
+
+function spawnConfetti(containerId, count) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  const colors = ['#ffd700', '#ff6b6b', '#4dff4d', '#7bafd4', '#ff9933', '#cc66ff', '#ffffff'];
+  for (let i = 0; i < count; i++) {
+    const piece = document.createElement('div');
+    piece.className = 'confetti-piece';
+    piece.style.left = (Math.random() * 100) + '%';
+    piece.style.background = colors[Math.floor(Math.random() * colors.length)];
+    piece.style.animationDelay = (Math.random() * 1.2) + 's';
+    piece.style.animationDuration = (1.8 + Math.random() * 1.0) + 's';
+    container.appendChild(piece);
+  }
+}
+
+function clearConfetti(containerId) {
+  const container = document.getElementById(containerId);
+  if (container) container.innerHTML = '';
+}
+
 function hideOverlays() {
   ['ov-start', 'ov-td', 'ov-defense', 'ov-offense', 'ov-quarter', 'ov-halftime', 'ov-end'].forEach((id) => {
     document.getElementById(id).classList.remove('show');
   });
+  clearConfetti('ov-td-confetti');
+  clearConfetti('ov-end-confetti');
 }
 
 function showStart() {
@@ -1209,9 +1293,11 @@ function showTD() {
     `Score: ${state.playerScore} - ${state.opponentScore}. ${state.tds} player TD${state.tds === 1 ? '' : 's'}!`;
   if (button) button.textContent = touchdownContinueLabel();
   document.getElementById('ov-td').classList.add('show');
+  spawnConfetti('ov-td-confetti', 40);
 }
 
 function afterTouchdown() {
+  clearConfetti('ov-td-confetti');
   document.getElementById('ov-td').classList.remove('show');
   finishPossession('You scored. Time to play defense!');
 }
@@ -1300,7 +1386,8 @@ function nextQuarter() {
 function showGameOver() {
   const diff = state.playerScore - state.opponentScore;
   const title = diff > 0 ? 'You Win!' : diff < 0 ? 'Final Score' : 'Tie Game!';
-  const emoji = diff > 0 ? '🏆' : diff < 0 ? '🏈' : '🤝';
+  const badgeText = diff > 0 ? 'VICTORY' : diff < 0 ? 'FINAL' : 'TIE';
+  const resultClass = diff > 0 ? 'ov-win' : diff < 0 ? 'ov-loss' : 'ov-tie';
   const detail = diff > 0
     ? 'Great game.'
     : diff < 0
@@ -1308,15 +1395,26 @@ function showGameOver() {
       : 'Both teams finished even.';
 
   Object.assign(state, blankPlayState(), { pendingNextPossession: null, phase: 'final' });
-  document.getElementById('ov-end-emoji').textContent = emoji;
+  const endOv = document.getElementById('ov-end');
+  endOv.classList.remove('ov-win', 'ov-loss', 'ov-tie');
+  endOv.classList.add(resultClass);
+  const badge = document.getElementById('ov-end-badge');
+  if (badge) badge.textContent = badgeText;
   document.getElementById('ov-end-title').textContent = title;
+  const finalScore = document.getElementById('ov-end-score');
+  if (finalScore) finalScore.textContent = `${state.playerScore} - ${state.opponentScore}`;
   document.getElementById('ov-end-sub').textContent =
-    `Final Score: ${state.playerScore} - ${state.opponentScore}. ${detail} Player TDs: ${state.tds}.`;
-  document.getElementById('ov-end').classList.add('show');
+    `${detail} Player TDs: ${state.tds}.`;
+  endOv.classList.add('show');
+  if (diff > 0) spawnConfetti('ov-end-confetti', 40);
 }
 
 function restart() {
+  clearConfetti('ov-td-confetti');
+  clearConfetti('ov-end-confetti');
   state = createGameState();
+  prevPlayerScore = -1;
+  prevOpponentScore = -1;
   updateField(false);
   updateStatus();
   showStart();

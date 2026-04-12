@@ -4,11 +4,11 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <title>Football Math!</title>
-<link rel="apple-touch-icon" href="apple-touch-icon.png?v=1.10.0">
-<link rel="icon" type="image/png" href="apple-touch-icon.png?v=1.10.0">
-<link rel="stylesheet" href="../shared/fonts.css?v=1.10.0">
-<link rel="stylesheet" href="../shared/reset.css?v=1.10.0">
-<link rel="stylesheet" href="football.css?v=1.10.0">
+<link rel="apple-touch-icon" href="apple-touch-icon.png?v=1.11.0">
+<link rel="icon" type="image/png" href="apple-touch-icon.png?v=1.11.0">
+<link rel="stylesheet" href="../shared/fonts.css?v=1.11.0">
+<link rel="stylesheet" href="../shared/reset.css?v=1.11.0">
+<link rel="stylesheet" href="football.css?v=1.11.0">
 </head>
 <body>
 <div id="wrap">
@@ -57,52 +57,55 @@
 </div>
 
 <div class="overlay show" id="ov-start">
-  <div class="ov-emoji">🏈</div>
+  <span class="ov-broadcast-badge ov-badge-info">KICKOFF</span>
   <div class="ov-title">Football Math!</div>
   <div class="ov-sub">Call plays, answer math, and win in 4 quarters.</div>
   <button class="ov-btn" onclick="startGame()">Start Game</button>
 </div>
 <div class="overlay" id="ov-td">
-  <div class="ov-emoji">🏆</div>
+  <div class="ov-confetti" id="ov-td-confetti"></div>
+  <span class="ov-broadcast-badge">TOUCHDOWN</span>
   <div class="ov-title">TOUCHDOWN!</div>
   <div class="ov-sub" id="ov-td-sub"></div>
   <button class="ov-btn" id="ov-td-btn" onclick="afterTouchdown()">Play Defense!</button>
 </div>
 <div class="overlay" id="ov-defense">
-  <div class="ov-emoji">🛡️</div>
+  <span class="ov-broadcast-badge ov-badge-defense">DEFENSE</span>
   <div class="ov-title">Opponent's Ball!</div>
   <div class="ov-sub" id="ov-defense-sub"></div>
   <button class="ov-btn" onclick="startDefense()">Play Defense!</button>
 </div>
 <div class="overlay" id="ov-offense">
-  <div class="ov-emoji">🏈</div>
+  <span class="ov-broadcast-badge ov-badge-info">OFFENSE</span>
   <div class="ov-title">Your Ball!</div>
   <div class="ov-sub" id="ov-offense-sub"></div>
   <button class="ov-btn" onclick="startOffense()">Play Offense!</button>
 </div>
 <div class="overlay" id="ov-quarter">
-  <div class="ov-emoji">📣</div>
+  <span class="ov-broadcast-badge ov-badge-info">BREAK</span>
   <div class="ov-title" id="ov-quarter-title">End of Quarter</div>
   <div class="ov-sub" id="ov-quarter-sub"></div>
   <button class="ov-btn" onclick="nextQuarter()">Next Quarter</button>
 </div>
 <div class="overlay" id="ov-halftime">
-  <div class="ov-emoji">🥤</div>
+  <span class="ov-broadcast-badge ov-badge-info">HALFTIME</span>
   <div class="ov-title">HALFTIME!</div>
   <div class="ov-sub" id="ov-halftime-sub"></div>
   <button class="ov-btn" onclick="nextQuarter()">2nd Half!</button>
 </div>
 <div class="overlay" id="ov-end">
-  <div class="ov-emoji" id="ov-end-emoji">⭐</div>
+  <div class="ov-confetti" id="ov-end-confetti"></div>
+  <span class="ov-broadcast-badge" id="ov-end-badge">FINAL</span>
   <div class="ov-title" id="ov-end-title">Final Score</div>
+  <div class="ov-final-score" id="ov-end-score"></div>
   <div class="ov-sub" id="ov-end-sub"></div>
   <button class="ov-btn" onclick="restart()">Play Again!</button>
 </div>
 
-<script src="football.js?v=1.10.0"></script>
+<script src="football.js?v=1.11.0"></script>
 <script>
   document.getElementById('version-display').textContent = `v${GAME_VERSION}`;
 </script>
-<script src="../shared/updater.js?v=1.10.0"></script>
+<script src="../shared/updater.js?v=1.11.0"></script>
 </body>
 </html>
