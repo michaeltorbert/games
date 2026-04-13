@@ -2,6 +2,8 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+Codex will review your output once you are done.
+
 ## Local Development
 
 No build step. Serve from the repo root — the `../shared/` paths in each game require a real HTTP server:
