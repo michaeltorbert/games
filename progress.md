@@ -146,3 +146,29 @@ Original prompt: yes, do all you need to do to get started
 2026-04-12
 - Verified Codex GitHub App attribution by creating a test issue and commenting on an existing issue as `codex-michaeltorbert[bot]`.
 - Corrected the local commit email to the bot account's noreply identity so GitHub can associate future commits with the app bot.
+
+2026-04-13
+- Updated `main`, created `codex/football-ui-frontend`, and redesigned the football UI without changing the underlying play or scoring rules.
+- `football/index.html`: reorganized the DOM into a two-part broadcast scorebug, a dedicated field stage, a split prompt/controls desk, and card-based overlays.
+- `football/football.css`: rebuilt the visual system around CSS variables, a condensed broadcast type treatment, a more central field, a line-to-gain sideline badge, quieter panels, and explicit tablet/mobile breakpoints.
+- `football/football.js`: synced the new scorebug ribbon and field-stage labels to possession state, added feedback tones and control-copy updates for the lower desk, enriched call-card metadata, and positioned the new line-to-gain badge without changing gameplay flow.
+- Bumped football asset and catalog version strings to `1.13.0` in `football/index.html`, `football/football.js`, `games.js`, and `version.json`.
+- Verification:
+- `$HOME/.local/node/current/bin/node --check football/football.js` passed.
+- `git diff --check` passed.
+- `$HOME/.local/node/current/bin/node $HOME/.codex/skills/develop-web-game/scripts/web_game_playwright_client.js --url http://127.0.0.1:8000/football/ ...` completed and wrote smoke artifacts to `output/football-ui-client/`.
+- `/tmp/football_ui_verify.mjs` passed and wrote desktop offense/defense/question/overlay plus `390px` and `320px` mobile screenshots and state JSON to `output/football-ui-verify/`, with no console or page errors.
+- TODO: if another visual pass is needed, decide whether the quiet desktop prompt panel should keep its extra negative space during call selection or carry a small supplemental stat or hint.
+- Follow-up after user feedback that the first redesign still read too close to the old UI:
+- pushed the broadcast look harder in `football/football.css` with a more aggressive scorebug package, larger field stage, denser shared lower desk, much stronger play-call and answer-card treatments, and a more obvious orange defense package;
+- added phase-aware layout state in `football/football.js` so call selection and question answering now present different proportions and card layouts instead of sharing one conservative composition;
+- bumped football again to `1.14.0` in `football/index.html`, `football/football.js`, `games.js`, and `version.json`;
+- reran `$HOME/.local/node/current/bin/node --check football/football.js`, `git diff --check`, and `/tmp/football_ui_verify.mjs http://127.0.0.1:8003/football/`; all passed with no console or page errors;
+- captured refreshed comparison artifacts against `origin/main` in `output/football-ui-compare/` for desktop call/question/defense and mobile call states.
+- Second follow-up after the user asked for a more aggressive, professional-quality pass:
+- rebuilt the lower-third into a single shared broadcast desk with one topline, a live context string, much larger possession/down hierarchy, and phase-specific composition instead of two persistent panel headers;
+- tightened football copy and UI state wiring in `football/football.js` so the desk chip, kicker, action copy, and context line now switch between kickoff, next snap, live math, and result states without touching gameplay rules;
+- pushed overlays into larger broadcast takeovers and sharpened answer/play-card geometry with clipped corners, flatter internal chrome, and stronger offense/defense separation;
+- bumped football to `1.15.0` in `football/index.html`, `football/football.js`, `games.js`, and `version.json`;
+- reran `$HOME/.local/node/current/bin/node --check football/football.js`, `git diff --check`, `$HOME/.local/node/current/bin/node "$HOME/.codex/skills/develop-web-game/scripts/web_game_playwright_client.js" --url http://127.0.0.1:8003/football/ --click-selector "#ov-start .ov-btn" --actions-json '{"steps":[{"buttons":[],"frames":2}]}' --iterations 2 --pause-ms 250 --screenshot-dir output/football-ui-client-115`, and `/tmp/football_ui_verify.mjs http://127.0.0.1:8003/football/`; all passed;
+- visually inspected fresh artifacts in `output/football-ui-client-115/` and `output/football-ui-verify/`, including desktop offense/question/defense, final overlay, and `390px`/`320px` mobile question states.

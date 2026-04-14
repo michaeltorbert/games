@@ -1,4 +1,4 @@
-const GAME_VERSION = '1.12.0';
+const GAME_VERSION = '1.15.0';
 let prevPlayerScore = -1, prevOpponentScore = -1;
 let playerRunTimer = 0, playerCelebrateTimer = 0, playerCelebrateDelayTimer = 0;
 const EZ = 5;
@@ -266,6 +266,60 @@ function oppositePossession(possession) {
 
 function possessionTitle(possession) {
   return possession === 'offense' ? 'Your ball' : "Opponent's ball";
+}
+
+function possessionRibbonText(possession) {
+  return possession === 'offense' ? 'DUKE BALL - OFFENSE' : 'UNC BALL - DEFENSE';
+}
+
+function stagePossessionText(possession) {
+  return possession === 'offense' ? 'Duke on offense' : 'UNC on offense';
+}
+
+function riskLabelText(risk) {
+  return String(risk || 'medium').replace(/-/g, ' ').toUpperCase();
+}
+
+function syncUiState() {
+  const wrap = document.getElementById('wrap');
+  const desk = document.getElementById('ui-desk');
+  if (wrap) wrap.dataset.phase = state.phase || 'start';
+  if (desk) {
+    desk.dataset.phase = state.phase || 'start';
+    desk.dataset.possession = state.possession || 'offense';
+  }
+  updatePromptContext();
+}
+
+function playContextText() {
+  if (state.phase === 'start' || !state.possession) {
+    return 'DUKE VS UNC / FOUR QUARTERS / WIN THE RIVALRY';
+  }
+
+  const owner = state.possession === 'offense' ? 'DUKE BALL' : 'UNC BALL';
+  const bits = [owner, `Q${state.quarter}`, `BALL ON ${ydLabel(state.yd, true).toUpperCase()}`];
+
+  if (state.phase === 'question' || state.phase === 'feedback') {
+    if (state.g != null) bits.push(`${state.g} YDS IN PLAY`);
+    if (state.possession === 'defense' && state.matchup) {
+      bits.push(state.matchup === 'matched' ? 'GOOD MATCHUP' : 'MISMATCH');
+    }
+  }
+
+  return bits.join(' / ');
+}
+
+function updatePromptContext(text = playContextText()) {
+  const el = document.getElementById('play-context');
+  if (el) el.textContent = text;
+}
+
+function setDeskHeader(chip, kicker, actionCopy) {
+  const chipEl = document.getElementById('desk-chip');
+  const kickerEl = document.getElementById('desk-kicker');
+  if (chipEl) chipEl.textContent = chip;
+  if (kickerEl) kickerEl.textContent = kicker;
+  setActionSubcopy(actionCopy);
 }
 
 function startingYardFor(possession) {
@@ -863,6 +917,7 @@ function buildField() {
 function updateField(animated) {
   const ball = document.getElementById('ball');
   const fdl = document.getElementById('fd-line');
+  const fdChain = document.getElementById('fd-chain');
   const fw = document.getElementById('field-wrap');
   fw.classList.toggle('defense', state.possession === 'defense');
   if (!animated) {
@@ -870,9 +925,11 @@ function updateField(animated) {
     requestAnimationFrame(() => { ball.style.transition = ''; fdl.style.transition = ''; });
   }
   const rotation = state.possession === 'defense' ? 18 : -18;
+  const fdLeft = yardToPct(clamp(state.fdYd, 0, 100)) + '%';
   ball.style.left = yardToPct(state.animYd) + '%';
   ball.style.setProperty('--ball-rotation', `${rotation}deg`);
-  fdl.style.left = yardToPct(clamp(state.fdYd, 0, 100)) + '%';
+  fdl.style.left = fdLeft;
+  if (fdChain) fdChain.style.left = fdLeft;
   if (animated) {
     ball.classList.add('ball-moving');
     setTimeout(() => ball.classList.remove('ball-moving'), 400);
@@ -920,19 +977,45 @@ function updateStatus() {
   prevOpponentScore = state.opponentScore;
 
   const status = document.getElementById('status');
+  const scorebug = document.getElementById('scorebug');
+  const wrap = document.getElementById('wrap');
   status.dataset.possession = state.possession;
+  if (scorebug) scorebug.dataset.possession = state.possession;
+  if (wrap) wrap.dataset.possession = state.possession;
   const poss = document.getElementById('sb-poss');
   poss.classList.toggle('poss-defense', state.possession === 'defense');
+  const ribbon = document.getElementById('status-ribbon-text');
+  if (ribbon) ribbon.textContent = possessionRibbonText(state.possession);
+  const stagePossession = document.getElementById('stage-possession');
+  if (stagePossession) stagePossession.textContent = stagePossessionText(state.possession);
+  syncUiState();
 }
 
-function setFeedback(t) { document.getElementById('feedback').textContent = t; }
+function setFeedback(t, tone = 'neutral') {
+  const el = document.getElementById('feedback');
+  el.textContent = t;
+  if (t) {
+    el.dataset.tone = tone;
+  } else {
+    delete el.dataset.tone;
+  }
+}
+
+function setActionSubcopy(t) {
+  const el = document.getElementById('action-subcopy');
+  if (el) el.textContent = t;
+}
 
 function hideAnswerButtons() {
-  document.getElementById('btn-row').classList.add('hidden');
+  const row = document.getElementById('btn-row');
+  row.classList.add('hidden');
+  delete row.dataset.choiceType;
   [0, 1, 2, 3].forEach(i => {
     const b = document.getElementById('b' + i);
     b.disabled = true;
     b.textContent = '';
+    delete b.dataset.slot;
+    delete b.dataset.value;
     b.classList.remove('wrong', 'correct');
   });
 }
@@ -940,12 +1023,15 @@ function hideAnswerButtons() {
 function hideCallGrid() {
   const grid = document.getElementById('call-grid');
   grid.classList.add('hidden');
+  delete grid.dataset.count;
   grid.innerHTML = '';
 }
 
 function renderButtons() {
   hideCallGrid();
-  document.getElementById('btn-row').classList.remove('hidden');
+  const row = document.getElementById('btn-row');
+  row.classList.remove('hidden');
+  row.dataset.choiceType = state.choiceType || 'number';
   [0, 1, 2, 3].forEach(i => {
     const b = document.getElementById('b' + i);
     const hasChoice = i < state.choices.length;
@@ -957,7 +1043,8 @@ function renderButtons() {
       return;
     }
     b.textContent = state.choices[i];
-    b.style.fontSize = state.choiceType === 'number' ? '34px' : state.choiceType === 'down' ? '28px' : state.choiceType === 'yard' ? '18px' : '20px';
+    b.dataset.slot = String.fromCharCode(65 + i);
+    b.dataset.value = String(state.choices[i]);
   });
 }
 
@@ -966,13 +1053,16 @@ function renderCallGrid(calls, onPick) {
   const grid = document.getElementById('call-grid');
   grid.innerHTML = '';
   grid.classList.remove('hidden');
+  grid.dataset.count = String(calls.length);
   grid.dataset.possession = state.possession;
   calls.forEach((call) => {
     const btn = document.createElement('button');
     btn.className = 'call-btn';
     btn.dataset.risk = call.risk || 'medium';
     const diagram = playDiagramSvg(call.key, state.possession);
+    const callMode = state.possession === 'defense' ? 'Coverage' : 'Play call';
     btn.innerHTML =
+      `<span class="call-meta"><span>${callMode}</span><span class="call-risk">${riskLabelText(call.risk)}</span></span>` +
       `<span class="call-diagram" aria-hidden="true">${diagram}</span>` +
       `<span class="call-label">${call.label}</span>` +
       `<span class="call-desc">${call.desc}</span>`;
@@ -990,14 +1080,15 @@ function showCallPrompt() {
   clearTimeout(advTimer);
   Object.assign(state, blankPlayState(), { phase: 'call' });
   updateStatus();
-  document.getElementById('wrap').dataset.possession = state.possession;
   if (state.possession === 'offense') {
-    document.getElementById('play-label').textContent = `Your Ball: ${downDistanceLabel(state.down, state.ytg)}`;
-    document.getElementById('question').textContent = 'Pick your play. Short plays are easier; long plays are harder.';
+    document.getElementById('play-label').textContent = downDistanceLabel(state.down, state.ytg);
+    document.getElementById('question').textContent = 'Call the snap. Bigger gains bring tougher math.';
+    setDeskHeader('Next Snap', 'Set the Duke offense.', 'Choose a play card.');
     renderCallGrid(Object.values(OFFENSE_CALLS), selectOffenseCall);
   } else {
-    document.getElementById('play-label').textContent = `Opponent Ball: ${downDistanceLabel(state.down, state.ytg)}`;
-    document.getElementById('question').textContent = 'Pick your defense. The card sets the math difficulty; matching their play cuts down the gain.';
+    document.getElementById('play-label').textContent = downDistanceLabel(state.down, state.ytg);
+    document.getElementById('question').textContent = 'Call the coverage. The right look cuts down the gain.';
+    setDeskHeader('Next Snap', 'Set the Duke defense.', 'Choose a defense card.');
     renderCallGrid(Object.values(DEFENSE_CALLS), selectDefenseCall);
   }
   setFeedback('');
@@ -1036,6 +1127,8 @@ function prepareQuestion(p, labelHtml) {
   });
   document.getElementById('play-label').innerHTML = labelHtml;
   document.getElementById('question').textContent = state.question;
+  setDeskHeader('Live Math', state.possession === 'offense' ? 'Run the play.' : 'Beat the snap.', 'Answer the question.');
+  syncUiState();
   setFeedback('');
   renderButtons();
 }
@@ -1072,7 +1165,7 @@ function selectDefenseCall(defenseCallKey) {
   const call = OFFENSE_CALLS[opponentCallKey];
   const read = matched ? 'Good matchup' : 'Mismatch';
   prepareQuestion(p, `Opponent ${call.label.toLowerCase()} for <span>${yds(p.gain)}</span>`);
-  setFeedback(`${read}: ${defenseCall.label} vs ${call.label}. Math level comes from your defense call.`);
+  setFeedback(`${read}: ${defenseCall.label} vs ${call.label}. Math level comes from your defense call.`, 'info');
 }
 
 function handleAnswer(idx) {
@@ -1091,8 +1184,10 @@ function handleAnswer(idx) {
     btn.classList.add('wrong');
     disableAnswers();
     state.phase = 'feedback';
+    syncUiState();
     state.outcomeMessage = msg;
-    setFeedback(`${msg} ${state.explain || 'That answer misses it.'}`);
+    setDeskHeader('Result', 'Play outcome.', 'Watch the result.');
+    setFeedback(`${msg} ${state.explain || 'That answer misses it.'}`, 'negative');
     resolveOffenseMiss();
     return;
   }
@@ -1100,17 +1195,21 @@ function handleAnswer(idx) {
   btn.classList.add('correct');
   disableAnswers();
   state.phase = 'feedback';
+  syncUiState();
+  setDeskHeader('Result', 'Play outcome.', 'Watch the result.');
   resolveOffensePlay();
 }
 
 function handleDefenseAnswer(btn, val) {
   state.phase = 'feedback';
+  syncUiState();
   if (val === state.correct) {
     btn.classList.add('correct');
     disableAnswers();
     const msg = outcomeMessage(DEFENSE_STOP_MESSAGES, state.opponentCallKey);
     state.outcomeMessage = msg;
-    setFeedback(`${msg} ${state.explain || ''}`.trim());
+    setDeskHeader('Result', 'Defensive result.', 'Watch the result.');
+    setFeedback(`${msg} ${state.explain || ''}`.trim(), 'positive');
     resolveDefenseStop(msg);
     return;
   }
@@ -1119,7 +1218,8 @@ function handleDefenseAnswer(btn, val) {
   disableAnswers();
   const msg = outcomeMessage(DEFENSE_GAIN_MESSAGES, state.opponentCallKey);
   state.outcomeMessage = msg;
-  setFeedback(`${msg} ${state.explain || 'That answer misses it.'} Opponent gains ${yds(state.g)}.`);
+  setDeskHeader('Result', 'Defensive result.', 'Watch the result.');
+  setFeedback(`${msg} ${state.explain || 'That answer misses it.'} Opponent gains ${yds(state.g)}.`, 'negative');
   resolveDefenseGain(msg);
 }
 
@@ -1144,14 +1244,14 @@ function resolveOffensePlay() {
     state.tds++;
     state.playerScore += TD_POINTS;
     updateStatus();
-    setFeedback('🏈 Touchdown!');
+    setFeedback('Touchdown!', 'positive');
     advTimer = setTimeout(showTD, 900);
     return;
   }
 
   if (p.isTurnoverOnDowns) {
     showFieldFloat(p.gain > 0 ? '+' + p.gain + ' YDS' : 'NO GAIN', 'negative');
-    setFeedback('Turnover on downs…');
+    setFeedback('Turnover on downs.', 'negative');
     advTimer = setTimeout(() => finishPossession('Turnover on downs. Time to play defense!'), 1400);
     return;
   }
@@ -1159,12 +1259,12 @@ function resolveOffensePlay() {
   if (p.gotFirstDown) {
     showFieldFloat('FIRST DOWN!', 'first-down');
     flashFdLine();
-    setFeedback('🎉 First Down!');
+    setFeedback('First down!', 'positive');
     clearTimeout(playerCelebrateDelayTimer);
     playerCelebrateDelayTimer = setTimeout(startPlayerCelebrate, 700);
   } else {
     showFieldFloat('+' + (p.gain || 0) + ' YDS');
-    setFeedback('Correct! ✅');
+    setFeedback('Correct.', 'positive');
   }
   advTimer = setTimeout(showCallPrompt, 1400);
 }
@@ -1325,12 +1425,15 @@ function showStart() {
   hideOverlays();
   resetPlayerAnimations();
   document.getElementById('ov-start').classList.add('show');
+  updatePromptContext('DUKE VS UNC / FOUR QUARTERS / WIN THE RIVALRY');
   document.getElementById('play-label').textContent = 'Get ready…';
   document.getElementById('question').textContent = '';
+  setDeskHeader('Kickoff', 'Start the rivalry.', 'Start the broadcast when you are ready.');
   setFeedback('');
   hideAnswerButtons();
   hideCallGrid();
   state.phase = 'start';
+  syncUiState();
 }
 
 function startGame() {
@@ -1343,6 +1446,7 @@ function startGame() {
 function showTD() {
   const button = document.getElementById('ov-td-btn');
   Object.assign(state, blankPlayState(), { phase: 'touchdown' });
+  syncUiState();
   document.getElementById('ov-td-sub').textContent =
     `Score: ${state.playerScore} - ${state.opponentScore}. ${state.tds} player TD${state.tds === 1 ? '' : 's'}!`;
   if (button) button.textContent = touchdownContinueLabel();
@@ -1359,6 +1463,7 @@ function afterTouchdown() {
 function showDefenseTransition(message) {
   clearTimeout(advTimer);
   Object.assign(state, blankPlayState(), { phase: 'transition' });
+  syncUiState();
   document.getElementById('ov-defense-sub').textContent =
     `${message} Score: ${state.playerScore} - ${state.opponentScore}`;
   document.getElementById('ov-defense').classList.add('show');
@@ -1372,6 +1477,7 @@ function startDefense() {
 function showOffenseTransition(message) {
   clearTimeout(advTimer);
   Object.assign(state, blankPlayState(), { phase: 'transition' });
+  syncUiState();
   document.getElementById('ov-offense-sub').textContent =
     `${message} Score: ${state.playerScore} - ${state.opponentScore}`;
   document.getElementById('ov-offense').classList.add('show');
@@ -1413,6 +1519,7 @@ function finishPossession(message) {
 function showQuarterEnd(message) {
   const next = possessionTitle(state.pendingNextPossession || 'offense');
   Object.assign(state, blankPlayState(), { phase: 'quarter' });
+  syncUiState();
   document.getElementById('ov-quarter-title').textContent = `End of ${QUARTER_NAMES[state.quarter]} Quarter`;
   document.getElementById('ov-quarter-sub').textContent =
     `${message} Next possession after the break: ${next}. Score: ${state.playerScore} - ${state.opponentScore}`;
@@ -1422,6 +1529,7 @@ function showQuarterEnd(message) {
 function showHalftime(message) {
   const next = possessionTitle(state.pendingNextPossession || 'defense');
   Object.assign(state, blankPlayState(), { phase: 'halftime' });
+  syncUiState();
   document.getElementById('ov-halftime-sub').textContent =
     `${message} Halftime swap: ${next} starts the 2nd half. Score: ${state.playerScore} - ${state.opponentScore}`;
   document.getElementById('ov-halftime').classList.add('show');
@@ -1449,6 +1557,7 @@ function showGameOver() {
       : 'Both teams finished even.';
 
   Object.assign(state, blankPlayState(), { pendingNextPossession: null, phase: 'final' });
+  syncUiState();
   const endOv = document.getElementById('ov-end');
   endOv.classList.remove('ov-win', 'ov-loss', 'ov-tie');
   endOv.classList.add(resultClass);
