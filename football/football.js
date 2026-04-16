@@ -1,4 +1,4 @@
-const GAME_VERSION = '1.15.0';
+const GAME_VERSION = '1.16.0';
 let prevPlayerScore = -1, prevOpponentScore = -1;
 let playerRunTimer = 0, playerCelebrateTimer = 0, playerCelebrateDelayTimer = 0;
 const EZ = 5;
@@ -296,8 +296,23 @@ function playContextText() {
     return 'DUKE VS UNC / FOUR QUARTERS / WIN THE RIVALRY';
   }
 
+  const score = `SCORE ${state.playerScore}-${state.opponentScore}`;
+  if (state.phase === 'touchdown') {
+    return state.touchdownSide === 'defense'
+      ? `UNC TOUCHDOWN / ${score}`
+      : `DUKE TOUCHDOWN / ${score}`;
+  }
+  if (state.phase === 'transition') return `CHANGE OF POSSESSION / Q${state.quarter} / ${score}`;
+  if (state.phase === 'quarter') return `END OF Q${state.quarter} / ${score}`;
+  if (state.phase === 'halftime') return `HALFTIME / ${score}`;
+  if (state.phase === 'final') return `FINAL / ${score}`;
+
   const owner = state.possession === 'offense' ? 'DUKE BALL' : 'UNC BALL';
   const bits = [owner, `Q${state.quarter}`, `BALL ON ${ydLabel(state.yd, true).toUpperCase()}`];
+
+  if (state.phase === 'call') {
+    bits.push(state.possession === 'offense' ? 'CHOOSE A PLAY' : 'SET THE DEFENSE');
+  }
 
   if (state.phase === 'question' || state.phase === 'feedback') {
     if (state.g != null) bits.push(`${state.g} YDS IN PLAY`);
@@ -320,6 +335,15 @@ function setDeskHeader(chip, kicker, actionCopy) {
   if (chipEl) chipEl.textContent = chip;
   if (kickerEl) kickerEl.textContent = kicker;
   setActionSubcopy(actionCopy);
+}
+
+function touchdownContinueLabel(side) {
+  if (state.quarterPossessions + 1 < POSSESSIONS_PER_QUARTER) {
+    return side === 'defense' ? 'Your Ball' : 'Play Defense!';
+  }
+  if (state.quarter >= 4) return 'Final Score';
+  if (state.quarter === 2) return 'Halftime!';
+  return 'Next Quarter';
 }
 
 function startingYardFor(possession) {
@@ -379,6 +403,7 @@ function blankPlayState() {
     choiceType: 'number',
     explain: null,
     outcomeMessage: null,
+    touchdownSide: null,
     play: null,
   };
 }
@@ -1201,11 +1226,11 @@ function handleAnswer(idx) {
 }
 
 function handleDefenseAnswer(btn, val) {
-  state.phase = 'feedback';
-  syncUiState();
   if (val === state.correct) {
     btn.classList.add('correct');
     disableAnswers();
+    state.phase = 'feedback';
+    syncUiState();
     const msg = outcomeMessage(DEFENSE_STOP_MESSAGES, state.opponentCallKey);
     state.outcomeMessage = msg;
     setDeskHeader('Result', 'Defensive result.', 'Watch the result.');
@@ -1216,6 +1241,8 @@ function handleDefenseAnswer(btn, val) {
 
   btn.classList.add('wrong');
   disableAnswers();
+  state.phase = 'feedback';
+  syncUiState();
   const msg = outcomeMessage(DEFENSE_GAIN_MESSAGES, state.opponentCallKey);
   state.outcomeMessage = msg;
   setDeskHeader('Result', 'Defensive result.', 'Watch the result.');
@@ -1316,7 +1343,8 @@ function resolveDefenseGain(message) {
     state.opponentTds++;
     state.opponentScore += TD_POINTS;
     updateStatus();
-    advTimer = setTimeout(() => finishPossession(`${message || 'Opponent scored.'} Opponent touchdown.`), 1600);
+    setFeedback('Opponent touchdown.', 'negative');
+    advTimer = setTimeout(() => showTD('defense'), 900);
     return;
   }
 
@@ -1443,21 +1471,33 @@ function startGame() {
   startDrive('offense');
 }
 
-function showTD() {
+function showTD(side = 'offense') {
   const button = document.getElementById('ov-td-btn');
-  Object.assign(state, blankPlayState(), { phase: 'touchdown' });
+  const overlay = document.getElementById('ov-td');
+  const badge = document.getElementById('ov-td-badge');
+  const title = document.getElementById('ov-td-title');
+  Object.assign(state, blankPlayState(), { phase: 'touchdown', touchdownSide: side });
   syncUiState();
-  document.getElementById('ov-td-sub').textContent =
-    `Score: ${state.playerScore} - ${state.opponentScore}. ${state.tds} player TD${state.tds === 1 ? '' : 's'}!`;
-  if (button) button.textContent = touchdownContinueLabel();
+  if (overlay) overlay.dataset.side = side;
+  if (badge) badge.textContent = side === 'defense' ? 'UNC TOUCHDOWN' : 'TOUCHDOWN';
+  if (title) title.textContent = side === 'defense' ? 'Opponent Touchdown' : 'Touchdown!';
+  document.getElementById('ov-td-sub').textContent = side === 'defense'
+    ? `Score: ${state.playerScore} - ${state.opponentScore}. UNC has ${state.opponentTds} TD${state.opponentTds === 1 ? '' : 's'}.`
+    : `Score: ${state.playerScore} - ${state.opponentScore}. ${state.tds} player TD${state.tds === 1 ? '' : 's'}!`;
+  if (button) button.textContent = touchdownContinueLabel(side);
   document.getElementById('ov-td').classList.add('show');
-  spawnConfetti('ov-td-confetti', 40);
+  clearConfetti('ov-td-confetti');
+  if (side !== 'defense') spawnConfetti('ov-td-confetti', 40);
 }
 
 function afterTouchdown() {
   clearConfetti('ov-td-confetti');
   document.getElementById('ov-td').classList.remove('show');
-  finishPossession('You scored. Time to play defense!');
+  finishPossession(
+    state.touchdownSide === 'defense'
+      ? 'Opponent scored. Your ball next.'
+      : 'You scored. Time to play defense!'
+  );
 }
 
 function showDefenseTransition(message) {
@@ -1486,13 +1526,6 @@ function showOffenseTransition(message) {
 function startOffense() {
   document.getElementById('ov-offense').classList.remove('show');
   startDrive('offense');
-}
-
-function touchdownContinueLabel() {
-  if (state.quarterPossessions + 1 < POSSESSIONS_PER_QUARTER) return 'Play Defense!';
-  if (state.quarter >= 4) return 'Final Score';
-  if (state.quarter === 2) return 'Halftime!';
-  return 'Next Quarter';
 }
 
 function finishPossession(message) {
@@ -1620,6 +1653,7 @@ function renderGameToText() {
     correct: state.correct ?? null,
     explain: state.explain || null,
     outcomeMessage: state.outcomeMessage || null,
+    touchdownSide: state.touchdownSide || null,
   });
 }
 

@@ -172,3 +172,25 @@ Original prompt: yes, do all you need to do to get started
 - bumped football to `1.15.0` in `football/index.html`, `football/football.js`, `games.js`, and `version.json`;
 - reran `$HOME/.local/node/current/bin/node --check football/football.js`, `git diff --check`, `$HOME/.local/node/current/bin/node "$HOME/.codex/skills/develop-web-game/scripts/web_game_playwright_client.js" --url http://127.0.0.1:8003/football/ --click-selector "#ov-start .ov-btn" --actions-json '{"steps":[{"buttons":[],"frames":2}]}' --iterations 2 --pause-ms 250 --screenshot-dir output/football-ui-client-115`, and `/tmp/football_ui_verify.mjs http://127.0.0.1:8003/football/`; all passed;
 - visually inspected fresh artifacts in `output/football-ui-client-115/` and `output/football-ui-verify/`, including desktop offense/question/defense, final overlay, and `390px`/`320px` mobile question states.
+- Follow-up driven by issue #33 review comments:
+- added opponent-touchdown takeover parity by reusing the touchdown overlay with an opponent variant in `football/index.html`, `football/football.js`, and `football/football.css`; opponent scores now get a broadcast takeover instead of falling straight into a generic possession transition;
+- improved phase/context wiring in `football/football.js` so `playContextText()` now reflects touchdown, transition, quarter-end, halftime, and final states explicitly, and moved `handleDefenseAnswer()`'s `feedback` phase flip to the branch-local success/failure paths for clearer flow;
+- removed the football-only Google Fonts `@import` from `football/football.css` and moved Bebas Neue / Barlow Condensed loading into `football/index.html`, keeping the shared Nunito load in `shared/fonts.css`;
+- retuned responsive behavior around the documented football targets from `AGENTS.md`:
+- widened `#broadcast-shell` to `1280px` max to reduce Pro-class letterboxing;
+- added a portrait-iPad tier (`768-1079` portrait) with a one-column lower-third for call state, a two-column question/feedback layout, larger field height, and restored 3-across call tiles;
+- added coarse-pointer large-screen padding adjustments for touch-first iPad landscape use;
+- widened the small-phone tier from `420px` to `480px` so `440px` phones land in the phone-specific scale;
+- neutralized hover transforms for coarse pointers so touch devices do not depend on hover behavior;
+- added `football/MANUAL_TEST.md` with the repo-local football UI/device matrix and overlay checklist so verification requirements live with the game rather than only in issue comments;
+- bumped football to `1.16.0` in `football/index.html`, `football/football.js`, `games.js`, and `version.json`;
+- verification:
+- `$HOME/.local/node/current/bin/node --check football/football.js` passed;
+- `git diff --check` passed;
+- `$HOME/.local/node/current/bin/node /Users/michaeltorbert/.codex/skills/develop-web-game/scripts/web_game_playwright_client.js --url http://127.0.0.1:8006/football/ --click-selector "#ov-start .ov-btn" --actions-json '{"steps":[{"buttons":[],"frames":2}]}' --iterations 2 --pause-ms 250 --screenshot-dir output/football-ui-client-116` passed;
+- `/tmp/football_device_matrix_verify.mjs http://127.0.0.1:8006/football/` passed and captured the full matrix into `output/football-device-matrix/` for:
+- iPad 11 landscape/portrait;
+- iPad Pro 13 landscape/portrait;
+- iPhone 15;
+- iPhone 17 Pro Max;
+- visually inspected representative outputs for iPad landscape/portrait call/question states, player-TD and opponent-TD overlays, quarter-end and halftime overlays, and phone start / TD / final overlays.
