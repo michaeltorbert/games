@@ -11,8 +11,8 @@ Both a Senior Developer and ChatGPT Codex will review your output once you are d
 For any GitHub write action in `michaeltorbert/games`, do not use the user's personal GitHub identity.
 
 Required identity:
-- GitHub App: `games-codex`
-- Visible actor: `codex-michaeltorbert[bot]`
+- GitHub App profile: `games-codex`
+- Visible actor on GitHub: `codex-bot-mt[bot]`
 
 Required behavior:
 - Prefer `github-app-token games-codex` and `github-app-curl` for GitHub API writes.
