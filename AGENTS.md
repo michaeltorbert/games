@@ -1,0 +1,43 @@
+# AGENTS.md
+
+Source of truth for AI coding agents working in this repo (Claude Code, Codex, Cursor, Aider, etc.). Read this before making design/layout decisions.
+
+## Device Targets
+
+Design and test against these devices in this priority order. When choices trade off between devices, favor the higher-priority one.
+
+### Football
+
+1. **iPad 11th gen (A16, 2025)** — 820×1180pt — **primary**. Played mostly in landscape (1180×820).
+2. **iPad Pro 13" M4 (2024)** — 1032×1376pt — secondary.
+3. **iPhone 15** — 393×852pt — must be playable.
+4. **iPhone 17 Pro Max** — 440×956pt — must be playable.
+
+Design rules:
+- Optimize the desktop/tablet layout for iPad 11 landscape (1180pt) first.
+- Touch-first. No hover-only interactions — every state must be reachable via tap.
+- Tap targets ≥44pt in every tier.
+- Breakpoints should cover all six device × orientation combos, not generic widths. Phone tier must include 440 (iPhone 17 Pro Max), not just ≤420.
+
+### Kayak
+
+TBD — document when prioritized.
+
+### Prague
+
+TBD — document when prioritized.
+
+## Verification Matrix (Football)
+
+Any UI change to football must be verified against the primary targets before merge. Minimum matrix:
+
+| Device | Orientation | Must verify |
+|---|---|---|
+| iPad 11 | landscape (1180×820) | full playthrough |
+| iPad 11 | portrait (820×1180) | full playthrough |
+| iPad Pro 13 | landscape (1376×1032) | full playthrough |
+| iPad Pro 13 | portrait (1032×1376) | full playthrough |
+| iPhone 15 | portrait (393×852) | overlay spot-check |
+| iPhone 17 Pro Max | portrait (440×956) | overlay spot-check |
+
+Each full playthrough must exercise all overlay states: start, player-TD, defense transition, offense transition, quarter-end, halftime, final — plus offense call/question/feedback and defense call/question/feedback.

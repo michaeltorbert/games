@@ -4,6 +4,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Both a Senior Developer and ChatGPT Codex will review your output once you are done.
 
+**Device targets, design priorities, and per-game verification matrices live in [AGENTS.md](./AGENTS.md).** Read it before making UI/layout changes.
+
 ## Local Development
 
 No build step. Serve from the repo root — the `../shared/` paths in each game require a real HTTP server:
