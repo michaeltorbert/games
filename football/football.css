@@ -1439,22 +1439,23 @@ body::after {
 
 #ov-td[data-side="defense"] .overlay-card {
   background:
-    linear-gradient(103deg, rgba(66, 115, 156, 0.98) 0 34%, rgba(14, 35, 63, 0.98) 58%, rgba(6, 16, 31, 0.98) 100%);
-  border-color: rgba(123, 175, 212, 0.34);
+    linear-gradient(132deg, rgba(32, 58, 104, 0.98) 0 26%, rgba(70, 26, 40, 0.98) 56%, rgba(20, 8, 12, 0.98) 100%);
+  border-color: rgba(255, 127, 100, 0.32);
 }
 
 #ov-td[data-side="defense"] .overlay-card::after {
-  background: linear-gradient(180deg, rgba(123, 175, 212, 0.98), rgba(123, 175, 212, 0.18));
+  background: linear-gradient(180deg, rgba(255, 140, 60, 0.98), rgba(220, 70, 40, 0.22));
 }
 
 #ov-td[data-side="defense"] .ov-title,
 #ov-td[data-side="defense"] .ov-final-score {
-  color: #eef8ff;
+  color: #ffe2c2;
 }
 
 #ov-td[data-side="defense"] .ov-broadcast-badge {
-  background: linear-gradient(180deg, #7bafd4, #4e7ba2);
-  color: #05213d;
+  background: linear-gradient(180deg, #ff4d3d, #a8120d);
+  color: #fff;
+  box-shadow: 0 0 0 1.5px rgba(123, 175, 212, 0.55), 0 8px 18px rgba(170, 17, 29, 0.3);
 }
 
 #ov-end.ov-loss .overlay-card::after {
@@ -1641,6 +1642,12 @@ body::after {
   #call-grid[data-count="5"] .call-btn:nth-child(4),
   #call-grid[data-count="5"] .call-btn:nth-child(5) {
     grid-column: span 1;
+  }
+}
+
+@media (orientation: portrait), (max-width: 760px) {
+  body {
+    align-items: flex-start;
   }
 }
 
