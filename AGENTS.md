@@ -7,8 +7,9 @@ Source of truth for AI coding agents working in this repo (Claude Code, Codex, C
 For any GitHub write action in `michaeltorbert/games`, do not use the user's personal GitHub identity.
 
 Required identity:
-- GitHub App profile: `games-codex`
-- Visible actor on GitHub: `codex-bot-mt[bot]`
+- GitHub App auth profile: `games-codex`
+- Visible GitHub actor: `codex-bot-mt[bot]`
+- The local auth profile name and the visible GitHub actor are different; do not assume they match.
 
 Required behavior:
 - Prefer `github-app-token games-codex` and `github-app-curl` for GitHub API writes.
