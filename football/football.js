@@ -1669,3 +1669,9 @@ state = createGameState();
 updateField(false);
 updateStatus();
 showStart();
+
+(function applyBootParam() {
+  const boot = new URLSearchParams(window.location.search).get('boot');
+  if (boot === 'offense-call') startGame();
+  else if (boot === 'defense-call') { startGame(); startDrive('defense'); }
+})();

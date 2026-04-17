@@ -1,2 +1,6 @@
 .DS_Store
 output/
+node_modules/
+tests/artifacts/
+playwright-report/
+test-results/

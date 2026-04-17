@@ -58,3 +58,21 @@ Run these on both iPhone sizes:
 - Favor the iPad 11 landscape layout if devices trade off against each other
 - Phone layouts must include `440px` widths, not only `<=420px`
 - If an overlay or question state requires scroll on phones, confirm the primary CTA is still visible without ambiguity
+
+## Automated Call-Layout Verifier
+
+A minimal Playwright harness covers the narrowest slice of this matrix: the offense-call phase must fit above the fold on every device target without auto-scrolling. It's the first piece of the repo-local verification path tracked in issue #36, scoped to catch regressions of issue #43.
+
+Run:
+
+```bash
+npm install               # once, pulls pinned @playwright/test
+npx playwright install chromium   # once, if chromium isn't already present
+npm run test:football
+```
+
+Artifacts (screenshots + failure context) land in `tests/artifacts/`. The tests are expected to fail on `main` until issue #43 is resolved — each failure documents the exact above-the-fold violation on that device.
+
+### Manual boot param
+
+For fast CSS iteration without driving through Start Game, open `/football/?boot=offense-call` (or `?boot=defense-call`) to land directly in the call phase. The Playwright spec uses this param for the second-pass re-entry check; humans can use it to eyeball layouts in any browser.
