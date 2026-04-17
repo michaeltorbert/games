@@ -1702,6 +1702,10 @@ body::after {
     height: 260px;
   }
 
+  #version-display {
+    display: none;
+  }
+
   #ui-desk {
     margin: -36px 12px 0;
     padding: 14px 14px 16px;
@@ -2366,6 +2370,20 @@ body::after {
 
   .ov-final-score {
     font-size: clamp(68px, 20vw, 110px);
+  }
+}
+
+@media (max-width: 420px) {
+  #field-stage {
+    padding-bottom: 32px;
+  }
+
+  #field-wrap {
+    height: 142px;
+  }
+
+  #ui-desk {
+    margin-top: -28px;
   }
 }
 
