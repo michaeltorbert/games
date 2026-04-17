@@ -11,13 +11,16 @@ Both a Senior Developer and ChatGPT Codex will review your output once you are d
 For any GitHub write action in `michaeltorbert/games`, do not use the user's personal GitHub identity.
 
 Required identity:
-- GitHub App auth profile: `games-codex`
-- Visible GitHub actor: `codex-bot-mt[bot]`
-- Local git commit identity: `codex-michaeltorbert[bot] <3357630+codex-michaeltorbert[bot]@users.noreply.github.com>`
-- The auth profile, visible GitHub actor, and local git commit identity are separate values; do not assume they match.
+- Claude GitHub App auth profile: `claude`
+- Claude visible GitHub actor: `claude-bot-mt[bot]`
+- Local git commit identity (shared across agents in this repo): `codex-michaeltorbert[bot] <3357630+codex-michaeltorbert[bot]@users.noreply.github.com>`
+- The Claude auth profile, Claude visible GitHub actor, and local git commit identity are separate values; do not assume they match.
 
 Required behavior:
-- Prefer `github-app-token` and `github-app-curl` for GitHub API writes. Use the explicit `games-codex` profile argument when you need to select the profile directly.
+- Prefer `github-app-token` and `github-app-curl` for GitHub API writes. Use `github-app-curl --profile claude` when you need to select the Claude profile directly.
+- Claude agents perform GitHub writes via `github-app-curl --profile claude` and appear as `claude-bot-mt[bot]`.
+- When asked to perform a GitHub write, do it directly as `claude-bot-mt[bot]`. Do not offer "draft for you to post" or "post as the user" as alternatives unless the user explicitly asks for personal-account posting. You may still ask clarifying questions about what to write.
+- For issue comments, PR comments, PR reviews, PR creation, merges, labels, and similar GitHub writes, use `claude-bot-mt[bot]` by default.
 - Do not use connector-backed GitHub writes if they would attribute the action to `@michaeltorbert`.
 - Before any commit, verify:
   - `git config user.name` = `codex-michaeltorbert[bot]`

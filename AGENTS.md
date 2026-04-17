@@ -7,13 +7,20 @@ Source of truth for AI coding agents working in this repo (Claude Code, Codex, C
 For any GitHub write action in `michaeltorbert/games`, do not use the user's personal GitHub identity.
 
 Required identity:
-- GitHub App auth profile: `games-codex`
-- Visible GitHub actor: `codex-bot-mt[bot]`
-- Local git commit identity: `codex-michaeltorbert[bot] <3357630+codex-michaeltorbert[bot]@users.noreply.github.com>`
-- The auth profile, visible GitHub actor, and local git commit identity are separate values; do not assume they match.
+- Codex GitHub App auth profile: `games-codex`
+- Codex visible GitHub actor: `codex-bot-mt[bot]`
+- Claude GitHub App auth profile: `claude`
+- Claude visible GitHub actor: `claude-bot-mt[bot]`
+- Local git commit identity (shared across agents in this repo): `codex-michaeltorbert[bot] <3357630+codex-michaeltorbert[bot]@users.noreply.github.com>`
+- The auth profiles, visible GitHub actors, and local git commit identity are separate values; do not assume they match.
 
 Required behavior:
-- Prefer `github-app-token` and `github-app-curl` for GitHub API writes. Use the explicit `games-codex` profile argument when you need to select the profile directly.
+- Prefer `github-app-token` and `github-app-curl` for GitHub API writes. Use an explicit profile argument when you need to select the agent profile directly.
+- Agent-specific defaults for GitHub writes:
+  - Claude agents use `github-app-curl --profile claude` and appear as `claude-bot-mt[bot]`.
+  - Codex agents use the default `games-codex` profile and appear as `codex-bot-mt[bot]`.
+- When asked to perform a GitHub write, do it directly as the agent bot. Do not offer "draft for you to post" or "post as the user" as alternatives unless the user explicitly asks for personal-account posting. You may still ask clarifying questions about what to write.
+- For issue comments, PR comments, PR reviews, PR creation, merges, labels, and similar GitHub writes, use the agent bot by default.
 - Do not use connector-backed GitHub writes if they would attribute the action to `@michaeltorbert`.
 - Before any commit, verify:
   - `git config user.name` = `codex-michaeltorbert[bot]`
