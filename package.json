@@ -1,0 +1,11 @@
+{
+  "name": "games-verifier",
+  "private": true,
+  "description": "Repo-local UI verification tooling for games. No runtime deps; no bundler; no app build step.",
+  "scripts": {
+    "test:football": "playwright test tests/football-call-layout.spec.mjs"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.56.1"
+  }
+}
