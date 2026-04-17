@@ -6,6 +6,24 @@ Both a Senior Developer and ChatGPT Codex will review your output once you are d
 
 **Device targets, design priorities, and per-game verification matrices live in [AGENTS.md](./AGENTS.md).** Read it before making UI/layout changes.
 
+## GitHub Attribution (Required)
+
+For any GitHub write action in `michaeltorbert/games`, do not use the user's personal GitHub identity.
+
+Required identity:
+- GitHub App auth profile: `games-codex`
+- Visible GitHub actor: `codex-bot-mt[bot]`
+- Local git commit identity: `codex-michaeltorbert[bot] <3357630+codex-michaeltorbert[bot]@users.noreply.github.com>`
+- The auth profile, visible GitHub actor, and local git commit identity are separate values; do not assume they match.
+
+Required behavior:
+- Prefer `github-app-token` and `github-app-curl` for GitHub API writes. Use the explicit `games-codex` profile argument when you need to select the profile directly.
+- Do not use connector-backed GitHub writes if they would attribute the action to `@michaeltorbert`.
+- Before any commit, verify:
+  - `git config user.name` = `codex-michaeltorbert[bot]`
+  - `git config user.email` = `3357630+codex-michaeltorbert[bot]@users.noreply.github.com`
+- If bot attribution cannot be guaranteed, stop and report that explicitly instead of writing as the user.
+
 ## Local Development
 
 No build step. Serve from the repo root — the `../shared/` paths in each game require a real HTTP server:
