@@ -49,6 +49,7 @@ Run these on both iPhone sizes:
 
 - touch targets on `.call-btn` and `.ans-btn` stay comfortably tappable
 - no hover-only dependency on call selection or answer selection
+- offense call grid is fully visible without scrolling on portrait iPads and phones
 - scorebug remains readable without clipped LIVE ribbon or possession indicator
 - field, line-to-gain badge, and lower-third do not collide at device edges
 - overlays fit without broken clipping or unreadable buttons
@@ -58,3 +59,28 @@ Run these on both iPhone sizes:
 - Favor the iPad 11 landscape layout if devices trade off against each other
 - Phone layouts must include `440px` widths, not only `<=420px`
 - If an overlay or question state requires scroll on phones, confirm the primary CTA is still visible without ambiguity
+
+## Repo Verifier
+
+Install the pinned verifier dependency and browser once:
+
+```bash
+npm install
+npx playwright install chromium
+```
+
+Run the football call-layout verifier:
+
+```bash
+npm run test:football
+```
+
+Artifacts land under `tests/artifacts/football-call-layout/`.
+
+For quick manual CSS iteration, you can also boot straight into the offense call state:
+
+```bash
+node scripts/serve-root.mjs
+```
+
+Then open `http://127.0.0.1:4173/football/?boot=offense-call`.

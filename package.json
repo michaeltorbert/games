@@ -1,0 +1,10 @@
+{
+  "name": "games-codex-verification",
+  "private": true,
+  "scripts": {
+    "test:football": "node tests/football-call-layout-runner.mjs"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.49.1"
+  }
+}

@@ -1663,9 +1663,24 @@ function renderGameToText() {
 window.render_game_to_text = renderGameToText;
 window.advanceTime = () => {};
 
+function applyBootMode() {
+  const bootMode = new URLSearchParams(window.location.search).get('boot');
+  if (bootMode === 'offense-call') {
+    startGame();
+    return true;
+  }
+  if (bootMode === 'defense-call') {
+    state = createGameState();
+    hideOverlays();
+    startDrive('defense');
+    return true;
+  }
+  return false;
+}
+
 // -- Init ---------------------------------------------------------------------
 buildField();
 state = createGameState();
 updateField(false);
 updateStatus();
-showStart();
+if (!applyBootMode()) showStart();
