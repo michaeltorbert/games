@@ -41,6 +41,10 @@ export default defineConfig({
       use: { viewport: { width: 1032, height: 1376 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true },
     },
     {
+      name: 'ipad-pro-13-landscape',
+      use: { viewport: { width: 1376, height: 1032 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true },
+    },
+    {
       name: 'ipad-11-landscape',
       use: { viewport: { width: 1180, height: 820 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true },
     },

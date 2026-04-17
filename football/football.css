@@ -1653,63 +1653,76 @@ body::after {
 
 @media (min-width: 768px) and (max-width: 1079px) and (orientation: portrait) {
   body {
-    padding: 12px 12px 16px;
+    padding: 10px 10px 14px;
   }
 
   #status-ribbon {
-    min-width: min(92%, 760px);
-    font-size: 16px;
+    min-width: min(92%, 720px);
+    padding: 6px 14px;
+    font-size: 13px;
+  }
+
+  .status-live {
+    font-size: 13px;
   }
 
   #status {
-    grid-template-columns: 1.05fr 1.05fr 0.82fr 1.05fr 0.98fr 66px;
+    grid-template-columns: 1fr 1fr 0.8fr 1fr 1fr 58px;
   }
 
   .sb-name {
-    font-size: 22px;
+    font-size: 18px;
   }
 
   .sb-score {
-    font-size: 48px;
+    font-size: 36px;
+  }
+
+  .sb-label {
+    font-size: 10px;
   }
 
   .sb-val {
-    font-size: 24px;
+    font-size: 18px;
+  }
+
+  .sb-info {
+    padding: 8px 8px 10px;
   }
 
   #field-stage {
-    padding: 16px 16px 92px;
+    padding: 12px 12px 40px;
+  }
+
+  .stage-head {
+    display: none;
   }
 
   #field-wrap {
-    height: 372px;
+    height: 260px;
   }
 
-  #ui-desk,
-  #ui-desk[data-phase="call"] {
-    grid-template-columns: 1fr;
-    margin: -74px 16px 0;
-    padding: 18px 18px 20px;
+  #ui-desk {
+    margin: -36px 12px 0;
+    padding: 14px 14px 16px;
   }
 
   #ui-desk[data-phase="question"],
   #ui-desk[data-phase="feedback"] {
     grid-template-columns: minmax(270px, 0.9fr) minmax(320px, 1.1fr);
     gap: 0 20px;
-    margin: -74px 16px 0;
-    padding: 18px 18px 20px;
   }
 
-  #desk-head {
-    gap: 10px;
+  #ui-desk:is([data-phase="call"], [data-phase="question"], [data-phase="feedback"]) #desk-head {
+    display: none;
   }
 
   #prompt-panel {
-    padding: 0 0 16px;
+    padding: 0 0 8px;
   }
 
   #action-panel {
-    padding: 18px 0 0;
+    padding: 10px 0 0;
   }
 
   #action-panel::before {
@@ -1718,7 +1731,7 @@ body::after {
 
   #call-grid {
     grid-template-columns: repeat(6, minmax(0, 1fr));
-    gap: 12px;
+    gap: 10px;
   }
 
   #call-grid .call-btn {
@@ -1741,18 +1754,20 @@ body::after {
     grid-column: 4 / span 2;
   }
 
-  #play-label {
-    max-width: none;
-    font-size: clamp(64px, 7vw, 88px);
-  }
-
   #question {
     max-width: none;
     font-size: clamp(34px, 4.2vw, 46px);
   }
 
-  #wrap[data-phase="call"] #question {
-    font-size: clamp(25px, 3vw, 34px);
+  #ui-desk[data-phase="call"] #play-label {
+    max-width: none;
+    font-size: clamp(46px, 5.6vw, 64px);
+  }
+
+  #ui-desk[data-phase="call"] #question {
+    margin-top: 8px;
+    font-size: clamp(20px, 2.3vw, 24px);
+    line-height: 1.05;
   }
 
   #feedback {
@@ -1760,7 +1775,30 @@ body::after {
   }
 
   .call-btn {
-    min-height: 168px;
+    min-height: 128px;
+    grid-template-rows: auto 48px auto auto;
+    padding: 10px 10px 12px;
+    gap: 8px;
+  }
+
+  .call-meta {
+    font-size: 10px;
+  }
+
+  .call-risk {
+    padding: 3px 6px;
+  }
+
+  .call-diagram {
+    height: 48px;
+  }
+
+  .call-label {
+    font-size: 26px;
+  }
+
+  .call-desc {
+    font-size: 12px;
   }
 
   .ans-btn {
@@ -1787,21 +1825,175 @@ body::after {
   }
 }
 
+@media (hover: none) and (pointer: coarse) and (min-width: 1080px) and (orientation: landscape) {
+  body {
+    padding-bottom: 0;
+  }
+
+  .stage-head {
+    display: none;
+  }
+
+  #field-stage {
+    padding: 14px 16px 56px;
+  }
+
+  #field-wrap {
+    height: 260px;
+  }
+
+  #version-display {
+    display: none;
+  }
+
+  #ui-desk:is([data-phase="call"], [data-phase="question"], [data-phase="feedback"]) {
+    margin: -42px 16px 0;
+    padding: 14px 18px 16px;
+    gap: 0 18px;
+  }
+
+  #ui-desk:is([data-phase="call"], [data-phase="question"], [data-phase="feedback"]) #desk-head {
+    display: none;
+  }
+
+  #ui-desk:is([data-phase="call"], [data-phase="question"], [data-phase="feedback"]) #prompt-panel {
+    padding: 0;
+  }
+
+  #ui-desk:is([data-phase="call"], [data-phase="question"], [data-phase="feedback"]) #action-panel {
+    padding-left: 16px;
+  }
+
+  #ui-desk:is([data-phase="call"], [data-phase="question"], [data-phase="feedback"]) #play-context {
+    margin-bottom: 6px;
+    font-size: 11px;
+  }
+
+  #ui-desk[data-phase="call"] #play-label {
+    font-size: clamp(44px, 4vw, 60px);
+  }
+
+  #ui-desk[data-phase="call"] #question {
+    margin-top: 6px;
+    font-size: clamp(18px, 1.5vw, 22px);
+    line-height: 1.04;
+  }
+
+  #ui-desk[data-phase="question"],
+  #ui-desk[data-phase="feedback"] {
+    grid-template-columns: minmax(320px, 0.82fr) minmax(0, 1.18fr);
+  }
+
+  #ui-desk[data-phase="question"] #play-label,
+  #ui-desk[data-phase="feedback"] #play-label {
+    max-width: none;
+    font-size: clamp(44px, 3.7vw, 56px);
+  }
+
+  #ui-desk[data-phase="question"] #question,
+  #ui-desk[data-phase="feedback"] #question {
+    max-width: none;
+    margin-top: 10px;
+    padding-top: 12px;
+    font-size: clamp(19px, 1.45vw, 22px);
+    line-height: 1.04;
+  }
+
+  #ui-desk[data-phase="question"] #question::before,
+  #ui-desk[data-phase="feedback"] #question::before {
+    width: min(140px, 42%);
+  }
+
+  #ui-desk[data-phase="question"] #btn-row,
+  #ui-desk[data-phase="feedback"] #btn-row {
+    gap: 10px;
+    grid-auto-rows: minmax(108px, 1fr);
+  }
+
+  #ui-desk[data-phase="question"] .ans-btn,
+  #ui-desk[data-phase="feedback"] .ans-btn {
+    min-height: 108px;
+    padding: 20px 14px 14px;
+    font-size: clamp(46px, 3vw, 58px);
+  }
+
+  #ui-desk[data-phase="question"] .ans-btn::before,
+  #ui-desk[data-phase="feedback"] .ans-btn::before {
+    top: 10px;
+    left: 10px;
+    width: 30px;
+    height: 30px;
+    font-size: 14px;
+  }
+
+  #ui-desk[data-phase="question"] #btn-row[data-choice-type="yard"] .ans-btn,
+  #ui-desk[data-phase="feedback"] #btn-row[data-choice-type="yard"] .ans-btn {
+    font-size: clamp(22px, 1.65vw, 28px);
+  }
+
+  #ui-desk[data-phase="question"] #btn-row[data-choice-type="category"] .ans-btn,
+  #ui-desk[data-phase="question"] #btn-row[data-choice-type="down"] .ans-btn,
+  #ui-desk[data-phase="feedback"] #btn-row[data-choice-type="category"] .ans-btn,
+  #ui-desk[data-phase="feedback"] #btn-row[data-choice-type="down"] .ans-btn {
+    font-size: clamp(32px, 2.1vw, 40px);
+  }
+
+  #ui-desk[data-phase="feedback"] #feedback {
+    margin-top: 12px;
+    padding: 10px 12px 12px;
+    font-size: 17px;
+  }
+
+  #ui-desk[data-phase="call"] #call-grid {
+    gap: 8px;
+  }
+
+  #ui-desk[data-phase="call"] #call-grid[data-count="5"] {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+
+  #ui-desk[data-phase="call"] #call-grid[data-count="4"] {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  #ui-desk[data-phase="call"] #call-grid .call-btn,
+  #ui-desk[data-phase="call"] #call-grid[data-count="4"] .call-btn {
+    grid-column: span 1;
+    min-height: 112px;
+    grid-template-rows: 34px auto auto;
+    padding: 8px;
+    gap: 6px;
+  }
+
+  #ui-desk[data-phase="call"] #call-grid[data-count="5"] .call-btn:nth-child(4),
+  #ui-desk[data-phase="call"] #call-grid[data-count="5"] .call-btn:nth-child(5) {
+    grid-column: auto;
+  }
+
+  #ui-desk[data-phase="call"] #call-grid .call-meta {
+    display: none;
+  }
+
+  #ui-desk[data-phase="call"] #call-grid .call-diagram {
+    height: 34px;
+  }
+
+  #ui-desk[data-phase="call"] #call-grid .call-label {
+    font-size: 20px;
+  }
+
+  #ui-desk[data-phase="call"] #call-grid .call-desc {
+    font-size: 10px;
+  }
+}
+
 @media (max-width: 760px) {
   body {
-    padding: 12px 10px 14px;
+    padding: 8px 8px 6px;
   }
 
   #status-ribbon {
-    min-width: 100%;
-    padding: 8px 14px;
-    border-radius: 18px 18px 0 0;
-    clip-path: none;
-    font-size: 15px;
-  }
-
-  .status-live {
-    font-size: 16px;
+    display: none;
   }
 
   #status {
@@ -1810,9 +2002,9 @@ body::after {
       "duke unc"
       "quarter down"
       "ball poss";
-    gap: 6px;
-    padding: 6px;
-    border-radius: 0 0 24px 24px;
+    gap: 5px;
+    padding: 5px;
+    border-radius: 24px;
   }
 
   .sb-duke { grid-area: duke; }
@@ -1823,52 +2015,49 @@ body::after {
   .sb-poss { grid-area: poss; }
 
   .sb-team {
-    padding: 11px 12px 12px;
+    gap: 8px;
+    padding: 9px 10px 10px;
   }
 
   .sb-name {
-    font-size: 20px;
+    font-size: 14px;
   }
 
   .sb-score {
-    font-size: 44px;
+    font-size: 30px;
   }
 
   .sb-info {
-    padding: 10px 10px 12px;
+    padding: 6px 7px 7px;
   }
 
   .sb-label {
-    font-size: 11px;
+    font-size: 9px;
   }
 
   .sb-val {
-    font-size: 22px;
+    font-size: 16px;
+  }
+
+  .sb-poss {
+    font-size: 20px;
   }
 
   #field-stage {
-    padding: 14px 14px 74px;
+    padding: 12px 12px 40px;
     border-radius: 28px;
   }
 
-  .stage-head,
-  #desk-head,
-  .desk-head-left {
-    flex-direction: column;
-    align-items: flex-start;
+  .stage-head {
+    display: none;
   }
 
-  .stage-chip,
-  .stage-copy,
-  .desk-chip,
-  .desk-kicker,
-  #action-subcopy,
-  #stage-possession {
-    font-size: 15px;
+  #ui-desk:is([data-phase="call"], [data-phase="question"], [data-phase="feedback"]) #desk-head {
+    display: none;
   }
 
   #field-wrap {
-    height: 224px;
+    height: 150px;
     border-width: 5px;
     border-radius: 22px;
   }
@@ -1913,48 +2102,53 @@ body::after {
   }
 
   #ui-desk {
-    margin: -52px 10px 0;
-    padding: 14px 14px 16px;
+    margin: -24px 8px 0;
+    padding: 10px;
     border-radius: 28px;
   }
 
-  #ui-desk[data-phase="call"],
-  #ui-desk[data-phase="question"],
-  #ui-desk[data-phase="feedback"] {
-    grid-template-columns: 1fr;
-  }
-
-  #ui-desk::after {
-    left: 16px;
-    right: 16px;
-    height: 42px;
-    transform: translateY(-14px);
-  }
-
-  #desk-head {
-    gap: 10px;
-    padding-bottom: 12px;
-    margin-bottom: 12px;
+  #version-display {
+    display: none;
   }
 
   #play-context {
-    margin-bottom: 10px;
-    font-size: 11px;
+    margin-bottom: 4px;
+    font-size: 10px;
     letter-spacing: 0.18em;
   }
 
-  #play-label {
-    max-width: none;
-    font-size: clamp(40px, 12vw, 60px);
-  }
-
-  #question,
-  #wrap[data-phase="call"] #question {
+  #question {
     max-width: none;
     margin-top: 12px;
     padding-top: 0;
     font-size: clamp(24px, 6.6vw, 38px);
     line-height: 1.06;
+  }
+
+  #ui-desk[data-phase="call"] #play-label {
+    max-width: none;
+    font-size: clamp(32px, 9.4vw, 42px);
+  }
+
+  #ui-desk[data-phase="call"] #question {
+    margin-top: 5px;
+    font-size: clamp(17px, 4.7vw, 20px);
+    line-height: 1.02;
+  }
+
+  #ui-desk[data-phase="question"] #play-label,
+  #ui-desk[data-phase="feedback"] #play-label {
+    max-width: none;
+    font-size: clamp(34px, 9vw, 44px);
+  }
+
+  #ui-desk[data-phase="question"] #question,
+  #ui-desk[data-phase="feedback"] #question {
+    max-width: none;
+    margin-top: 8px;
+    padding-top: 10px;
+    font-size: clamp(16px, 4.6vw, 20px);
+    line-height: 1.04;
   }
 
   #ui-desk[data-phase="question"] #question::before,
@@ -1964,7 +2158,9 @@ body::after {
 
   #feedback {
     max-width: none;
-    font-size: 19px;
+    margin-top: 10px;
+    padding: 10px 12px 12px;
+    font-size: 16px;
   }
 
   #call-grid,
@@ -1978,52 +2174,61 @@ body::after {
   }
 
   .call-btn {
-    min-height: 154px;
-    grid-template-rows: auto 56px auto auto;
-    padding: 12px 12px 14px;
+    min-height: 102px;
+    grid-template-rows: 38px auto auto;
+    padding: 9px;
     border-radius: 22px;
+    gap: 6px;
   }
 
   .call-meta {
-    font-size: 11px;
+    display: none;
   }
 
   .call-diagram {
-    height: 56px;
+    height: 38px;
     border-radius: 16px;
   }
 
   .call-label {
-    font-size: 28px;
+    font-size: 21px;
   }
 
   .call-desc {
-    font-size: 12px;
+    font-size: 10px;
   }
 
   #btn-row {
-    gap: 12px;
+    gap: 10px;
+  }
+
+  #ui-desk[data-phase="question"] #btn-row,
+  #ui-desk[data-phase="feedback"] #btn-row {
+    gap: 10px;
+    grid-auto-rows: minmax(94px, 1fr);
   }
 
   .ans-btn {
-    min-height: 118px;
-    padding: 22px 14px 16px;
-    font-size: 54px;
+    min-height: 96px;
+    padding: 18px 12px 12px;
+    font-size: 42px;
   }
 
   .ans-btn::before {
+    top: 10px;
+    left: 10px;
     width: 28px;
     height: 28px;
     font-size: 13px;
   }
 
   #btn-row[data-choice-type="yard"] .ans-btn {
-    font-size: 28px;
+    font-size: 22px;
   }
 
   #btn-row[data-choice-type="category"] .ans-btn,
   #btn-row[data-choice-type="down"] .ans-btn {
-    font-size: 42px;
+    font-size: 32px;
   }
 
   .overlay {
@@ -2064,23 +2269,23 @@ body::after {
 
 @media (max-width: 480px) {
   .sb-name {
-    font-size: 17px;
+    font-size: 14px;
   }
 
   .sb-score {
-    font-size: 38px;
+    font-size: 30px;
   }
 
   .sb-label {
-    font-size: 10px;
+    font-size: 9px;
   }
 
   .sb-val {
-    font-size: 20px;
+    font-size: 16px;
   }
 
   #field-wrap {
-    height: 180px;
+    height: 150px;
   }
 
   .ez-text.ez-left {
@@ -2098,54 +2303,49 @@ body::after {
     font-size: 14px;
   }
 
-  .stage-chip,
-  .stage-copy,
-  .desk-chip,
-  .desk-kicker,
-  #action-subcopy,
-  #stage-possession {
-    font-size: 13px;
+  #ui-desk[data-phase="call"] #play-label {
+    font-size: clamp(30px, 9vw, 40px);
   }
 
-  #ui-desk {
-    padding: 12px;
+  #ui-desk[data-phase="call"] #question {
+    font-size: clamp(16px, 4.5vw, 19px);
   }
 
-  #ui-desk::after {
-    left: 12px;
-    right: 12px;
+  #ui-desk[data-phase="question"] #play-label,
+  #ui-desk[data-phase="feedback"] #play-label {
+    font-size: clamp(30px, 8.8vw, 38px);
   }
 
-  #question,
-  #wrap[data-phase="call"] #question {
-    font-size: clamp(20px, 6.4vw, 30px);
+  #ui-desk[data-phase="question"] #question,
+  #ui-desk[data-phase="feedback"] #question {
+    font-size: clamp(15px, 4.3vw, 18px);
   }
 
   .call-btn {
-    min-height: 138px;
-    gap: 10px;
+    min-height: 98px;
+    gap: 6px;
   }
 
   .call-label {
-    font-size: 24px;
+    font-size: 20px;
   }
 
   .call-desc {
-    font-size: 11px;
+    font-size: 10px;
   }
 
   .ans-btn {
-    min-height: 100px;
-    font-size: 48px;
+    min-height: 90px;
+    font-size: 38px;
   }
 
   #btn-row[data-choice-type="yard"] .ans-btn {
-    font-size: 24px;
+    font-size: 20px;
   }
 
   #btn-row[data-choice-type="category"] .ans-btn,
   #btn-row[data-choice-type="down"] .ans-btn {
-    font-size: 38px;
+    font-size: 28px;
   }
 
   .ov-broadcast-badge {

@@ -32,15 +32,18 @@ Run these on both iPad sizes and orientations:
 - halftime overlay
 - final overlay
 
-### Phone spot-check devices
+### Phone devices
 
 Run these on both iPhone sizes:
 
 - start overlay
-- player touchdown overlay
-- opponent touchdown overlay
+- offense call
+- offense question
+- offense feedback
 - defense transition overlay
 - offense transition overlay
+- player touchdown overlay
+- opponent touchdown overlay
 - quarter-end overlay
 - halftime overlay
 - final overlay
@@ -49,7 +52,7 @@ Run these on both iPhone sizes:
 
 - touch targets on `.call-btn` and `.ans-btn` stay comfortably tappable
 - no hover-only dependency on call selection or answer selection
-- offense call grid is fully visible without scrolling on portrait iPads and phones
+- offense call grid is fully visible without scrolling on both iPads, both phones, and iPad 11 landscape
 - scorebug remains readable without clipped LIVE ribbon or possession indicator
 - field, line-to-gain badge, and lower-third do not collide at device edges
 - overlays fit without broken clipping or unreadable buttons
@@ -74,6 +77,24 @@ npm run test:football
 
 Artifacts (screenshots + failure context) land in `tests/artifacts/`. The tests are expected to fail on `main` until issue #43 is resolved — each failure documents the exact above-the-fold violation on that device.
 
-### Manual boot param
+### Quick measurement snippet
 
-For fast CSS iteration without driving through Start Game, open `/football/?boot=offense-call` (or `?boot=defense-call`) to land directly in the call phase. The Playwright spec uses this param for the second-pass re-entry check; humans can use it to eyeball layouts in any browser.
+For a fast pass in DevTools on `/football/?boot=offense-call`, run:
+
+```js
+(() => {
+  const cards = [...document.querySelectorAll('#call-grid .call-btn')];
+  const lastBottom = Math.ceil(Math.max(...cards.map((card) => card.getBoundingClientRect().bottom)));
+  return {
+    overflow: document.documentElement.scrollHeight - window.innerHeight,
+    lastCardDelta: lastBottom - window.innerHeight,
+    scrollY: window.scrollY,
+  };
+})();
+```
+
+Expected result for issue #43: `overflow <= 0`, `lastCardDelta <= 0`, and `scrollY === 0` on each target viewport.
+
+### Manual boot params
+
+For fast CSS iteration without driving through Start Game, open `/football/?boot=offense-call` (or `?boot=defense-call`) to land directly in the call phase. Humans can use these params to eyeball layouts in any browser.

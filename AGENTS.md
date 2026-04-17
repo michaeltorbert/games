@@ -58,11 +58,11 @@ Any UI change to football must be verified against the primary targets before me
 
 | Device | Orientation | Must verify |
 |---|---|---|
-| iPad 11 | landscape (1180×820) | full playthrough |
-| iPad 11 | portrait (820×1180) | full playthrough |
-| iPad Pro 13 | landscape (1376×1032) | full playthrough |
-| iPad Pro 13 | portrait (1032×1376) | full playthrough |
-| iPhone 15 | portrait (393×852) | overlay spot-check |
-| iPhone 17 Pro Max | portrait (440×956) | overlay spot-check |
+| iPad 11 | landscape (1180×820) | full playthrough + call grid above fold (no scroll) |
+| iPad 11 | portrait (820×1180) | full playthrough + call grid above fold (no scroll) |
+| iPad Pro 13 | landscape (1376×1032) | full playthrough + call grid above fold (no scroll) |
+| iPad Pro 13 | portrait (1032×1376) | full playthrough + call grid above fold (no scroll) |
+| iPhone 15 | portrait (393×852) | full offense cycle + call grid above fold (no scroll) |
+| iPhone 17 Pro Max | portrait (440×956) | full offense cycle + call grid above fold (no scroll) |
 
 Each full playthrough must exercise all overlay states: start, player-TD, defense transition, offense transition, quarter-end, halftime, final — plus offense call/question/feedback and defense call/question/feedback.
