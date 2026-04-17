@@ -11,7 +11,7 @@ Required identity:
 - Codex visible GitHub actor: `codex-bot-mt[bot]`
 - Claude GitHub App auth profile: `claude`
 - Claude visible GitHub actor: `claude-bot-mt[bot]`
-- Local git commit identity: `codex-michaeltorbert[bot] <3357630+codex-michaeltorbert[bot]@users.noreply.github.com>`
+- Local git commit identity (shared across agents in this repo): `codex-michaeltorbert[bot] <3357630+codex-michaeltorbert[bot]@users.noreply.github.com>`
 - The auth profiles, visible GitHub actors, and local git commit identity are separate values; do not assume they match.
 
 Required behavior:

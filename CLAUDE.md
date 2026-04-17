@@ -13,7 +13,7 @@ For any GitHub write action in `michaeltorbert/games`, do not use the user's per
 Required identity:
 - Claude GitHub App auth profile: `claude`
 - Claude visible GitHub actor: `claude-bot-mt[bot]`
-- Local git commit identity: `codex-michaeltorbert[bot] <3357630+codex-michaeltorbert[bot]@users.noreply.github.com>`
+- Local git commit identity (shared across agents in this repo): `codex-michaeltorbert[bot] <3357630+codex-michaeltorbert[bot]@users.noreply.github.com>`
 - The Claude auth profile, Claude visible GitHub actor, and local git commit identity are separate values; do not assume they match.
 
 Required behavior:
