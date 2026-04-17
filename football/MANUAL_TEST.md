@@ -49,6 +49,7 @@ Run these on both iPhone sizes:
 
 - touch targets on `.call-btn` and `.ans-btn` stay comfortably tappable
 - no hover-only dependency on call selection or answer selection
+- offense call grid is fully visible without scrolling on portrait iPads and phones
 - scorebug remains readable without clipped LIVE ribbon or possession indicator
 - field, line-to-gain badge, and lower-third do not collide at device edges
 - overlays fit without broken clipping or unreadable buttons

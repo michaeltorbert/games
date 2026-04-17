@@ -7,10 +7,18 @@ import { test, expect } from '@playwright/test';
  *
  * Two passes cover the paths that regressed in PR #40:
  *  - opening snap (Start Game -> offense call)
- *  - post-transition re-entry (startDrive('offense') while already playing)
+ *  - post-transition re-entry (defense stop -> offense transition -> call)
  */
 
 const EPSILON = 1;
+
+function attachErrorListeners(page) {
+  const pageErrors = [];
+  const consoleErrors = [];
+  page.on('pageerror', (e) => pageErrors.push(String(e)));
+  page.on('console', (msg) => { if (msg.type() === 'error') consoleErrors.push(msg.text()); });
+  return { pageErrors, consoleErrors };
+}
 
 async function assertCallGridAboveFold(page, label) {
   await expect(page.locator('#ov-start')).toBeHidden({ timeout: 5000 });
@@ -40,10 +48,7 @@ async function assertCallGridAboveFold(page, label) {
 
 test.describe('football call-layout above-the-fold', () => {
   test('opening snap (Start Game -> offense call)', async ({ page }, testInfo) => {
-    const pageErrors = [];
-    const consoleErrors = [];
-    page.on('pageerror', (e) => pageErrors.push(String(e)));
-    page.on('console', (msg) => { if (msg.type() === 'error') consoleErrors.push(msg.text()); });
+    const { pageErrors, consoleErrors } = attachErrorListeners(page);
 
     await page.goto('/football/');
     await page.locator('#ov-start .ov-btn').click();
@@ -59,15 +64,20 @@ test.describe('football call-layout above-the-fold', () => {
   });
 
   test('post-transition re-entry into call mode', async ({ page }, testInfo) => {
-    const pageErrors = [];
-    page.on('pageerror', (e) => pageErrors.push(String(e)));
+    const { pageErrors, consoleErrors } = attachErrorListeners(page);
 
-    await page.goto('/football/?boot=offense-call');
-    await assertCallGridAboveFold(page, 'boot=offense-call');
+    await page.goto('/football/');
+    await page.locator('#ov-start .ov-btn').click();
+    await expect(page.locator('#ui-desk')).toHaveAttribute('data-phase', 'call');
 
-    // Force a fresh call-mode re-entry; this exercises the same path used
-    // after touchdowns, transitions, and quarter breaks.
-    await page.evaluate(() => window.startDrive('offense'));
+    // Exercise the real production path after a defense stop: the offense
+    // transition overlay shows briefly, then startOffense() dismisses it and
+    // re-enters call mode via startDrive('offense'). Same chain runs after
+    // touchdowns, quarter breaks, and halftime.
+    await page.evaluate(() => {
+      window.showOffenseTransition('Back on offense after the stop.');
+      window.startOffense();
+    });
     await assertCallGridAboveFold(page, 'post-transition re-entry');
 
     await testInfo.attach('post-transition.png', {
@@ -76,5 +86,6 @@ test.describe('football call-layout above-the-fold', () => {
     });
 
     expect(pageErrors, 'page errors').toEqual([]);
+    expect(consoleErrors, 'console errors').toEqual([]);
   });
 });
