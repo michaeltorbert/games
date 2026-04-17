@@ -1,0 +1,57 @@
+name: football-verify
+
+on:
+  pull_request:
+    paths:
+      - 'football/**'
+      - 'shared/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'playwright.config.mjs'
+      - 'scripts/serve-root.mjs'
+      - 'tests/**'
+      - '.github/workflows/football-verify.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'football/**'
+      - 'shared/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'playwright.config.mjs'
+      - 'scripts/serve-root.mjs'
+      - 'tests/**'
+      - '.github/workflows/football-verify.yml'
+
+jobs:
+  call-layout:
+    name: Call-layout above-the-fold
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install npm deps
+        run: npm ci
+
+      - name: Install Playwright chromium + OS deps
+        run: npx playwright install --with-deps chromium
+
+      - name: Run football call-layout verifier
+        run: npm run test:football
+
+      - name: Upload artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: football-verify-artifacts
+          path: |
+            tests/artifacts/
+            playwright-report/
+          if-no-files-found: ignore
+          retention-days: 14
