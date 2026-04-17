@@ -14,6 +14,10 @@ Required identity:
 
 Required behavior:
 - Prefer `github-app-token` and `github-app-curl` for GitHub API writes. Use the explicit `games-codex` profile argument when you need to select the profile directly.
+- Agent-specific defaults for GitHub comment/review writes:
+  - Claude agents post via `github-app-curl --profile claude` and appear as `claude-bot-mt[bot]`.
+  - Codex agents post via the default `games-codex` profile and appear as `codex-bot-mt[bot]`.
+- When asked to post a GitHub comment or review, post directly as the agent bot. Do not offer "draft for you to post" or "post as the user" as alternatives unless the user explicitly asks for personal-account posting. You may still ask clarifying questions about what to post.
 - Do not use connector-backed GitHub writes if they would attribute the action to `@michaeltorbert`.
 - Before any commit, verify:
   - `git config user.name` = `codex-michaeltorbert[bot]`
