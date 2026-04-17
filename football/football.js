@@ -1668,4 +1668,17 @@ buildField();
 state = createGameState();
 updateField(false);
 updateStatus();
-showStart();
+
+function applyBootMode() {
+  const boot = new URLSearchParams(window.location.search).get('boot');
+  if (boot === 'offense-call') { startGame(); return true; }
+  if (boot === 'defense-call') {
+    state = createGameState();
+    hideOverlays();
+    startDrive('defense');
+    return true;
+  }
+  return false;
+}
+
+if (!applyBootMode()) showStart();
