@@ -9,10 +9,11 @@ For any GitHub write action in `michaeltorbert/games`, do not use the user's per
 Required identity:
 - GitHub App auth profile: `games-codex`
 - Visible GitHub actor: `codex-bot-mt[bot]`
-- The local auth profile name and the visible GitHub actor are different; do not assume they match.
+- Local git commit identity: `codex-michaeltorbert[bot] <3357630+codex-michaeltorbert[bot]@users.noreply.github.com>`
+- The auth profile, visible GitHub actor, and local git commit identity are separate values; do not assume they match.
 
 Required behavior:
-- Prefer `github-app-token games-codex` and `github-app-curl` for GitHub API writes.
+- Prefer `github-app-token` and `github-app-curl` for GitHub API writes. Use the explicit `games-codex` profile argument when you need to select the profile directly.
 - Do not use connector-backed GitHub writes if they would attribute the action to `@michaeltorbert`.
 - Before any commit, verify:
   - `git config user.name` = `codex-michaeltorbert[bot]`
