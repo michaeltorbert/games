@@ -27,6 +27,6 @@ const GAMES = [
     color: '#111827',
     accent: '#99ccff',
     url: 'prague/',
-    version: '1.0.0',
+    version: '1.4.0',
   },
 ];

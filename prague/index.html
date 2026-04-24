@@ -5,10 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <title>Prague Bike Panic</title>
 <link rel="stylesheet" href="../shared/reset.css?v=1.0.0">
-<link rel="stylesheet" href="prague.css?v=1.0.0">
+<link rel="stylesheet" href="prague.css?v=1.4.0">
 </head>
 <body>
 <div id="wrap">
+<canvas id="three-bg" width="800" height="500" aria-hidden="true"></canvas>
 <canvas id="c" width="800" height="500"></canvas>
 <div id="version-display"></div>
 <div id="mob">
@@ -18,14 +19,16 @@
 </div>
 </div>
 
-<script src="prague.js?v=1.0.0"></script>
+<script src="vendor/three-r149.min.js?v=1.4.0"></script>
+<script src="three-scene.js?v=1.4.0"></script>
+<script src="prague.js?v=1.4.0"></script>
 <script>
   document.getElementById('version-display').textContent = `v${GAME_VERSION}`;
 </script>
 <script src="../shared/updater.js?v=1.0.0"></script>
-<script src="chars.js?v=1.0.0"></script>
-<script src="obstacles.js?v=1.0.0"></script>
-<script src="renderer.js?v=1.0.0"></script>
+<script src="chars.js?v=1.4.0"></script>
+<script src="obstacles.js?v=1.4.0"></script>
+<script src="renderer.js?v=1.4.0"></script>
 <script>loop();</script>
 </body>
 </html>

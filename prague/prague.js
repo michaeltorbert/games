@@ -1,4 +1,4 @@
-const GAME_VERSION = '1.0.0';
+const GAME_VERSION = '1.4.0';
 
 // ═══════════════════════════════════════════════════════════
 //  CANVAS SETUP
@@ -6,24 +6,91 @@ const GAME_VERSION = '1.0.0';
 const C = document.getElementById('c');
 const G = C.getContext('2d');
 const W = 800, H = 500;
+G.imageSmoothingEnabled = true;
+
+const SPRITES = {
+  atlas: new Image(),
+  variants: new Image(),
+  loaded: false,
+  variantsLoaded: false,
+  failed: false,
+  variantsFailed: false,
+  src: 'assets/prague-sprite-atlas-v1.png?v=1.4.0',
+  variantsSrc: 'assets/prague-sprite-atlas-v2-normalized.png?v=1.4.0',
+};
+SPRITES.atlas.onload = () => { SPRITES.loaded = true; };
+SPRITES.atlas.onerror = () => { SPRITES.failed = true; };
+SPRITES.atlas.src = SPRITES.src;
+SPRITES.variants.onload = () => { SPRITES.variantsLoaded = true; };
+SPRITES.variants.onerror = () => { SPRITES.variantsFailed = true; };
+SPRITES.variants.src = SPRITES.variantsSrc;
 
 // ── INPUT ─────────────────────────────────────────────────
 const K = {}, JP = {};
+const MOB_LABELS = {
+  title: { left: '◀', jump: 'START', right: '▶' },
+  charselect: { left: '◀', jump: 'RIDE', right: '▶' },
+  playing: { left: '◀', jump: 'JUMP', right: '▶' },
+  gameover: { left: 'PICK', jump: 'AGAIN', right: 'PICK' },
+};
+const MOB = {
+  left: document.getElementById('bl'),
+  jump: document.getElementById('jb'),
+  right: document.getElementById('br'),
+};
 document.addEventListener('keydown', e => {
   if(!K[e.code]) JP[e.code]=true;
   K[e.code]=true;
+  if(e.code==='KeyF'){
+    toggleFullscreen();
+    e.preventDefault();
+  }
   if(['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Tab'].includes(e.code)) e.preventDefault();
 });
 document.addEventListener('keyup', e => { K[e.code]=false; });
+window.addEventListener('blur', () => {
+  for(const k in K) K[k]=false;
+  for(const k in JP) delete JP[k];
+});
 
 function mbHold(id,code){
   const b=document.getElementById(id); if(!b) return;
-  b.addEventListener('touchstart',e=>{e.preventDefault();K[code]=true;JP[code]=true},{passive:false});
-  b.addEventListener('touchend',  e=>{e.preventDefault();K[code]=false},{passive:false});
-  b.addEventListener('mousedown', e=>{e.preventDefault();K[code]=true;JP[code]=true});
-  b.addEventListener('mouseup',   e=>{e.preventDefault();K[code]=false});
+  const press=e=>{
+    e.preventDefault();
+    if(!K[code]) JP[code]=true;
+    K[code]=true;
+    b.classList.add('is-held');
+    if(e.pointerId!==undefined && b.setPointerCapture) b.setPointerCapture(e.pointerId);
+  };
+  const release=e=>{
+    e.preventDefault();
+    K[code]=false;
+    b.classList.remove('is-held');
+  };
+  b.addEventListener('pointerdown',press);
+  b.addEventListener('pointerup',release);
+  b.addEventListener('pointercancel',release);
+  b.addEventListener('pointerleave',release);
+  b.addEventListener('lostpointercapture',release);
+  b.addEventListener('contextmenu',e=>e.preventDefault());
 }
 mbHold('bl','ArrowLeft'); mbHold('br','ArrowRight'); mbHold('jb','Space');
+
+function updateMobileLabels(){
+  const labels=MOB_LABELS[STATE]||MOB_LABELS.playing;
+  if(MOB.left) MOB.left.textContent=labels.left;
+  if(MOB.jump) MOB.jump.textContent=labels.jump;
+  if(MOB.right) MOB.right.textContent=labels.right;
+}
+
+function toggleFullscreen(){
+  const wrap=document.getElementById('wrap') || document.documentElement;
+  if(!document.fullscreenElement){
+    if(wrap.requestFullscreen) wrap.requestFullscreen().catch(()=>{});
+  } else if(document.exitFullscreen){
+    document.exitFullscreen().catch(()=>{});
+  }
+}
 
 // ── CONSTANTS ─────────────────────────────────────────────
 const ROAD_Y  = 278;   // top of road
@@ -34,13 +101,15 @@ const PLAYER_X = 130;
 let STATE = 'title';
 let FRAME = 0;
 let score = 0, best = 0, gameSpeed = 3.5;
-let spawnClock = 0, spawnGap = 88;
+let spawnClock = 0, spawnGap = 88, tokenClock = 0, tokenGap = 115;
 let selectedChar = 0;
 let OBS = [];
+let TOKENS = [];
 let POPS = [];
 let bigLogNext = 750 + Math.random()*450;
 let bigFlash = 0;
 let shakeT = 0, shakeM = 0;
+let coins = 0, combo = 0;
 
 // ── PLAYER ────────────────────────────────────────────────
 const P = { x:PLAYER_X, y:FLOOR_Y, vy:0, onGround:true, inv:0, hits:0, pedal:0, lean:0 };
@@ -76,7 +145,6 @@ function pad(n){ return String(n).padStart(6,'0'); }
 //  UPDATE
 // ══════════════════════════════════════════════════════════
 function update(){
-  FRAME++;
   BGL.forEach(b=>b.x+=gameSpeed*b.sp);
   P.pedal+=.12*(gameSpeed/3.5);
 
@@ -96,6 +164,7 @@ function update(){
   if(score>best) best=score;
 
   if(++spawnClock>=spawnGap){ spawnObs(); spawnClock=0; }
+  if(++tokenClock>=tokenGap){ spawnToken(); tokenClock=0; tokenGap=95+Math.random()*80; }
   if(FRAME>=bigLogNext) spawnBigLog();
   if(bigFlash>0) bigFlash--;
   if(shakeT>0) shakeT--;
@@ -121,6 +190,25 @@ function update(){
     }
   }
 
+  for(let i=TOKENS.length-1;i>=0;i--){
+    const t=TOKENS[i];
+    t.x-=gameSpeed*.88;
+    t.spin+=.14;
+    t.bob+=.08;
+    const dx=Math.abs(t.x-P.x), dy=Math.abs(t.y-(P.y-45));
+    if(dx<34 && dy<44){
+      const bonus=75+combo*15;
+      coins++;
+      combo=Math.min(combo+1,9);
+      score+=bonus;
+      POPS.push({x:t.x-30,y:t.y-18,t:'+'+bonus+' Kč',l:54,c:'#ffe27a',s:14});
+      TOKENS.splice(i,1);
+    } else if(t.x<-36){
+      combo=0;
+      TOKENS.splice(i,1);
+    }
+  }
+
   for(let i=POPS.length-1;i>=0;i--){ POPS[i].y-=.85; POPS[i].l--; if(POPS[i].l<=0)POPS.splice(i,1); }
   for(const k in JP) delete JP[k];
 }
@@ -130,18 +218,27 @@ function update(){
 // ══════════════════════════════════════════════════════════
 function reset(){
   Object.assign(P,{x:PLAYER_X,y:FLOOR_Y,vy:0,onGround:true,inv:0,hits:0,pedal:0,lean:0});
-  OBS=[]; POPS=[];
+  OBS=[]; TOKENS=[]; POPS=[];
   score=0; gameSpeed=3.5+Math.random()*.2;
-  spawnClock=0; spawnGap=88; FRAME=0;
+  spawnClock=0; spawnGap=88; tokenClock=0; tokenGap=90; FRAME=0;
   bigFlash=0; bigLogNext=750+Math.random()*450;
-  shakeT=0;
+  shakeT=0; coins=0; combo=0;
 }
 
 // ══════════════════════════════════════════════════════════
 //  GAME LOOP
 // ══════════════════════════════════════════════════════════
-function loop(){
-  requestAnimationFrame(loop);
+function drawFrame(){
+  FRAME++;
+  if(window.PragueThreeScene){
+    window.PragueThreeScene.update({
+      frame: FRAME,
+      gameSpeed,
+      state: STATE,
+      playerX: P.x,
+      selectedChar,
+    });
+  }
   G.clearRect(0,0,W,H);
 
   if(shakeT>0){ G.save(); G.translate((Math.random()-.5)*shakeM,(Math.random()-.5)*shakeM*.6); }
@@ -149,6 +246,8 @@ function loop(){
   if(STATE==='title'){
     tickRain(); BGL[0].x+=.45; BGL[1].x+=.7;
     drawTitle();
+    if(JP['ArrowLeft']||JP['KeyA']) selectedChar=0;
+    if(JP['ArrowRight']||JP['KeyD']) selectedChar=1;
     if(JP['Enter']||JP['Space']) STATE='charselect';
   } else if(STATE==='charselect'){
     tickRain(); drawCharSelect();
@@ -157,13 +256,65 @@ function loop(){
     if(JP['Enter']||JP['Space']){ reset(); STATE='playing'; }
   } else if(STATE==='playing'){
     update(); tickRain();
-    drawBG(); drawRain(); drawObs(); drawPlayer(); drawHUD();
+    drawBG(); drawRain(); drawTokens(); drawObs(); drawPlayer(); drawHUD();
   } else {
-    tickRain(); drawBG(); drawRain(); drawObs(); drawPlayer(); drawGameOver();
+    tickRain(); drawBG(); drawRain(); drawTokens(); drawObs(); drawPlayer(); drawGameOver();
     if(JP['Enter']||JP['Space']){ reset(); STATE='playing'; }
     if(JP['Tab']) STATE='charselect';
+    if(JP['ArrowLeft']||JP['KeyA']){ selectedChar=0; STATE='charselect'; }
+    if(JP['ArrowRight']||JP['KeyD']){ selectedChar=1; STATE='charselect'; }
   }
 
   if(shakeT>0) G.restore();
+  updateMobileLabels();
   for(const k in JP) delete JP[k];
 }
+
+function loop(){
+  drawFrame();
+  requestAnimationFrame(loop);
+}
+
+window.advanceTime = (ms=1000/60) => {
+  const frames=Math.max(1,Math.round(ms/(1000/60)));
+  for(let i=0;i<frames;i++) drawFrame();
+  return Promise.resolve();
+};
+
+window.render_game_to_text = () => JSON.stringify({
+  coordinateSystem: 'Canvas 800x500, origin top-left, x right, y down.',
+  state: STATE,
+  frame: FRAME,
+  score: Math.floor(score),
+  best: Math.floor(best),
+  speed: Number(gameSpeed.toFixed(2)),
+  rider: CHARS[selectedChar]?.name,
+  coins,
+  combo,
+  player: {
+    x: Math.round(P.x),
+    y: Math.round(P.y),
+    vy: Number(P.vy.toFixed(2)),
+    onGround: P.onGround,
+    hits: P.hits,
+    invulnerableFrames: P.inv,
+  },
+  obstacles: OBS.map(ob => ({
+    type: ob.t,
+    x: Math.round(ob.x),
+    y: Math.round(ob.y),
+    variant: ob.variant ?? null,
+    warningFrames: ob.warn || 0,
+    settled: !!ob.settled,
+  })),
+  tokens: TOKENS.map(t => ({ x: Math.round(t.x), y: Math.round(t.y), kind: t.kind })),
+  sprites: {
+    loaded: SPRITES.loaded,
+    failed: SPRITES.failed,
+    source: SPRITES.src,
+    variantsLoaded: SPRITES.variantsLoaded,
+    variantsFailed: SPRITES.variantsFailed,
+    variantsSource: SPRITES.variantsSrc,
+  },
+  threeScene: window.PragueThreeScene ? window.PragueThreeScene.snapshot() : null,
+});
