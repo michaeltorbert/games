@@ -5,13 +5,25 @@ function spawnObs(){
   if(Math.random()<.45){
     OBS.push({t:'branch',x:W+30,y:ROAD_Y+20,tY:FLOOR_Y-6,vy:0,warn:52,rot:.2+Math.random()*.4,fall:false,settled:false,w:50,h:16,nm:false});
   } else {
-    OBS.push({t:'hippy',x:W+38,y:FLOOR_Y-28,ph:Math.random()*Math.PI*2,w:26,h:52,vx:-(1.5+Math.random()*1.8),wt:0,nm:false});
+    OBS.push({t:'hippy',x:W+38,y:FLOOR_Y-28,ph:Math.random()*Math.PI*2,variant:Math.floor(Math.random()*4),w:40,h:70,vx:-(1.5+Math.random()*1.8),wt:0,nm:false});
   }
 }
 function spawnBigLog(){
   OBS.push({t:'biglog',x:W+75,y:ROAD_Y+5,tY:FLOOR_Y-10,vy:0,warn:95,rot:.1+Math.random()*.15,fall:false,settled:false,w:100,h:32,nm:false});
   bigFlash=52;
   bigLogNext=FRAME+950+Math.random()*600;
+}
+function spawnToken(){
+  const high=Math.random()<.42;
+  const roll=Math.random();
+  TOKENS.push({
+    t:'token',
+    kind:roll<.36?'crown':roll<.7?'postcard':'macaroon',
+    x:W+36+Math.random()*160,
+    y:high?FLOOR_Y-128-Math.random()*18:FLOOR_Y-74-Math.random()*18,
+    spin:Math.random()*Math.PI*2,
+    bob:Math.random()*Math.PI*2,
+  });
 }
 
 // ══════════════════════════════════════════════════════════
