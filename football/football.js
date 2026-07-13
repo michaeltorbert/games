@@ -306,6 +306,8 @@ function gameSnapshot() {
     tds: state.tds || 0,
     opponentTds: state.opponentTds || 0,
     defenseStops: state.defenseStops || 0,
+    correctAnswers: state.correctAnswers || 0,
+    firstDowns: state.firstDowns || 0,
     pendingNextPossession: state.pendingNextPossession || null,
   };
 }
@@ -357,6 +359,8 @@ function createGameState() {
     tds: 0,
     opponentTds: 0,
     defenseStops: 0,
+    correctAnswers: 0,
+    firstDowns: 0,
     pendingNextPossession: null,
     phase: 'start',
     ...makeDriveState('offense'),
@@ -1139,6 +1143,7 @@ function handleAnswer(idx) {
     return;
   }
 
+  state.correctAnswers++;
   btn.classList.add('correct');
   disableAnswers();
   state.phase = 'feedback';
@@ -1149,6 +1154,7 @@ function handleAnswer(idx) {
 
 function handleDefenseAnswer(btn, val) {
   if (val === state.correct) {
+    state.correctAnswers++;
     btn.classList.add('correct');
     disableAnswers();
     state.phase = 'feedback';
@@ -1206,6 +1212,7 @@ function resolveOffensePlay() {
   }
 
   if (p.gotFirstDown) {
+    state.firstDowns++;
     showFieldFloat('FIRST DOWN!', 'first-down');
     flashFdLine();
     setFeedback('First down!', 'positive');
@@ -1500,6 +1507,29 @@ function nextQuarter() {
   startDrive(nextPossession);
 }
 
+function populateEndStats() {
+  const stats = document.getElementById('ov-end-stats');
+  if (!stats) return;
+  const total = state.plays || 0;
+  const correct = state.correctAnswers || 0;
+  const accuracy = total > 0 ? Math.round((correct / total) * 100) : 0;
+  const tiles = [
+    { label: 'Correct', value: `${correct} / ${total}` },
+    { label: 'Accuracy', value: `${accuracy}%` },
+    { label: 'Touchdowns', value: state.tds || 0 },
+    { label: 'Defensive Stops', value: state.defenseStops || 0 },
+    { label: 'First Downs', value: state.firstDowns || 0 },
+  ];
+  stats.innerHTML =
+    '<span class="ov-stats-title">Way to go!</span>' +
+    '<div class="ov-stats-grid">' +
+    tiles.map((t) =>
+      `<div class="ov-stat"><span class="ov-stat-value">${t.value}</span>` +
+      `<span class="ov-stat-label">${t.label}</span></div>`
+    ).join('') +
+    '</div>';
+}
+
 function showGameOver() {
   const diff = state.playerScore - state.opponentScore;
   const title = diff > 0 ? 'You Win!' : diff < 0 ? 'Final Score' : 'Tie Game!';
@@ -1523,6 +1553,7 @@ function showGameOver() {
   if (finalScore) finalScore.textContent = `${state.playerScore} - ${state.opponentScore}`;
   document.getElementById('ov-end-sub').textContent =
     `${detail} Player TDs: ${state.tds}.`;
+  populateEndStats();
   endOv.classList.add('show');
   if (diff > 0) spawnConfetti('ov-end-confetti', 40);
 }
