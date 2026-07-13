@@ -82,7 +82,7 @@ test('full football state matrix', async ({ page }, testInfo) => {
   await page.locator('#call-grid .call-btn').first().click();
   await expect(page.locator('#ui-desk')).toHaveAttribute('data-phase', 'question');
   await assertViewport(page, 'offense question');
-  await page.locator('.ans-btn:visible').first().click();
+  await page.evaluate(() => document.getElementById(`b${state.choices.indexOf(state.correct)}`).click());
   await expect(page.locator('#ui-desk')).toHaveAttribute('data-phase', 'feedback');
   await assertViewport(page, 'offense feedback');
 
@@ -96,7 +96,7 @@ test('full football state matrix', async ({ page }, testInfo) => {
   await page.locator('#call-grid .call-btn').first().click();
   await expect(page.locator('#ui-desk')).toHaveAttribute('data-phase', 'question');
   await assertViewport(page, 'defense question');
-  await page.locator('.ans-btn:visible').first().click();
+  await page.evaluate(() => document.getElementById(`b${state.choices.indexOf(state.correct)}`).click());
   await expect(page.locator('#ui-desk')).toHaveAttribute('data-phase', 'feedback');
   await assertViewport(page, 'defense feedback');
 
@@ -110,6 +110,8 @@ test('full football state matrix', async ({ page }, testInfo) => {
   await assertOverlay(page, 'ov-halftime', project, '08-halftime');
   await page.evaluate(() => showGameOver());
   await assertOverlay(page, 'ov-end', project, '09-final');
+  await expect(page.locator('#ov-end-stats')).toContainText('2 / 2');
+  await expect(page.locator('#ov-end-stats')).toContainText('100%');
 
   expect(errors).toEqual([]);
 });
@@ -124,12 +126,17 @@ test('reduced motion freezes all new effects', async ({ page }, testInfo) => {
     lights: getComputedStyle(document.body, '::before').animationName,
     crowd: getComputedStyle(document.body, '::after').animationName,
     stage: getComputedStyle(document.querySelector('#field-stage'), '::after').animationName,
-    fireworks: getComputedStyle(document.createElement('div')).animationName,
   }));
   expect(styles.sweep).toBe('none');
   expect(styles.breakTitle).toBe('none');
   expect(styles.lights).toBe('none');
   expect(styles.crowd).toBe('none');
   expect(styles.stage).toBe('none');
+  await page.evaluate(() => {
+    Math.random = () => 0;
+    activateOverlay('ov-td');
+    spawnFireworks('ov-td-confetti', 'offense');
+  });
+  await expect(page.locator('.fw-burst').first()).toHaveCSS('display', 'none');
   await shot(page, testInfo.project.name, '10-reduced-motion');
 });
