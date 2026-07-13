@@ -146,18 +146,72 @@
     <button class="ov-btn" onclick="startOffense()">Play Offense!</button>
   </div>
 </div>
-<div class="overlay" id="ov-quarter">
+<div class="overlay ov-break" id="ov-quarter">
   <div class="overlay-card">
+    <svg class="ov-fieldbg" aria-hidden="true" viewBox="0 0 400 260" preserveAspectRatio="xMidYMax slice">
+      <rect x="0" y="150" width="400" height="18" fill="#0b1a3a"/>
+      <rect x="0" y="162" width="400" height="14" fill="#12285a"/>
+      <g fill="#3d5aa0" opacity="0.7">
+        <rect x="24" y="154" width="4" height="4"/><rect x="60" y="156" width="4" height="4"/>
+        <rect x="102" y="153" width="4" height="4"/><rect x="150" y="156" width="4" height="4"/>
+        <rect x="196" y="154" width="4" height="4"/><rect x="244" y="156" width="4" height="4"/>
+        <rect x="292" y="153" width="4" height="4"/><rect x="336" y="156" width="4" height="4"/>
+        <rect x="372" y="154" width="4" height="4"/>
+      </g>
+      <rect x="0" y="176" width="400" height="84" fill="#1f7a3a"/>
+      <rect x="0" y="176" width="400" height="20" fill="#248a42" opacity="0.5"/>
+      <g stroke="#eef4ff" stroke-width="2" opacity="0.5">
+        <line x1="60" y1="176" x2="34" y2="260"/>
+        <line x1="150" y1="176" x2="138" y2="260"/>
+        <line x1="250" y1="176" x2="262" y2="260"/>
+        <line x1="340" y1="176" x2="366" y2="260"/>
+      </g>
+      <g stroke="#ffd233" stroke-width="3" fill="none" opacity="0.85" stroke-linecap="round">
+        <line x1="200" y1="150" x2="200" y2="124"/>
+        <line x1="184" y1="124" x2="216" y2="124"/>
+        <line x1="184" y1="124" x2="184" y2="106"/>
+        <line x1="216" y1="124" x2="216" y2="106"/>
+      </g>
+    </svg>
+    <div class="ov-sweep" aria-hidden="true"></div>
     <span class="ov-broadcast-badge ov-badge-info">BREAK</span>
     <div class="ov-title" id="ov-quarter-title">End of Quarter</div>
+    <div class="ov-scorebug" id="ov-quarter-scorebug" aria-hidden="true"></div>
     <div class="ov-sub" id="ov-quarter-sub"></div>
     <button class="ov-btn" onclick="nextQuarter()">Next Quarter</button>
   </div>
 </div>
-<div class="overlay" id="ov-halftime">
+<div class="overlay ov-break" id="ov-halftime">
   <div class="overlay-card">
+    <svg class="ov-fieldbg" aria-hidden="true" viewBox="0 0 400 260" preserveAspectRatio="xMidYMax slice">
+      <rect x="0" y="150" width="400" height="18" fill="#0b1a3a"/>
+      <rect x="0" y="162" width="400" height="14" fill="#12285a"/>
+      <g fill="#3d5aa0" opacity="0.7">
+        <rect x="24" y="154" width="4" height="4"/><rect x="60" y="156" width="4" height="4"/>
+        <rect x="102" y="153" width="4" height="4"/><rect x="150" y="156" width="4" height="4"/>
+        <rect x="196" y="154" width="4" height="4"/><rect x="244" y="156" width="4" height="4"/>
+        <rect x="292" y="153" width="4" height="4"/><rect x="336" y="156" width="4" height="4"/>
+        <rect x="372" y="154" width="4" height="4"/>
+      </g>
+      <rect x="0" y="176" width="400" height="84" fill="#1f7a3a"/>
+      <rect x="0" y="176" width="400" height="20" fill="#248a42" opacity="0.5"/>
+      <g stroke="#eef4ff" stroke-width="2" opacity="0.5">
+        <line x1="60" y1="176" x2="34" y2="260"/>
+        <line x1="150" y1="176" x2="138" y2="260"/>
+        <line x1="250" y1="176" x2="262" y2="260"/>
+        <line x1="340" y1="176" x2="366" y2="260"/>
+      </g>
+      <g stroke="#ffd233" stroke-width="3" fill="none" opacity="0.85" stroke-linecap="round">
+        <line x1="200" y1="150" x2="200" y2="124"/>
+        <line x1="184" y1="124" x2="216" y2="124"/>
+        <line x1="184" y1="124" x2="184" y2="106"/>
+        <line x1="216" y1="124" x2="216" y2="106"/>
+      </g>
+    </svg>
+    <div class="ov-sweep" aria-hidden="true"></div>
     <span class="ov-broadcast-badge ov-badge-info">HALFTIME</span>
     <div class="ov-title">Halftime</div>
+    <div class="ov-scorebug" id="ov-halftime-scorebug" aria-hidden="true"></div>
     <div class="ov-sub" id="ov-halftime-sub"></div>
     <button class="ov-btn" onclick="nextQuarter()">2nd Half</button>
   </div>

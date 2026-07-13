@@ -1673,6 +1673,20 @@ function finishPossession(message) {
   }
 }
 
+// Fill a break overlay's broadcast scorebug (decorative; sub text keeps the
+// full score/next-possession sentence for screen readers).
+function setBreakScorebug(overlayId, nextLabel) {
+  const bug = document.getElementById(overlayId + '-scorebug');
+  if (!bug) return;
+  bug.innerHTML =
+    `<span class="ov-sb-team">DUKE</span>` +
+    `<span class="ov-sb-pts">${state.playerScore}</span>` +
+    `<span class="ov-sb-dash">–</span>` +
+    `<span class="ov-sb-pts">${state.opponentScore}</span>` +
+    `<span class="ov-sb-team">UNC</span>` +
+    `<span class="ov-sb-next">Next: ${nextLabel}</span>`;
+}
+
 function showQuarterEnd(message) {
   const next = possessionTitle(state.pendingNextPossession || 'offense');
   Object.assign(state, blankPlayState(), { phase: 'quarter' });
@@ -1680,6 +1694,7 @@ function showQuarterEnd(message) {
   document.getElementById('ov-quarter-title').textContent = `End of ${QUARTER_NAMES[state.quarter]} Quarter`;
   document.getElementById('ov-quarter-sub').textContent =
     `${message} Next possession after the break: ${next}. Score: ${state.playerScore} - ${state.opponentScore}`;
+  setBreakScorebug('ov-quarter', next);
   document.getElementById('ov-quarter').classList.add('show');
 }
 
@@ -1689,6 +1704,7 @@ function showHalftime(message) {
   syncUiState();
   document.getElementById('ov-halftime-sub').textContent =
     `${message} Halftime swap: ${next} starts the 2nd half. Score: ${state.playerScore} - ${state.opponentScore}`;
+  setBreakScorebug('ov-halftime', next);
   document.getElementById('ov-halftime').classList.add('show');
 }
 
