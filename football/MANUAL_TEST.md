@@ -63,19 +63,55 @@ Run these on both iPhone sizes:
 - Phone layouts must include `440px` widths, not only `<=420px`
 - If an overlay or question state requires scroll on phones, confirm the primary CTA is still visible without ambiguity
 
-## Automated Call-Layout Verifier
+## Automated Verification
 
-A minimal Playwright harness covers the narrowest slice of this matrix: the offense-call phase must fit above the fold on every device target without auto-scrolling. It's the first piece of the repo-local verification path tracked in issue #36, scoped to catch regressions of issue #43.
-
-Run:
+Install the pinned test dependency and Chromium once:
 
 ```bash
-npm install               # once, pulls pinned @playwright/test
-npx playwright install chromium   # once, if chromium isn't already present
+npm ci
+npx playwright install chromium
+```
+
+Run the fast call-layout check while iterating on the call grid:
+
+```bash
 npm run test:football
 ```
 
-Artifacts (screenshots + failure context) land in `tests/artifacts/`. The tests are expected to fail on `main` until issue #43 is resolved — each failure documents the exact above-the-fold violation on that device.
+Run the complete Football release verifier before merge:
+
+```bash
+npm run test:football:release
+```
+
+The release command runs every Football contract and UI spec against all six device projects. Its state matrix follows the game’s production paths: a correct offense answer produces the player touchdown, a wrong defense answer produces the opponent touchdown, touchdown buttons produce both possession transitions, and `finishPossession()` produces quarter-end, halftime, and final.
+
+Each project archives these 14 required states:
+
+1. start
+2. offense call
+3. offense question
+4. offense feedback
+5. player touchdown
+6. defense transition
+7. defense call
+8. defense question
+9. defense feedback
+10. opponent touchdown
+11. offense transition
+12. quarter-end
+13. halftime
+14. final
+
+A fifteenth screenshot records the reduced-motion state. The post-test gate requires all 90 PNGs (15 screenshots × 6 projects) to exist and be non-empty. Missing states, clipped or undersized controls, horizontal overflow, uncaught browser errors, failed behavior contracts, or missing artifacts make the command exit nonzero.
+
+Canonical screenshots are retained at:
+
+```text
+tests/artifacts/release-matrix/<project>/<NN-state>.png
+```
+
+Playwright-owned temporary output is isolated under `tests/artifacts/playwright/`, so a later focused Playwright invocation cannot erase the canonical matrix. The pre-test step intentionally replaces the previous canonical matrix before a complete release run.
 
 ### Quick measurement snippet
 
@@ -93,7 +129,7 @@ For a fast pass in DevTools on `/football/?boot=offense-call`, run:
 })();
 ```
 
-Expected result for issue #43: `overflow <= 0`, `lastCardDelta <= 0`, and `scrollY === 0` on each target viewport.
+Expected result: `overflow <= 0`, `lastCardDelta <= 0`, and `scrollY === 0` on each target viewport.
 
 ### Manual boot params
 
