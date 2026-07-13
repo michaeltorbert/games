@@ -1026,6 +1026,117 @@ function disableAnswers() {
   [0, 1, 2, 3].forEach(i => document.getElementById('b' + i).disabled = true);
 }
 
+// -- Audio (synthesized Web Audio, mirrors kayak/physics.js) ------------------
+const MUTE_STORAGE_KEY = 'footballAudioMuted';
+let audioCtx = null;
+
+function storedMutePreference() {
+  try {
+    return localStorage.getItem(MUTE_STORAGE_KEY) === 'true';
+  } catch (e) {
+    return false;
+  }
+}
+
+function storeMutePreference(muted) {
+  try {
+    localStorage.setItem(MUTE_STORAGE_KEY, String(muted));
+  } catch (e) {}
+}
+
+let soundOn = !storedMutePreference();
+
+function ensureAudioContext() {
+  if (audioCtx) return audioCtx;
+  const Ctor = window.AudioContext || window.webkitAudioContext;
+  if (!Ctor) return null;
+  try {
+    if (navigator.audioSession && 'type' in navigator.audioSession) {
+      navigator.audioSession.type = 'playback';
+    }
+  } catch (e) {}
+  try { audioCtx = new Ctor(); } catch (e) { audioCtx = null; }
+  return audioCtx;
+}
+
+// Lazily create/resume the context on the first trusted user gesture.
+function unlockAudio(event) {
+  if (event && !event.isTrusted) return;
+  const ctx = ensureAudioContext();
+  if (!ctx) return;
+  if (ctx.state === 'suspended' || ctx.state === 'interrupted') {
+    ctx.resume().catch(function() {});
+  }
+}
+
+document.addEventListener('pointerdown', unlockAudio);
+document.addEventListener('keydown', unlockAudio);
+document.addEventListener('visibilitychange', function() {
+  if (audioCtx && !document.hidden &&
+      (audioCtx.state === 'suspended' || audioCtx.state === 'interrupted')) {
+    audioCtx.resume().catch(function() {});
+  }
+});
+
+function canPlayAudio() {
+  return soundOn && !!audioCtx && audioCtx.state === 'running';
+}
+
+// Short positive jingle on a correct answer / defensive stop.
+function playCorrect() {
+  const ctx = audioCtx;
+  if (!canPlayAudio()) return;
+  try {
+    [660, 880].forEach((freq, i) => {
+      const o = ctx.createOscillator(), g = ctx.createGain();
+      o.connect(g); g.connect(ctx.destination);
+      o.type = 'sine'; o.frequency.value = freq;
+      const t = ctx.currentTime + i * 0.09;
+      g.gain.setValueAtTime(0, t);
+      g.gain.linearRampToValueAtTime(0.09, t + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.001, t + 0.18);
+      o.start(t); o.stop(t + 0.2);
+    });
+  } catch (e) {}
+}
+
+// Rising cheer-ish arpeggio for first downs (short) and touchdowns (longer).
+function playCheer(freqs, step) {
+  const ctx = audioCtx;
+  if (!canPlayAudio()) return;
+  try {
+    freqs.forEach((freq, i) => {
+      const o = ctx.createOscillator(), g = ctx.createGain();
+      o.connect(g); g.connect(ctx.destination);
+      o.type = 'triangle'; o.frequency.value = freq;
+      const t = ctx.currentTime + i * step;
+      g.gain.setValueAtTime(0, t);
+      g.gain.linearRampToValueAtTime(0.11, t + 0.03);
+      g.gain.exponentialRampToValueAtTime(0.001, t + 0.3);
+      o.start(t); o.stop(t + 0.34);
+    });
+  } catch (e) {}
+}
+function playFirstDown() { playCheer([392, 523, 659], 0.08); }
+function playTouchdown() { playCheer([392, 523, 659, 784, 988], 0.11); }
+
+function toggleMute() {
+  soundOn = !soundOn;
+  storeMutePreference(!soundOn);
+  if (soundOn) unlockAudio();
+  updateMuteButton();
+}
+
+function updateMuteButton() {
+  const btn = document.getElementById('mute-toggle');
+  if (!btn) return;
+  btn.setAttribute('aria-pressed', String(!soundOn));
+  btn.setAttribute('aria-label', soundOn ? 'Mute sound effects' : 'Unmute sound effects');
+  btn.classList.toggle('is-muted', !soundOn);
+  const icon = document.getElementById('mute-icon');
+  if (icon) icon.textContent = soundOn ? '🔊' : '🔇';
+}
+
 // -- Play flow ----------------------------------------------------------------
 function showCallPrompt() {
   clearTimeout(advTimer);
@@ -1156,6 +1267,7 @@ function handleDefenseAnswer(btn, val) {
   if (val === state.correct) {
     state.correctAnswers++;
     btn.classList.add('correct');
+    playCorrect();
     disableAnswers();
     state.phase = 'feedback';
     syncUiState();
@@ -1216,11 +1328,13 @@ function resolveOffensePlay() {
     showFieldFloat('FIRST DOWN!', 'first-down');
     flashFdLine();
     setFeedback('First down!', 'positive');
+    playFirstDown();
     clearTimeout(playerCelebrateDelayTimer);
     playerCelebrateDelayTimer = setTimeout(startPlayerCelebrate, 700);
   } else {
     showFieldFloat('+' + (p.gain || 0) + ' YDS');
     setFeedback('Correct.', 'positive');
+    playCorrect();
   }
   advTimer = setTimeout(showCallPrompt, 1400);
 }
@@ -1416,7 +1530,10 @@ function showTD(side = 'offense') {
   if (button) button.textContent = touchdownContinueLabel(side);
   document.getElementById('ov-td').classList.add('show');
   clearConfetti('ov-td-confetti');
-  if (side !== 'defense') spawnConfetti('ov-td-confetti', 40);
+  if (side !== 'defense') {
+    spawnConfetti('ov-td-confetti', 40);
+    playTouchdown();
+  }
 }
 
 function afterTouchdown() {
@@ -1618,6 +1735,7 @@ buildField();
 state = createGameState();
 updateField(false);
 updateStatus();
+updateMuteButton();
 
 function applyBootMode() {
   const boot = new URLSearchParams(window.location.search).get('boot');
