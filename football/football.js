@@ -119,94 +119,8 @@ function playDiagramSvg(callKey, possession) {
   return PLAY_DIAGRAMS[callKey] || '';
 }
 
-const OFFENSE_MISS_MESSAGES = {
-  shortRun: [
-    'Your run was stuffed at the line.',
-    'The defense filled the gap. No gain.',
-    'A linebacker wrapped up the runner.',
-    'The pile went nowhere.',
-  ],
-  shortPass: [
-    'The short pass was batted down.',
-    'The receiver slipped, incomplete.',
-    'The defender jumped the route.',
-    'The pass fell incomplete.',
-  ],
-  longRun: [
-    'The edge was sealed off. No gain.',
-    'The defense strung out the run.',
-    'The runner got bottled up.',
-    'The cutback lane closed fast.',
-  ],
-  mediumPass: [
-    'The pass was broken up.',
-    'The quarterback had to throw it away.',
-    'The coverage was too tight.',
-    'The ball skipped incomplete.',
-  ],
-  longPass: [
-    'The deep ball sailed incomplete.',
-    'The safety knocked it away.',
-    'The receiver was double covered.',
-    'The pass was just out of reach.',
-  ],
-};
-
-const DEFENSE_STOP_MESSAGES = {
-  shortRun: [
-    'You stuffed the run at the line.',
-    'Your defense filled the gap.',
-    'Big tackle. No gain.',
-  ],
-  shortPass: [
-    'You batted down the short pass.',
-    'Great coverage on the quick throw.',
-    'The receiver was covered. Incomplete.',
-  ],
-  longRun: [
-    'You sealed the edge and stopped the run.',
-    'Your defense chased it down.',
-    'The runner had nowhere to go.',
-  ],
-  mediumPass: [
-    'You broke up the pass over the middle.',
-    'Tight coverage forced an incompletion.',
-    'Your defender got a hand on it.',
-  ],
-  longPass: [
-    'You knocked away the deep ball.',
-    'Great safety help over the top.',
-    'The deep pass fell incomplete.',
-  ],
-};
-
-const DEFENSE_GAIN_MESSAGES = {
-  shortRun: [
-    'The opponent found a small crease.',
-    'The runner squeezed through the line.',
-    'The opponent powered forward.',
-  ],
-  shortPass: [
-    'The opponent completed the quick pass.',
-    'The receiver found space underneath.',
-    'The short throw was complete.',
-  ],
-  longRun: [
-    'The runner bounced outside.',
-    'The opponent broke through the edge.',
-    'The run hit a big lane.',
-  ],
-  mediumPass: [
-    'The opponent hit the middle route.',
-    'The pass found a window in coverage.',
-    'The receiver caught it over the middle.',
-  ],
-  longPass: [
-    'The opponent connected deep.',
-    'The receiver got behind the defense.',
-    'The deep throw was complete.',
-  ],
-};
+// Play-by-play copy lives in copy.js (PLAY_OUTCOME_COPY, POSSESSION_COPY,
+// DESK_HEADER_COPY), loaded before this file.
 
 let state = {};
 let advTimer = null;
@@ -269,11 +183,11 @@ function possessionTitle(possession) {
 }
 
 function possessionRibbonText(possession) {
-  return possession === 'offense' ? 'DUKE BALL - OFFENSE' : 'UNC BALL - DEFENSE';
+  return possession === 'offense' ? POSSESSION_COPY.ribbon.offense : POSSESSION_COPY.ribbon.defense;
 }
 
 function stagePossessionText(possession) {
-  return possession === 'offense' ? 'Duke on offense' : 'UNC on offense';
+  return possession === 'offense' ? POSSESSION_COPY.stage.offense : POSSESSION_COPY.stage.defense;
 }
 
 function riskLabelText(risk) {
@@ -338,6 +252,11 @@ function setDeskHeader(chip, kicker, actionCopy) {
   if (chipEl) chipEl.textContent = chip;
   if (kickerEl) kickerEl.textContent = kicker;
   setActionSubcopy(actionCopy);
+}
+
+function applyDeskHeader(key) {
+  const copy = DESK_HEADER_COPY[key];
+  setDeskHeader(copy.chip, copy.kicker, copy.action);
 }
 
 function touchdownContinueLabel(side) {
@@ -1111,12 +1030,12 @@ function showCallPrompt() {
   if (state.possession === 'offense') {
     document.getElementById('play-label').textContent = downDistanceLabel(state.down, state.ytg);
     document.getElementById('question').textContent = 'Call the snap. Bigger gains bring tougher math.';
-    setDeskHeader('Next Snap', 'Set the Duke offense.', 'Choose a play card.');
+    applyDeskHeader('callOffense');
     renderCallGrid(Object.values(OFFENSE_CALLS), selectOffenseCall);
   } else {
     document.getElementById('play-label').textContent = downDistanceLabel(state.down, state.ytg);
     document.getElementById('question').textContent = 'Call the coverage. The right look cuts down the gain.';
-    setDeskHeader('Next Snap', 'Set the Duke defense.', 'Choose a defense card.');
+    applyDeskHeader('callDefense');
     renderCallGrid(Object.values(DEFENSE_CALLS), selectDefenseCall);
   }
   setFeedback('');
@@ -1155,7 +1074,7 @@ function prepareQuestion(p, labelHtml) {
   });
   document.getElementById('play-label').innerHTML = labelHtml;
   document.getElementById('question').textContent = state.question;
-  setDeskHeader('Live Math', state.possession === 'offense' ? 'Run the play.' : 'Beat the snap.', 'Answer the question.');
+  applyDeskHeader(state.possession === 'offense' ? 'questionOffense' : 'questionDefense');
   syncUiState();
   setFeedback('');
   renderButtons();
@@ -1208,13 +1127,13 @@ function handleAnswer(idx) {
   }
 
   if (val !== state.correct) {
-    const msg = outcomeMessage(OFFENSE_MISS_MESSAGES, state.callKey);
+    const msg = outcomeMessage(PLAY_OUTCOME_COPY.offenseMiss, state.callKey);
     btn.classList.add('wrong');
     disableAnswers();
     state.phase = 'feedback';
     syncUiState();
     state.outcomeMessage = msg;
-    setDeskHeader('Result', 'Play outcome.', 'Watch the result.');
+    applyDeskHeader('resultOffense');
     setFeedback(`${msg} ${state.explain || 'That answer misses it.'}`, 'negative');
     resolveOffenseMiss();
     return;
@@ -1224,7 +1143,7 @@ function handleAnswer(idx) {
   disableAnswers();
   state.phase = 'feedback';
   syncUiState();
-  setDeskHeader('Result', 'Play outcome.', 'Watch the result.');
+  applyDeskHeader('resultOffense');
   resolveOffensePlay();
 }
 
@@ -1234,9 +1153,9 @@ function handleDefenseAnswer(btn, val) {
     disableAnswers();
     state.phase = 'feedback';
     syncUiState();
-    const msg = outcomeMessage(DEFENSE_STOP_MESSAGES, state.opponentCallKey);
+    const msg = outcomeMessage(PLAY_OUTCOME_COPY.defenseStop, state.opponentCallKey);
     state.outcomeMessage = msg;
-    setDeskHeader('Result', 'Defensive result.', 'Watch the result.');
+    applyDeskHeader('resultDefense');
     setFeedback(`${msg} ${state.explain || ''}`.trim(), 'positive');
     resolveDefenseStop(msg);
     return;
@@ -1246,9 +1165,9 @@ function handleDefenseAnswer(btn, val) {
   disableAnswers();
   state.phase = 'feedback';
   syncUiState();
-  const msg = outcomeMessage(DEFENSE_GAIN_MESSAGES, state.opponentCallKey);
+  const msg = outcomeMessage(PLAY_OUTCOME_COPY.defenseGain, state.opponentCallKey);
   state.outcomeMessage = msg;
-  setDeskHeader('Result', 'Defensive result.', 'Watch the result.');
+  applyDeskHeader('resultDefense');
   setFeedback(`${msg} ${state.explain || 'That answer misses it.'} Opponent gains ${yds(state.g)}.`, 'negative');
   resolveDefenseGain(msg);
 }
@@ -1459,7 +1378,7 @@ function showStart() {
   updatePromptContext('DUKE VS UNC / FOUR QUARTERS / WIN THE RIVALRY');
   document.getElementById('play-label').textContent = 'Get ready…';
   document.getElementById('question').textContent = '';
-  setDeskHeader('Kickoff', 'Start the rivalry.', 'Start the broadcast when you are ready.');
+  applyDeskHeader('start');
   setFeedback('');
   hideAnswerButtons();
   hideCallGrid();
