@@ -49,6 +49,23 @@ body::before {
     linear-gradient(163deg, transparent 0 38%, rgba(255, 255, 255, 0.09) 39% 40%, transparent 41%),
     linear-gradient(197deg, transparent 0 36%, rgba(255, 255, 255, 0.08) 37% 38%, transparent 39%),
     radial-gradient(ellipse at center bottom, rgba(255, 255, 255, 0.08), transparent 54%);
+  animation: stadium-lights 15s ease-in-out infinite;
+}
+
+/* Ambient stadium life: slow light glow + gentle crowd shimmer, all behind the field. */
+@keyframes stadium-lights {
+  0%, 100% { opacity: 0.82; }
+  50% { opacity: 0.94; }
+}
+
+@keyframes crowd-shimmer {
+  0%, 100% { opacity: 0.22; }
+  50% { opacity: 0.3; }
+}
+
+@keyframes crowd-shimmer-stage {
+  0%, 100% { opacity: 0.16; }
+  50% { opacity: 0.22; }
 }
 
 body::after {
@@ -67,6 +84,7 @@ body::after {
     radial-gradient(circle at 54% 48%, rgba(255, 255, 255, 0.08) 0 2px, transparent 2px) 0 0 / 34px 22px,
     linear-gradient(180deg, transparent 0 24%, rgba(0, 0, 0, 0.7) 100%);
   clip-path: polygon(0 38%, 8% 26%, 16% 18%, 26% 12%, 38% 8%, 49% 12%, 60% 10%, 72% 8%, 84% 14%, 92% 24%, 100% 38%, 100% 100%, 0 100%);
+  animation: crowd-shimmer 9s ease-in-out infinite;
 }
 
 #broadcast-shell {
@@ -314,6 +332,7 @@ body::after {
     radial-gradient(circle at 58% 48%, rgba(255, 255, 255, 0.1) 0 2px, transparent 2px) 0 0 / 36px 20px,
     linear-gradient(180deg, rgba(0, 0, 0, 0.2), transparent 42%);
   clip-path: polygon(0 40%, 8% 26%, 18% 20%, 28% 14%, 40% 10%, 50% 14%, 60% 12%, 70% 10%, 82% 16%, 92% 26%, 100% 40%, 100% 100%, 0 100%);
+  animation: crowd-shimmer-stage 8s ease-in-out infinite;
 }
 
 .stage-head {
@@ -2432,6 +2451,13 @@ body::after {
   #player.player-running .pl-leg-r,
   #player.player-celebrating .pl-arm-l,
   #player.player-celebrating .pl-arm-r {
+    animation: none !important;
+  }
+
+  /* Freeze the ambient stadium background to its static silhouette. */
+  body::before,
+  body::after,
+  #field-stage::after {
     animation: none !important;
   }
 }
