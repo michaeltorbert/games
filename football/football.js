@@ -1,4 +1,4 @@
-const GAME_VERSION = '1.16.1';
+const GAME_VERSION = '1.17.0';
 let prevPlayerScore = -1, prevOpponentScore = -1;
 let playerRunTimer = 0, playerCelebrateTimer = 0, playerCelebrateDelayTimer = 0;
 const EZ = 5;
@@ -1509,9 +1509,14 @@ function spawnConfetti(containerId, count) {
   }
 }
 
+const fireworkEpochs = new WeakMap();
+
 function clearConfetti(containerId) {
   const container = document.getElementById(containerId);
-  if (container) container.innerHTML = '';
+  if (container) {
+    fireworkEpochs.set(container, (fireworkEpochs.get(container) || 0) + 1);
+    container.innerHTML = '';
+  }
 }
 
 // Team-color firework palettes: Duke navy/gold for player scores,
@@ -1525,17 +1530,22 @@ function spawnFireworks(containerId, side = 'offense') {
   const container = document.getElementById(containerId);
   if (!container) return;
   const colors = FW_PALETTES[side] || FW_PALETTES.offense;
-  const bursts = 5;
+  const runId = (fireworkEpochs.get(container) || 0) + 1;
+  fireworkEpochs.set(container, runId);
+  const bursts = side === 'defense' ? 2 : 5;
   for (let b = 0; b < bursts; b++) {
     const delay = b * 260 + Math.random() * 160;
-    setTimeout(() => spawnBurst(container, colors), delay);
+    setTimeout(() => {
+      if (fireworkEpochs.get(container) !== runId) return;
+      spawnBurst(container, colors, runId);
+    }, delay);
   }
 }
 
-function spawnBurst(container, colors) {
+function spawnBurst(container, colors, runId) {
   // Bail if the overlay was dismissed before this delayed burst fired.
   const overlay = container.closest('.overlay');
-  if (!overlay || !overlay.classList.contains('show')) return;
+  if (!overlay || !overlay.classList.contains('show') || fireworkEpochs.get(container) !== runId) return;
   const burst = document.createElement('div');
   burst.className = 'fw-burst';
   burst.style.left = (18 + Math.random() * 64) + '%';
@@ -1560,19 +1570,106 @@ function spawnBurst(container, colors) {
   setTimeout(() => burst.remove(), 1000);
 }
 
-function hideOverlays() {
-  ['ov-start', 'ov-td', 'ov-defense', 'ov-offense', 'ov-quarter', 'ov-halftime', 'ov-end'].forEach((id) => {
-    document.getElementById(id).classList.remove('show');
+const OVERLAY_IDS = ['ov-start', 'ov-td', 'ov-defense', 'ov-offense', 'ov-quarter', 'ov-halftime', 'ov-end'];
+
+function setGameUiInert(isInert) {
+  const wrap = document.getElementById('wrap');
+  if (!wrap) return;
+  wrap.inert = isInert;
+  if (isInert) wrap.setAttribute('aria-hidden', 'true');
+  else wrap.removeAttribute('aria-hidden');
+}
+
+function overlayFocusableElements(overlay) {
+  return Array.from(overlay.querySelectorAll(
+    'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+  )).filter((element) => element.getClientRects().length > 0);
+}
+
+function focusActiveOverlay(overlay) {
+  requestAnimationFrame(() => {
+    if (!overlay.classList.contains('show')) return;
+    const target = overlay.querySelector('.ov-btn:not([disabled])') || overlayFocusableElements(overlay)[0] || overlay;
+    if (target === overlay && !overlay.hasAttribute('tabindex')) overlay.setAttribute('tabindex', '-1');
+    target.focus({ preventScroll: true });
   });
+}
+
+function focusGameplayControl() {
+  requestAnimationFrame(() => {
+    if (document.querySelector('.overlay.show')) return;
+    const selectors = ['#call-grid .call-btn', '#btn-row .ans-btn', '#mute-toggle'];
+    let target = null;
+    for (const selector of selectors) {
+      target = Array.from(document.querySelectorAll(selector)).find(
+        (element) => !element.disabled && element.getClientRects().length > 0
+      );
+      if (target) break;
+    }
+    if (target) target.focus({ preventScroll: true });
+  });
+}
+
+function activateOverlay(id) {
+  const active = document.getElementById(id);
+  if (!active) return;
+  if (id !== 'ov-td') clearConfetti('ov-td-confetti');
+  if (id !== 'ov-end') clearConfetti('ov-end-confetti');
+  OVERLAY_IDS.forEach((overlayId) => {
+    const overlay = document.getElementById(overlayId);
+    const isActive = overlay === active;
+    overlay.classList.toggle('show', isActive);
+    overlay.setAttribute('aria-hidden', String(!isActive));
+    overlay.inert = !isActive;
+  });
+  setGameUiInert(true);
+  focusActiveOverlay(active);
+}
+
+function hideOverlays() {
+  OVERLAY_IDS.forEach((id) => {
+    const overlay = document.getElementById(id);
+    overlay.classList.remove('show');
+    overlay.setAttribute('aria-hidden', 'true');
+    overlay.inert = true;
+  });
+  setGameUiInert(false);
   clearConfetti('ov-td-confetti');
   clearConfetti('ov-end-confetti');
+  focusGameplayControl();
 }
+
+document.addEventListener('keydown', function(event) {
+  const overlay = document.querySelector('.overlay.show');
+  if (!overlay) return;
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    focusActiveOverlay(overlay);
+    return;
+  }
+  if (event.key !== 'Tab') return;
+  const focusable = overlayFocusableElements(overlay);
+  if (!focusable.length) {
+    event.preventDefault();
+    focusActiveOverlay(overlay);
+    return;
+  }
+  const first = focusable[0];
+  const last = focusable[focusable.length - 1];
+  if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault();
+    last.focus({ preventScroll: true });
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault();
+    first.focus({ preventScroll: true });
+  }
+});
 
 function showStart() {
   clearTimeout(advTimer);
   hideOverlays();
   resetPlayerAnimations();
-  document.getElementById('ov-start').classList.add('show');
+  activateOverlay('ov-start');
   updatePromptContext('DUKE VS UNC / FOUR QUARTERS / WIN THE RIVALRY');
   document.getElementById('play-label').textContent = 'Get ready…';
   document.getElementById('question').textContent = '';
@@ -1605,7 +1702,7 @@ function showTD(side = 'offense') {
     ? `Score: ${state.playerScore} - ${state.opponentScore}. UNC has ${state.opponentTds} TD${state.opponentTds === 1 ? '' : 's'} — get it back!`
     : `Score: ${state.playerScore} - ${state.opponentScore}. ${state.tds} player TD${state.tds === 1 ? '' : 's'}!`;
   if (button) button.textContent = touchdownContinueLabel(side);
-  document.getElementById('ov-td').classList.add('show');
+  activateOverlay('ov-td');
   clearConfetti('ov-td-confetti');
   if (side !== 'defense') {
     spawnConfetti('ov-td-confetti', 40);
@@ -1615,8 +1712,7 @@ function showTD(side = 'offense') {
 }
 
 function afterTouchdown() {
-  clearConfetti('ov-td-confetti');
-  document.getElementById('ov-td').classList.remove('show');
+  hideOverlays();
   finishPossession(
     state.touchdownSide === 'defense'
       ? 'Opponent scored. Time to take it back!'
@@ -1630,11 +1726,11 @@ function showDefenseTransition(message) {
   syncUiState();
   document.getElementById('ov-defense-sub').textContent =
     `${message} Score: ${state.playerScore} - ${state.opponentScore}`;
-  document.getElementById('ov-defense').classList.add('show');
+  activateOverlay('ov-defense');
 }
 
 function startDefense() {
-  document.getElementById('ov-defense').classList.remove('show');
+  hideOverlays();
   startDrive('defense');
 }
 
@@ -1644,11 +1740,11 @@ function showOffenseTransition(message) {
   syncUiState();
   document.getElementById('ov-offense-sub').textContent =
     `${message} Score: ${state.playerScore} - ${state.opponentScore}`;
-  document.getElementById('ov-offense').classList.add('show');
+  activateOverlay('ov-offense');
 }
 
 function startOffense() {
-  document.getElementById('ov-offense').classList.remove('show');
+  hideOverlays();
   startDrive('offense');
 }
 
@@ -1695,7 +1791,7 @@ function showQuarterEnd(message) {
   document.getElementById('ov-quarter-sub').textContent =
     `${message} Next possession after the break: ${next}. Score: ${state.playerScore} - ${state.opponentScore}`;
   setBreakScorebug('ov-quarter', next);
-  document.getElementById('ov-quarter').classList.add('show');
+  activateOverlay('ov-quarter');
 }
 
 function showHalftime(message) {
@@ -1705,7 +1801,7 @@ function showHalftime(message) {
   document.getElementById('ov-halftime-sub').textContent =
     `${message} Halftime swap: ${next} starts the 2nd half. Score: ${state.playerScore} - ${state.opponentScore}`;
   setBreakScorebug('ov-halftime', next);
-  document.getElementById('ov-halftime').classList.add('show');
+  activateOverlay('ov-halftime');
 }
 
 function nextQuarter() {
@@ -1765,7 +1861,8 @@ function showGameOver() {
   document.getElementById('ov-end-sub').textContent =
     `${detail} Player TDs: ${state.tds}.`;
   populateEndStats();
-  endOv.classList.add('show');
+  clearConfetti('ov-end-confetti');
+  activateOverlay('ov-end');
   if (diff > 0) {
     spawnConfetti('ov-end-confetti', 40);
     spawnFireworks('ov-end-confetti', 'offense');

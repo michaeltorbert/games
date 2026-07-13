@@ -42,7 +42,9 @@ test('particles are limited to explosive offense plays and clean up', async ({ p
     gotFirstDown: false,
     isTouchdown: false,
   });
-  await page.waitForTimeout(700);
+  await page.waitForTimeout(560);
+  await expect(page.locator('.field-particle')).toHaveCount(5);
+  await page.waitForTimeout(140);
   await expect(page.locator('.field-particle')).toHaveCount(0);
 
   expect(await runOffenseGain(page, { gain: 2, yd: 28, fdYd: 30 })).toMatchObject({
