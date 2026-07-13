@@ -1268,7 +1268,9 @@ function applyPlayState(p) {
 function resolveOffensePlay() {
   const p = state.play;
   applyPlayState(p);
-  if (p.gain > 0 || p.isTouchdown) startPlayerRun();
+  if (p.gain > 0 || p.isTouchdown) {
+    startPlayerRun(p.isTouchdown || p.gotFirstDown || p.gain >= 8);
+  }
 
   if (p.isTouchdown) {
     state.tds++;
@@ -1362,7 +1364,7 @@ function resolveDefenseGain(message) {
 }
 
 // ── Player sprite animations ────────────────────────────────────────────────
-function startPlayerRun() {
+function startPlayerRun(showParticles = false) {
   const player = document.getElementById('player');
   if (!player || player.classList.contains('player-hidden')) return;
   clearTimeout(playerRunTimer);
@@ -1372,7 +1374,10 @@ function startPlayerRun() {
   void player.offsetWidth;
   player.classList.add('player-running');
   playerRunTimer = setTimeout(() => player.classList.remove('player-running'), 800);
-  spawnFieldParticles(parseFloat(player.style.left) || 50);
+  if (showParticles) {
+    const playerLeft = parseFloat(player.style.left);
+    spawnFieldParticles(Number.isFinite(playerLeft) ? playerLeft : 50);
+  }
 }
 
 // A brief burst of grass/dust kicked up as the ball-carrier advances — a few
