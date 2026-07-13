@@ -494,6 +494,57 @@ body::after {
   color: #0c2950 !important;
 }
 
+/* Broadcast sound toggle — overlays the field so it stays reachable on every
+   breakpoint (the scorebug ribbon and stage-head both hide on small screens). */
+#mute-toggle {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  z-index: 6;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  border-radius: 999px;
+  background: rgba(6, 16, 34, 0.62);
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.28);
+  color: #f0f7ff;
+  font-size: 17px;
+  line-height: 1;
+  letter-spacing: normal;
+  cursor: pointer;
+  transition: background 140ms ease, transform 140ms ease;
+}
+
+#mute-toggle:hover {
+  background: rgba(10, 37, 92, 0.78);
+}
+
+#mute-toggle:active {
+  transform: scale(0.94);
+}
+
+#mute-toggle.is-muted {
+  opacity: 0.7;
+}
+
+#mute-toggle:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #mute-toggle {
+    transition: none;
+  }
+  #mute-toggle:active {
+    transform: none;
+  }
+}
+
 #fd-line {
   position: absolute;
   top: 0;
