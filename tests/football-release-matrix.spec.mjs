@@ -116,6 +116,27 @@ test('full football state matrix', async ({ page }, testInfo) => {
   expect(errors).toEqual([]);
 });
 
+test('post-game accuracy counts wrong offense and defense answers', async ({ page }) => {
+  await page.goto('/football/?boot=offense-call');
+  await page.locator('#call-grid .call-btn').first().click();
+  await expect(page.locator('#ui-desk')).toHaveAttribute('data-phase', 'question');
+  await page.evaluate(() => document.getElementById(`b${state.choices.findIndex(choice => choice !== state.correct)}`).click());
+  await expect(page.locator('#ui-desk')).toHaveAttribute('data-phase', 'feedback');
+
+  await page.evaluate(() => {
+    clearTimeout(advTimer);
+    startDrive('defense');
+  });
+  await page.locator('#call-grid .call-btn').first().click();
+  await expect(page.locator('#ui-desk')).toHaveAttribute('data-phase', 'question');
+  await page.evaluate(() => document.getElementById(`b${state.choices.findIndex(choice => choice !== state.correct)}`).click());
+  await expect(page.locator('#ui-desk')).toHaveAttribute('data-phase', 'feedback');
+
+  await page.evaluate(() => showGameOver());
+  await expect(page.locator('#ov-end-stats')).toContainText('0 / 2');
+  await expect(page.locator('#ov-end-stats')).toContainText('0%');
+});
+
 test('reduced motion freezes all new effects', async ({ page }, testInfo) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.goto('/football/');
@@ -135,8 +156,11 @@ test('reduced motion freezes all new effects', async ({ page }, testInfo) => {
   await page.evaluate(() => {
     Math.random = () => 0;
     activateOverlay('ov-td');
+    spawnConfetti('ov-td-confetti', 40);
     spawnFireworks('ov-td-confetti', 'offense');
   });
-  await expect(page.locator('.fw-burst').first()).toHaveCSS('display', 'none');
+  await page.waitForTimeout(200);
+  await expect(page.locator('.confetti-piece')).toHaveCount(0);
+  await expect(page.locator('.fw-burst')).toHaveCount(0);
   await shot(page, testInfo.project.name, '10-reduced-motion');
 });

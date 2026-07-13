@@ -1422,8 +1422,12 @@ function startPlayerRun(showParticles = false) {
 
 // A brief burst of grass/dust kicked up as the ball-carrier advances — a few
 // small, low-opacity specks near the player's feet, fully removed once settled.
+function reducedMotionPreferred() {
+  return Boolean(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+}
+
 function spawnFieldParticles(leftPct) {
-  if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  if (reducedMotionPreferred()) return;
   const wrap = document.getElementById('field-wrap');
   if (!wrap) return;
   const colors = ['#2e8f3c', '#37aa49', '#8d6b3f', '#b9a06a'];
@@ -1495,6 +1499,7 @@ function flashDefenseStop() {
 }
 
 function spawnConfetti(containerId, count) {
+  if (reducedMotionPreferred()) return;
   const container = document.getElementById(containerId);
   if (!container) return;
   const colors = ['#ffd700', '#ff6b6b', '#4dff4d', '#7bafd4', '#ff9933', '#cc66ff', '#ffffff'];
@@ -1527,6 +1532,7 @@ const FW_PALETTES = {
 };
 
 function spawnFireworks(containerId, side = 'offense') {
+  if (reducedMotionPreferred()) return;
   const container = document.getElementById(containerId);
   if (!container) return;
   const colors = FW_PALETTES[side] || FW_PALETTES.offense;
