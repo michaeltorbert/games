@@ -3,8 +3,10 @@
   "private": true,
   "description": "Repo-local UI verification tooling for games. No runtime deps; no bundler; no app build step.",
   "scripts": {
+    "pretest:football:release": "node scripts/prepare-football-release-artifacts.mjs",
     "test:football": "playwright test tests/football-call-layout.spec.mjs",
-    "test:football:release": "playwright test tests/football-call-layout.spec.mjs tests/football-audio.spec.mjs tests/football-particles.spec.mjs tests/football-copy-contract.spec.mjs tests/football-fireworks.spec.mjs tests/football-overlay-accessibility.spec.mjs tests/football-release-matrix.spec.mjs"
+    "test:football:release": "playwright test tests/football-call-layout.spec.mjs tests/football-audio.spec.mjs tests/football-particles.spec.mjs tests/football-copy-contract.spec.mjs tests/football-fireworks.spec.mjs tests/football-overlay-accessibility.spec.mjs tests/football-release-matrix.spec.mjs",
+    "posttest:football:release": "node scripts/verify-football-release-artifacts.mjs"
   },
   "devDependencies": {
     "@playwright/test": "1.56.1"
