@@ -276,6 +276,30 @@ body::after {
   transform: scaleX(-1);
 }
 
+/* LED / segmented-display accent: a subtle dot-matrix texture behind the
+   dark info panels plus a soft glow on the numerals, kept light enough to
+   stay readable for a 6-year-old. Defense-possession accents are untouched. */
+.sb-score {
+  text-shadow:
+    0 0 10px rgba(255, 211, 55, 0.4),
+    0 1px 0 rgba(0, 0, 0, 0.4);
+}
+
+.sb-val {
+  text-shadow: 0 0 7px rgba(140, 190, 255, 0.22);
+}
+
+.sb-info::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image: radial-gradient(rgba(150, 195, 255, 0.16) 1px, transparent 1.6px);
+  background-size: 6px 6px;
+  opacity: 0.55;
+}
+
 #field-stage {
   position: relative;
   overflow: hidden;
