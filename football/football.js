@@ -1483,6 +1483,52 @@ function clearConfetti(containerId) {
   if (container) container.innerHTML = '';
 }
 
+// Team-color firework palettes: Duke navy/gold for player scores,
+// UNC-tinged reds/oranges for opponent scores.
+const FW_PALETTES = {
+  offense: ['#ffd337', '#003087', '#7bafd4', '#ffffff'],
+  defense: ['#ff8c3c', '#ff4d3d', '#ffd337', '#ffffff'],
+};
+
+function spawnFireworks(containerId, side = 'offense') {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  const colors = FW_PALETTES[side] || FW_PALETTES.offense;
+  const bursts = 5;
+  for (let b = 0; b < bursts; b++) {
+    const delay = b * 260 + Math.random() * 160;
+    setTimeout(() => spawnBurst(container, colors), delay);
+  }
+}
+
+function spawnBurst(container, colors) {
+  // Bail if the overlay was dismissed before this delayed burst fired.
+  const overlay = container.closest('.overlay');
+  if (!overlay || !overlay.classList.contains('show')) return;
+  const burst = document.createElement('div');
+  burst.className = 'fw-burst';
+  burst.style.left = (18 + Math.random() * 64) + '%';
+  burst.style.top = (14 + Math.random() * 42) + '%';
+  const flash = document.createElement('div');
+  flash.className = 'fw-flash';
+  flash.style.setProperty('--fw-color', colors[Math.floor(Math.random() * colors.length)]);
+  burst.appendChild(flash);
+  const sparks = 14;
+  for (let i = 0; i < sparks; i++) {
+    const angle = (i / sparks) * Math.PI * 2 + Math.random() * 0.3;
+    const dist = 46 + Math.random() * 34;
+    const spark = document.createElement('div');
+    spark.className = 'fw-spark';
+    spark.style.setProperty('--dx', (Math.cos(angle) * dist).toFixed(1) + 'px');
+    spark.style.setProperty('--dy', (Math.sin(angle) * dist).toFixed(1) + 'px');
+    spark.style.setProperty('--fw-color', colors[Math.floor(Math.random() * colors.length)]);
+    burst.appendChild(spark);
+  }
+  container.appendChild(burst);
+  // Clean up the burst nodes once the animation finishes so DOM doesn't pile up.
+  setTimeout(() => burst.remove(), 1000);
+}
+
 function hideOverlays() {
   ['ov-start', 'ov-td', 'ov-defense', 'ov-offense', 'ov-quarter', 'ov-halftime', 'ov-end'].forEach((id) => {
     document.getElementById(id).classList.remove('show');
@@ -1534,6 +1580,7 @@ function showTD(side = 'offense') {
     spawnConfetti('ov-td-confetti', 40);
     playTouchdown();
   }
+  spawnFireworks('ov-td-confetti', side);
 }
 
 function afterTouchdown() {
@@ -1672,7 +1719,10 @@ function showGameOver() {
     `${detail} Player TDs: ${state.tds}.`;
   populateEndStats();
   endOv.classList.add('show');
-  if (diff > 0) spawnConfetti('ov-end-confetti', 40);
+  if (diff > 0) {
+    spawnConfetti('ov-end-confetti', 40);
+    spawnFireworks('ov-end-confetti', 'offense');
+  }
 }
 
 function restart() {

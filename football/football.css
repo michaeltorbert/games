@@ -1698,6 +1698,50 @@ body::after {
   100% { transform: translateY(100vh) rotate(720deg); opacity: 0; }
 }
 
+/* Firework bursts layered over the confetti on touchdown / win overlays. */
+.fw-burst {
+  position: absolute;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+
+.fw-flash {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 30px;
+  height: 30px;
+  margin: -15px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.95), var(--fw-color, #ffd337) 58%, transparent 72%);
+  animation: firework-flash 520ms ease-out forwards;
+}
+
+.fw-spark {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 7px;
+  height: 7px;
+  margin: -3.5px;
+  border-radius: 50%;
+  background: var(--fw-color, #ffd337);
+  box-shadow: 0 0 8px var(--fw-color, #ffd337);
+  animation: firework-spark 900ms ease-out forwards;
+}
+
+@keyframes firework-flash {
+  0% { transform: scale(0.2); opacity: 0.9; }
+  100% { transform: scale(1.9); opacity: 0; }
+}
+
+@keyframes firework-spark {
+  0% { transform: translate(0, 0) scale(1); opacity: 1; }
+  70% { opacity: 1; }
+  100% { transform: translate(var(--dx, 0), var(--dy, 0)) scale(0.3); opacity: 0; }
+}
+
 @media (max-width: 1080px) {
   #status {
     grid-template-columns: 1fr 1fr 0.85fr 1.15fr 1fr 64px;
@@ -2567,7 +2611,8 @@ body::after {
     100% { opacity: 0; }
   }
 
-  .confetti-piece {
+  .confetti-piece,
+  .fw-burst {
     display: none;
   }
 
