@@ -1,4 +1,4 @@
-const GAME_VERSION = '1.16.1';
+const GAME_VERSION = '1.17.0';
 let prevPlayerScore = -1, prevOpponentScore = -1;
 let playerRunTimer = 0, playerCelebrateTimer = 0, playerCelebrateDelayTimer = 0;
 const EZ = 5;
@@ -119,94 +119,8 @@ function playDiagramSvg(callKey, possession) {
   return PLAY_DIAGRAMS[callKey] || '';
 }
 
-const OFFENSE_MISS_MESSAGES = {
-  shortRun: [
-    'Your run was stuffed at the line.',
-    'The defense filled the gap. No gain.',
-    'A linebacker wrapped up the runner.',
-    'The pile went nowhere.',
-  ],
-  shortPass: [
-    'The short pass was batted down.',
-    'The receiver slipped, incomplete.',
-    'The defender jumped the route.',
-    'The pass fell incomplete.',
-  ],
-  longRun: [
-    'The edge was sealed off. No gain.',
-    'The defense strung out the run.',
-    'The runner got bottled up.',
-    'The cutback lane closed fast.',
-  ],
-  mediumPass: [
-    'The pass was broken up.',
-    'The quarterback had to throw it away.',
-    'The coverage was too tight.',
-    'The ball skipped incomplete.',
-  ],
-  longPass: [
-    'The deep ball sailed incomplete.',
-    'The safety knocked it away.',
-    'The receiver was double covered.',
-    'The pass was just out of reach.',
-  ],
-};
-
-const DEFENSE_STOP_MESSAGES = {
-  shortRun: [
-    'You stuffed the run at the line.',
-    'Your defense filled the gap.',
-    'Big tackle. No gain.',
-  ],
-  shortPass: [
-    'You batted down the short pass.',
-    'Great coverage on the quick throw.',
-    'The receiver was covered. Incomplete.',
-  ],
-  longRun: [
-    'You sealed the edge and stopped the run.',
-    'Your defense chased it down.',
-    'The runner had nowhere to go.',
-  ],
-  mediumPass: [
-    'You broke up the pass over the middle.',
-    'Tight coverage forced an incompletion.',
-    'Your defender got a hand on it.',
-  ],
-  longPass: [
-    'You knocked away the deep ball.',
-    'Great safety help over the top.',
-    'The deep pass fell incomplete.',
-  ],
-};
-
-const DEFENSE_GAIN_MESSAGES = {
-  shortRun: [
-    'The opponent found a small crease.',
-    'The runner squeezed through the line.',
-    'The opponent powered forward.',
-  ],
-  shortPass: [
-    'The opponent completed the quick pass.',
-    'The receiver found space underneath.',
-    'The short throw was complete.',
-  ],
-  longRun: [
-    'The runner bounced outside.',
-    'The opponent broke through the edge.',
-    'The run hit a big lane.',
-  ],
-  mediumPass: [
-    'The opponent hit the middle route.',
-    'The pass found a window in coverage.',
-    'The receiver caught it over the middle.',
-  ],
-  longPass: [
-    'The opponent connected deep.',
-    'The receiver got behind the defense.',
-    'The deep throw was complete.',
-  ],
-};
+// Play-by-play copy lives in copy.js (PLAY_OUTCOME_COPY, POSSESSION_COPY,
+// DESK_HEADER_COPY), loaded before this file.
 
 let state = {};
 let advTimer = null;
@@ -269,11 +183,11 @@ function possessionTitle(possession) {
 }
 
 function possessionRibbonText(possession) {
-  return possession === 'offense' ? 'DUKE BALL - OFFENSE' : 'UNC BALL - DEFENSE';
+  return possession === 'offense' ? POSSESSION_COPY.ribbon.offense : POSSESSION_COPY.ribbon.defense;
 }
 
 function stagePossessionText(possession) {
-  return possession === 'offense' ? 'Duke on offense' : 'UNC on offense';
+  return possession === 'offense' ? POSSESSION_COPY.stage.offense : POSSESSION_COPY.stage.defense;
 }
 
 function riskLabelText(risk) {
@@ -340,6 +254,11 @@ function setDeskHeader(chip, kicker, actionCopy) {
   setActionSubcopy(actionCopy);
 }
 
+function applyDeskHeader(key) {
+  const copy = DESK_HEADER_COPY[key];
+  setDeskHeader(copy.chip, copy.kicker, copy.action);
+}
+
 function touchdownContinueLabel(side) {
   if (state.quarterPossessions + 1 < POSSESSIONS_PER_QUARTER) {
     return side === 'defense' ? 'Play Offense!' : 'Play Defense!';
@@ -387,6 +306,8 @@ function gameSnapshot() {
     tds: state.tds || 0,
     opponentTds: state.opponentTds || 0,
     defenseStops: state.defenseStops || 0,
+    correctAnswers: state.correctAnswers || 0,
+    firstDowns: state.firstDowns || 0,
     pendingNextPossession: state.pendingNextPossession || null,
   };
 }
@@ -438,6 +359,8 @@ function createGameState() {
     tds: 0,
     opponentTds: 0,
     defenseStops: 0,
+    correctAnswers: 0,
+    firstDowns: 0,
     pendingNextPossession: null,
     phase: 'start',
     ...makeDriveState('offense'),
@@ -1103,6 +1026,117 @@ function disableAnswers() {
   [0, 1, 2, 3].forEach(i => document.getElementById('b' + i).disabled = true);
 }
 
+// -- Audio (synthesized Web Audio, mirrors kayak/physics.js) ------------------
+const MUTE_STORAGE_KEY = 'footballAudioMuted';
+let audioCtx = null;
+
+function storedMutePreference() {
+  try {
+    return localStorage.getItem(MUTE_STORAGE_KEY) === 'true';
+  } catch (e) {
+    return false;
+  }
+}
+
+function storeMutePreference(muted) {
+  try {
+    localStorage.setItem(MUTE_STORAGE_KEY, String(muted));
+  } catch (e) {}
+}
+
+let soundOn = !storedMutePreference();
+
+function ensureAudioContext() {
+  if (audioCtx) return audioCtx;
+  const Ctor = window.AudioContext || window.webkitAudioContext;
+  if (!Ctor) return null;
+  try {
+    if (navigator.audioSession && 'type' in navigator.audioSession) {
+      navigator.audioSession.type = 'playback';
+    }
+  } catch (e) {}
+  try { audioCtx = new Ctor(); } catch (e) { audioCtx = null; }
+  return audioCtx;
+}
+
+// Lazily create/resume the context on the first trusted user gesture.
+function unlockAudio(event) {
+  if (event && !event.isTrusted) return;
+  const ctx = ensureAudioContext();
+  if (!ctx) return;
+  if (ctx.state === 'suspended' || ctx.state === 'interrupted') {
+    ctx.resume().catch(function() {});
+  }
+}
+
+document.addEventListener('pointerdown', unlockAudio);
+document.addEventListener('keydown', unlockAudio);
+document.addEventListener('visibilitychange', function() {
+  if (audioCtx && !document.hidden &&
+      (audioCtx.state === 'suspended' || audioCtx.state === 'interrupted')) {
+    audioCtx.resume().catch(function() {});
+  }
+});
+
+function canPlayAudio() {
+  return soundOn && !!audioCtx && audioCtx.state === 'running';
+}
+
+// Short positive jingle on a correct answer / defensive stop.
+function playCorrect() {
+  const ctx = audioCtx;
+  if (!canPlayAudio()) return;
+  try {
+    [660, 880].forEach((freq, i) => {
+      const o = ctx.createOscillator(), g = ctx.createGain();
+      o.connect(g); g.connect(ctx.destination);
+      o.type = 'sine'; o.frequency.value = freq;
+      const t = ctx.currentTime + i * 0.09;
+      g.gain.setValueAtTime(0, t);
+      g.gain.linearRampToValueAtTime(0.09, t + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.001, t + 0.18);
+      o.start(t); o.stop(t + 0.2);
+    });
+  } catch (e) {}
+}
+
+// Rising cheer-ish arpeggio for first downs (short) and touchdowns (longer).
+function playCheer(freqs, step) {
+  const ctx = audioCtx;
+  if (!canPlayAudio()) return;
+  try {
+    freqs.forEach((freq, i) => {
+      const o = ctx.createOscillator(), g = ctx.createGain();
+      o.connect(g); g.connect(ctx.destination);
+      o.type = 'triangle'; o.frequency.value = freq;
+      const t = ctx.currentTime + i * step;
+      g.gain.setValueAtTime(0, t);
+      g.gain.linearRampToValueAtTime(0.11, t + 0.03);
+      g.gain.exponentialRampToValueAtTime(0.001, t + 0.3);
+      o.start(t); o.stop(t + 0.34);
+    });
+  } catch (e) {}
+}
+function playFirstDown() { playCheer([392, 523, 659], 0.08); }
+function playTouchdown() { playCheer([392, 523, 659, 784, 988], 0.11); }
+
+function toggleMute() {
+  soundOn = !soundOn;
+  storeMutePreference(!soundOn);
+  if (soundOn) unlockAudio();
+  updateMuteButton();
+}
+
+function updateMuteButton() {
+  const btn = document.getElementById('mute-toggle');
+  if (!btn) return;
+  btn.setAttribute('aria-pressed', String(!soundOn));
+  btn.setAttribute('aria-label', soundOn ? 'Mute sound effects' : 'Unmute sound effects');
+  btn.classList.toggle('is-muted', !soundOn);
+  const icon = document.getElementById('mute-icon');
+  if (icon) icon.textContent = soundOn ? '🔊' : '🔇';
+}
+
 // -- Play flow ----------------------------------------------------------------
 function showCallPrompt() {
   clearTimeout(advTimer);
@@ -1111,12 +1145,12 @@ function showCallPrompt() {
   if (state.possession === 'offense') {
     document.getElementById('play-label').textContent = downDistanceLabel(state.down, state.ytg);
     document.getElementById('question').textContent = 'Call the snap. Bigger gains bring tougher math.';
-    setDeskHeader('Next Snap', 'Set the Duke offense.', 'Choose a play card.');
+    applyDeskHeader('callOffense');
     renderCallGrid(Object.values(OFFENSE_CALLS), selectOffenseCall);
   } else {
     document.getElementById('play-label').textContent = downDistanceLabel(state.down, state.ytg);
     document.getElementById('question').textContent = 'Call the coverage. The right look cuts down the gain.';
-    setDeskHeader('Next Snap', 'Set the Duke defense.', 'Choose a defense card.');
+    applyDeskHeader('callDefense');
     renderCallGrid(Object.values(DEFENSE_CALLS), selectDefenseCall);
   }
   setFeedback('');
@@ -1155,7 +1189,7 @@ function prepareQuestion(p, labelHtml) {
   });
   document.getElementById('play-label').innerHTML = labelHtml;
   document.getElementById('question').textContent = state.question;
-  setDeskHeader('Live Math', state.possession === 'offense' ? 'Run the play.' : 'Beat the snap.', 'Answer the question.');
+  applyDeskHeader(state.possession === 'offense' ? 'questionOffense' : 'questionDefense');
   syncUiState();
   setFeedback('');
   renderButtons();
@@ -1208,35 +1242,38 @@ function handleAnswer(idx) {
   }
 
   if (val !== state.correct) {
-    const msg = outcomeMessage(OFFENSE_MISS_MESSAGES, state.callKey);
+    const msg = outcomeMessage(PLAY_OUTCOME_COPY.offenseMiss, state.callKey);
     btn.classList.add('wrong');
     disableAnswers();
     state.phase = 'feedback';
     syncUiState();
     state.outcomeMessage = msg;
-    setDeskHeader('Result', 'Play outcome.', 'Watch the result.');
+    applyDeskHeader('resultOffense');
     setFeedback(`${msg} ${state.explain || 'That answer misses it.'}`, 'negative');
     resolveOffenseMiss();
     return;
   }
 
+  state.correctAnswers++;
   btn.classList.add('correct');
   disableAnswers();
   state.phase = 'feedback';
   syncUiState();
-  setDeskHeader('Result', 'Play outcome.', 'Watch the result.');
+  applyDeskHeader('resultOffense');
   resolveOffensePlay();
 }
 
 function handleDefenseAnswer(btn, val) {
   if (val === state.correct) {
+    state.correctAnswers++;
     btn.classList.add('correct');
+    playCorrect();
     disableAnswers();
     state.phase = 'feedback';
     syncUiState();
-    const msg = outcomeMessage(DEFENSE_STOP_MESSAGES, state.opponentCallKey);
+    const msg = outcomeMessage(PLAY_OUTCOME_COPY.defenseStop, state.opponentCallKey);
     state.outcomeMessage = msg;
-    setDeskHeader('Result', 'Defensive result.', 'Watch the result.');
+    applyDeskHeader('resultDefense');
     setFeedback(`${msg} ${state.explain || ''}`.trim(), 'positive');
     resolveDefenseStop(msg);
     return;
@@ -1246,9 +1283,9 @@ function handleDefenseAnswer(btn, val) {
   disableAnswers();
   state.phase = 'feedback';
   syncUiState();
-  const msg = outcomeMessage(DEFENSE_GAIN_MESSAGES, state.opponentCallKey);
+  const msg = outcomeMessage(PLAY_OUTCOME_COPY.defenseGain, state.opponentCallKey);
   state.outcomeMessage = msg;
-  setDeskHeader('Result', 'Defensive result.', 'Watch the result.');
+  applyDeskHeader('resultDefense');
   setFeedback(`${msg} ${state.explain || 'That answer misses it.'} Opponent gains ${yds(state.g)}.`, 'negative');
   resolveDefenseGain(msg);
 }
@@ -1268,7 +1305,9 @@ function applyPlayState(p) {
 function resolveOffensePlay() {
   const p = state.play;
   applyPlayState(p);
-  if (p.gain > 0 || p.isTouchdown) startPlayerRun();
+  if (p.gain > 0 || p.isTouchdown) {
+    startPlayerRun(p.isTouchdown || p.gotFirstDown || p.gain >= 8);
+  }
 
   if (p.isTouchdown) {
     state.tds++;
@@ -1287,14 +1326,17 @@ function resolveOffensePlay() {
   }
 
   if (p.gotFirstDown) {
+    state.firstDowns++;
     showFieldFloat('FIRST DOWN!', 'first-down');
     flashFdLine();
     setFeedback('First down!', 'positive');
+    playFirstDown();
     clearTimeout(playerCelebrateDelayTimer);
     playerCelebrateDelayTimer = setTimeout(startPlayerCelebrate, 700);
   } else {
     showFieldFloat('+' + (p.gain || 0) + ' YDS');
     setFeedback('Correct.', 'positive');
+    playCorrect();
   }
   advTimer = setTimeout(showCallPrompt, 1400);
 }
@@ -1362,7 +1404,7 @@ function resolveDefenseGain(message) {
 }
 
 // ── Player sprite animations ────────────────────────────────────────────────
-function startPlayerRun() {
+function startPlayerRun(showParticles = false) {
   const player = document.getElementById('player');
   if (!player || player.classList.contains('player-hidden')) return;
   clearTimeout(playerRunTimer);
@@ -1372,6 +1414,39 @@ function startPlayerRun() {
   void player.offsetWidth;
   player.classList.add('player-running');
   playerRunTimer = setTimeout(() => player.classList.remove('player-running'), 800);
+  if (showParticles) {
+    const playerLeft = parseFloat(player.style.left);
+    spawnFieldParticles(Number.isFinite(playerLeft) ? playerLeft : 50);
+  }
+}
+
+// A brief burst of grass/dust kicked up as the ball-carrier advances — a few
+// small, low-opacity specks near the player's feet, fully removed once settled.
+function reducedMotionPreferred() {
+  return Boolean(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+}
+
+function spawnFieldParticles(leftPct) {
+  if (reducedMotionPreferred()) return;
+  const wrap = document.getElementById('field-wrap');
+  if (!wrap) return;
+  const colors = ['#2e8f3c', '#37aa49', '#8d6b3f', '#b9a06a'];
+  for (let i = 0; i < 5; i++) {
+    const p = document.createElement('div');
+    p.className = 'field-particle';
+    p.style.left = leftPct + '%';
+    p.style.top = (60 + Math.random() * 6) + '%';
+    p.style.background = colors[Math.floor(Math.random() * colors.length)];
+    const size = (3 + Math.random() * 3).toFixed(1) + 'px';
+    p.style.width = size; p.style.height = size;
+    // Kick mostly up-and-out, with a little horizontal spread.
+    p.style.setProperty('--px', (Math.random() * 22 - 11).toFixed(1) + 'px');
+    p.style.setProperty('--py', (-8 - Math.random() * 14).toFixed(1) + 'px');
+    p.style.setProperty('--pmax', (0.28 + Math.random() * 0.22).toFixed(2));
+    p.style.animationDelay = Math.round(Math.random() * 60) + 'ms';
+    wrap.appendChild(p);
+    setTimeout(() => p.remove(), 640);
+  }
 }
 
 function startPlayerCelebrate() {
@@ -1424,6 +1499,7 @@ function flashDefenseStop() {
 }
 
 function spawnConfetti(containerId, count) {
+  if (reducedMotionPreferred()) return;
   const container = document.getElementById(containerId);
   if (!container) return;
   const colors = ['#ffd700', '#ff6b6b', '#4dff4d', '#7bafd4', '#ff9933', '#cc66ff', '#ffffff'];
@@ -1438,28 +1514,172 @@ function spawnConfetti(containerId, count) {
   }
 }
 
+const fireworkEpochs = new WeakMap();
+
 function clearConfetti(containerId) {
   const container = document.getElementById(containerId);
-  if (container) container.innerHTML = '';
+  if (container) {
+    fireworkEpochs.set(container, (fireworkEpochs.get(container) || 0) + 1);
+    container.innerHTML = '';
+  }
+}
+
+// Team-color firework palettes: Duke navy/gold for player scores,
+// UNC-tinged reds/oranges for opponent scores.
+const FW_PALETTES = {
+  offense: ['#ffd337', '#003087', '#7bafd4', '#ffffff'],
+  defense: ['#ff8c3c', '#ff4d3d', '#ffd337', '#ffffff'],
+};
+
+function spawnFireworks(containerId, side = 'offense') {
+  if (reducedMotionPreferred()) return;
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  const colors = FW_PALETTES[side] || FW_PALETTES.offense;
+  const runId = (fireworkEpochs.get(container) || 0) + 1;
+  fireworkEpochs.set(container, runId);
+  const bursts = side === 'defense' ? 2 : 5;
+  for (let b = 0; b < bursts; b++) {
+    const delay = b * 260 + Math.random() * 160;
+    setTimeout(() => {
+      if (fireworkEpochs.get(container) !== runId) return;
+      spawnBurst(container, colors, runId);
+    }, delay);
+  }
+}
+
+function spawnBurst(container, colors, runId) {
+  // Bail if the overlay was dismissed before this delayed burst fired.
+  const overlay = container.closest('.overlay');
+  if (!overlay || !overlay.classList.contains('show') || fireworkEpochs.get(container) !== runId) return;
+  const burst = document.createElement('div');
+  burst.className = 'fw-burst';
+  burst.style.left = (18 + Math.random() * 64) + '%';
+  burst.style.top = (14 + Math.random() * 42) + '%';
+  const flash = document.createElement('div');
+  flash.className = 'fw-flash';
+  flash.style.setProperty('--fw-color', colors[Math.floor(Math.random() * colors.length)]);
+  burst.appendChild(flash);
+  const sparks = 14;
+  for (let i = 0; i < sparks; i++) {
+    const angle = (i / sparks) * Math.PI * 2 + Math.random() * 0.3;
+    const dist = 46 + Math.random() * 34;
+    const spark = document.createElement('div');
+    spark.className = 'fw-spark';
+    spark.style.setProperty('--dx', (Math.cos(angle) * dist).toFixed(1) + 'px');
+    spark.style.setProperty('--dy', (Math.sin(angle) * dist).toFixed(1) + 'px');
+    spark.style.setProperty('--fw-color', colors[Math.floor(Math.random() * colors.length)]);
+    burst.appendChild(spark);
+  }
+  container.appendChild(burst);
+  // Clean up the burst nodes once the animation finishes so DOM doesn't pile up.
+  setTimeout(() => burst.remove(), 1000);
+}
+
+const OVERLAY_IDS = ['ov-start', 'ov-td', 'ov-defense', 'ov-offense', 'ov-quarter', 'ov-halftime', 'ov-end'];
+
+function setGameUiInert(isInert) {
+  const wrap = document.getElementById('wrap');
+  if (!wrap) return;
+  wrap.inert = isInert;
+  if (isInert) wrap.setAttribute('aria-hidden', 'true');
+  else wrap.removeAttribute('aria-hidden');
+}
+
+function overlayFocusableElements(overlay) {
+  return Array.from(overlay.querySelectorAll(
+    'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+  )).filter((element) => element.getClientRects().length > 0);
+}
+
+function focusActiveOverlay(overlay) {
+  requestAnimationFrame(() => {
+    if (!overlay.classList.contains('show')) return;
+    const target = overlay.querySelector('.ov-btn:not([disabled])') || overlayFocusableElements(overlay)[0] || overlay;
+    if (target === overlay && !overlay.hasAttribute('tabindex')) overlay.setAttribute('tabindex', '-1');
+    target.focus({ preventScroll: true });
+  });
+}
+
+function focusGameplayControl() {
+  requestAnimationFrame(() => {
+    if (document.querySelector('.overlay.show')) return;
+    const selectors = ['#call-grid .call-btn', '#btn-row .ans-btn', '#mute-toggle'];
+    let target = null;
+    for (const selector of selectors) {
+      target = Array.from(document.querySelectorAll(selector)).find(
+        (element) => !element.disabled && element.getClientRects().length > 0
+      );
+      if (target) break;
+    }
+    if (target) target.focus({ preventScroll: true });
+  });
+}
+
+function activateOverlay(id) {
+  const active = document.getElementById(id);
+  if (!active) return;
+  if (id !== 'ov-td') clearConfetti('ov-td-confetti');
+  if (id !== 'ov-end') clearConfetti('ov-end-confetti');
+  OVERLAY_IDS.forEach((overlayId) => {
+    const overlay = document.getElementById(overlayId);
+    const isActive = overlay === active;
+    overlay.classList.toggle('show', isActive);
+    overlay.setAttribute('aria-hidden', String(!isActive));
+    overlay.inert = !isActive;
+  });
+  setGameUiInert(true);
+  focusActiveOverlay(active);
 }
 
 function hideOverlays() {
-  ['ov-start', 'ov-td', 'ov-defense', 'ov-offense', 'ov-quarter', 'ov-halftime', 'ov-end'].forEach((id) => {
-    document.getElementById(id).classList.remove('show');
+  OVERLAY_IDS.forEach((id) => {
+    const overlay = document.getElementById(id);
+    overlay.classList.remove('show');
+    overlay.setAttribute('aria-hidden', 'true');
+    overlay.inert = true;
   });
+  setGameUiInert(false);
   clearConfetti('ov-td-confetti');
   clearConfetti('ov-end-confetti');
+  focusGameplayControl();
 }
+
+document.addEventListener('keydown', function(event) {
+  const overlay = document.querySelector('.overlay.show');
+  if (!overlay) return;
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    focusActiveOverlay(overlay);
+    return;
+  }
+  if (event.key !== 'Tab') return;
+  const focusable = overlayFocusableElements(overlay);
+  if (!focusable.length) {
+    event.preventDefault();
+    focusActiveOverlay(overlay);
+    return;
+  }
+  const first = focusable[0];
+  const last = focusable[focusable.length - 1];
+  if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault();
+    last.focus({ preventScroll: true });
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault();
+    first.focus({ preventScroll: true });
+  }
+});
 
 function showStart() {
   clearTimeout(advTimer);
   hideOverlays();
   resetPlayerAnimations();
-  document.getElementById('ov-start').classList.add('show');
+  activateOverlay('ov-start');
   updatePromptContext('DUKE VS UNC / FOUR QUARTERS / WIN THE RIVALRY');
   document.getElementById('play-label').textContent = 'Get ready…';
   document.getElementById('question').textContent = '';
-  setDeskHeader('Kickoff', 'Start the rivalry.', 'Start the broadcast when you are ready.');
+  applyDeskHeader('start');
   setFeedback('');
   hideAnswerButtons();
   hideCallGrid();
@@ -1488,14 +1708,17 @@ function showTD(side = 'offense') {
     ? `Score: ${state.playerScore} - ${state.opponentScore}. UNC has ${state.opponentTds} TD${state.opponentTds === 1 ? '' : 's'} — get it back!`
     : `Score: ${state.playerScore} - ${state.opponentScore}. ${state.tds} player TD${state.tds === 1 ? '' : 's'}!`;
   if (button) button.textContent = touchdownContinueLabel(side);
-  document.getElementById('ov-td').classList.add('show');
+  activateOverlay('ov-td');
   clearConfetti('ov-td-confetti');
-  if (side !== 'defense') spawnConfetti('ov-td-confetti', 40);
+  if (side !== 'defense') {
+    spawnConfetti('ov-td-confetti', 40);
+    playTouchdown();
+  }
+  spawnFireworks('ov-td-confetti', side);
 }
 
 function afterTouchdown() {
-  clearConfetti('ov-td-confetti');
-  document.getElementById('ov-td').classList.remove('show');
+  hideOverlays();
   finishPossession(
     state.touchdownSide === 'defense'
       ? 'Opponent scored. Time to take it back!'
@@ -1509,11 +1732,11 @@ function showDefenseTransition(message) {
   syncUiState();
   document.getElementById('ov-defense-sub').textContent =
     `${message} Score: ${state.playerScore} - ${state.opponentScore}`;
-  document.getElementById('ov-defense').classList.add('show');
+  activateOverlay('ov-defense');
 }
 
 function startDefense() {
-  document.getElementById('ov-defense').classList.remove('show');
+  hideOverlays();
   startDrive('defense');
 }
 
@@ -1523,11 +1746,11 @@ function showOffenseTransition(message) {
   syncUiState();
   document.getElementById('ov-offense-sub').textContent =
     `${message} Score: ${state.playerScore} - ${state.opponentScore}`;
-  document.getElementById('ov-offense').classList.add('show');
+  activateOverlay('ov-offense');
 }
 
 function startOffense() {
-  document.getElementById('ov-offense').classList.remove('show');
+  hideOverlays();
   startDrive('offense');
 }
 
@@ -1552,6 +1775,20 @@ function finishPossession(message) {
   }
 }
 
+// Fill a break overlay's broadcast scorebug (decorative; sub text keeps the
+// full score/next-possession sentence for screen readers).
+function setBreakScorebug(overlayId, nextLabel) {
+  const bug = document.getElementById(overlayId + '-scorebug');
+  if (!bug) return;
+  bug.innerHTML =
+    `<span class="ov-sb-team">DUKE</span>` +
+    `<span class="ov-sb-pts">${state.playerScore}</span>` +
+    `<span class="ov-sb-dash">–</span>` +
+    `<span class="ov-sb-pts">${state.opponentScore}</span>` +
+    `<span class="ov-sb-team">UNC</span>` +
+    `<span class="ov-sb-next">Next: ${nextLabel}</span>`;
+}
+
 function showQuarterEnd(message) {
   const next = possessionTitle(state.pendingNextPossession || 'offense');
   Object.assign(state, blankPlayState(), { phase: 'quarter' });
@@ -1559,7 +1796,8 @@ function showQuarterEnd(message) {
   document.getElementById('ov-quarter-title').textContent = `End of ${QUARTER_NAMES[state.quarter]} Quarter`;
   document.getElementById('ov-quarter-sub').textContent =
     `${message} Next possession after the break: ${next}. Score: ${state.playerScore} - ${state.opponentScore}`;
-  document.getElementById('ov-quarter').classList.add('show');
+  setBreakScorebug('ov-quarter', next);
+  activateOverlay('ov-quarter');
 }
 
 function showHalftime(message) {
@@ -1568,7 +1806,8 @@ function showHalftime(message) {
   syncUiState();
   document.getElementById('ov-halftime-sub').textContent =
     `${message} Halftime swap: ${next} starts the 2nd half. Score: ${state.playerScore} - ${state.opponentScore}`;
-  document.getElementById('ov-halftime').classList.add('show');
+  setBreakScorebug('ov-halftime', next);
+  activateOverlay('ov-halftime');
 }
 
 function nextQuarter() {
@@ -1579,6 +1818,29 @@ function nextQuarter() {
   state.quarter = Math.min(state.quarter + 1, 4);
   state.quarterPossessions = 0;
   startDrive(nextPossession);
+}
+
+function populateEndStats() {
+  const stats = document.getElementById('ov-end-stats');
+  if (!stats) return;
+  const total = state.plays || 0;
+  const correct = state.correctAnswers || 0;
+  const accuracy = total > 0 ? Math.round((correct / total) * 100) : 0;
+  const tiles = [
+    { label: 'Correct', value: `${correct} / ${total}` },
+    { label: 'Accuracy', value: `${accuracy}%` },
+    { label: 'Touchdowns', value: state.tds || 0 },
+    { label: 'Defensive Stops', value: state.defenseStops || 0 },
+    { label: 'First Downs', value: state.firstDowns || 0 },
+  ];
+  stats.innerHTML =
+    '<span class="ov-stats-title">Way to go!</span>' +
+    '<div class="ov-stats-grid">' +
+    tiles.map((t) =>
+      `<div class="ov-stat"><span class="ov-stat-value">${t.value}</span>` +
+      `<span class="ov-stat-label">${t.label}</span></div>`
+    ).join('') +
+    '</div>';
 }
 
 function showGameOver() {
@@ -1604,8 +1866,13 @@ function showGameOver() {
   if (finalScore) finalScore.textContent = `${state.playerScore} - ${state.opponentScore}`;
   document.getElementById('ov-end-sub').textContent =
     `${detail} Player TDs: ${state.tds}.`;
-  endOv.classList.add('show');
-  if (diff > 0) spawnConfetti('ov-end-confetti', 40);
+  populateEndStats();
+  clearConfetti('ov-end-confetti');
+  activateOverlay('ov-end');
+  if (diff > 0) {
+    spawnConfetti('ov-end-confetti', 40);
+    spawnFireworks('ov-end-confetti', 'offense');
+  }
 }
 
 function restart() {
@@ -1668,6 +1935,7 @@ buildField();
 state = createGameState();
 updateField(false);
 updateStatus();
+updateMuteButton();
 
 function applyBootMode() {
   const boot = new URLSearchParams(window.location.search).get('boot');

@@ -49,6 +49,23 @@ body::before {
     linear-gradient(163deg, transparent 0 38%, rgba(255, 255, 255, 0.09) 39% 40%, transparent 41%),
     linear-gradient(197deg, transparent 0 36%, rgba(255, 255, 255, 0.08) 37% 38%, transparent 39%),
     radial-gradient(ellipse at center bottom, rgba(255, 255, 255, 0.08), transparent 54%);
+  animation: stadium-lights 15s ease-in-out infinite;
+}
+
+/* Ambient stadium life: slow light glow + gentle crowd shimmer, all behind the field. */
+@keyframes stadium-lights {
+  0%, 100% { opacity: 0.82; }
+  50% { opacity: 0.94; }
+}
+
+@keyframes crowd-shimmer {
+  0%, 100% { opacity: 0.22; }
+  50% { opacity: 0.3; }
+}
+
+@keyframes crowd-shimmer-stage {
+  0%, 100% { opacity: 0.16; }
+  50% { opacity: 0.22; }
 }
 
 body::after {
@@ -67,6 +84,7 @@ body::after {
     radial-gradient(circle at 54% 48%, rgba(255, 255, 255, 0.08) 0 2px, transparent 2px) 0 0 / 34px 22px,
     linear-gradient(180deg, transparent 0 24%, rgba(0, 0, 0, 0.7) 100%);
   clip-path: polygon(0 38%, 8% 26%, 16% 18%, 26% 12%, 38% 8%, 49% 12%, 60% 10%, 72% 8%, 84% 14%, 92% 24%, 100% 38%, 100% 100%, 0 100%);
+  animation: crowd-shimmer 9s ease-in-out infinite;
 }
 
 #broadcast-shell {
@@ -276,6 +294,30 @@ body::after {
   transform: scaleX(-1);
 }
 
+/* LED / segmented-display accent: a subtle dot-matrix texture behind the
+   dark info panels plus a soft glow on the numerals, kept light enough to
+   stay readable for a 6-year-old. Defense-possession accents are untouched. */
+.sb-score {
+  text-shadow:
+    0 0 10px rgba(255, 211, 55, 0.4),
+    0 1px 0 rgba(0, 0, 0, 0.4);
+}
+
+.sb-val {
+  text-shadow: 0 0 7px rgba(140, 190, 255, 0.22);
+}
+
+.sb-info::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image: radial-gradient(rgba(150, 195, 255, 0.16) 1px, transparent 1.6px);
+  background-size: 6px 6px;
+  opacity: 0.55;
+}
+
 #field-stage {
   position: relative;
   overflow: hidden;
@@ -314,6 +356,7 @@ body::after {
     radial-gradient(circle at 58% 48%, rgba(255, 255, 255, 0.1) 0 2px, transparent 2px) 0 0 / 36px 20px,
     linear-gradient(180deg, rgba(0, 0, 0, 0.2), transparent 42%);
   clip-path: polygon(0 40%, 8% 26%, 18% 20%, 28% 14%, 40% 10%, 50% 14%, 60% 12%, 70% 10%, 82% 16%, 92% 26%, 100% 40%, 100% 100%, 0 100%);
+  animation: crowd-shimmer-stage 8s ease-in-out infinite;
 }
 
 .stage-head {
@@ -492,6 +535,69 @@ body::after {
   font-size: 18px;
   letter-spacing: 2px;
   color: #0c2950 !important;
+}
+
+/* Broadcast sound toggle — overlays the field so it stays reachable on every
+   breakpoint (the scorebug ribbon and stage-head both hide on small screens). */
+#mute-toggle {
+  position: absolute;
+  top: 5px;
+  right: 7px;
+  z-index: 6;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 5px;
+  border: 0;
+  background: transparent;
+  color: #f0f7ff;
+  font-size: 17px;
+  line-height: 1;
+  letter-spacing: normal;
+  cursor: pointer;
+  transition: transform 140ms ease;
+}
+
+#mute-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  border-radius: 999px;
+  background: rgba(6, 16, 34, 0.62);
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.28);
+  transition: background 140ms ease;
+}
+
+#mute-toggle:hover #mute-icon {
+  background: rgba(10, 37, 92, 0.78);
+}
+
+#mute-toggle:active {
+  transform: scale(0.94);
+}
+
+#mute-toggle.is-muted {
+  opacity: 0.7;
+}
+
+#mute-toggle:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #mute-toggle,
+  #mute-icon {
+    transition: none;
+  }
+  #mute-toggle:active {
+    transform: none;
+  }
 }
 
 #fd-line {
@@ -687,6 +793,26 @@ body::after {
 @keyframes arm-up-r {
   0%, 100% { transform: rotate(0); }
   30%, 60% { transform: rotate(60deg); }
+}
+
+/* Grass & dust specks kicked up as the ball-carrier advances. */
+.field-particle {
+  position: absolute;
+  z-index: 4;
+  border-radius: 50%;
+  pointer-events: none;
+  opacity: 0;
+  transform: translate(-50%, -50%);
+  animation: field-particle-puff 520ms ease-out forwards;
+}
+
+@keyframes field-particle-puff {
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(0.6); }
+  25% { opacity: var(--pmax, 0.4); }
+  100% {
+    opacity: 0;
+    transform: translate(calc(-50% + var(--px, 0px)), calc(-50% + var(--py, -12px))) scale(1.1);
+  }
 }
 
 .field-float {
@@ -1559,6 +1685,60 @@ body::after {
   color: #dcecff;
 }
 
+.ov-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  max-width: 760px;
+  margin-top: 20px;
+}
+
+.ov-stats-title {
+  color: var(--gold);
+  font-family: 'Bebas Neue', 'Barlow Condensed', sans-serif;
+  font-size: 34px;
+  line-height: 0.9;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.ov-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(94px, 1fr));
+  gap: 12px;
+}
+
+.ov-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 14px 10px 12px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.07);
+  text-align: center;
+}
+
+.ov-stat-value {
+  color: var(--gold);
+  font-family: 'Bebas Neue', 'Barlow Condensed', sans-serif;
+  font-size: clamp(30px, 3.4vw, 46px);
+  line-height: 0.9;
+  letter-spacing: 0.02em;
+}
+
+.ov-stat-label {
+  color: #cfe0ff;
+  font-family: 'Barlow Condensed', 'Nunito', sans-serif;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
 .ov-confetti {
   position: absolute;
   inset: 0;
@@ -1579,6 +1759,162 @@ body::after {
 @keyframes confetti-fall {
   0% { transform: translateY(0) rotate(0deg); opacity: 1; }
   100% { transform: translateY(100vh) rotate(720deg); opacity: 0; }
+}
+
+/* Firework bursts layered over the confetti on touchdown / win overlays. */
+.fw-burst {
+  position: absolute;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+
+.fw-flash {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 30px;
+  height: 30px;
+  margin: -15px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.95), var(--fw-color, #ffd337) 58%, transparent 72%);
+  animation: firework-flash 520ms ease-out forwards;
+}
+
+.fw-spark {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 7px;
+  height: 7px;
+  margin: -3.5px;
+  border-radius: 50%;
+  background: var(--fw-color, #ffd337);
+  box-shadow: 0 0 8px var(--fw-color, #ffd337);
+  animation: firework-spark 900ms ease-out forwards;
+}
+
+@keyframes firework-flash {
+  0% { transform: scale(0.2); opacity: 0.9; }
+  100% { transform: scale(1.9); opacity: 0; }
+}
+
+@keyframes firework-spark {
+  0% { transform: translate(0, 0) scale(1); opacity: 1; }
+  70% { opacity: 1; }
+  100% { transform: translate(var(--dx, 0), var(--dy, 0)) scale(0.3); opacity: 0; }
+}
+
+/* ── Quarter-end & halftime break treatment ─────────────────────────────── */
+/* Broadcast energy above a plain modal, but deliberately below a touchdown:
+   no confetti, a shorter title, a single light sweep, a muted field backdrop. */
+.ov-break .ov-title {
+  font-size: clamp(66px, 6.6vw, 116px);
+}
+
+.ov-fieldbg {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 64%;
+  z-index: 0;
+  opacity: 0.34;
+  pointer-events: none;
+  -webkit-mask-image: linear-gradient(180deg, #000 52%, transparent);
+  mask-image: linear-gradient(180deg, #000 52%, transparent);
+}
+
+.ov-sweep {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -32%;
+  width: 26%;
+  z-index: 0;
+  pointer-events: none;
+  transform: skewX(-12deg);
+  background: linear-gradient(
+    100deg,
+    transparent,
+    rgba(255, 255, 255, 0.16) 45%,
+    rgba(255, 211, 55, 0.24) 56%,
+    transparent
+  );
+}
+
+.overlay.show.ov-break .ov-sweep {
+  animation: ov-break-sweep 0.9s ease-out 0.05s 1;
+}
+
+@keyframes ov-break-sweep {
+  0% { left: -32%; opacity: 0; }
+  18% { opacity: 1; }
+  100% { left: 128%; opacity: 0; }
+}
+
+.overlay.show.ov-break .ov-broadcast-badge,
+.overlay.show.ov-break .ov-title,
+.overlay.show.ov-break .ov-scorebug,
+.overlay.show.ov-break .ov-sub {
+  animation: ov-break-rise 0.5s cubic-bezier(0.2, 0.7, 0.3, 1) both;
+}
+
+.overlay.show.ov-break .ov-title { animation-delay: 0.06s; }
+.overlay.show.ov-break .ov-scorebug { animation-delay: 0.12s; }
+.overlay.show.ov-break .ov-sub { animation-delay: 0.17s; }
+
+@keyframes ov-break-rise {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: none; }
+}
+
+.ov-scorebug {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  width: fit-content;
+  max-width: 100%;
+  margin-top: 18px;
+  padding: 12px 22px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: linear-gradient(180deg, rgba(6, 15, 36, 0.72), rgba(3, 9, 22, 0.72));
+  box-shadow: inset 0 0 0 1px rgba(255, 211, 55, 0.12), 0 10px 24px rgba(0, 0, 0, 0.3);
+  font-family: 'Barlow Condensed', 'Nunito', sans-serif;
+}
+
+.ov-sb-team {
+  color: #cfe0ff;
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.ov-sb-pts {
+  color: var(--gold);
+  font-family: 'Bebas Neue', 'Barlow Condensed', sans-serif;
+  font-size: 46px;
+  line-height: 0.8;
+}
+
+.ov-sb-dash {
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 30px;
+}
+
+.ov-sb-next {
+  margin-left: 4px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #1a5acc, #0b3d91);
+  color: #fff;
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 @media (max-width: 1080px) {
@@ -2258,6 +2594,10 @@ body::after {
     font-size: clamp(62px, 18vw, 112px);
   }
 
+  .ov-break .ov-title {
+    font-size: clamp(54px, 15vw, 96px);
+  }
+
   .ov-sub {
     font-size: 22px;
   }
@@ -2269,6 +2609,43 @@ body::after {
   .ov-final-score {
     font-size: clamp(76px, 22vw, 132px);
   }
+
+  .ov-stats {
+    margin-top: 16px;
+    gap: 10px;
+  }
+
+  .ov-stats-title {
+    font-size: 26px;
+  }
+
+  .ov-stats-grid {
+    grid-template-columns: repeat(auto-fit, minmax(84px, 1fr));
+    gap: 10px;
+  }
+
+  .ov-stat {
+    padding: 10px 8px 9px;
+    border-radius: 13px;
+  }
+
+  .ov-stat-value {
+    font-size: clamp(26px, 6vw, 38px);
+  }
+
+  .ov-stat-label {
+    font-size: 12px;
+    letter-spacing: 0.02em;
+  }
+  .ov-scorebug {
+    gap: 6px 10px;
+    padding: 10px 16px;
+  }
+
+  .ov-sb-team { font-size: 22px; }
+  .ov-sb-pts { font-size: 38px; }
+  .ov-sb-dash { font-size: 26px; }
+  .ov-sb-next { font-size: 16px; }
 }
 
 @media (max-width: 480px) {
@@ -2360,6 +2737,10 @@ body::after {
     font-size: clamp(54px, 17vw, 86px);
   }
 
+  .ov-break .ov-title {
+    font-size: clamp(46px, 14vw, 74px);
+  }
+
   .ov-sub {
     font-size: 18px;
   }
@@ -2371,6 +2752,11 @@ body::after {
   .ov-final-score {
     font-size: clamp(68px, 20vw, 110px);
   }
+
+  .ov-sb-team { font-size: 18px; }
+  .ov-sb-pts { font-size: 32px; }
+  .ov-sb-dash { font-size: 22px; }
+  .ov-sb-next { font-size: 14px; }
 }
 
 @media (max-width: 420px) {
@@ -2422,7 +2808,24 @@ body::after {
     100% { opacity: 0; }
   }
 
-  .confetti-piece {
+  .confetti-piece,
+  .fw-burst {
+    display: none;
+  }
+
+  .field-particle {
+    display: none;
+  }
+
+  .overlay.show.ov-break .ov-sweep,
+  .overlay.show.ov-break .ov-broadcast-badge,
+  .overlay.show.ov-break .ov-title,
+  .overlay.show.ov-break .ov-scorebug,
+  .overlay.show.ov-break .ov-sub {
+    animation: none !important;
+  }
+
+  .ov-sweep {
     display: none;
   }
 
@@ -2432,6 +2835,13 @@ body::after {
   #player.player-running .pl-leg-r,
   #player.player-celebrating .pl-arm-l,
   #player.player-celebrating .pl-arm-r {
+    animation: none !important;
+  }
+
+  /* Freeze the ambient stadium background to its static silhouette. */
+  body::before,
+  body::after,
+  #field-stage::after {
     animation: none !important;
   }
 }

@@ -4,14 +4,14 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <title>Football Math!</title>
-<link rel="apple-touch-icon" href="apple-touch-icon.png?v=1.16.1">
-<link rel="icon" type="image/png" href="apple-touch-icon.png?v=1.16.1">
+<link rel="apple-touch-icon" href="apple-touch-icon.png?v=1.17.0">
+<link rel="icon" type="image/png" href="apple-touch-icon.png?v=1.17.0">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow+Condensed:wght@600;700;800&display=swap">
-<link rel="stylesheet" href="../shared/fonts.css?v=1.16.1">
-<link rel="stylesheet" href="../shared/reset.css?v=1.16.1">
-<link rel="stylesheet" href="football.css?v=1.16.1">
+<link rel="stylesheet" href="../shared/fonts.css?v=1.17.0">
+<link rel="stylesheet" href="../shared/reset.css?v=1.17.0">
+<link rel="stylesheet" href="football.css?v=1.17.0">
 </head>
 <body>
 <div id="broadcast-shell">
@@ -48,6 +48,9 @@
       </div>
 
       <div id="field-wrap">
+        <button id="mute-toggle" type="button" aria-pressed="false" aria-label="Mute sound effects" onclick="toggleMute()">
+          <span id="mute-icon" aria-hidden="true">&#128266;</span>
+        </button>
         <div class="ez-text ez-left" style="color:#003087">DUKE</div>
         <div class="ez-text ez-right" style="color:#7BAFD4">CAROLINA</div>
         <div id="fd-line"></div>
@@ -110,15 +113,15 @@
   </div>
 </div>
 
-<div class="overlay show" id="ov-start">
+<div class="overlay show" id="ov-start" role="dialog" aria-modal="true" aria-labelledby="ov-start-title" aria-describedby="ov-start-sub" aria-hidden="false">
   <div class="overlay-card">
     <span class="ov-broadcast-badge ov-badge-info">KICKOFF</span>
-    <div class="ov-title">Football Math!</div>
-    <div class="ov-sub">Call plays, answer math, and win the rivalry over 4 quarters.</div>
+    <div class="ov-title" id="ov-start-title">Football Math!</div>
+    <div class="ov-sub" id="ov-start-sub">Call plays, answer math, and win the rivalry over 4 quarters.</div>
     <button class="ov-btn" onclick="startGame()">Start Game</button>
   </div>
 </div>
-<div class="overlay" id="ov-td" data-side="offense">
+<div class="overlay" id="ov-td" data-side="offense" role="dialog" aria-modal="true" aria-labelledby="ov-td-title" aria-describedby="ov-td-sub" aria-hidden="true" inert>
   <div class="overlay-card">
     <div class="ov-confetti" id="ov-td-confetti"></div>
     <span class="ov-broadcast-badge" id="ov-td-badge">TOUCHDOWN</span>
@@ -127,53 +130,109 @@
     <button class="ov-btn" id="ov-td-btn" onclick="afterTouchdown()">Play Defense!</button>
   </div>
 </div>
-<div class="overlay" id="ov-defense">
+<div class="overlay" id="ov-defense" role="dialog" aria-modal="true" aria-labelledby="ov-defense-title" aria-describedby="ov-defense-sub" aria-hidden="true" inert>
   <div class="overlay-card">
     <span class="ov-broadcast-badge ov-badge-defense">DEFENSE</span>
-    <div class="ov-title">Opponent's Ball</div>
+    <div class="ov-title" id="ov-defense-title">Opponent's Ball</div>
     <div class="ov-sub" id="ov-defense-sub"></div>
     <button class="ov-btn" onclick="startDefense()">Play Defense!</button>
   </div>
 </div>
-<div class="overlay" id="ov-offense">
+<div class="overlay" id="ov-offense" role="dialog" aria-modal="true" aria-labelledby="ov-offense-title" aria-describedby="ov-offense-sub" aria-hidden="true" inert>
   <div class="overlay-card">
     <span class="ov-broadcast-badge ov-badge-info">OFFENSE</span>
-    <div class="ov-title">Your Ball</div>
+    <div class="ov-title" id="ov-offense-title">Your Ball</div>
     <div class="ov-sub" id="ov-offense-sub"></div>
     <button class="ov-btn" onclick="startOffense()">Play Offense!</button>
   </div>
 </div>
-<div class="overlay" id="ov-quarter">
+<div class="overlay ov-break" id="ov-quarter" role="dialog" aria-modal="true" aria-labelledby="ov-quarter-title" aria-describedby="ov-quarter-sub" aria-hidden="true" inert>
   <div class="overlay-card">
+    <svg class="ov-fieldbg" aria-hidden="true" viewBox="0 0 400 260" preserveAspectRatio="xMidYMax slice">
+      <rect x="0" y="150" width="400" height="18" fill="#0b1a3a"/>
+      <rect x="0" y="162" width="400" height="14" fill="#12285a"/>
+      <g fill="#3d5aa0" opacity="0.7">
+        <rect x="24" y="154" width="4" height="4"/><rect x="60" y="156" width="4" height="4"/>
+        <rect x="102" y="153" width="4" height="4"/><rect x="150" y="156" width="4" height="4"/>
+        <rect x="196" y="154" width="4" height="4"/><rect x="244" y="156" width="4" height="4"/>
+        <rect x="292" y="153" width="4" height="4"/><rect x="336" y="156" width="4" height="4"/>
+        <rect x="372" y="154" width="4" height="4"/>
+      </g>
+      <rect x="0" y="176" width="400" height="84" fill="#1f7a3a"/>
+      <rect x="0" y="176" width="400" height="20" fill="#248a42" opacity="0.5"/>
+      <g stroke="#eef4ff" stroke-width="2" opacity="0.5">
+        <line x1="60" y1="176" x2="34" y2="260"/>
+        <line x1="150" y1="176" x2="138" y2="260"/>
+        <line x1="250" y1="176" x2="262" y2="260"/>
+        <line x1="340" y1="176" x2="366" y2="260"/>
+      </g>
+      <g stroke="#ffd233" stroke-width="3" fill="none" opacity="0.85" stroke-linecap="round">
+        <line x1="200" y1="150" x2="200" y2="124"/>
+        <line x1="184" y1="124" x2="216" y2="124"/>
+        <line x1="184" y1="124" x2="184" y2="106"/>
+        <line x1="216" y1="124" x2="216" y2="106"/>
+      </g>
+    </svg>
+    <div class="ov-sweep" aria-hidden="true"></div>
     <span class="ov-broadcast-badge ov-badge-info">BREAK</span>
     <div class="ov-title" id="ov-quarter-title">End of Quarter</div>
+    <div class="ov-scorebug" id="ov-quarter-scorebug" aria-hidden="true"></div>
     <div class="ov-sub" id="ov-quarter-sub"></div>
     <button class="ov-btn" onclick="nextQuarter()">Next Quarter</button>
   </div>
 </div>
-<div class="overlay" id="ov-halftime">
+<div class="overlay ov-break" id="ov-halftime" role="dialog" aria-modal="true" aria-labelledby="ov-halftime-title" aria-describedby="ov-halftime-sub" aria-hidden="true" inert>
   <div class="overlay-card">
+    <svg class="ov-fieldbg" aria-hidden="true" viewBox="0 0 400 260" preserveAspectRatio="xMidYMax slice">
+      <rect x="0" y="150" width="400" height="18" fill="#0b1a3a"/>
+      <rect x="0" y="162" width="400" height="14" fill="#12285a"/>
+      <g fill="#3d5aa0" opacity="0.7">
+        <rect x="24" y="154" width="4" height="4"/><rect x="60" y="156" width="4" height="4"/>
+        <rect x="102" y="153" width="4" height="4"/><rect x="150" y="156" width="4" height="4"/>
+        <rect x="196" y="154" width="4" height="4"/><rect x="244" y="156" width="4" height="4"/>
+        <rect x="292" y="153" width="4" height="4"/><rect x="336" y="156" width="4" height="4"/>
+        <rect x="372" y="154" width="4" height="4"/>
+      </g>
+      <rect x="0" y="176" width="400" height="84" fill="#1f7a3a"/>
+      <rect x="0" y="176" width="400" height="20" fill="#248a42" opacity="0.5"/>
+      <g stroke="#eef4ff" stroke-width="2" opacity="0.5">
+        <line x1="60" y1="176" x2="34" y2="260"/>
+        <line x1="150" y1="176" x2="138" y2="260"/>
+        <line x1="250" y1="176" x2="262" y2="260"/>
+        <line x1="340" y1="176" x2="366" y2="260"/>
+      </g>
+      <g stroke="#ffd233" stroke-width="3" fill="none" opacity="0.85" stroke-linecap="round">
+        <line x1="200" y1="150" x2="200" y2="124"/>
+        <line x1="184" y1="124" x2="216" y2="124"/>
+        <line x1="184" y1="124" x2="184" y2="106"/>
+        <line x1="216" y1="124" x2="216" y2="106"/>
+      </g>
+    </svg>
+    <div class="ov-sweep" aria-hidden="true"></div>
     <span class="ov-broadcast-badge ov-badge-info">HALFTIME</span>
-    <div class="ov-title">Halftime</div>
+    <div class="ov-title" id="ov-halftime-title">Halftime</div>
+    <div class="ov-scorebug" id="ov-halftime-scorebug" aria-hidden="true"></div>
     <div class="ov-sub" id="ov-halftime-sub"></div>
     <button class="ov-btn" onclick="nextQuarter()">2nd Half</button>
   </div>
 </div>
-<div class="overlay" id="ov-end">
+<div class="overlay" id="ov-end" role="dialog" aria-modal="true" aria-labelledby="ov-end-title" aria-describedby="ov-end-sub" aria-hidden="true" inert>
   <div class="overlay-card">
     <div class="ov-confetti" id="ov-end-confetti"></div>
     <span class="ov-broadcast-badge" id="ov-end-badge">FINAL</span>
     <div class="ov-title" id="ov-end-title">Final Score</div>
     <div class="ov-final-score" id="ov-end-score"></div>
     <div class="ov-sub" id="ov-end-sub"></div>
+    <div class="ov-stats" id="ov-end-stats"></div>
     <button class="ov-btn" onclick="restart()">Play Again!</button>
   </div>
 </div>
 
-<script src="football.js?v=1.16.1"></script>
+<script src="copy.js?v=1.17.0"></script>
+<script src="football.js?v=1.17.0"></script>
 <script>
   document.getElementById('version-display').textContent = `v${GAME_VERSION}`;
 </script>
-<script src="../shared/updater.js?v=1.16.1"></script>
+<script src="../shared/updater.js?v=1.17.0"></script>
 </body>
 </html>
