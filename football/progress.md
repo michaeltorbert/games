@@ -23,7 +23,8 @@ Original prompt: Finish Football issue #36. Use subagents as needed, have Codex 
 - Visually inspected representative phone, tablet portrait, and tablet landscape screenshots; no blocker found.
 - Completed the skill-required browser-client smoke with a valid offense-call `render_game_to_text()` snapshot and no browser errors.
 
-## TODO
+## Review outcome
 
-- Publish the Codex-authored PR.
-- Obtain and address the formal Claude Fable 5 review.
+- Published Codex-authored draft PR #68 through `codex-bot-mt[bot]`.
+- Claude Fable 5 reviewed the committed PR through `claude-bot-mt[bot]` and approved it with no material issues.
+- Classified the review notes; retained the intentional fail-closed behaviors and closed this session log so it is not stale on merge.
