@@ -1581,6 +1581,118 @@ body::after {
   100% { transform: translateY(100vh) rotate(720deg); opacity: 0; }
 }
 
+/* ── Quarter-end & halftime break treatment ─────────────────────────────── */
+/* Broadcast energy above a plain modal, but deliberately below a touchdown:
+   no confetti, a shorter title, a single light sweep, a muted field backdrop. */
+.ov-break .ov-title {
+  font-size: clamp(66px, 6.6vw, 116px);
+}
+
+.ov-fieldbg {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 64%;
+  z-index: 0;
+  opacity: 0.34;
+  pointer-events: none;
+  -webkit-mask-image: linear-gradient(180deg, #000 52%, transparent);
+  mask-image: linear-gradient(180deg, #000 52%, transparent);
+}
+
+.ov-sweep {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -32%;
+  width: 26%;
+  z-index: 0;
+  pointer-events: none;
+  transform: skewX(-12deg);
+  background: linear-gradient(
+    100deg,
+    transparent,
+    rgba(255, 255, 255, 0.16) 45%,
+    rgba(255, 211, 55, 0.24) 56%,
+    transparent
+  );
+}
+
+.overlay.show.ov-break .ov-sweep {
+  animation: ov-break-sweep 0.9s ease-out 0.05s 1;
+}
+
+@keyframes ov-break-sweep {
+  0% { left: -32%; opacity: 0; }
+  18% { opacity: 1; }
+  100% { left: 128%; opacity: 0; }
+}
+
+.overlay.show.ov-break .ov-broadcast-badge,
+.overlay.show.ov-break .ov-title,
+.overlay.show.ov-break .ov-scorebug,
+.overlay.show.ov-break .ov-sub {
+  animation: ov-break-rise 0.5s cubic-bezier(0.2, 0.7, 0.3, 1) both;
+}
+
+.overlay.show.ov-break .ov-title { animation-delay: 0.06s; }
+.overlay.show.ov-break .ov-scorebug { animation-delay: 0.12s; }
+.overlay.show.ov-break .ov-sub { animation-delay: 0.17s; }
+
+@keyframes ov-break-rise {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: none; }
+}
+
+.ov-scorebug {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  width: fit-content;
+  max-width: 100%;
+  margin-top: 18px;
+  padding: 12px 22px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: linear-gradient(180deg, rgba(6, 15, 36, 0.72), rgba(3, 9, 22, 0.72));
+  box-shadow: inset 0 0 0 1px rgba(255, 211, 55, 0.12), 0 10px 24px rgba(0, 0, 0, 0.3);
+  font-family: 'Barlow Condensed', 'Nunito', sans-serif;
+}
+
+.ov-sb-team {
+  color: #cfe0ff;
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.ov-sb-pts {
+  color: var(--gold);
+  font-family: 'Bebas Neue', 'Barlow Condensed', sans-serif;
+  font-size: 46px;
+  line-height: 0.8;
+}
+
+.ov-sb-dash {
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 30px;
+}
+
+.ov-sb-next {
+  margin-left: 4px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #1a5acc, #0b3d91);
+  color: #fff;
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
 @media (max-width: 1080px) {
   #status {
     grid-template-columns: 1fr 1fr 0.85fr 1.15fr 1fr 64px;
@@ -2258,6 +2370,10 @@ body::after {
     font-size: clamp(62px, 18vw, 112px);
   }
 
+  .ov-break .ov-title {
+    font-size: clamp(54px, 15vw, 96px);
+  }
+
   .ov-sub {
     font-size: 22px;
   }
@@ -2269,6 +2385,16 @@ body::after {
   .ov-final-score {
     font-size: clamp(76px, 22vw, 132px);
   }
+
+  .ov-scorebug {
+    gap: 6px 10px;
+    padding: 10px 16px;
+  }
+
+  .ov-sb-team { font-size: 22px; }
+  .ov-sb-pts { font-size: 38px; }
+  .ov-sb-dash { font-size: 26px; }
+  .ov-sb-next { font-size: 16px; }
 }
 
 @media (max-width: 480px) {
@@ -2360,6 +2486,10 @@ body::after {
     font-size: clamp(54px, 17vw, 86px);
   }
 
+  .ov-break .ov-title {
+    font-size: clamp(46px, 14vw, 74px);
+  }
+
   .ov-sub {
     font-size: 18px;
   }
@@ -2371,6 +2501,11 @@ body::after {
   .ov-final-score {
     font-size: clamp(68px, 20vw, 110px);
   }
+
+  .ov-sb-team { font-size: 18px; }
+  .ov-sb-pts { font-size: 32px; }
+  .ov-sb-dash { font-size: 22px; }
+  .ov-sb-next { font-size: 14px; }
 }
 
 @media (max-width: 420px) {
@@ -2423,6 +2558,18 @@ body::after {
   }
 
   .confetti-piece {
+    display: none;
+  }
+
+  .overlay.show.ov-break .ov-sweep,
+  .overlay.show.ov-break .ov-broadcast-badge,
+  .overlay.show.ov-break .ov-title,
+  .overlay.show.ov-break .ov-scorebug,
+  .overlay.show.ov-break .ov-sub {
+    animation: none !important;
+  }
+
+  .ov-sweep {
     display: none;
   }
 
