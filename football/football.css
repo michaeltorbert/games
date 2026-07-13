@@ -498,28 +498,39 @@ body::after {
    breakpoint (the scorebug ribbon and stage-head both hide on small screens). */
 #mute-toggle {
   position: absolute;
-  top: 10px;
-  right: 12px;
+  top: 5px;
+  right: 7px;
   z-index: 6;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 34px;
-  height: 34px;
-  padding: 0;
-  border: 1px solid rgba(255, 255, 255, 0.4);
-  border-radius: 999px;
-  background: rgba(6, 16, 34, 0.62);
-  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.28);
+  width: 44px;
+  height: 44px;
+  padding: 5px;
+  border: 0;
+  background: transparent;
   color: #f0f7ff;
   font-size: 17px;
   line-height: 1;
   letter-spacing: normal;
   cursor: pointer;
-  transition: background 140ms ease, transform 140ms ease;
+  transition: transform 140ms ease;
 }
 
-#mute-toggle:hover {
+#mute-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  border-radius: 999px;
+  background: rgba(6, 16, 34, 0.62);
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.28);
+  transition: background 140ms ease;
+}
+
+#mute-toggle:hover #mute-icon {
   background: rgba(10, 37, 92, 0.78);
 }
 
@@ -537,7 +548,8 @@ body::after {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  #mute-toggle {
+  #mute-toggle,
+  #mute-icon {
     transition: none;
   }
   #mute-toggle:active {

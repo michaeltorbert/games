@@ -1104,8 +1104,24 @@ function disableAnswers() {
 }
 
 // -- Audio (synthesized Web Audio, mirrors kayak/physics.js) ------------------
+const MUTE_STORAGE_KEY = 'footballAudioMuted';
 let audioCtx = null;
-let soundOn = true;
+
+function storedMutePreference() {
+  try {
+    return localStorage.getItem(MUTE_STORAGE_KEY) === 'true';
+  } catch (e) {
+    return false;
+  }
+}
+
+function storeMutePreference(muted) {
+  try {
+    localStorage.setItem(MUTE_STORAGE_KEY, String(muted));
+  } catch (e) {}
+}
+
+let soundOn = !storedMutePreference();
 
 function ensureAudioContext() {
   if (audioCtx) return audioCtx;
@@ -1143,23 +1159,6 @@ function canPlayAudio() {
   return soundOn && !!audioCtx && audioCtx.state === 'running';
 }
 
-// Short referee whistle on each snap/play start.
-function playWhistle() {
-  const ctx = audioCtx;
-  if (!canPlayAudio()) return;
-  try {
-    const o = ctx.createOscillator(), g = ctx.createGain();
-    o.connect(g); g.connect(ctx.destination);
-    o.type = 'triangle';
-    o.frequency.setValueAtTime(1950, ctx.currentTime);
-    o.frequency.setValueAtTime(2200, ctx.currentTime + 0.05);
-    g.gain.setValueAtTime(0.0001, ctx.currentTime);
-    g.gain.exponentialRampToValueAtTime(0.05, ctx.currentTime + 0.02);
-    g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.16);
-    o.start(); o.stop(ctx.currentTime + 0.17);
-  } catch (e) {}
-}
-
 // Short positive jingle on a correct answer / defensive stop.
 function playCorrect() {
   const ctx = audioCtx;
@@ -1175,23 +1174,6 @@ function playCorrect() {
       g.gain.exponentialRampToValueAtTime(0.001, t + 0.18);
       o.start(t); o.stop(t + 0.2);
     });
-  } catch (e) {}
-}
-
-// Low buzzer on a wrong answer / blown coverage.
-function playWrong() {
-  const ctx = audioCtx;
-  if (!canPlayAudio()) return;
-  try {
-    const o = ctx.createOscillator(), g = ctx.createGain();
-    o.connect(g); g.connect(ctx.destination);
-    o.type = 'sawtooth';
-    o.frequency.setValueAtTime(180, ctx.currentTime);
-    o.frequency.exponentialRampToValueAtTime(120, ctx.currentTime + 0.22);
-    g.gain.setValueAtTime(0.0001, ctx.currentTime);
-    g.gain.exponentialRampToValueAtTime(0.06, ctx.currentTime + 0.02);
-    g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.26);
-    o.start(); o.stop(ctx.currentTime + 0.27);
   } catch (e) {}
 }
 
@@ -1217,6 +1199,7 @@ function playTouchdown() { playCheer([392, 523, 659, 784, 988], 0.11); }
 
 function toggleMute() {
   soundOn = !soundOn;
+  storeMutePreference(!soundOn);
   if (soundOn) unlockAudio();
   updateMuteButton();
 }
@@ -1248,7 +1231,6 @@ function showCallPrompt() {
     renderCallGrid(Object.values(DEFENSE_CALLS), selectDefenseCall);
   }
   setFeedback('');
-  playWhistle();
 }
 
 function startDrive(possession) {
@@ -1339,7 +1321,6 @@ function handleAnswer(idx) {
   if (val !== state.correct) {
     const msg = outcomeMessage(OFFENSE_MISS_MESSAGES, state.callKey);
     btn.classList.add('wrong');
-    playWrong();
     disableAnswers();
     state.phase = 'feedback';
     syncUiState();
@@ -1374,7 +1355,6 @@ function handleDefenseAnswer(btn, val) {
   }
 
   btn.classList.add('wrong');
-  playWrong();
   disableAnswers();
   state.phase = 'feedback';
   syncUiState();
