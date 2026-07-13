@@ -1372,6 +1372,32 @@ function startPlayerRun() {
   void player.offsetWidth;
   player.classList.add('player-running');
   playerRunTimer = setTimeout(() => player.classList.remove('player-running'), 800);
+  spawnFieldParticles(parseFloat(player.style.left) || 50);
+}
+
+// A brief burst of grass/dust kicked up as the ball-carrier advances — a few
+// small, low-opacity specks near the player's feet, fully removed once settled.
+function spawnFieldParticles(leftPct) {
+  if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const wrap = document.getElementById('field-wrap');
+  if (!wrap) return;
+  const colors = ['#2e8f3c', '#37aa49', '#8d6b3f', '#b9a06a'];
+  for (let i = 0; i < 5; i++) {
+    const p = document.createElement('div');
+    p.className = 'field-particle';
+    p.style.left = leftPct + '%';
+    p.style.top = (60 + Math.random() * 6) + '%';
+    p.style.background = colors[Math.floor(Math.random() * colors.length)];
+    const size = (3 + Math.random() * 3).toFixed(1) + 'px';
+    p.style.width = size; p.style.height = size;
+    // Kick mostly up-and-out, with a little horizontal spread.
+    p.style.setProperty('--px', (Math.random() * 22 - 11).toFixed(1) + 'px');
+    p.style.setProperty('--py', (-8 - Math.random() * 14).toFixed(1) + 'px');
+    p.style.setProperty('--pmax', (0.28 + Math.random() * 0.22).toFixed(2));
+    p.style.animationDelay = Math.round(Math.random() * 60) + 'ms';
+    wrap.appendChild(p);
+    setTimeout(() => p.remove(), 640);
+  }
 }
 
 function startPlayerCelebrate() {

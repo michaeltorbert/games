@@ -689,6 +689,26 @@ body::after {
   30%, 60% { transform: rotate(60deg); }
 }
 
+/* Grass & dust specks kicked up as the ball-carrier advances. */
+.field-particle {
+  position: absolute;
+  z-index: 4;
+  border-radius: 50%;
+  pointer-events: none;
+  opacity: 0;
+  transform: translate(-50%, -50%);
+  animation: field-particle-puff 520ms ease-out forwards;
+}
+
+@keyframes field-particle-puff {
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(0.6); }
+  25% { opacity: var(--pmax, 0.4); }
+  100% {
+    opacity: 0;
+    transform: translate(calc(-50% + var(--px, 0px)), calc(-50% + var(--py, -12px))) scale(1.1);
+  }
+}
+
 .field-float {
   position: absolute;
   top: 34%;
@@ -2423,6 +2443,10 @@ body::after {
   }
 
   .confetti-piece {
+    display: none;
+  }
+
+  .field-particle {
     display: none;
   }
 
