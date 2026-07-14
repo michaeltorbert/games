@@ -85,4 +85,5 @@ Original prompt: ok do the agreeded on recommendation from you + claude fable 5.
 - Visually inspected the defensive read and final coach report on all six targets; call grids, coach rows, and replay controls remain visible without clipping.
 - Completed the browser-client defensive-call smoke with sanitized semantic state and no browser-error artifact.
 - Opened draft PR #70 through `codex-bot-mt[bot]` with all four issues linked for closure.
-- Started the focused Claude Opus 4.8 review through the verified `claude-bot-mt[bot]` path; Claude generation was blocked by the organization's monthly spend limit before any review or comment was posted, so the PR remains draft and consensus is still pending.
+- The first focused Claude review attempt stopped before posting when the organization hit its monthly spend limit. After access was restored, Claude Fable 5 reviewed the full untruncated PR diff at `9e8a49d` through `claude-bot-mt[bot]`, approved it with no material issues, and left five non-blocking future-hardening notes.
+- Classified the review notes as cosmetic/schema clarification or future-feature/layout considerations; no current acceptance, correctness, privacy, or release blocker remains.
