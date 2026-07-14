@@ -80,14 +80,6 @@ const DEFENSE_CALLS = {
   },
 };
 
-const OPPONENT_CALL_WEIGHTS = [
-  { key: 'shortRun', weight: 1 },
-  { key: 'shortPass', weight: 1 },
-  { key: 'longRun', weight: 2 },
-  { key: 'mediumPass', weight: 3 },
-  { key: 'longPass', weight: 3 },
-];
-
 // Play diagram SVGs for call tiles
 const PLAY_DIAGRAMS = {
   // Offense: gold strokes
@@ -316,6 +308,7 @@ function blankPlayState() {
     callKey: null,
     defenseCallKey: null,
     opponentCallKey: null,
+    opponentTendency: null,
     matchup: null,
     questionId: null,
     questionSkill: null,
@@ -1134,16 +1127,6 @@ function scheduledEntry(entry) {
   return metadata ? { ...entry, ...metadata, weight: Math.min(entry.weight || 1, 0.7) } : { ...entry, enabled: false };
 }
 
-function weightedPick(items) {
-  const total = items.reduce((sum, item) => sum + item.weight, 0);
-  let r = logicRng() * total;
-  for (const item of items) {
-    r -= item.weight;
-    if (r <= 0) return item;
-  }
-  return items[items.length - 1];
-}
-
 function pickQuestion(s, play, level) {
   const candidates = QUESTION_BANK
     .map(scheduledEntry)
@@ -1650,8 +1633,20 @@ function selectOffenseCall(callKey) {
   prepareQuestion(p, `${p.label} attempt for <span>${yds(p.gain)}</span>`);
 }
 
+function getOpponentTendency(overrides = {}, profile = 'balanced') {
+  return FOOTBALL_OPPONENT.getTendency({
+    ...state,
+    possessionsPerQuarter: POSSESSIONS_PER_QUARTER,
+    ...overrides,
+  }, profile);
+}
+
 function pickOpponentCall() {
-  return weightedPick(OPPONENT_CALL_WEIGHTS).key;
+  const tendency = getOpponentTendency();
+  return {
+    key: FOOTBALL_OPPONENT.pickCall(tendency.weights, logicRng),
+    tendency,
+  };
 }
 
 function defenseMatches(defenseCallKey, opponentCallKey) {
@@ -1661,7 +1656,8 @@ function defenseMatches(defenseCallKey, opponentCallKey) {
 
 function selectDefenseCall(defenseCallKey) {
   if (state.phase !== 'call' || state.possession !== 'defense') return;
-  const opponentCallKey = pickOpponentCall();
+  const selection = pickOpponentCall();
+  const opponentCallKey = selection.key;
   const matched = defenseMatches(defenseCallKey, opponentCallKey);
   const defenseCall = DEFENSE_CALLS[defenseCallKey];
   const p = buildPlay(opponentCallKey, {
@@ -1670,6 +1666,7 @@ function selectDefenseCall(defenseCallKey) {
   Object.assign(state, {
     defenseCallKey,
     opponentCallKey,
+    opponentTendency: selection.tendency,
     matchup: matched ? 'matched' : 'mismatch',
   });
   const call = OFFENSE_CALLS[opponentCallKey];
@@ -2477,6 +2474,7 @@ function renderGameToText() {
     call: state.callKey,
     defenseCall: state.defenseCallKey,
     opponentCall: state.opponentCallKey,
+    opponentTendency: state.opponentTendency || null,
     matchup: state.matchup,
     gain: state.g ?? null,
     learningTier: state.play?.learningTier || null,
@@ -2522,6 +2520,13 @@ window.__footballTest = {
   learningState() { return FOOTBALL_LEARNING.snapshot(learningSession); },
   statsHistory() { return FOOTBALL_STATS.history(); },
   statsSession() { return FOOTBALL_STATS.sessionSnapshot(statsSession); },
+  opponentProfiles() { return FOOTBALL_OPPONENT.PROFILES; },
+  getOpponentTendency(overrides = {}, profile = 'balanced') {
+    return getOpponentTendency(overrides, profile);
+  },
+  pickOpponentCall(weights, rng = logicRng) {
+    return FOOTBALL_OPPONENT.pickCall(weights, rng);
+  },
   questionBank() {
     return QUESTION_BANK.map(scheduledEntry).filter(entry => entry.enabled !== false).map(entry => ({
       id: entry.id,
