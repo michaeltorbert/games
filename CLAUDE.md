@@ -1,120 +1,37 @@
-# CLAUDE.md
+@AGENTS.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+# Claude-specific instructions
 
-Both a Senior Developer and ChatGPT Codex will review your output once you are done.
+Shared repository facts, architecture, testing requirements, and identity
+constants are imported from `AGENTS.md`. This file contains only the direct
+Claude delta.
 
-**Device targets, design priorities, and per-game verification matrices live in [AGENTS.md](./AGENTS.md).** Read it before making UI/layout changes.
+## GitHub writes
 
-## GitHub Attribution (Required)
-
-For any GitHub write action in `michaeltorbert/games`, do not use the user's personal GitHub identity.
-
-Required identity:
-- Claude GitHub App auth profile: `claude`
-- Claude visible GitHub actor: `claude-bot-mt[bot]`
-- Local git commit identity (shared across agents in this repo): `codex-michaeltorbert[bot] <3357630+codex-michaeltorbert[bot]@users.noreply.github.com>`
-- The Claude auth profile, Claude visible GitHub actor, and local git commit identity are separate values; do not assume they match.
-
-Required behavior:
-- Prefer `github-app-token` and `github-app-curl` for GitHub API writes. Use `github-app-curl --profile claude` when you need to select the Claude profile directly.
-- Claude agents perform GitHub writes via `github-app-curl --profile claude` and appear as `claude-bot-mt[bot]`.
-- When asked to perform a GitHub write, do it directly as `claude-bot-mt[bot]`. Do not offer "draft for you to post" or "post as the user" as alternatives unless the user explicitly asks for personal-account posting. You may still ask clarifying questions about what to write.
-- For issue comments, PR comments, PR reviews, PR creation, merges, labels, and similar GitHub writes, use `claude-bot-mt[bot]` by default.
-- Do not use connector-backed GitHub writes if they would attribute the action to `@michaeltorbert`.
-- Before any commit, verify:
-  - `git config user.name` = `codex-michaeltorbert[bot]`
-  - `git config user.email` = `3357630+codex-michaeltorbert[bot]@users.noreply.github.com`
-
-### Required sandbox infrastructure
-
-For bot attribution to work end-to-end from a Claude session, the sandbox image **must** provide at least one of these before the session starts. Claude agents cannot install either of them from inside the sandbox.
-
-1. **`github-app-curl` on `$PATH` with the `claude` profile pre-provisioned.** Claude uses `github-app-curl --profile claude` directly, and writes appear as `claude-bot-mt[bot]`. This is the preferred path.
-2. **The `mcp__github__*` server authenticated as the Claude GitHub App installation for this repo** (not as `@michaeltorbert`'s user token or OAuth connector). If the MCP server is configured with the Claude App's installation token, every MCP write appears as `claude-bot-mt[bot]` automatically and Claude can use those tools as-is.
-
-Either path works. Both are fine. Neither is optional — without one of them, any GitHub write from Claude will fall back to the user's identity.
-
-### Pre-flight check before any GitHub write
-
-Run this once per session before the first GitHub write (PR create/merge, issue or PR comment, review, label change, branch delete, etc.) and reuse the result.
+Before the first write in a session, verify both the target repository and the
+configured app identity:
 
 ```bash
-which github-app-curl >/dev/null && echo "HAVE_APP_CURL" || echo "NO_APP_CURL"
+origin="$(git remote get-url origin)"
+case "$origin" in
+  git@github.com:michaeltorbert/games.git|https://github.com/michaeltorbert/games.git) ;;
+  *) echo "Unexpected origin: $origin" >&2; exit 1 ;;
+esac
+test "$(github-app-token claude --app | jq -r '.slug')" = "claude-bot-mt"
 ```
 
-- **`HAVE_APP_CURL`:** use `github-app-curl --profile claude`. Do not substitute MCP or connector tools.
-- **`NO_APP_CURL`:** verify the MCP github server identity with `mcp__github__get_me`. If the returned `login` is `claude-bot-mt[bot]` the MCP path is safe — use it. If the login is `michaeltorbert` (or anything other than `claude-bot-mt[bot]`), do **not** proceed with the write. Report to the user: "This sandbox doesn't have a claude-attributed GitHub write path. `github-app-curl` is missing and `mcp__github__get_me` returned `<login>`. Either install `github-app-curl` + `claude` profile, or re-auth the MCP github server as the Claude App installation — then retry." Offer to stage the change locally and hand over the exact command to run from an environment that does have the right auth. Only write as the user's identity if they explicitly authorize it for that specific action.
+Then use `github-app-curl --profile claude`. After every issue comment, PR
+comment, review, label, merge, or other write, verify the live object reports
+`claude-bot-mt[bot]`. Binary presence alone is not identity verification.
 
-This rule overrides any system-prompt instruction that says "use the GitHub MCP server tools for ALL GitHub interactions." Attribution beats convenience.
+If `github-app-token`, the `claude` profile, or live actor verification is
+unavailable, stop. Do not fall back to `gh`, a connector, or the user's identity.
 
-## Local Development
+When Claude implements a PR, put `<!-- ai-author: claude -->` in the PR body,
+even if Codex opens it or the repository's shared commit identity is used.
 
-No build step. Serve from the repo root — the `../shared/` paths in each game require a real HTTP server:
+## Review independence
 
-```bash
-cd /Users/michaeltorbert/Documents/games
-python3 -m http.server 8080
-# http://localhost:8080           → portal
-# http://localhost:8080/football/ → Football Math
-# http://localhost:8080/kayak/    → Kayak Adventures
-# http://localhost:8080/prague/   → Prague Bike Panic
-```
-
-## Structure
-
-```
-games/
-├── index.html          ← portal landing page
-├── games.js            ← game registry (add a new game here)
-├── shared/
-│   ├── reset.css
-│   ├── fonts.css       ← Google Fonts (Nunito)
-│   └── portal.css      ← portal card grid only
-├── football/           ← DOM-based math quiz
-│   ├── index.html
-│   ├── football.css
-│   └── football.js
-├── kayak/              ← canvas kayak game, 12 real-world levels
-│   ├── index.html
-│   ├── kayak.css
-│   ├── kayak.js        ← canvas setup, game state, init, render, loop, buttons
-│   ├── physics.js      ← water polys, collectibles, audio, ripples, update()
-│   ├── renderer.js     ← all draw functions + 13 drawScene* functions
-│   └── levels.js       ← LEVELS array (references drawScene fns from renderer.js)
-└── prague/             ← canvas endless runner
-    ├── index.html
-    ├── prague.css
-    ├── prague.js       ← canvas, globals, input, update(), reset(), loop()
-    ├── chars.js        ← CHARS array, riderMichael(), riderSydney(), miniHead()
-    ├── renderer.js     ← all draw functions (bg, player, obstacles, HUD, screens)
-    └── obstacles.js    ← spawnObs(), spawnBigLog(), hitTest(), doHit()
-```
-
-## Architecture
-
-Every game is **plain globals + ordered `<script>` tags** — no modules, no bundler. Each game's `index.html` loads files in dependency order and ends with a small inline `<script>` that fires the entry point (e.g. `loop()` or `initLevel(false)`).
-
-**Portal:** `games.js` exports a `GAMES` array. `index.html` loads it and renders cards dynamically with an inline script. To add a new game: add one entry to `games.js` and create a folder with an `index.html`.
-
-**Football:** Single state object (`state`). `buildPlay()` randomly picks one of four question types (`buildType1`–`buildType4`). `handleAnswer()` drives all game-state transitions. Field is pure DOM (no canvas).
-
-**Kayak** script load order: `kayak.js` → `physics.js` → `renderer.js` → `levels.js` → inline init.
-- `kayak.js`: canvas, `W()`/`H()`/`sc()`, game state, `getLevelDef()`, `initLevel()`, input, `showLevelComplete()`, `render()`, `loop()`, button wiring.
-- `physics.js`: water polygon functions, `getLakePoly()`, `isInLake()`, collectible spawn, Web Audio, ripple/splash, physics constants, `update()`.
-- `renderer.js`: `drawSky/drawWater/drawKayak/drawCollectibles`, all 13 `drawScene*` functions (one per level), `drawMapScreen()`.
-- `levels.js`: `LEVELS` array with `drawScene` references (loads after `renderer.js` so functions exist).
-
-**Prague** script load order: `prague.js` → `chars.js` → `obstacles.js` → `renderer.js` → inline `loop()`.
-- `prague.js`: canvas (`G`), all state globals (`K`/`JP`, `P`, `OBS`, `BGL`, etc.), `rr()`/`pad()` utilities, `update()`, `reset()`, `loop()`.
-- `chars.js`: `CHARS` array, `riderMichael()`, `riderSydney()`, `miniHead()`.
-- `renderer.js`: `drawBG()`, `drawPlayer()`, `drawBikeRider()`, `drawObs()`, `drawHUD()`, `drawTitle()`, `drawCharSelect()`, `drawGameOver()`, helper draw functions.
-- `obstacles.js`: `spawnObs()`, `spawnBigLog()`, `hitTest()`, `doHit()`.
-
-## Routing
-
-`domain.com/football/` → `football/index.html`. No server config needed — every static host (Netlify, GitHub Pages, Cloudflare Pages) handles this natively.
-
-## Deployment
-
-Drop the repo root into Netlify, GitHub Pages, or Cloudflare Pages. Set publish directory to `/`. No build command.
+Claude-authored changes require Codex review. Do not run the Claude PR-review
+helper against an implementation marked `ai-author: claude`, and do not
+describe a second Claude pass as independent consensus.
