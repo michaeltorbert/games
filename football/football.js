@@ -215,6 +215,7 @@ function syncUiState() {
   }
   if (!['question', 'explanation'].includes(state.phase)) hideMathVisual();
   updatePromptContext();
+  renderDefenseRead();
 }
 
 function playContextText() {
@@ -333,6 +334,7 @@ function blankPlayState() {
     defenseCallKey: null,
     opponentCallKey: null,
     opponentTendency: null,
+    opponentSnapshot: null,
     matchup: null,
     questionId: null,
     questionSkill: null,
@@ -1411,6 +1413,18 @@ function setActionSubcopy(t) {
   if (el) el.textContent = t;
 }
 
+function renderDefenseRead() {
+  const el = document.getElementById('defense-read');
+  if (!el) return;
+  const snapshot = state.phase === 'call' && state.possession === 'defense'
+    ? state.opponentSnapshot
+    : null;
+  el.hidden = !snapshot;
+  el.textContent = snapshot
+    ? `Pre-snap read: ${snapshot.look.label}, ${snapshot.look.alignment}. ${snapshot.lean.label}.`
+    : '';
+}
+
 function hideAnswerButtons() {
   const row = document.getElementById('btn-row');
   row.classList.add('hidden');
@@ -1598,6 +1612,7 @@ function updateMuteButton() {
 function showCallPrompt() {
   clearTimeout(advTimer);
   Object.assign(state, blankPlayState(), { phase: 'call' });
+  if (state.possession === 'defense') state.opponentSnapshot = planOpponentSnap();
   updateStatus();
   if (state.possession === 'offense') {
     document.getElementById('play-label').textContent = downDistanceLabel(state.down, state.ytg);
@@ -1606,7 +1621,7 @@ function showCallPrompt() {
     renderCallGrid(Object.values(OFFENSE_CALLS), selectOffenseCall);
   } else {
     document.getElementById('play-label').textContent = downDistanceLabel(state.down, state.ytg);
-    document.getElementById('question').textContent = 'Call the coverage. The right look cuts down the gain.';
+    document.getElementById('question').textContent = 'Call the coverage.';
     applyDeskHeader('callDefense');
     renderCallGrid(Object.values(DEFENSE_CALLS), selectDefenseCall);
   }
@@ -1679,12 +1694,12 @@ function getOpponentTendency(overrides = {}, profile = 'balanced') {
   }, profile);
 }
 
-function pickOpponentCall() {
-  const tendency = getOpponentTendency();
-  return {
-    key: FOOTBALL_OPPONENT.pickCall(tendency.weights, logicRng),
-    tendency,
-  };
+function planOpponentSnap(overrides = {}, profile = 'balanced', rng = logicRng) {
+  return FOOTBALL_OPPONENT.planSnap({
+    ...state,
+    possessionsPerQuarter: POSSESSIONS_PER_QUARTER,
+    ...overrides,
+  }, profile, rng);
 }
 
 function defenseMatches(defenseCallKey, opponentCallKey) {
@@ -1694,8 +1709,9 @@ function defenseMatches(defenseCallKey, opponentCallKey) {
 
 function selectDefenseCall(defenseCallKey) {
   if (state.phase !== 'call' || state.possession !== 'defense') return;
-  const selection = pickOpponentCall();
-  const opponentCallKey = selection.key;
+  const selection = state.opponentSnapshot;
+  if (!selection) return;
+  const opponentCallKey = selection.plannedCallKey;
   const matched = defenseMatches(defenseCallKey, opponentCallKey);
   const defenseCall = DEFENSE_CALLS[defenseCallKey];
   const p = buildPlay(opponentCallKey, {
@@ -1704,6 +1720,7 @@ function selectDefenseCall(defenseCallKey) {
   Object.assign(state, {
     defenseCallKey,
     opponentCallKey,
+    opponentSnapshot: null,
     opponentTendency: selection.tendency,
     matchup: matched ? 'matched' : 'mismatch',
   });
@@ -2556,6 +2573,8 @@ function renderGameToText() {
     defenseCall: state.defenseCallKey,
     opponentCall: state.opponentCallKey,
     opponentTendency: state.opponentTendency || null,
+    opponentSnapshot: state.opponentSnapshot || null,
+    defenseRead: document.getElementById('defense-read')?.textContent || null,
     matchup: state.matchup,
     gain: state.g ?? null,
     learningTier: state.play?.learningTier || null,
@@ -2610,6 +2629,9 @@ window.__footballTest = {
   opponentProfiles() { return FOOTBALL_OPPONENT.PROFILES; },
   getOpponentTendency(overrides = {}, profile = 'balanced') {
     return getOpponentTendency(overrides, profile);
+  },
+  planOpponentSnap(overrides = {}, profile = 'balanced', rng = logicRng) {
+    return planOpponentSnap(overrides, profile, rng);
   },
   pickOpponentCall(weights, rng = logicRng) {
     return FOOTBALL_OPPONENT.pickCall(weights, rng);

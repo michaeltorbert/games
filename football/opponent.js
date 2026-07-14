@@ -21,6 +21,36 @@ const FOOTBALL_OPPONENT = (() => {
     balanced: {
       key: 'balanced',
       label: 'Balanced',
+      looks: {
+        tight: {
+          key: 'tight',
+          label: 'Tight set',
+          alignment: 'Under center',
+          leanKeys: ['run'],
+        },
+        balanced: {
+          key: 'balanced',
+          label: 'Balanced set',
+          alignment: 'Singleback',
+          leanKeys: ['balanced'],
+        },
+        spread: {
+          key: 'spread',
+          label: 'Spread set',
+          alignment: 'Shotgun trips',
+          leanKeys: ['pass'],
+        },
+      },
+      lean: {
+        runCallKeys: ['shortRun', 'longRun'],
+        passCallKeys: ['shortPass', 'mediumPass', 'longPass'],
+        threshold: 0.12,
+        labels: {
+          run: 'Leans run',
+          pass: 'Leans pass',
+          balanced: 'Run or pass',
+        },
+      },
       baseWeights: {
         shortRun: 1,
         shortPass: 1,
@@ -207,5 +237,59 @@ const FOOTBALL_OPPONENT = (() => {
     return CALL_KEYS[CALL_KEYS.length - 1];
   }
 
-  return freeze({ CALL_KEYS, PROFILES, getTendency, pickCall });
+  function lookForLean(profile, leanKey) {
+    const looks = Object.values(profile.looks || {});
+    const look = looks.find(candidate => Array.isArray(candidate.leanKeys) && candidate.leanKeys.includes(leanKey));
+    if (!look) throw new RangeError(`Opponent profile has no look for ${leanKey} lean`);
+    return look;
+  }
+
+  function safeLeanLabel(value, key) {
+    if (typeof value === 'string' && value.length) return value;
+    if (key === 'run') return 'Leans run';
+    if (key === 'pass') return 'Leans pass';
+    return 'Run or pass';
+  }
+
+  function qualitativeLean(weights, profile) {
+    const rules = profile.lean || {};
+    const labels = rules.labels || {};
+    const runCallKeys = Array.isArray(rules.runCallKeys) ? rules.runCallKeys : ['shortRun', 'longRun'];
+    const passCallKeys = Array.isArray(rules.passCallKeys) ? rules.passCallKeys : ['shortPass', 'mediumPass', 'longPass'];
+    const threshold = Math.max(0, finiteNumber(rules.threshold, 0.12));
+    const totalFor = keys => keys.reduce((total, key) => total + finiteNumber(weights[key], 0), 0);
+    const runWeight = totalFor(runCallKeys);
+    const passWeight = totalFor(passCallKeys);
+    const difference = passWeight - runWeight;
+    const key = difference > threshold ? 'pass' : difference < -threshold ? 'run' : 'balanced';
+    return {
+      key,
+      label: safeLeanLabel(labels[key], key),
+      runWeight,
+      passWeight,
+    };
+  }
+
+  function planSnap(gameState = {}, profileKeyOrProfile = 'balanced', rng = Math.random) {
+    const profile = resolveProfile(profileKeyOrProfile);
+    const tendency = getTendency(gameState, profile);
+    const lean = qualitativeLean(tendency.weights, profile);
+    const plannedCallKey = pickCall(tendency.weights, rng);
+    const look = lookForLean(profile, lean.key);
+    return freeze({
+      profileKey: tendency.profileKey,
+      look: {
+        key: look.key,
+        label: look.label,
+        alignment: look.alignment,
+        leanKeys: [...look.leanKeys],
+      },
+      lean,
+      weights: { ...tendency.weights },
+      plannedCallKey,
+      tendency,
+    });
+  }
+
+  return freeze({ CALL_KEYS, PROFILES, getTendency, pickCall, planSnap });
 })();

@@ -173,6 +173,13 @@ test('full football state matrix follows production transitions', async ({ page 
   await page.locator('#ov-defense .ov-btn').click();
   await expect(page.locator('#call-grid .call-btn')).toHaveCount(4);
   expect((await renderedState(page)).possession).toBe('defense');
+  const defenseCallState = await renderedState(page);
+  await expect(page.locator('#defense-read')).toBeVisible();
+  await expect(page.locator('#defense-read')).toHaveAttribute('aria-live', 'polite');
+  expect(defenseCallState.opponentCall).toBeNull();
+  expect(defenseCallState.opponentSnapshot).not.toBeNull();
+  expect(defenseCallState.defenseRead).toContain(defenseCallState.opponentSnapshot.look.label);
+  expect(defenseCallState.defenseRead).toContain(defenseCallState.opponentSnapshot.lean.label);
   metrics = await assertPhaseAndShot(page, testInfo, 'call', '07-defense-call');
   expect(metrics.scrollY).toBe(0);
 

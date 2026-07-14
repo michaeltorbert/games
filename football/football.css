@@ -1391,6 +1391,25 @@ body::after {
   line-height: 1.14;
 }
 
+#defense-read {
+  width: fit-content;
+  max-width: 29ch;
+  margin-top: 12px;
+  padding: 8px 12px;
+  border: 1px solid rgba(244, 164, 59, 0.38);
+  border-radius: 12px;
+  background: linear-gradient(90deg, rgba(108, 57, 15, 0.52), rgba(40, 20, 6, 0.2));
+  color: #ffe5c5;
+  font-family: 'Barlow Condensed', 'Nunito', sans-serif;
+  font-size: 17px;
+  font-weight: 800;
+  line-height: 1.1;
+}
+
+#defense-read[hidden] {
+  display: none;
+}
+
 #ui-desk[data-phase="question"] #question,
 #ui-desk[data-phase="feedback"] #question {
   position: relative;
@@ -2605,6 +2624,13 @@ body::after {
     margin-top: 6px;
     font-size: clamp(18px, 1.5vw, 22px);
     line-height: 1.04;
+  }
+
+  #defense-read {
+    max-width: 28ch;
+    margin-top: 8px;
+    padding: 6px 9px;
+    font-size: 14px;
   }
 
   #ui-desk[data-phase="question"],

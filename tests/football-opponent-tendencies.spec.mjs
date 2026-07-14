@@ -146,6 +146,7 @@ test('coverage selection stores its tendency and preserves matchup gain multipli
   await page.evaluate(() => {
     const rolls = [0, 0.999999];
     window.__footballTest.setRng(() => rolls.shift() ?? 0);
+    showCallPrompt();
   });
   await page.locator('#call-grid .call-btn').first().click();
   const matched = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
@@ -167,6 +168,7 @@ test('coverage selection stores its tendency and preserves matchup gain multipli
   await page.evaluate(() => {
     const rolls = [0, 0.999999];
     window.__footballTest.setRng(() => rolls.shift() ?? 0);
+    showCallPrompt();
   });
   await page.locator('#call-grid .call-btn').nth(1).click();
   const mismatch = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
