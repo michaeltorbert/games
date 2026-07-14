@@ -55,7 +55,7 @@ function wrongChoiceIds(question) {
     .map((choice) => choice.id);
 }
 
-test('runtime keeps factual page-143 completion with a separate page-179 question ceiling', async ({ page }, testInfo) => {
+test('runtime keeps factual page-145 completion with a separate page-179 question ceiling', async ({ page }, testInfo) => {
   primaryOnly(testInfo);
   await page.goto('/football/?boot=offense-call');
 
@@ -84,7 +84,7 @@ test('runtime keeps factual page-143 completion with a separate page-179 questio
   });
 
   expect(result.profile.schemaVersion).toBe(2);
-  expect(result.profile.completedThroughPage).toBe(143);
+  expect(result.profile.completedThroughPage).toBe(145);
   expect(result.profile.completedThroughPage).toBe(result.progress.learner.completedThroughPage);
   expect(result.profile.includedThroughPage).toBe(179);
   expect(result.profile.includedThroughPage).toBe(result.progress.footballQuestionPlan.includedThroughPage);
@@ -348,7 +348,7 @@ test('a production snap exposes only approved, grounded, graded contextual conte
     expect(question.visuals.guided.result).toBeNull();
   }
   const curriculumAhead = question.curriculumSource === 'workbook'
-    && question.introducedOnPage > 143;
+    && question.introducedOnPage > 145;
   expect(active.questionUi.support).toBe(curriculumAhead ? 'guided' : 'initial');
   if (curriculumAhead) {
     await expect(page.locator('#feedback')).toContainText(question.hint.text);

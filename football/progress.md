@@ -131,3 +131,15 @@ Original prompt: Expand Football question content through the end of Math Mammot
 - Added explicit visual renderers, accessible comparison labels, specific Coach Report labels, and visible guided-first hints for included-but-not-completed content.
 - Passed the complete six-device release gate after the full-book refinement: 26/26 Node checks, 161 Playwright tests passed, 145 intentional project skips, and 108/108 canonical screenshots verified. A final strengthened source/support assertion also passed 7/7 on the primary iPad project.
 - Used no Claude capacity for this refinement; independent Codex curriculum and code audits supplied the second-agent review.
+
+---
+
+Original prompt: btw we just completed through 145 today
+
+## Curriculum progress update
+
+- Advanced factual Math Mammoth Grade 1-A completion from page 143 to page 145 as of 2026-07-14, based on the user's explicit update rather than inferred pacing.
+- Kept the separately approved Football question ceiling at page 179.
+- Moved the completed comparison work from pages 144-145 into the review band; pages 146-179 remain included but not yet recorded as completed and therefore open with guided support when a truthful live-snap family exists.
+- Passed the focused update checks (26/26 Node contracts and 22/22 primary-iPad learning/integration tests), then passed the complete release gate again: 161 Playwright tests, 145 intentional project skips, and 108/108 canonical screenshots across six targets.
+- Completed the browser-client smoke on a live question, inspected the rendered gameplay state, and found no browser-error artifact.

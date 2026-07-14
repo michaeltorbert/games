@@ -172,11 +172,11 @@ function expectComparisonChoiceLabels(question) {
 test('exports one deeply frozen plain-global API with a closed contract', () => {
   const { questions } = loadModules();
   assert.ok(questions);
-  assert.equal(questions.CURRENT_COMPLETED_PAGE, 143);
+  assert.equal(questions.CURRENT_COMPLETED_PAGE, 145);
   assert.equal(questions.INCLUDED_THROUGH_PAGE, 179);
   assert.equal(deepFrozen(questions), true);
   assert.deepEqual(plain(questions.DEFAULT_PROFILE), {
-    completedThroughPage: 143,
+    completedThroughPage: 145,
     includedThroughPage: 179,
     computationMax: 10,
     displayMax: 120,
@@ -188,14 +188,14 @@ test('exports one deeply frozen plain-global API with a closed contract', () => 
   assert.deepEqual(plain(questions.CURRICULUM_SOURCES), ['workbook', 'football-only']);
 });
 
-test('inspect preserves page-143 completion while capping approved question content at page 179', () => {
+test('inspect preserves page-145 completion while capping approved question content at page 179', () => {
   const { domain, questions } = loadModules();
   const snap = makeSnap(domain, { driveStart: 27 }, 4);
   const first = questions.inspect(snap, { completedThroughPage: 999, includedThroughPage: 999, computationMax: 99, displayMax: 999 });
   const second = questions.inspect(snap, { completedThroughPage: 999, includedThroughPage: 999, computationMax: 99, displayMax: 999 });
   assert.deepEqual(plain(first), plain(second));
   assert.equal(deepFrozen(first), true);
-  assert.deepEqual(plain(first.profile), { completedThroughPage: 143, includedThroughPage: 179, computationMax: 10, displayMax: 120 });
+  assert.deepEqual(plain(first.profile), { completedThroughPage: 145, includedThroughPage: 179, computationMax: 10, displayMax: 120 });
   assert.ok(first.eligible.length > 0);
   assert.ok(first.declined.length > 0);
   assert.equal(new Set(first.eligible.map((candidate) => candidate.familyId)).size, first.eligible.length);
@@ -352,8 +352,8 @@ test('live comparison and approved later pages stay source-accurate and snap-gro
   }
 
   const narrowProfile = {
-    completedThroughPage: 143,
-    includedThroughPage: 143,
+    completedThroughPage: 145,
+    includedThroughPage: 145,
     computationMax: 10,
     displayMax: 120,
   };

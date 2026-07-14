@@ -5,7 +5,7 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
   'use strict';
 
   const SCHEMA_VERSION = 1;
-  const CURRENT_COMPLETED_PAGE = 143;
+  const CURRENT_COMPLETED_PAGE = 145;
   const INCLUDED_THROUGH_PAGE = 179;
 
   const OPERATION_TYPES = Object.freeze([

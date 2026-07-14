@@ -5,7 +5,7 @@
 const FOOTBALL_LEARNING = (() => {
   const PROFILE = Object.freeze({
     schemaVersion: 2,
-    completedThroughPage: 143,
+    completedThroughPage: 145,
     includedThroughPage: 179,
     computationMax: 10,
     displayMax: 120,
