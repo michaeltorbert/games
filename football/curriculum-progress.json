@@ -7,10 +7,17 @@
   },
   "learner": {
     "name": "James",
-    "completedThroughPage": 143,
-    "asOfDate": "2026-07-13",
+    "completedThroughPage": 145,
+    "asOfDate": "2026-07-14",
     "usualPagesPerDay": 2,
     "progressRule": "Advance completedThroughPage only from an explicit user update"
+  },
+  "footballQuestionPlan": {
+    "includedThroughPage": 179,
+    "approvedAsOfDate": "2026-07-14",
+    "meaning": "User-approved ceiling for Football questions; it does not claim the workbook pages are completed",
+    "supportRule": "Each Football question from material introduced after completedThroughPage opens with visible guided support",
+    "groundingRule": "A concept is scheduled only when it derives truthfully from the immutable live snap"
   },
   "instructionalBands": {
     "completedReview": [
@@ -23,20 +30,20 @@
       "place value through 100",
       "tens and ones decomposition",
       "adding and subtracting whole tens",
-      "adding and subtracting 10"
+      "adding and subtracting 10",
+      "compare two-digit numbers",
+      "use less-than, greater-than, and equal symbols"
     ],
-    "currentNext": [
+    "includedExtensions": [
       {
-        "pages": "144-147",
+        "pages": "146-147",
         "skills": [
-          "compare two-digit numbers",
-          "use less-than, greater-than, and equal symbols",
           "order two-digit numbers",
           "place numbers approximately on a number line"
-        ]
-      }
-    ],
-    "nearTermExposure": [
+        ],
+        "scheduledInLiveSnaps": false,
+        "reason": "The current snap has no truthful ordered set or approximate number-line placement; do not inject unrelated values"
+      },
       {
         "pages": "148-151",
         "skills": [
@@ -51,20 +58,65 @@
         "skills": [
           "skip-count by 2, 3, 4, 5, and 10",
           "recognize number-chart patterns"
-        ]
+        ],
+        "scheduledInLiveSnaps": "Only truthful whole-ten field moves already represented by the exact play; do not invent equal jumps within a play"
       },
       {
         "pages": "155-156",
         "skills": [
           "ordinal numbers"
         ]
+      },
+      {
+        "pages": "157-160",
+        "skills": [
+          "chapter review of comparison, place value, facts, and whole-tens work"
+        ]
+      },
+      {
+        "pages": "161-163",
+        "content": "teacher introduction, activities, and resources for Chapter 4",
+        "scheduledInLiveSnaps": false,
+        "reason": "These are adult-facing resources rather than learner question content"
+      },
+      {
+        "pages": "164-176",
+        "skills": [
+          "whole and half hours",
+          "analog and digital time",
+          "AM and PM",
+          "calendar concepts"
+        ],
+        "scheduledInLiveSnaps": false,
+        "reason": "The current game has no truthful live-snap clock or calendar source"
+      },
+      {
+        "pages": "177-178",
+        "skills": [
+          "mixed arithmetic review"
+        ],
+        "scheduledInLiveSnaps": "Existing grounded fact families already cover the relevant completed arithmetic; no unrelated worksheet prompts are added"
+      },
+      {
+        "page": 179,
+        "skills": [
+          "Chapter 4 time review",
+          "whole and half hours",
+          "analog and digital clock matching",
+          "half an hour later",
+          "AM and PM"
+        ],
+        "scheduledInLiveSnaps": false,
+        "reason": "The current game has no truthful live-snap clock or time-of-day source"
       }
     ]
   },
   "footballImplementationGuidance": {
     "computationBand": "Keep demanding mental arithmetic mostly within 10 or 20 unless a completed lesson explicitly supports more",
-    "placeValueBand": "Two-digit values through 100 are appropriate for reading, decomposition, comparison, ordering, number-line placement, and adding or subtracting 10",
-    "exposureBand": "Treat numbers 101-120 and optional skip-counting lessons as supported or no-stakes exposure until completion is confirmed",
+    "placeValueBand": "Values through 120 are appropriate for reading and small moves only when a genuine live football statistic supplies them",
+    "includedBand": "Pages through 179 are approved for graded Football questions with guided-first support after page 145",
+    "sourceMetadata": "Workbook-derived families record their exact earliest source page; football-only display and rule literacy is labeled separately and claims no workbook page",
+    "timeBoundary": "Do not synthesize clock, AM/PM, or calendar facts until the football game has a real relevant source for them",
     "fieldConstraint": "Avoid confusing cross-midfield label arithmetic; use a separate math visualization when football field labels reverse"
   }
 }

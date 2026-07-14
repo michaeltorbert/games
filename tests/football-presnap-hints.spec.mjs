@@ -11,81 +11,117 @@ function trackErrors(page) {
   return errors;
 }
 
+const defenseDrive = {
+  possession: 'defense',
+  direction: -1,
+  quarter: 1,
+  down: 1,
+  yardsToGo: 10,
+  yardLine: 80,
+  firstDownLine: 70,
+  driveStart: 80,
+  scores: { player: 0, opponent: 0 },
+  plays: 0,
+  drivePlays: 0,
+};
+
 test('defense sees one truthful snap read and the coverage click never rerolls the planned call', async ({ page }, testInfo) => {
   primaryOnly(testInfo);
   const errors = trackErrors(page);
   await page.goto('/football/?boot=defense-call');
 
-  const before = await page.evaluate(() => {
-    window.__snapRolls = 0;
-    window.__footballTest.setRng(() => {
-      window.__snapRolls++;
-      return window.__snapRolls === 1 ? 0 : 0.999999;
-    });
-    showCallPrompt();
+  const before = await page.evaluate((drive) => {
+    window.__footballDraws = 0;
+    const football = () => {
+      window.__footballDraws++;
+      return window.__footballDraws === 1 ? 0 : 0.999999;
+    };
+    const scheduler = () => 0.375;
+    const presentation = () => 0.625;
+    window.__footballTest.setRngStreams({ football, scheduler, presentation });
+    window.__footballTest.seedDriveState(drive);
     return {
-      rolls: window.__snapRolls,
-      state: JSON.parse(window.render_game_to_text()),
+      footballDraws: window.__footballDraws,
+      contracts: window.__footballTest.activeContracts(),
       internalSnapshot: window.__footballTest.opponentSnapshot(),
       expectedWeights: window.__footballTest.getOpponentTendency().weights,
       readHidden: document.getElementById('defense-read').hidden,
     };
-  });
+  }, defenseDrive);
 
-  expect(before.rolls).toBe(1);
-  expect(before.state.mode).toBe('call');
-  expect(before.state.opponentCall).toBeNull();
-  expect(before.state.opponentTendency).toBeNull();
+  expect(before.footballDraws).toBe(1);
+  expect(before.contracts.render.mode).toBe('call');
+  expect(before.contracts.render.opponentCall).toBeNull();
+  expect(before.contracts.render.opponentTendency).toBeNull();
+  expect(before.contracts.activeSnap).toBeNull();
+  expect(before.contracts.questionInstance).toBeNull();
   expect(before.internalSnapshot.plannedCallKey).toBe('shortRun');
-  expect(before.state.opponentSnapshot.look.key).toBe('spread');
-  expect(before.internalSnapshot.look.leanKeys).toContain(before.state.opponentSnapshot.lean.key);
+  expect(before.contracts.render.opponentSnapshot.look.key).toBe('spread');
+  expect(before.internalSnapshot.look.leanKeys).toContain(before.contracts.render.opponentSnapshot.lean.key);
   expect(before.internalSnapshot.weights).toEqual(before.expectedWeights);
-  expect(before.state.opponentSnapshot).not.toHaveProperty('plannedCallKey');
-  expect(before.state.opponentSnapshot).not.toHaveProperty('weights');
+  expect(before.contracts.render.opponentSnapshot).not.toHaveProperty('plannedCallKey');
+  expect(before.contracts.render.opponentSnapshot).not.toHaveProperty('weights');
   expect(before.readHidden).toBe(false);
-  expect(before.state.defenseRead).toContain(before.state.opponentSnapshot.look.label);
-  expect(before.state.defenseRead).toContain(before.state.opponentSnapshot.look.alignment);
-  expect(before.state.defenseRead).toContain(before.state.opponentSnapshot.lean.label);
-  expect(before.state.defenseRead).not.toMatch(/\d|%|short run|long run|short pass|medium pass|long pass/i);
+  expect(before.contracts.render.defenseRead).toContain(before.contracts.render.opponentSnapshot.look.label);
+  expect(before.contracts.render.defenseRead).toContain(before.contracts.render.opponentSnapshot.look.alignment);
+  expect(before.contracts.render.defenseRead).toContain(before.contracts.render.opponentSnapshot.lean.label);
+  expect(before.contracts.render.defenseRead).not.toMatch(/\d|%|short run|long run|short pass|medium pass|long pass/i);
   await expect(page.locator('#defense-read')).toHaveAttribute('aria-live', 'polite');
 
-  await page.locator('#call-grid .call-btn').first().click();
+  await page.locator('#call-grid .call-btn').filter({ hasText: 'Run Defense' }).click();
   const afterPick = await page.evaluate(() => ({
-    rolls: window.__snapRolls,
-    state: JSON.parse(window.render_game_to_text()),
+    footballDraws: window.__footballDraws,
+    contracts: window.__footballTest.activeContracts(),
     readHidden: document.getElementById('defense-read').hidden,
   }));
-  expect(afterPick.rolls).toBeGreaterThan(1);
-  expect(afterPick.state.mode).toBe('question');
-  expect(afterPick.state.opponentCall).toBe('shortRun');
-  expect(afterPick.state.opponentSnapshot).toBeNull();
-  expect(afterPick.state.opponentTendency.weights).toEqual(before.expectedWeights);
-  expect(afterPick.state.defenseRead).toBeNull();
+  expect(afterPick.footballDraws).toBe(2);
+  expect(afterPick.contracts.render.mode).toBe('question');
+  expect(afterPick.contracts.activeSnap.context.calls).toEqual({
+    offense: 'shortRun',
+    defense: 'run',
+    matchup: 'matched',
+  });
+  expect(afterPick.contracts.render.opponentSnapshot).toBeNull();
+  expect(afterPick.contracts.render.opponentTendency.weights).toEqual(before.expectedWeights);
+  expect(afterPick.contracts.render.defenseRead).toBeNull();
   expect(afterPick.readHidden).toBe(true);
 
   await page.evaluate(() => {
-    window.__nextSnapRolls = 0;
-    window.__footballTest.setRng(() => {
-      window.__nextSnapRolls++;
+    window.__nextSnapFootballDraws = 0;
+    window.__resultPresentationDraws = 0;
+    const football = () => {
+      window.__nextSnapFootballDraws++;
       return 0.999999;
-    });
+    };
+    const scheduler = () => 0.375;
+    const presentation = () => {
+      window.__resultPresentationDraws++;
+      return 0.625;
+    };
+    window.__footballTest.setRngStreams({ football, scheduler, presentation });
   });
-  const correctIndex = await page.evaluate(() => state.choices.indexOf(state.correct));
-  await page.locator(`#b${correctIndex}`).click();
+  const answerResult = await page.evaluate((choiceId) => (
+    window.__footballTest.answerChoice(choiceId)
+  ), afterPick.contracts.questionInstance.correctChoiceId);
+  expect(answerResult).not.toBe(false);
   await expect(page.locator('#ui-desk')).toHaveAttribute('data-phase', 'call', { timeout: 2500 });
   const nextSnap = await page.evaluate(() => ({
-    rolls: window.__nextSnapRolls,
-    state: JSON.parse(window.render_game_to_text()),
+    footballDraws: window.__nextSnapFootballDraws,
+    presentationDraws: window.__resultPresentationDraws,
+    contracts: window.__footballTest.activeContracts(),
     internalSnapshot: window.__footballTest.opponentSnapshot(),
   }));
-  // One roll selects the result-copy variant; the second is the next snap's
-  // single planned-call sample.
-  expect(nextSnap.rolls).toBe(2);
-  expect(nextSnap.state.opponentCall).toBeNull();
+  // Result copy belongs to the presentation stream. The football stream draws
+  // exactly once for the next snap's planned call.
+  expect(nextSnap.presentationDraws).toBeGreaterThan(0);
+  expect(nextSnap.footballDraws).toBe(1);
+  expect(nextSnap.contracts.render.opponentCall).toBeNull();
+  expect(nextSnap.contracts.activeSnap).toBeNull();
+  expect(nextSnap.contracts.questionInstance).toBeNull();
   expect(nextSnap.internalSnapshot.plannedCallKey).toBe('longPass');
-  expect(nextSnap.state.opponentSnapshot.look.key).toBe('spread');
-  expect(nextSnap.state.opponentSnapshot).not.toHaveProperty('plannedCallKey');
-  expect(nextSnap.state.defenseRead).toContain('Spread set');
+  expect(nextSnap.contracts.render.opponentSnapshot.look.key).toBe('spread');
+  expect(nextSnap.contracts.render.opponentSnapshot).not.toHaveProperty('plannedCallKey');
+  expect(nextSnap.contracts.render.defenseRead).toContain('Spread set');
   expect(errors).toEqual([]);
 });
 

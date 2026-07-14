@@ -87,3 +87,74 @@ Original prompt: ok do the agreeded on recommendation from you + claude fable 5.
 - Opened draft PR #70 through `codex-bot-mt[bot]` with all four issues linked for closure.
 - The first focused Claude review attempt stopped before posting when the organization hit its monthly spend limit. After access was restored, Claude Fable 5 reviewed the full untruncated PR diff at `9e8a49d` through `claude-bot-mt[bot]`, approved it with no material issues, and left five non-blocking future-hardening notes.
 - Classified the review notes as cosmetic/schema clarification or future-feature/layout considerations; no current acceptance, correctness, privacy, or release blocker remains.
+
+---
+
+Original prompt: Make issue #54's football math genuinely arise from the live game situation, using Codex subagents as needed and conserving Claude usage until more capacity is available.
+
+## Contextual Football math correction
+
+- Reopened issue #54 and completed a multi-round Codex/Fable planning loop; the final issue plan has current-run Codex-Claude consensus.
+- Created `codex/issue-54-contextual-football` from v1.19 at `3152fbb`, then rebased onto the workflow-only `origin/main` update at `9958827` before publication while preserving the merged learning-history, opponent-tendency, and coach-report work.
+- Split non-overlapping pure-domain and contextual-question modules across Codex subagents while keeping the v1.19 game integration with the lead agent.
+- Started the schema-version-2 learning-event and positive-recency scheduler migration; Claude implementation review is intentionally deferred while the user's current Claude session is near its limit.
+- Added a recursively frozen, DOM-free football domain that normalizes canonical field coordinates and independently projects or reprojects every touchdown, first down, fourth-down turnover, and ordinary advance.
+- Added a DOM-free contextual question seam with page-143 curriculum gates, closed operations, dereferenceable context/rule bindings, structured stable choices, staged accessible visuals, and exhaustive two-direction property coverage.
+- Rewired offense and defense so the full call/matchup and proposed transition are frozen before scheduling; valid question subsystem failures now bypass instruction and commit the exact verified play, while invalid context/projection commits nothing and preserves the defensive pre-snap read.
+- Split football, scheduler, and presentation randomness into independent seeded streams; IDs and telemetry consume no logical RNG draws.
+- Replaced flattened resolution authority with `activeSnap`, `questionInstance`, `pendingResolution`, and mutable `questionUi`; second-miss learning resolves before Continue, while the football reducer commits only the already frozen zero-yard/capped transition and ignores duplicate Continue.
+- Upgraded learning events and persisted football stats links to schema 2 with family/context/question-instance IDs, plus v1 stats migration and explicit presented/bypassed rows.
+- Added focused production-handler integration coverage for grounding, both possession resolution tables, exact-once commits, fault injection, telemetry privacy, and RNG isolation; the initial combined domain/context and learning/integration run passed 40/40 checks.
+- Bumped Football and every cache-busting/version surface to v1.20.0. Claude implementation review remains deferred to preserve the user's near-limit session.
+- Removed the unreachable legacy random-question bank so the only runtime instructional path is the snap-grounded contextual system.
+- Independent Codex review caught and closed four edge contracts before publication: guided support can never reveal a worked answer after the first miss; late UI preparation rolls back and rethrows instead of masquerading as a bypass; every diagnostic carries the stable three-ID linkage shape; and each completed defensive snap privately owns the exact frozen pre-snap opponent plan.
+- Added invalid-projection, preparation-rollback, private-snapshot privacy, guided-retry, and Replay session regressions.
+- Passed the final complete six-device release gate: 25/25 Node checks, 160 Playwright tests passed, 140 intentional project skips, and 108/108 canonical screenshots verified.
+- Visually inspected offense question/retry and defense question/explanation states across representative iPad and phone targets; the live situation, answer controls, support, and Continue action remain readable and reachable.
+- Completed the prescribed browser-client smoke on a live offense question; `render_game_to_text()` exposed the sanitized snap-grounded contracts and no console/page-error artifact was produced.
+- Used no additional Claude capacity during implementation or verification; the implementation review remains intentionally deferred until the user's quota refreshes.
+
+---
+
+Original prompt: Expand Football question content through the end of Math Mammoth Grade 1-A while keeping every question relevant to the live game situation and conserving Claude usage.
+
+## Full-book question ceiling refinement
+
+- Audited the licensed 179-page workbook directly. Printed and PDF page numbers match; page 143 remains the last actually completed page, while page 179 is now the user-approved Football question ceiling.
+- Separated `completedThroughPage: 143` from `includedThroughPage: 179` so authorization does not falsely claim completion. Material introduced after page 143 begins with visible guided support.
+- Kept general computation within 10 while raising the honest display band to 120.
+- Added grounded families for proposed gain versus yards needed, real cumulative team yards crossing 100 through 120, and the current play's ordinal place in its drive.
+- Audited every family against the workbook: workbook-derived metadata now records the exact earliest source page, football-only literacy is marked separately, and the play-versus-need comparison stays in its genuine page-39 band through 16 instead of masquerading as the later page-145 place-value lesson.
+- Kept optional skip-counting unscheduled except where the existing whole-ten field-distance work already follows real 10-yard movement; inventing equal “jumps” inside a play would not describe the snap truthfully.
+- Added authoritative player/opponent cumulative-yard totals to the frozen snap, exact-once reducer, stats context, test seeding, and semantic state.
+- Kept workbook clock, AM/PM, and calendar topics authorized but unscheduled: Football has no truthful live-snap clock or date fact, so injecting them would recreate the unrelated-math problem from issue #54.
+- Added explicit visual renderers, accessible comparison labels, specific Coach Report labels, and visible guided-first hints for included-but-not-completed content.
+- Passed the complete six-device release gate after the full-book refinement: 26/26 Node checks, 161 Playwright tests passed, 145 intentional project skips, and 108/108 canonical screenshots verified. A final strengthened source/support assertion also passed 7/7 on the primary iPad project.
+- Used no Claude capacity for this refinement; independent Codex curriculum and code audits supplied the second-agent review.
+
+---
+
+Original prompt: btw we just completed through 145 today
+
+## Curriculum progress update
+
+- Advanced factual Math Mammoth Grade 1-A completion from page 143 to page 145 as of 2026-07-14, based on the user's explicit update rather than inferred pacing.
+- Kept the separately approved Football question ceiling at page 179.
+- Moved the completed comparison work from pages 144-145 into the review band; pages 146-179 remain included but not yet recorded as completed and therefore open with guided support when a truthful live-snap family exists.
+- Passed the focused update checks (26/26 Node contracts and 22/22 primary-iPad learning/integration tests), then passed the complete release gate again: 161 Playwright tests, 145 intentional project skips, and 108/108 canonical screenshots across six targets.
+- Completed the browser-client smoke on a live question, inspected the rendered gameplay state, and found no browser-error artifact.
+
+---
+
+Original prompt: Fix the three validated post-review findings, add focused regression tests, use Opus 4.8 for the main review, and reserve one Fable 5 pass for the final audit.
+
+## Post-review hardening
+
+- Added failing-first regressions for rejected-commit stats cleanup, the lean awaiting-answer contract, and correct-versus-missed/bypassed defensive fourth-down audio.
+- Cleared the abandoned in-memory stats draft whenever an invalid snap is rolled back.
+- Restored the positive cue only for correct defensive turnover-on-downs resolutions; second misses and question-subsystem bypasses remain silent.
+- Removed the unused precomputed awaiting-answer resolution table; chosen transitions continue through independent validation before commit.
+- Confirmed the focused regressions fail against the old behavior, then pass 27/27 on the primary iPad project after the three production fixes.
+- Completed the browser-client smoke on a live offense question with linked snap/question IDs, truthful semantic state, and no browser-error artifact.
+- Passed the complete release gate: 26/26 Node checks, 168 Playwright tests passed, 150 intentional project skips, and 108/108 canonical screenshots across all six targets.
+- Visually inspected offense-question, defense-question, and defense-feedback screenshots on the primary iPad and both phone widths; controls and feedback remain readable and reachable.

@@ -11,177 +11,329 @@ function trackErrors(page) {
   return errors;
 }
 
-async function answer(page, kind, excluded = []) {
-  const index = await page.evaluate(({ answerKind, excludedIndexes }) => {
-    if (answerKind === 'correct') return state.choices.indexOf(state.correct);
-    return state.choices.findIndex((choice, choiceIndex) =>
-      choice !== state.correct && !excludedIndexes.includes(choiceIndex)
-    );
-  }, { answerKind: kind, excludedIndexes: excluded });
-  await page.locator(`#b${index}`).click();
-  return index;
-}
-
-test('completed play rows persist normalized context without prompts or answer content', async ({ page }, testInfo) => {
+test('presented rows preserve learning semantics, link IDs, and private content boundaries', async ({ page }, testInfo) => {
   primaryOnly(testInfo);
   const errors = trackErrors(page);
-  await page.goto('/football/?boot=offense-call');
-  await page.evaluate(() => {
+  await page.goto('/football/');
+
+  const result = await page.evaluate(() => {
     localStorage.removeItem(FOOTBALL_STATS.STORAGE_KEY);
-    state.yd = 99;
-    state.fdYd = 100;
-    state.ytg = 1;
-  });
-  await page.locator('#call-grid .call-btn').first().click();
-  const offeredYards = await page.evaluate(() => state.play.gain);
-  await answer(page, 'correct');
-
-  const stored = await page.evaluate(() => JSON.parse(localStorage.getItem(FOOTBALL_STATS.STORAGE_KEY)));
-  expect(stored.schemaVersion).toBe(1);
-  expect(stored.recentPlays).toHaveLength(1);
-  expect(stored.aggregates.completedPlays).toBe(1);
-  expect(stored.aggregates.byPossession.offense).toBe(1);
-  expect(stored.aggregates.byOutcome.touchdown).toBe(1);
-
-  const row = stored.recentPlays[0];
-  expect(row.preSnap).toMatchObject({ possession: 'offense', down: 1, yardLine: 99, yardsToGo: 1 });
-  expect(row.calls).toMatchObject({ offense: 'shortRun', defense: null, opponent: null });
-  expect(row.offeredYards).toBe(offeredYards);
-  expect(row.question).toEqual(expect.objectContaining({
-    id: expect.any(String),
-    skill: expect.any(String),
-    concept: expect.any(String),
-    purpose: expect.any(String),
-    grading: expect.stringMatching(/^(gate|noStakes)$/),
-    tier: expect.any(String),
-  }));
-  expect(row.attempts).toEqual([
-    expect.objectContaining({ number: 1, correct: true, elapsedMs: expect.any(Number) }),
-  ]);
-  expect(row.resolution).toBe('firstTryCorrect');
-  if (row.question.grading === 'gate') {
-    expect(stored.mastery[row.question.concept]).toEqual({
-      resolved: 1, firstTryCorrect: 1, retryCorrect: 0, secondMiss: 0,
+    const context = (plays, score = { player: 0, opponent: 0 }) => ({
+      quarter: 1,
+      possession: 'offense',
+      down: 1,
+      yardsToGo: 10,
+      yardLine: 20,
+      firstDownLine: 30,
+      direction: 1,
+      score,
+      plays,
+      drivePlays: plays,
     });
-  } else {
-    expect(stored.mastery).toEqual({});
-  }
-  expect(row.actualYards).toBe(offeredYards);
-  expect(row.outcome).toBe('touchdown');
-  expect(row.postPlay.score.player).toBe(7);
-  expect(row.postPlay.plays).toBe(1);
-  expect(row).not.toHaveProperty('prompt');
-  expect(row).not.toHaveProperty('choices');
-  expect(row).not.toHaveProperty('correct');
-  expect(JSON.stringify(row)).not.toContain('How many');
+    const session = FOOTBALL_STATS.createSession();
+    const gate = FOOTBALL_STATS.beginPlay(session, {
+      preSnap: context(0),
+      calls: { offense: 'shortRun' },
+      offeredYards: 4,
+      links: {
+        familyId: 'line-to-gain-remainder',
+        contextId: 'context-1',
+        questionInstanceId: 'question-1',
+      },
+      question: {
+        id: 'legacy-family-alias',
+        skill: 'difference',
+        concept: 'line-to-gain',
+        purpose: 'weakSpot',
+        grading: 'gate',
+        tier: 'within-10',
+        prompt: 'How many yards are left?',
+        choices: [4, 5, 6, 7],
+        correct: 6,
+      },
+    });
+    FOOTBALL_STATS.recordAttempt(gate, { number: 1, correct: true, support: 'none', selectedChoiceId: 'choice-a' });
+    FOOTBALL_STATS.recordResolution(gate, 'firstTryCorrect');
+    const gateRow = FOOTBALL_STATS.completePlay(session, gate, {
+      actualYards: 4,
+      outcome: 'gain',
+      postPlay: context(1),
+    });
 
-  await page.reload();
-  expect((await page.evaluate(() => FOOTBALL_STATS.history())).recentPlays).toEqual(stored.recentPlays);
+    const preview = FOOTBALL_STATS.beginPlay(session, {
+      preSnap: context(1),
+      calls: { offense: 'shortPass' },
+      offeredYards: 5,
+      question: {
+        id: 'preview-family',
+        skill: 'comparison',
+        concept: 'two-digit-comparison',
+        purpose: 'currentSupported',
+        grading: 'noStakes',
+        tier: 'supported',
+      },
+    });
+    FOOTBALL_STATS.recordAttempt(preview, { number: 1, correct: false, support: 'guided' });
+    FOOTBALL_STATS.recordResolution(preview, 'secondMiss');
+    FOOTBALL_STATS.completePlay(session, preview, {
+      actualYards: 5,
+      outcome: 'gain',
+      postPlay: context(2),
+    });
+
+    return {
+      gateRow,
+      duplicate: FOOTBALL_STATS.completePlay(session, gate, {
+        actualYards: 4,
+        outcome: 'gain',
+        postPlay: context(1),
+      }),
+      history: FOOTBALL_STATS.history(),
+      raw: localStorage.getItem(FOOTBALL_STATS.STORAGE_KEY),
+      session: FOOTBALL_STATS.sessionSnapshot(session),
+    };
+  });
+
+  expect(result.history.schemaVersion).toBe(2);
+  expect(result.history.recentPlays).toHaveLength(2);
+  expect(result.history.aggregates).toMatchObject({
+    completedPlays: 2,
+    actualYards: 9,
+    byPossession: { offense: 2, defense: 0 },
+    learning: {
+      gradedPlays: 1,
+      noStakesPlays: 1,
+      firstTryCorrect: 1,
+      retryCorrect: 0,
+      secondMiss: 0,
+    },
+  });
+  expect(result.history.mastery).toEqual({
+    'line-to-gain': { resolved: 1, firstTryCorrect: 1, retryCorrect: 0, secondMiss: 0 },
+  });
+  expect(result.gateRow).toMatchObject({
+    instructionalStatus: 'presented',
+    links: {
+      familyId: 'line-to-gain-remainder',
+      contextId: 'context-1',
+      questionInstanceId: 'question-1',
+    },
+    resolution: 'firstTryCorrect',
+  });
+  expect(result.gateRow.question).toEqual({
+    id: 'legacy-family-alias',
+    skill: 'difference',
+    concept: 'line-to-gain',
+    purpose: 'weakSpot',
+    grading: 'gate',
+    tier: 'within-10',
+  });
+  expect(result.gateRow.attempts).toEqual([
+    expect.objectContaining({ number: 1, correct: true, elapsedMs: expect.any(Number), support: 'none' }),
+  ]);
+  expect(result.gateRow.attempts[0]).not.toHaveProperty('selectedChoiceId');
+  expect(result.duplicate).toBe(false);
+  expect(result.session.completedPlays).toHaveLength(2);
+  expect(result.raw).not.toContain('How many yards are left?');
+  expect(result.raw).not.toContain('choices');
+  expect(result.raw).not.toContain('correctChoice');
   expect(errors).toEqual([]);
 });
 
-test('retry, miss, defense, and no-stakes paths log realized outcomes exactly once', async ({ page }, testInfo) => {
+test('bypassed plays persist football results exactly once without learning or mastery', async ({ page }, testInfo) => {
   primaryOnly(testInfo);
   const errors = trackErrors(page);
-  await page.goto('/football/?boot=offense-call');
-  await page.evaluate(() => {
+  await page.goto('/football/');
+
+  const result = await page.evaluate(() => {
     localStorage.removeItem(FOOTBALL_STATS.STORAGE_KEY);
-    window.__footballTest.forceQuestion({
-      id: 'offense-miss', skill: 'difference', purpose: 'weakSpot', grading: 'gate', tier: 'within-10',
-      q: 'Test question', correct: 3, choices: [1, 2, 3, 4], explain: '3', hint: 'Try again.',
+    const context = (plays, yardLine, opponentScore = 0) => ({
+      quarter: 4,
+      possession: 'defense',
+      down: 2,
+      yardsToGo: 6,
+      yardLine,
+      firstDownLine: 40,
+      direction: -1,
+      score: { player: 7, opponent: opponentScore },
+      plays,
+      drivePlays: plays,
     });
-  });
-  const firstWrong = await answer(page, 'wrong');
-  await answer(page, 'wrong', [firstWrong]);
-  await page.locator('#question-continue').click();
-
-  await page.evaluate(() => {
-    startDrive('defense');
-    state.defenseCallKey = 'shortPass';
-    state.opponentCallKey = 'shortRun';
-    state.matchup = 'mismatch';
-    window.__footballTest.forceQuestion({
-      id: 'defense-stop', skill: 'addition', purpose: 'coreReview', grading: 'gate', tier: 'within-10',
-      q: 'Test question', correct: 3, choices: [1, 2, 3, 4], explain: '3', hint: 'Try again.',
-    }, 'defense');
-  });
-  await answer(page, 'correct');
-
-  await page.evaluate(() => {
-    startDrive('defense');
-    state.defenseCallKey = 'shortPass';
-    state.opponentCallKey = 'shortRun';
-    state.matchup = 'mismatch';
-    window.__footballTest.forceQuestion({
-      id: 'defense-gain', skill: 'addition', purpose: 'coreReview', grading: 'gate', tier: 'within-10',
-      q: 'Test question', correct: 3, choices: [1, 2, 3, 4], explain: '3', hint: 'Try again.',
-    }, 'defense');
-  });
-  const defenseWrong = await answer(page, 'wrong');
-  await answer(page, 'wrong', [defenseWrong]);
-  await page.locator('#question-continue').click();
-
-  await page.evaluate(() => {
-    startDrive('offense');
-    window.__footballTest.forceQuestion({
-      id: 'preview', skill: 'comparison', purpose: 'currentSupported', grading: 'noStakes', tier: 'supported',
-      q: 'Preview question', correct: 3, choices: [1, 2, 3, 4], explain: '3', hint: 'Try again.',
+    const session = FOOTBALL_STATS.createSession();
+    const pending = FOOTBALL_STATS.beginBypassedPlay(session, {
+      preSnap: context(0, 17),
+      calls: { defense: 'deepPass', opponent: 'longPass', matchup: 'mismatch' },
+      offeredYards: 17,
+      links: { contextId: 'context-9' },
+      question: {
+        prompt: 'This must never persist',
+        choices: ['secret'],
+        correct: 'secret',
+      },
     });
+    const attempted = FOOTBALL_STATS.recordAttempt(pending, {
+      number: 1,
+      correct: true,
+      support: 'none',
+    });
+    const resolved = FOOTBALL_STATS.recordResolution(pending, 'firstTryCorrect');
+    const wrongCompleter = FOOTBALL_STATS.completePlay(session, pending, {
+      actualYards: 17,
+      outcome: 'touchdown',
+      postPlay: context(1, 0, 7),
+    });
+    const row = FOOTBALL_STATS.completeBypassedPlay(session, pending, {
+      actualYards: 17,
+      outcome: 'touchdown',
+      postPlay: context(1, 0, 7),
+    });
+    const duplicate = FOOTBALL_STATS.completeBypassedPlay(session, pending, {
+      actualYards: 17,
+      outcome: 'touchdown',
+      postPlay: context(1, 0, 7),
+    });
+    return {
+      attempted,
+      resolved,
+      wrongCompleter,
+      row,
+      duplicate,
+      history: FOOTBALL_STATS.history(),
+      session: FOOTBALL_STATS.sessionSnapshot(session),
+      raw: localStorage.getItem(FOOTBALL_STATS.STORAGE_KEY),
+    };
   });
-  await answer(page, 'correct');
 
-  const stored = await page.evaluate(() => FOOTBALL_STATS.history());
-  expect(stored.recentPlays).toHaveLength(4);
-  const [offenseMiss, defenseStop, defenseGain, preview] = stored.recentPlays;
-  expect(offenseMiss).toMatchObject({
-    offeredYards: 3,
-    resolution: 'secondMiss',
-    actualYards: 0,
-    outcome: 'noGain',
+  expect(result.attempted).toBe(false);
+  expect(result.resolved).toBe(false);
+  expect(result.wrongCompleter).toBe(false);
+  expect(result.duplicate).toBe(false);
+  expect(result.row).toMatchObject({
+    instructionalStatus: 'bypassed',
+    links: { familyId: null, contextId: 'context-9', questionInstanceId: null },
+    question: null,
+    attempts: [],
+    resolution: null,
+    actualYards: 17,
+    outcome: 'touchdown',
   });
-  expect(offenseMiss.attempts).toEqual([
-    expect.objectContaining({ number: 1, correct: false, elapsedMs: expect.any(Number) }),
-    expect.objectContaining({ number: 2, correct: false, elapsedMs: expect.any(Number) }),
-  ]);
-  expect(defenseStop).toMatchObject({ resolution: 'firstTryCorrect', actualYards: 0, outcome: 'stop' });
-  expect(defenseGain.resolution).toBe('secondMiss');
-  expect(defenseGain.actualYards).toBeGreaterThan(0);
-  expect(defenseGain.actualYards).toBeLessThanOrEqual(3);
-  expect(defenseGain.outcome).toBe('gain');
-  expect(preview.question.grading).toBe('noStakes');
-  expect(stored.aggregates.learning).toMatchObject({
-    gradedPlays: 3,
-    noStakesPlays: 1,
-    firstTryCorrect: 1,
-    secondMiss: 2,
+  expect(result.history.recentPlays).toEqual([result.row]);
+  expect(result.history.aggregates).toMatchObject({
+    completedPlays: 1,
+    actualYards: 17,
+    byPossession: { offense: 0, defense: 1 },
+    byOutcome: { touchdown: 1 },
+    learning: {
+      gradedPlays: 0,
+      noStakesPlays: 0,
+      firstTryCorrect: 0,
+      retryCorrect: 0,
+      secondMiss: 0,
+    },
   });
-  expect(stored.mastery).toEqual({
-    difference: { resolved: 1, firstTryCorrect: 0, retryCorrect: 0, secondMiss: 1 },
-    addition: { resolved: 2, firstTryCorrect: 1, retryCorrect: 0, secondMiss: 1 },
-  });
-  expect(new Set(stored.recentPlays.map(row => row.id)).size).toBe(4);
+  expect(result.history.mastery).toEqual({});
+  expect(result.session.completedPlays).toEqual([result.row]);
+  expect(result.raw).not.toContain('This must never persist');
+  expect(result.raw).not.toContain('secret');
   expect(errors).toEqual([]);
 });
 
-test('history is capped, aggregates are guarded, completion is deduplicated, and IDs do not consume game RNG', async ({ page }, testInfo) => {
+test('schema-v1 history migrates in place without losing valid rows, aggregates, or mastery', async ({ page }, testInfo) => {
   primaryOnly(testInfo);
   await page.addInitScript(() => {
+    const context = {
+      quarter: 2,
+      possession: 'offense',
+      down: 3,
+      yardsToGo: 4,
+      yardLine: 46,
+      firstDownLine: 50,
+      direction: 1,
+      score: { player: 7, opponent: 7 },
+      plays: 8,
+      drivePlays: 3,
+    };
     localStorage.setItem('footballMathStats:v1', JSON.stringify({
       schemaVersion: 1,
       aggregates: {
-        completedPlays: -4,
-        actualYards: 'bad',
-        byPossession: { offense: -1, defense: 'bad' },
-        byOutcome: { gain: -9 },
-        learning: { gradedPlays: -2, firstTryCorrect: 'bad' },
+        completedPlays: 1,
+        actualYards: 4,
+        byPossession: { offense: 1, defense: 0 },
+        byOutcome: { firstDown: 1 },
+        learning: {
+          gradedPlays: 1,
+          noStakesPlays: 0,
+          firstTryCorrect: 0,
+          retryCorrect: 1,
+          secondMiss: 0,
+        },
       },
-      recentPlays: [],
-      mastery: {},
+      recentPlays: [{
+        id: 'play-legacy',
+        gameId: 'game-legacy',
+        sequence: 8,
+        completedAt: '2026-07-13T12:00:00.000Z',
+        preSnap: context,
+        calls: { offense: 'shortPass' },
+        offeredYards: 4,
+        question: {
+          id: 'legacy-family',
+          skill: 'difference',
+          concept: 'line-to-gain',
+          purpose: 'weakSpot',
+          grading: 'gate',
+          tier: 'within-10',
+        },
+        attempts: [
+          { number: 1, correct: false, elapsedMs: 500, support: 'none' },
+          { number: 2, correct: true, elapsedMs: 600, support: 'guided' },
+        ],
+        resolution: 'retryCorrect',
+        actualYards: 4,
+        outcome: 'firstDown',
+        postPlay: { ...context, down: 1, yardsToGo: 10, yardLine: 50, firstDownLine: 60, plays: 9 },
+      }],
+      mastery: {
+        'line-to-gain': { resolved: 1, firstTryCorrect: 0, retryCorrect: 1, secondMiss: 0 },
+      },
     }));
   });
   await page.goto('/football/');
 
+  const result = await page.evaluate(() => ({
+    history: FOOTBALL_STATS.history(),
+    raw: JSON.parse(localStorage.getItem(FOOTBALL_STATS.STORAGE_KEY)),
+  }));
+
+  expect(result.raw).toEqual(result.history);
+  expect(result.history.schemaVersion).toBe(2);
+  expect(result.history.aggregates).toMatchObject({
+    completedPlays: 1,
+    actualYards: 4,
+    byPossession: { offense: 1, defense: 0 },
+    byOutcome: { firstDown: 1 },
+    learning: { gradedPlays: 1, retryCorrect: 1 },
+  });
+  expect(result.history.mastery).toEqual({
+    'line-to-gain': { resolved: 1, firstTryCorrect: 0, retryCorrect: 1, secondMiss: 0 },
+  });
+  expect(result.history.recentPlays).toHaveLength(1);
+  expect(result.history.recentPlays[0]).toMatchObject({
+    id: 'play-legacy',
+    gameId: 'game-legacy',
+    sequence: 8,
+    instructionalStatus: 'presented',
+    links: { familyId: 'legacy-family', contextId: null, questionInstanceId: null },
+    resolution: 'retryCorrect',
+  });
+});
+
+test('history remains capped, completion is deduplicated, and stats IDs consume no Math.random', async ({ page }, testInfo) => {
+  primaryOnly(testInfo);
+  await page.goto('/football/');
+
   const result = await page.evaluate(() => {
+    localStorage.removeItem(FOOTBALL_STATS.STORAGE_KEY);
     const context = sequence => ({
       quarter: 1,
       possession: sequence % 2 ? 'offense' : 'defense',
@@ -194,42 +346,47 @@ test('history is capped, aggregates are guarded, completion is deduplicated, and
       plays: sequence,
       drivePlays: sequence,
     });
-    const session = FOOTBALL_STATS.createSession();
-    let firstPending;
-    for (let sequence = 1; sequence <= 205; sequence++) {
-      const pending = FOOTBALL_STATS.beginPlay(session, {
-        preSnap: context(sequence),
-        calls: { offense: 'shortRun' },
-        offeredYards: 3,
-        question: { id: `q-${sequence}`, skill: 'addition', purpose: 'coreReview', grading: 'gate', tier: 'within-10' },
-      });
-      FOOTBALL_STATS.recordAttempt(pending, { number: 1, correct: true, support: 'none' });
-      FOOTBALL_STATS.recordResolution(pending, 'firstTryCorrect');
-      FOOTBALL_STATS.completePlay(session, pending, { actualYards: 3, outcome: 'gain', postPlay: context(sequence) });
-      if (sequence === 1) firstPending = pending;
-    }
-    const duplicate = FOOTBALL_STATS.completePlay(session, firstPending, {
-      actualYards: 3, outcome: 'gain', postPlay: context(1),
-    });
-
-    function makeRng(seedValue) {
-      let seed = seedValue >>> 0;
-      return () => {
-        seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
-        return seed / 0x100000000;
-      };
-    }
-    const playSequence = () => {
-      window.__footballTest.resetLearning();
-      window.__footballTest.setRng(makeRng(0x8a7a));
-      return Array.from({ length: 12 }, () => window.__footballTest.buildPlayAt({
-        possession: 'offense', direction: 1, yd: 30, fdYd: 40, down: 1, ytg: 10, driveStart: 20,
-      }, 'shortRun'));
+    const originalRandom = Math.random;
+    let randomCalls = 0;
+    Math.random = () => {
+      randomCalls++;
+      return 0.5;
     };
-    const beforeIds = playSequence();
-    for (let index = 0; index < 20; index++) FOOTBALL_STATS.createSession();
-    const afterIds = playSequence();
-    return { history: FOOTBALL_STATS.history(), duplicate, beforeIds, afterIds };
+    try {
+      const session = FOOTBALL_STATS.createSession();
+      let firstPending;
+      for (let sequence = 1; sequence <= 205; sequence++) {
+        const pending = FOOTBALL_STATS.beginPlay(session, {
+          preSnap: context(sequence),
+          calls: { offense: 'shortRun' },
+          offeredYards: 3,
+          question: {
+            id: `q-${sequence}`,
+            skill: 'addition',
+            concept: 'addition',
+            purpose: 'coreReview',
+            grading: 'gate',
+            tier: 'within-10',
+          },
+        });
+        FOOTBALL_STATS.recordAttempt(pending, { number: 1, correct: true, support: 'none' });
+        FOOTBALL_STATS.recordResolution(pending, 'firstTryCorrect');
+        FOOTBALL_STATS.completePlay(session, pending, {
+          actualYards: 3,
+          outcome: 'gain',
+          postPlay: context(sequence),
+        });
+        if (sequence === 1) firstPending = pending;
+      }
+      const duplicate = FOOTBALL_STATS.completePlay(session, firstPending, {
+        actualYards: 3,
+        outcome: 'gain',
+        postPlay: context(1),
+      });
+      return { history: FOOTBALL_STATS.history(), duplicate, randomCalls };
+    } finally {
+      Math.random = originalRandom;
+    }
   });
 
   expect(result.history.recentPlays).toHaveLength(200);
@@ -238,26 +395,66 @@ test('history is capped, aggregates are guarded, completion is deduplicated, and
   expect(result.history.aggregates.completedPlays).toBe(205);
   expect(result.history.aggregates.actualYards).toBe(615);
   expect(result.history.aggregates.learning.firstTryCorrect).toBe(205);
+  expect(result.history.mastery.addition).toEqual({
+    resolved: 205,
+    firstTryCorrect: 205,
+    retryCorrect: 0,
+    secondMiss: 0,
+  });
   expect(result.duplicate).toBe(false);
-  expect(result.beforeIds).toEqual(result.afterIds);
+  expect(result.randomCalls).toBe(0);
 });
 
-test('future schemas are never overwritten and storage failures never break play', async ({ browser, baseURL }, testInfo) => {
+test('malformed stores recover, future schemas remain untouched, and blocked storage does not break sessions', async ({ browser, baseURL }, testInfo) => {
   primaryOnly(testInfo);
+
+  const completeOnePresentedPlay = async page => page.evaluate(() => {
+    const context = {
+      quarter: 1,
+      possession: 'offense',
+      down: 1,
+      yardsToGo: 10,
+      yardLine: 20,
+      firstDownLine: 30,
+      direction: 1,
+      score: { player: 0, opponent: 0 },
+      plays: 0,
+      drivePlays: 0,
+    };
+    const session = FOOTBALL_STATS.createSession();
+    const pending = FOOTBALL_STATS.beginPlay(session, {
+      preSnap: context,
+      calls: { offense: 'shortRun' },
+      offeredYards: 3,
+      question: {
+        id: 'recovery-question',
+        skill: 'addition',
+        concept: 'addition',
+        purpose: 'coreReview',
+        grading: 'gate',
+        tier: 'within-10',
+      },
+    });
+    FOOTBALL_STATS.recordAttempt(pending, { number: 1, correct: true, support: 'none' });
+    FOOTBALL_STATS.recordResolution(pending, 'firstTryCorrect');
+    const row = FOOTBALL_STATS.completePlay(session, pending, {
+      actualYards: 3,
+      outcome: 'gain',
+      postPlay: { ...context, yardLine: 23, plays: 1, drivePlays: 1 },
+    });
+    return { row, session: FOOTBALL_STATS.sessionSnapshot(session) };
+  });
 
   const malformedContext = await browser.newContext();
   const malformedPage = await malformedContext.newPage();
   const malformedErrors = trackErrors(malformedPage);
   await malformedPage.addInitScript(() => {
-    if (location.pathname.startsWith('/football')) {
-      localStorage.setItem('footballMathStats:v1', '{invalid-json');
-    }
+    if (location.pathname.startsWith('/football')) localStorage.setItem('footballMathStats:v1', '{invalid-json');
   });
-  await malformedPage.goto(`${baseURL}/football/?boot=offense-call`);
-  await malformedPage.locator('#call-grid .call-btn').first().click();
-  await answer(malformedPage, 'correct');
-  const repaired = await malformedPage.evaluate(() => JSON.parse(localStorage.getItem('footballMathStats:v1')));
-  expect(repaired.schemaVersion).toBe(1);
+  await malformedPage.goto(`${baseURL}/football/`);
+  await completeOnePresentedPlay(malformedPage);
+  const repaired = await malformedPage.evaluate(() => JSON.parse(localStorage.getItem(FOOTBALL_STATS.STORAGE_KEY)));
+  expect(repaired.schemaVersion).toBe(2);
   expect(repaired.recentPlays).toHaveLength(1);
   expect(malformedErrors).toEqual([]);
   await malformedContext.close();
@@ -265,16 +462,14 @@ test('future schemas are never overwritten and storage failures never break play
   const futureContext = await browser.newContext();
   const futurePage = await futureContext.newPage();
   const futureErrors = trackErrors(futurePage);
-  await futurePage.addInitScript(() => {
-    if (location.pathname.startsWith('/football')) {
-      localStorage.setItem('footballMathStats:v1', JSON.stringify({ schemaVersion: 99, future: 'keep-me' }));
-    }
-  });
-  await futurePage.goto(`${baseURL}/football/?boot=offense-call`);
-  await futurePage.locator('#call-grid .call-btn').first().click();
-  await answer(futurePage, 'correct');
-  expect(await futurePage.evaluate(() => localStorage.getItem('footballMathStats:v1')))
-    .toBe(JSON.stringify({ schemaVersion: 99, future: 'keep-me' }));
+  const futurePayload = JSON.stringify({ schemaVersion: 99, future: 'keep-me' });
+  await futurePage.addInitScript(payload => {
+    if (location.pathname.startsWith('/football')) localStorage.setItem('footballMathStats:v1', payload);
+  }, futurePayload);
+  await futurePage.goto(`${baseURL}/football/`);
+  const futureSession = await completeOnePresentedPlay(futurePage);
+  expect(await futurePage.evaluate(() => localStorage.getItem(FOOTBALL_STATS.STORAGE_KEY))).toBe(futurePayload);
+  expect(futureSession.session.completedPlays).toHaveLength(1);
   expect(futureErrors).toEqual([]);
   await futureContext.close();
 
@@ -285,13 +480,9 @@ test('future schemas are never overwritten and storage failures never break play
     Storage.prototype.getItem = () => { throw new Error('storage read blocked'); };
     Storage.prototype.setItem = () => { throw new Error('storage write blocked'); };
   });
-  await blockedPage.goto(`${baseURL}/football/?boot=offense-call`);
-  await blockedPage.locator('#call-grid .call-btn').first().click();
-  await answer(blockedPage, 'correct');
-  const stateAfter = JSON.parse(await blockedPage.evaluate(() => window.render_game_to_text()));
-  expect(stateAfter.mode).toBe('feedback');
-  expect(stateAfter.plays).toBe(1);
-  expect((await blockedPage.evaluate(() => window.__footballTest.statsSession())).completedPlays).toHaveLength(1);
+  await blockedPage.goto(`${baseURL}/football/`);
+  const blockedSession = await completeOnePresentedPlay(blockedPage);
+  expect(blockedSession.session.completedPlays).toHaveLength(1);
   expect(blockedErrors).toEqual([]);
   await blockedContext.close();
 });

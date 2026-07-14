@@ -12,6 +12,31 @@ const baseState = {
   possessionsPerQuarter: 4,
 };
 
+const defenseDrive = {
+  possession: 'defense',
+  direction: -1,
+  quarter: 1,
+  down: 1,
+  yardsToGo: 10,
+  yardLine: 80,
+  firstDownLine: 70,
+  driveStart: 80,
+  scores: { player: 0, opponent: 0 },
+  plays: 0,
+  drivePlays: 0,
+};
+
+async function seedDeterministicDefenseSnap(page) {
+  return page.evaluate((drive) => {
+    const rolls = [0, 0.999999];
+    const football = () => rolls.shift() ?? 0;
+    const scheduler = () => 0.375;
+    const presentation = () => 0.625;
+    window.__footballTest.setRngStreams({ football, scheduler, presentation });
+    return window.__footballTest.seedDriveState(drive);
+  }, defenseDrive);
+}
+
 test.beforeEach(async ({ page }) => {
   await page.goto('/football/');
 });
@@ -143,37 +168,34 @@ test('pickCall handles deterministic RNG interval boundaries', async ({ page }) 
 
 test('coverage selection stores its tendency and preserves matchup gain multipliers', async ({ page }) => {
   await page.goto('/football/?boot=defense-call');
-  await page.evaluate(() => {
-    const rolls = [0, 0.999999];
-    window.__footballTest.setRng(() => rolls.shift() ?? 0);
-    showCallPrompt();
-  });
-  await page.locator('#call-grid .call-btn').first().click();
-  const matched = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
+  await seedDeterministicDefenseSnap(page);
+  await page.locator('#call-grid .call-btn').filter({ hasText: 'Run Defense' }).click();
+  const matched = await page.evaluate(() => window.__footballTest.activeContracts());
 
-  expect(matched.mode).toBe('question');
-  expect(matched.opponentCall).toBe('shortRun');
-  expect(matched.defenseCall).toBe('run');
-  expect(matched.matchup).toBe('matched');
-  expect(matched.gain).toBe(3);
-  expect(matched.opponentTendency.context).toMatchObject({
+  expect(matched.render.mode).toBe('question');
+  expect(matched.activeSnap.context.calls).toEqual({
+    offense: 'shortRun',
+    defense: 'run',
+    matchup: 'matched',
+  });
+  expect(matched.activeSnap.proposal.appliedGain).toBe(3);
+  expect(matched.render.opponentTendency.context).toMatchObject({
     down: 1,
     distance: 10,
     direction: -1,
     yardsToGoal: 80,
   });
-  expect(matched.questionId).toBeTruthy();
+  expect(matched.questionInstance.familyId).toBeTruthy();
+  expect(matched.questionInstance.contextId).toBe(matched.activeSnap.contextId);
 
   await page.goto('/football/?boot=defense-call');
-  await page.evaluate(() => {
-    const rolls = [0, 0.999999];
-    window.__footballTest.setRng(() => rolls.shift() ?? 0);
-    showCallPrompt();
+  await seedDeterministicDefenseSnap(page);
+  await page.locator('#call-grid .call-btn').filter({ hasText: 'Short Pass D' }).click();
+  const mismatch = await page.evaluate(() => window.__footballTest.activeContracts());
+  expect(mismatch.activeSnap.context.calls).toEqual({
+    offense: 'shortRun',
+    defense: 'shortPass',
+    matchup: 'mismatch',
   });
-  await page.locator('#call-grid .call-btn').nth(1).click();
-  const mismatch = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
-  expect(mismatch.opponentCall).toBe('shortRun');
-  expect(mismatch.defenseCall).toBe('shortPass');
-  expect(mismatch.matchup).toBe('mismatch');
-  expect(mismatch.gain).toBe(5);
+  expect(mismatch.activeSnap.proposal.appliedGain).toBe(5);
 });

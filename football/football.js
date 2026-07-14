@@ -1,4 +1,4 @@
-const GAME_VERSION = '1.19.0';
+const GAME_VERSION = '1.20.0';
 let prevPlayerScore = -1, prevOpponentScore = -1;
 let playerRunTimer = 0, playerCelebrateTimer = 0, playerCelebrateDelayTimer = 0;
 const EZ = 5;
@@ -6,7 +6,6 @@ function yardToPct(y) { return EZ + (y / 100) * (100 - 2 * EZ); }
 
 const DOWN_NAMES = ["", "1st", "2nd", "3rd", "4th"];
 const QUARTER_NAMES = ["", "1st", "2nd", "3rd", "4th"];
-const RESULT_CHOICES = ["Touchdown", "First Down", "Neither"];
 const START_YARD = 20;
 const TD_POINTS = 7;
 const POSSESSIONS_PER_QUARTER = 4;
@@ -28,7 +27,15 @@ const COACH_CONCEPT_LABELS = Object.freeze({
   'yard-line-translation': 'Reading yard lines',
   'red-zone-math': 'Red-zone math',
   'field-distance': 'Field distance',
+  'drive-distance': 'Drive distance',
+  'committed-score': 'Reading the score',
+  'quarter-read': 'Reading the quarter',
+  'down-read': 'Reading the down',
+  'scoring-rule': 'Touchdown points',
   'play-outcome': 'Reading the play result',
+  'line-to-gain-comparison': 'Comparing the play to the marker',
+  'team-total-yards': 'Team yards through 120',
+  'drive-play-order': 'Play order in the drive',
 });
 
 const OFFENSE_CALLS = {
@@ -127,27 +134,106 @@ function playDiagramSvg(callKey, possession) {
 
 let state = {};
 let advTimer = null;
-let logicRng = Math.random;
+let footballRng = Math.random;
+let schedulerRng = Math.random;
+let presentationRng = Math.random;
+let sessionInitialized = false;
+let contextSequence = 1;
+let questionSequence = 1;
+let questionFaultMode = null;
+
+function mixSeed(seed, salt) {
+  let value = (seed ^ salt) >>> 0;
+  value = Math.imul(value ^ (value >>> 16), 0x7feb352d);
+  value = Math.imul(value ^ (value >>> 15), 0x846ca68b);
+  return (value ^ (value >>> 16)) >>> 0;
+}
+
+function makePrng(seed) {
+  let value = seed >>> 0;
+  return () => {
+    value = (value + 0x6d2b79f5) >>> 0;
+    let mixed = value;
+    mixed = Math.imul(mixed ^ (mixed >>> 15), mixed | 1);
+    mixed ^= mixed + Math.imul(mixed ^ (mixed >>> 7), mixed | 61);
+    return ((mixed ^ (mixed >>> 14)) >>> 0) / 0x100000000;
+  };
+}
+
+function installRngStreams(rootSeed) {
+  const seed = rootSeed == null
+    ? Math.floor(Math.random() * 0x100000000) >>> 0
+    : Number(rootSeed) >>> 0;
+  footballRng = makePrng(mixSeed(seed, 0x464f4f54));
+  schedulerRng = makePrng(mixSeed(seed, 0x53434844));
+  presentationRng = makePrng(mixSeed(seed, 0x50524553));
+  return seed;
+}
+
 function createLearningSession() {
   return FOOTBALL_LEARNING.createSession(FOOTBALL_STATS.masterySnapshot());
 }
 
-let learningSession = createLearningSession();
-let statsSession = FOOTBALL_STATS.createSession();
+let learningSession = null;
+let statsSession = null;
 let pendingStatsPlay = null;
 
+function initGameSession(rootSeed) {
+  if (sessionInitialized) throw new Error('Football game session is already initialized');
+  installRngStreams(rootSeed);
+  learningSession = createLearningSession();
+  statsSession = FOOTBALL_STATS.createSession();
+  pendingStatsPlay = null;
+  contextSequence = 1;
+  questionSequence = 1;
+  sessionInitialized = true;
+}
+
+function clearGameSessionInitialization() {
+  sessionInitialized = false;
+  footballRng = Math.random;
+  schedulerRng = Math.random;
+  presentationRng = Math.random;
+  learningSession = null;
+  statsSession = null;
+  pendingStatsPlay = null;
+  contextSequence = 1;
+  questionSequence = 1;
+}
+
+function dispatchFootballEvent(type, detail) {
+  if (typeof window === 'undefined' || typeof window.dispatchEvent !== 'function') return;
+  window.dispatchEvent(new CustomEvent(type, {
+    detail: FOOTBALL_LEARNING.snapshot(detail),
+  }));
+}
+
+function reportQuestionDiagnostic(code, details = {}) {
+  const diagnostic = {
+    schemaVersion: 1,
+    code,
+    ...details,
+    familyId: details.familyId ?? null,
+    contextId: details.contextId ?? null,
+    questionInstanceId: details.questionInstanceId ?? null,
+  };
+  console.warn(`[football:${code}]`, details.message || 'Contextual question subsystem fallback');
+  dispatchFootballEvent('football:diagnostic', diagnostic);
+  return diagnostic;
+}
+
 function choose(a) {
-  return a[Math.floor(logicRng() * a.length)];
+  return a[Math.floor(presentationRng() * a.length)];
 }
 
 function randomInt(min, max) {
-  return Math.floor(logicRng() * (max - min + 1)) + min;
+  return Math.floor(footballRng() * (max - min + 1)) + min;
 }
 
 function shuffle(a) {
   a = [...a];
   for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(logicRng() * (i + 1));
+    const j = Math.floor(presentationRng() * (i + 1));
     [a[i], a[j]] = [a[j], a[i]];
   }
   return a;
@@ -314,6 +400,8 @@ function gameSnapshot() {
     quarter: state.quarter || 1,
     playerScore: state.playerScore || 0,
     opponentScore: state.opponentScore || 0,
+    playerTotalYards: state.playerTotalYards || 0,
+    opponentTotalYards: state.opponentTotalYards || 0,
     plays: state.plays || 0,
     quarterPossessions: state.quarterPossessions || 0,
     tds: state.tds || 0,
@@ -326,8 +414,23 @@ function gameSnapshot() {
   };
 }
 
+function makeQuestionUiState() {
+  return {
+    attempt: 1,
+    missedChoiceIds: [],
+    support: 'initial',
+    continueRequired: false,
+    outcomeCommitted: false,
+    resolutionRecorded: false,
+  };
+}
+
 function blankPlayState() {
   return {
+    activeSnap: null,
+    questionInstance: null,
+    pendingResolution: null,
+    questionUi: makeQuestionUiState(),
     g: null,
     label: null,
     callKey: null,
@@ -335,6 +438,7 @@ function blankPlayState() {
     opponentCallKey: null,
     opponentTendency: null,
     opponentSnapshot: null,
+    opponentSelectionSnapshot: null,
     matchup: null,
     questionId: null,
     questionSkill: null,
@@ -381,6 +485,8 @@ function createGameState() {
     quarter: 1,
     playerScore: 0,
     opponentScore: 0,
+    playerTotalYards: 0,
+    opponentTotalYards: 0,
     plays: 0,
     quarterPossessions: 0,
     tds: 0,
@@ -409,28 +515,81 @@ function statsContext() {
       player: state.playerScore,
       opponent: state.opponentScore,
     },
+    totalYards: {
+      player: state.playerTotalYards,
+      opponent: state.opponentTotalYards,
+    },
     plays: state.plays,
     drivePlays: state.drivePlays,
   };
 }
 
-function beginStatsPlay(play) {
-  pendingStatsPlay = FOOTBALL_STATS.beginPlay(statsSession, {
-    preSnap: statsContext(),
-    calls: {
-      offense: play.callKey,
-      defense: state.defenseCallKey,
-      opponent: state.opponentCallKey,
-      matchup: state.matchup,
+function statsContextFromSnap(snap) {
+  const context = snap.context;
+  return {
+    quarter: context.quarter,
+    possession: context.possession,
+    down: context.down,
+    yardsToGo: context.yardsToGo,
+    yardLine: context.yardLine,
+    firstDownLine: context.firstDownLine,
+    direction: context.direction,
+    score: {
+      player: context.scores.player,
+      opponent: context.scores.opponent,
     },
-    offeredYards: play.gain,
+    totalYards: {
+      player: context.totalYards.player,
+      opponent: context.totalYards.opponent,
+    },
+    plays: context.plays,
+    drivePlays: context.drivePlays,
+  };
+}
+
+function statsCallsFromSnap(snap) {
+  const calls = snap.context.calls;
+  return {
+    offense: calls.offense,
+    defense: calls.defense,
+    opponent: snap.context.possession === 'defense' ? calls.offense : null,
+    matchup: calls.matchup,
+  };
+}
+
+function beginStatsPlay(snap, question) {
+  pendingStatsPlay = FOOTBALL_STATS.beginPlay(statsSession, {
+    preSnap: statsContextFromSnap(snap),
+    calls: statsCallsFromSnap(snap),
+    offeredYards: snap.proposal.appliedGain,
+    links: {
+      familyId: question.familyId,
+      contextId: question.contextId,
+      questionInstanceId: question.questionInstanceId,
+    },
     question: {
-      id: play.id,
-      skill: play.skill,
-      concept: play.concept,
-      purpose: play.purpose,
-      grading: play.grading,
-      tier: play.tier,
+      id: question.familyId,
+      familyId: question.familyId,
+      contextId: question.contextId,
+      questionInstanceId: question.questionInstanceId,
+      skill: question.skill,
+      concept: question.concept,
+      purpose: question.purpose,
+      grading: question.grading,
+      tier: question.tier,
+    },
+  });
+}
+
+function beginBypassedStatsPlay(snap) {
+  pendingStatsPlay = FOOTBALL_STATS.beginBypassedPlay(statsSession, {
+    preSnap: statsContextFromSnap(snap),
+    calls: statsCallsFromSnap(snap),
+    offeredYards: snap.proposal.appliedGain,
+    links: {
+      familyId: null,
+      contextId: snap.contextId,
+      questionInstanceId: null,
     },
   });
 }
@@ -439,760 +598,66 @@ function finalizeStatsPlay(actualYards, outcome) {
   const pending = pendingStatsPlay;
   pendingStatsPlay = null;
   if (!pending) return false;
-  return FOOTBALL_STATS.completePlay(statsSession, pending, {
+  const complete = pending.instructionalStatus === 'bypassed'
+    ? FOOTBALL_STATS.completeBypassedPlay
+    : FOOTBALL_STATS.completePlay;
+  return complete(statsSession, pending, {
     actualYards,
     outcome,
     postPlay: statsContext(),
   });
 }
 
-function sortedOrShuffled(values, level) {
-  if (level.key === 'easy') return [...values].sort((a, b) => a - b);
-  return shuffle(values);
-}
-
-function fitsLevelNumber(value, level) {
-  return value >= 0 && value <= level.numberMax;
-}
-
-function makeJamesQuestionProfile() {
-  return {
-    key: 'hard',
-    maxRating: 2,
-    choiceCount: 4,
-    numberMax: 20,
-  };
-}
-
-function makeNumericChoices(correct, level, opts = {}) {
-  const min = opts.min ?? 0;
-  const max = opts.max ?? Math.max(correct + 10, level.numberMax);
-  const count = opts.count ?? level.choiceCount;
-  const set = new Set([correct]);
-  const deltas = level.maxRating <= 2 ? [1, 2, 3, 4, 5, 10] : [1, 2, 3, 5, 7, 10, 15, 20];
-
-  for (const d of deltas) {
-    if (set.size >= count) break;
-    const plus = correct + d;
-    const minus = correct - d;
-    if (plus <= max) set.add(plus);
-    if (set.size >= count) break;
-    if (minus >= min) set.add(minus);
-  }
-
-  let offset = 1;
-  while (set.size < count && offset <= max - min + 1) {
-    const v = min + ((correct - min + offset) % (max - min + 1));
-    set.add(v);
-    offset++;
-  }
-
-  return sortedOrShuffled([...set].slice(0, count), level);
-}
-
-function makeFixedNumericChoices(values, level) {
-  return level.key === 'easy' ? [...values].sort((a, b) => a - b) : shuffle(values);
-}
-
-function makeDownChoices(correctDown, level) {
-  const values = new Set([correctDown]);
-  [correctDown + 1, correctDown - 1, 1, 2, 3, 4].forEach((d) => {
-    if (d >= 1 && d <= 4 && values.size < level.choiceCount) values.add(d);
-  });
-  const ordered = level.key === 'easy' ? [...values].sort((a, b) => a - b) : shuffle([...values]);
-  return ordered.map((d) => DOWN_NAMES[d]);
-}
-
-function makeQuarterChoices(correctQuarter, level) {
-  const values = new Set([correctQuarter]);
-  [1, 2, 3, 4].forEach((q) => values.add(q));
-  const ordered = level.key === 'easy' ? [...values].sort((a, b) => a - b) : shuffle([...values]);
-  return ordered.slice(0, 4).map((q) => QUARTER_NAMES[q]);
-}
-
-function makeDownDistanceChoices(correctDown, correctYtg, level) {
-  const byLabel = new Map();
-  const add = (down, ytg) => {
-    if (down < 1 || down > 4 || ytg < 1) return;
-    const label = downDistanceLabel(down, ytg);
-    if (!byLabel.has(label)) byLabel.set(label, { down, ytg });
-  };
-
-  add(correctDown, correctYtg);
-  add(correctDown + 1, correctYtg);
-  add(correctDown - 1, correctYtg);
-  add(correctDown, correctYtg + 1);
-  add(correctDown, Math.max(1, correctYtg - 1));
-  add(1, 10);
-
-  const ordered = [...byLabel.entries()].slice(0, level.choiceCount);
-  if (level.key === 'easy') {
-    ordered.sort((a, b) => a[1].down - b[1].down || a[1].ytg - b[1].ytg);
-  } else {
-    return shuffle(ordered).map(([label]) => label);
-  }
-  return ordered.map(([label]) => label);
-}
-
-function makeYesNoChoices() {
-  return ["Yes", "No"];
-}
-
-function makeYardChoices(correctYd, level, anchors = []) {
-  const byLabel = new Map();
-  const add = (v) => {
-    const yd = clamp(Math.round(v), 0, 100);
-    const label = ydLabel(yd);
-    if (!byLabel.has(label)) byLabel.set(label, yd);
-  };
-
-  add(correctYd);
-  anchors.forEach(add);
-  [1, 2, 3, 5, 10, -1, -2, -3, -5, -10, 15, -15].forEach((d) => {
-    if (byLabel.size < level.choiceCount) add(correctYd + d);
-  });
-
-  let scan = 0;
-  while (byLabel.size < level.choiceCount && scan <= 100) {
-    add(scan);
-    scan += 5;
-  }
-
-  const entries = [...byLabel.entries()].slice(0, level.choiceCount);
-  const ordered = level.key === 'easy'
-    ? entries.sort((a, b) => a[1] - b[1])
-    : shuffle(entries);
-  return ordered.map(([label]) => label);
-}
-
 function outcomeMessage(messagesByCall, callKey) {
   return choose(messagesByCall[callKey] || messagesByCall.shortRun);
 }
 
-function gainSentence(s, p) {
-  if (s.possession === 'defense') return `The opponent could gain ${yds(p.gain)}`;
-  return `You gain ${yds(p.gain)}`;
-}
-
-function locationGainSentence(s, p) {
-  if (s.possession === 'defense') {
-    return `The opponent is on ${ydLabel(p.oldYd)} and could gain ${yds(p.gain)}`;
-  }
-  return `You're on ${ydLabel(p.oldYd)} and gain ${yds(p.gain)}`;
-}
-
-function playResult(play) {
-  if (play.isTouchdown) return 'Touchdown';
-  if (play.gotFirstDown) return 'First Down';
-  return 'Neither';
-}
-
-function makePlaySnapshot(s, gain, call) {
-  const oldYd = s.yd;
-  const newYd = moveYards(oldYd, gain, s.direction);
-  const isTouchdown = reachesGoal(newYd, s.direction);
-  const reachedMarker = reachesMarker(newYd, s.fdYd, s.direction);
-  const gotFirstDown = !isTouchdown && reachedMarker;
-  const isTurnoverOnDowns = !isTouchdown && !gotFirstDown && s.down >= 4;
-  const newFdYd = gotFirstDown ? nextFirstDownLine(newYd, s.direction) : s.fdYd;
-  const newDown = gotFirstDown ? 1 : Math.min(s.down + 1, 4);
-  const newYtg = gotFirstDown
-    ? Math.max(distanceToMarker(newYd, newFdYd, s.direction), 1)
-    : Math.max(distanceToMarker(newYd, s.fdYd, s.direction), 0);
-
+function contextualQuestionProfile() {
   return {
-    gain,
-    label: call.label,
-    callKey: call.key,
-    oldYd,
-    newYd,
-    oldDown: s.down,
-    oldYtg: s.ytg,
-    newDown,
-    newYtg,
-    newFdYd,
-    gotFirstDown,
-    isTouchdown,
-    isTurnoverOnDowns,
-    crossedMidfield: s.direction === 1 ? oldYd < 50 && newYd >= 50 : oldYd > 50 && newYd <= 50,
-    driveYards: Math.abs(newYd - s.driveStart),
+    completedThroughPage: FOOTBALL_LEARNING.PROFILE.completedThroughPage,
+    includedThroughPage: FOOTBALL_LEARNING.PROFILE.includedThroughPage,
+    computationMax: FOOTBALL_LEARNING.PROFILE.computationMax,
+    displayMax: FOOTBALL_LEARNING.PROFILE.displayMax,
   };
 }
 
-function makeCurriculumMath(type, values, support, ariaLabel) {
-  return {
-    type,
-    support: support || 'none',
-    displayMin: Math.min(...values),
-    displayMax: Math.max(...values),
-    ariaLabel,
+function nextContextId() {
+  return `context-${contextSequence++}`;
+}
+
+function nextQuestionInstanceId() {
+  return `question-${questionSequence++}`;
+}
+
+function makeSnapContext(calls, privateOpponentSnapshot = null) {
+  const context = {
+    contextId: nextContextId(),
+    possession: state.possession,
+    direction: state.direction,
+    quarter: state.quarter,
+    down: state.down,
+    yardsToGo: state.ytg,
+    yardLine: state.yd,
+    firstDownLine: state.fdYd,
+    driveStart: state.driveStart,
+    scores: {
+      player: state.playerScore,
+      opponent: state.opponentScore,
+    },
+    totalYards: {
+      player: state.playerTotalYards,
+      opponent: state.opponentTotalYards,
+    },
+    plays: state.plays,
+    drivePlays: state.drivePlays,
+    calls,
+    privateOpponentSnapshot,
   };
+  if (questionFaultMode === 'invalid-context') context.direction = state.direction * -1;
+  return context;
 }
 
-const CURRICULUM_QUESTION_BANK = [
-  {
-    id: 'missing-part-to-10',
-    skill: 'missing-part',
-    concept: 'missing-part',
-    purpose: 'weakSpot',
-    grading: 'gate',
-    tier: 'within-10',
-    minCompletedPage: 1,
-    weight: 4,
-    canUse: () => true,
-    build: (s, p, level) => {
-      const playFits = s.ytg >= 2 && s.ytg <= 10 && p.gain >= 1 && p.gain < s.ytg;
-      const target = playFits ? s.ytg : randomInt(3, 10);
-      const known = playFits ? p.gain : randomInt(1, target - 1);
-      const correct = target - known;
-      return {
-        q: `The first down needs ${target} yards. The play gets ${known}.\nHow many more are needed?`,
-        correct,
-        choices: makeNumericChoices(correct, level, { min: 0, max: 10 }),
-        choiceType: 'number',
-        hint: `Count from ${known} up to ${target}.`,
-        explain: `${known} + ${correct} = ${target}, so ${correct} more ${correct === 1 ? 'yard is' : 'yards are'} needed.`,
-        math: { ...makeCurriculumMath('gap', [known, target], 'none', `A gap from ${known} to ${target}`), start: known, delta: correct, target },
-      };
-    },
-  },
-  {
-    id: 'difference-within-10',
-    skill: 'difference',
-    concept: 'difference',
-    purpose: 'weakSpot',
-    grading: 'gate',
-    tier: 'within-10',
-    minCompletedPage: 1,
-    weight: 3.5,
-    canUse: () => true,
-    build: (s, p, level) => {
-      const playFits = p.gain < s.ytg && s.ytg <= 10;
-      const needed = playFits ? s.ytg : randomInt(3, 10);
-      const gained = playFits ? p.gain : randomInt(1, needed - 1);
-      const correct = needed - gained;
-      return {
-        q: `${gained} yards gained. ${needed} yards were needed.\nHow many yards short?`,
-        correct,
-        choices: makeNumericChoices(correct, level, { min: 0, max: 10 }),
-        choiceType: 'number',
-        hint: `Start at ${gained} and count up to ${needed}.`,
-        explain: `${needed} - ${gained} = ${correct}. The play is ${correct} ${correct === 1 ? 'yard' : 'yards'} short.`,
-        math: { ...makeCurriculumMath('gap', [gained, needed], 'none', `Compare ${gained} with ${needed}`), start: gained, delta: correct, target: needed },
-      };
-    },
-  },
-  {
-    id: 'add-within-10',
-    skill: 'addition',
-    concept: 'addition',
-    purpose: 'coreReview',
-    grading: 'gate',
-    tier: 'within-10',
-    minCompletedPage: 1,
-    weight: 1.4,
-    canUse: () => true,
-    build: (s, p, level) => {
-      const a = randomInt(1, 6);
-      const b = randomInt(1, 10 - a);
-      const correct = a + b;
-      return {
-        q: `A run gets ${a} yards, then another gets ${b}.\nHow many yards altogether?`,
-        correct,
-        choices: makeNumericChoices(correct, level, { min: 0, max: 10 }),
-        choiceType: 'number',
-        hint: `Start at ${a} and hop forward ${b}.`,
-        explain: `${a} + ${b} = ${correct}.`,
-        math: { ...makeCurriculumMath('hops', [a, correct], 'none', `Start at ${a} and move forward ${b} to ${correct}`), start: a, delta: b, target: correct },
-      };
-    },
-  },
-  {
-    id: 'subtract-within-10',
-    skill: 'subtraction',
-    concept: 'subtraction',
-    purpose: 'coreReview',
-    grading: 'gate',
-    tier: 'within-10',
-    minCompletedPage: 1,
-    weight: 1.4,
-    canUse: () => true,
-    build: (s, p, level) => {
-      const a = randomInt(3, 10);
-      const b = randomInt(1, a);
-      const correct = a - b;
-      return {
-        q: `The marker is ${a} yards away. A play covers ${b}.\nHow many yards remain?`,
-        correct,
-        choices: makeNumericChoices(correct, level, { min: 0, max: 10 }),
-        choiceType: 'number',
-        hint: `Start at ${a} and hop back ${b}.`,
-        explain: `${a} - ${b} = ${correct}.`,
-        math: { ...makeCurriculumMath('hops', [a, correct], 'none', `Start at ${a} and move back ${b} to ${correct}`), start: a, delta: -b, target: correct },
-      };
-    },
-  },
-  {
-    id: 'fact-family-within-10',
-    skill: 'fact-family',
-    concept: 'fact-family',
-    purpose: 'coreReview',
-    grading: 'gate',
-    tier: 'within-10',
-    minCompletedPage: 1,
-    weight: 1.25,
-    canUse: () => true,
-    build: (s, p, level) => {
-      const total = randomInt(3, 10);
-      const part = randomInt(1, total - 1);
-      const correct = total - part;
-      return {
-        q: `${part} + ? = ${total}\nWhat number makes the equation true?`,
-        correct,
-        choices: makeNumericChoices(correct, level, { min: 0, max: 10 }),
-        choiceType: 'number',
-        hint: `The two parts must join to make ${total}.`,
-        explain: `${part} + ${correct} = ${total}. The matching subtraction fact is ${total} - ${part} = ${correct}.`,
-        math: { ...makeCurriculumMath('parts', [part, correct, total], 'none', `${part} and an unknown part make ${total}`), start: part, delta: correct, target: total },
-      };
-    },
-  },
-  {
-    id: 'teen-decomposition',
-    skill: 'teen-place-value',
-    concept: 'teen-place-value',
-    purpose: 'completedPlaceValue',
-    grading: 'gate',
-    tier: 'two-digit-structure',
-    minCompletedPage: 1,
-    weight: 1.6,
-    canUse: () => true,
-    build: (s, p, level) => {
-      const number = randomInt(11, 19);
-      const correct = number - 10;
-      return {
-        q: `${number} is 10 and how many more?`,
-        correct,
-        choices: makeNumericChoices(correct, level, { min: 0, max: 10 }),
-        choiceType: 'number',
-        hint: 'Make one full group of 10. Count the ones left over.',
-        explain: `${number} is 1 ten and ${correct} ones: 10 + ${correct} = ${number}.`,
-        math: { ...makeCurriculumMath('base-ten', [10, correct, number], 'guided', `${number} shown as one ten and ${correct} ones`), tens: 1, ones: correct, target: number },
-      };
-    },
-  },
-  {
-    id: 'two-digit-place-value',
-    skill: 'place-value',
-    concept: 'place-value',
-    purpose: 'completedPlaceValue',
-    grading: 'gate',
-    tier: 'two-digit-structure',
-    minCompletedPage: 1,
-    weight: 2,
-    canUse: () => true,
-    build: (s, p, level) => {
-      const number = randomInt(20, 99);
-      const correct = Math.floor(number / 10);
-      const ones = number % 10;
-      return {
-        q: `How many tens are in ${number}?`,
-        correct,
-        choices: makeNumericChoices(correct, level, { min: 0, max: 10 }),
-        choiceType: 'number',
-        hint: `Look at the tens digit in ${number}.`,
-        explain: `${number} has ${correct} tens and ${ones} ones.`,
-        math: { ...makeCurriculumMath('base-ten', [correct, ones, number], 'guided', `${number} shown as ${correct} tens and ${ones} ones`), tens: correct, ones, target: number },
-      };
-    },
-  },
-  {
-    id: 'add-or-subtract-10',
-    skill: 'plus-minus-ten',
-    concept: 'plus-minus-ten',
-    purpose: 'completedPlaceValue',
-    grading: 'gate',
-    tier: 'two-digit-structure',
-    minCompletedPage: 1,
-    weight: 1.8,
-    canUse: () => true,
-    build: (s, p, level) => {
-      const adding = logicRng() < 0.5;
-      const start = adding ? randomInt(1, 8) * 10 + randomInt(0, 9) : randomInt(2, 9) * 10 + randomInt(0, 9);
-      const delta = adding ? 10 : -10;
-      const correct = start + delta;
-      return {
-        q: `${start} ${adding ? '+' : '−'} 10 = ?`,
-        correct,
-        choices: makeNumericChoices(correct, { ...level, numberMax: 100 }, { min: 0, max: 100 }),
-        choiceType: 'number',
-        hint: `Change the tens digit by 1. The ones digit stays ${start % 10}.`,
-        explain: `${start} ${adding ? '+' : '−'} 10 = ${correct}. The ones digit stayed the same.`,
-        math: { ...makeCurriculumMath('base-ten-move', [start, correct], 'none', `Move ${adding ? 'forward' : 'back'} one ten from ${start} to ${correct}`), start, delta, target: correct, ones: start % 10 },
-      };
-    },
-  },
-  {
-    id: 'hundred-chart-small-move',
-    skill: 'hundred-chart',
-    concept: 'hundred-chart',
-    purpose: 'completedPlaceValue',
-    grading: 'gate',
-    tier: 'two-digit-structure',
-    minCompletedPage: 1,
-    weight: 1.4,
-    canUse: () => true,
-    build: (s, p, level) => {
-      const delta = choose([-4, -3, -2, -1, 1, 2, 3, 4]);
-      const start = delta > 0 ? randomInt(1, 100 - delta) : randomInt(1 - delta, 100);
-      const correct = start + delta;
-      return {
-        q: `Start at ${start}. Move ${Math.abs(delta)} ${delta > 0 ? 'forward' : 'back'}.\nWhere do you land?`,
-        correct,
-        choices: makeNumericChoices(correct, { ...level, numberMax: 100 }, { min: 1, max: 100 }),
-        choiceType: 'number',
-        hint: `Count ${delta > 0 ? 'up' : 'back'} ${Math.abs(delta)} from ${start}.`,
-        explain: `${start} ${delta > 0 ? '+' : '−'} ${Math.abs(delta)} = ${correct}.`,
-        math: { ...makeCurriculumMath('hops', [start, correct], 'none', `Start at ${start} and move ${delta} to ${correct}`), start, delta, target: correct },
-      };
-    },
-  },
-  {
-    id: 'compare-two-digit-preview',
-    skill: 'two-digit-comparison',
-    concept: 'two-digit-comparison',
-    purpose: 'currentSupported',
-    grading: 'noStakes',
-    tier: 'supported-comparison',
-    minCompletedPage: 144,
-    weight: 1,
-    canUse: () => true,
-    build: () => {
-      const left = randomInt(10, 99);
-      let right = randomInt(10, 99);
-      if (logicRng() < 0.2) right = left;
-      const correct = left === right ? '=' : left > right ? '>' : '<';
-      return {
-        q: `Which symbol makes this true?\n${left}  ?  ${right}`,
-        correct,
-        choices: ['<', '=', '>'],
-        choiceType: 'category',
-        hint: 'Compare the tens first. If the tens match, compare the ones.',
-        explain: `${left} ${correct} ${right}. Compare tens first, then ones.`,
-        math: { ...makeCurriculumMath('comparison', [left, right], 'guided', `Compare ${left} and ${right}`), left, right, target: correct },
-      };
-    },
-  },
-];
-
-const QUESTION_BANK = [
-  ...CURRICULUM_QUESTION_BANK,
-  {
-    id: 'what-quarter',
-    rating: 1,
-    weight: 0.35,
-    canUse: (s) => s.quarter >= 1,
-    build: (s, p, level) => ({
-      q: 'What quarter are we in?',
-      correct: QUARTER_NAMES[s.quarter],
-      choices: makeQuarterChoices(s.quarter, level),
-      choiceType: 'down',
-      explain: `The scoreboard says Q${s.quarter}, so it is the ${QUARTER_NAMES[s.quarter]} quarter.`,
-    }),
-  },
-  {
-    id: 'what-half',
-    rating: 1,
-    weight: 0.3,
-    canUse: (s) => s.quarter >= 1,
-    build: (s) => ({
-      q: 'What half are we in?',
-      correct: halfLabel(s.quarter),
-      choices: ['1st', '2nd'],
-      choiceType: 'down',
-      explain: `Quarters 1 and 2 are the 1st half. Quarters 3 and 4 are the 2nd half.`,
-    }),
-  },
-  {
-    id: 'quarters-in-half',
-    rating: 1,
-    weight: 0.25,
-    canUse: (s) => s.quarter >= 1,
-    build: (s, p, level) => ({
-      q: 'How many quarters are in one half?',
-      correct: 2,
-      choices: makeFixedNumericChoices([1, 2, 3, 4], level),
-      choiceType: 'number',
-      explain: 'One half has 2 quarters.',
-    }),
-  },
-  {
-    id: 'quarters-left',
-    rating: 1,
-    weight: 0.25,
-    canUse: (s) => s.quarter >= 1,
-    build: (s, p, level) => ({
-      q: 'How many quarters are left after this one?',
-      correct: 4 - s.quarter,
-      choices: makeFixedNumericChoices([0, 1, 2, 3], level),
-      choiceType: 'number',
-      explain: `There are ${4 - s.quarter} quarters left after Q${s.quarter}.`,
-    }),
-  },
-  {
-    id: 'what-down',
-    rating: 1,
-    weight: 3,
-    canUse: (s, p) => p.gain < s.ytg && s.down < 4,
-    build: (s, p, level) => ({
-      q: `It's ${downDistanceLabel(s.down, s.ytg)}. ${gainSentence(s, p)}.\nWhat down is it now?`,
-      correct: DOWN_NAMES[s.down + 1],
-      choices: makeDownChoices(s.down + 1, level),
-      choiceType: 'down',
-      explain: `It was ${DOWN_NAMES[s.down]} down. The next down is ${DOWN_NAMES[s.down + 1]}.`,
-    }),
-  },
-  {
-    id: 'is-first-down',
-    rating: 1,
-    weight: 3,
-    canUse: (s, p) => !p.isTouchdown,
-    build: (s, p) => {
-      const correct = p.gotFirstDown ? 'Yes' : 'No';
-      return {
-        q: `It's ${downDistanceLabel(s.down, s.ytg)}. ${gainSentence(s, p)}.\nIs that a first down?`,
-        correct,
-        choices: makeYesNoChoices(),
-        choiceType: 'category',
-        explain: p.gotFirstDown
-          ? `${yds(p.gain)} is enough for ${yds(s.ytg)}, so yes: first down.`
-          : `${yds(p.gain)} is less than ${yds(s.ytg)}, so not yet.`,
-      };
-    },
-  },
-  {
-    id: 'yards-needed',
-    rating: 1,
-    weight: 2,
-    canUse: (s) => s.ytg > 0,
-    build: (s, p, level) => ({
-      q: `It's ${downDistanceLabel(s.down, s.ytg)}.\nHow many yards are needed for a first down?`,
-      correct: s.ytg,
-      choices: makeNumericChoices(s.ytg, level, { min: 1, max: 10 }),
-      choiceType: 'number',
-      explain: `The "${s.ytg}" in ${downDistanceLabel(s.down, s.ytg)} tells you the yards needed.`,
-    }),
-  },
-  {
-    id: 'is-touchdown',
-    rating: 1,
-    weight: 2,
-    canUse: (s, p, level) => yardsToGoal(p.oldYd, s.direction) <= Math.min(level.numberMax, 30),
-    build: (s, p) => {
-      const correct = p.isTouchdown ? 'Yes' : 'No';
-      const needed = yardsToGoal(p.oldYd, s.direction);
-      return {
-        q: `${locationGainSentence(s, p)}.\nTouchdown?`,
-        correct,
-        choices: makeYesNoChoices(),
-        choiceType: 'category',
-        explain: p.isTouchdown
-          ? `The goal line is ${yds(needed)} away, and ${yds(p.gain)} reaches it.`
-          : `The goal line is ${yds(needed)} away, and ${yds(p.gain)} is not enough.`,
-      };
-    },
-  },
-  {
-    id: 'yards-left',
-    rating: 2,
-    weight: 3,
-    canUse: (s, p, level) => p.gain < s.ytg && fitsLevelNumber(s.ytg - p.gain, level),
-    build: (s, p, level) => {
-      const correct = s.ytg - p.gain;
-      return {
-        q: `It's ${downDistanceLabel(s.down, s.ytg)}. ${gainSentence(s, p)}.\nHow many yards are left for a first down?`,
-        correct,
-        choices: makeNumericChoices(correct, level, { min: 1, max: 10 }),
-        choiceType: 'number',
-        explain: `${s.ytg} - ${p.gain} = ${correct}, so ${yds(correct)} are left.`,
-      };
-    },
-  },
-  {
-    id: 'bonds-to-10',
-    rating: 2,
-    weight: 2,
-    canUse: (s, p, level) => s.down === 1 && s.ytg === 10 && p.gain < 10 && fitsLevelNumber(10 - p.gain, level),
-    build: (s, p, level) => {
-      const correct = 10 - p.gain;
-      return {
-        q: `It's 1st & 10. ${gainSentence(s, p)}.\nHow many more for a first down?`,
-        correct,
-        choices: makeNumericChoices(correct, level, { min: 1, max: 10 }),
-        choiceType: 'number',
-        explain: `10 - ${p.gain} = ${correct}, so ${yds(correct)} more are needed.`,
-      };
-    },
-  },
-  {
-    id: 'new-yard-line',
-    rating: 2,
-    weight: 3,
-    canUse: (s, p, level) => !p.isTouchdown && level.maxRating >= 2 && fieldNumber(p.newYd) <= level.numberMax,
-    build: (s, p, level) => {
-      const correct = ydLabel(p.newYd);
-      return {
-        q: `${locationGainSentence(s, p)}.\nWhat yard line is the ball on?`,
-        correct,
-        choices: makeYardChoices(p.newYd, level, [p.oldYd]),
-        choiceType: 'yard',
-        explain: `${ydLabel(p.oldYd)} plus ${yds(p.gain)} moves the ball to ${correct}.`,
-      };
-    },
-  },
-  {
-    id: 'yards-short',
-    rating: 2,
-    weight: 2,
-    canUse: (s, p, level) => p.gain < s.ytg && fitsLevelNumber(s.ytg - p.gain, level),
-    build: (s, p, level) => {
-      const correct = s.ytg - p.gain;
-      return {
-        q: `It's ${downDistanceLabel(s.down, s.ytg)}. ${gainSentence(s, p)}.\nHow many yards short of the marker is that?`,
-        correct,
-        choices: makeNumericChoices(correct, level, { min: 1, max: 10 }),
-        choiceType: 'number',
-        explain: `${s.ytg} - ${p.gain} = ${correct}, so the play is ${yds(correct)} short.`,
-      };
-    },
-  },
-  {
-    id: 'drive-yards',
-    rating: 5,
-    weight: 1,
-    canUse: (s, p, level) => p.driveYards > 3 && fitsLevelNumber(p.driveYards, level),
-    build: (s, p, level) => ({
-      q: `Drive started at ${ydLabel(s.driveStart)}. After this play, the ball would be at ${ydLabel(p.newYd)}.\nHow many yards is that drive?`,
-      correct: p.driveYards,
-      choices: makeNumericChoices(p.driveYards, level, { min: 1, max: level.numberMax }),
-      choiceType: 'number',
-      explain: `From ${ydLabel(s.driveStart)} to ${ydLabel(p.newYd)} is ${yds(p.driveYards)}.`,
-    }),
-  },
-  {
-    id: 'yards-to-endzone-near',
-    rating: 3,
-    weight: 3,
-    canUse: (s, p, level) => !p.isTouchdown && yardsToGoal(p.newYd, s.direction) <= 50 && fitsLevelNumber(yardsToGoal(p.newYd, s.direction), level),
-    build: (s, p, level) => {
-      const correct = yardsToGoal(p.newYd, s.direction);
-      return {
-        q: `The ball would be on ${ydLabel(p.newYd)}.\nHow many yards to the end zone?`,
-        correct,
-        choices: makeNumericChoices(correct, level, { min: 1, max: level.numberMax }),
-        choiceType: 'number',
-        explain: `From ${ydLabel(p.newYd)}, the end zone is ${yds(correct)} away.`,
-      };
-    },
-  },
-  {
-    id: 'yards-to-endzone-far',
-    rating: 5,
-    weight: 2,
-    canUse: (s, p, level) => !p.isTouchdown && yardsToGoal(p.newYd, s.direction) > 50 && fitsLevelNumber(yardsToGoal(p.newYd, s.direction), level),
-    build: (s, p, level) => {
-      const correct = yardsToGoal(p.newYd, s.direction);
-      return {
-        q: `The ball would be on ${ydLabel(p.newYd)}.\nHow many yards to the end zone?`,
-        correct,
-        choices: makeNumericChoices(correct, level, { min: 1, max: level.numberMax }),
-        choiceType: 'number',
-        explain: `From ${ydLabel(p.newYd)}, the end zone is ${yds(correct)} away.`,
-      };
-    },
-  },
-  {
-    id: 'down-distance',
-    rating: 3,
-    weight: 1,
-    canUse: (s, p) => !p.isTouchdown && !p.gotFirstDown && !p.isTurnoverOnDowns && p.newYtg > 0,
-    build: (s, p, level) => ({
-      q: `It's ${downDistanceLabel(s.down, s.ytg)}. ${gainSentence(s, p)}.\nWhat is the new down and distance?`,
-      correct: downDistanceLabel(p.newDown, p.newYtg),
-      choices: makeDownDistanceChoices(p.newDown, p.newYtg, level),
-      choiceType: 'category',
-      explain: `The next play would be ${downDistanceLabel(p.newDown, p.newYtg)}.`,
-    }),
-  },
-  {
-    id: 'what-happened',
-    rating: 2,
-    weight: 1,
-    canUse: () => true,
-    build: (s, p) => {
-      const correct = playResult(p);
-      return {
-        q: `It's ${downDistanceLabel(s.down, s.ytg)} from ${ydLabel(p.oldYd)}. ${gainSentence(s, p)}.\nWhat happens?`,
-        correct,
-        choices: RESULT_CHOICES,
-        choiceType: 'category',
-        explain: correct === 'Touchdown'
-          ? 'Touchdown is the biggest result, so it is the answer.'
-          : correct === 'First Down'
-            ? `${yds(p.gain)} reaches the marker, so it is a first down.`
-            : `${yds(p.gain)} does not reach the marker or the end zone.`,
-      };
-    },
-  },
-];
-
-const LEGACY_QUESTION_METADATA = {
-  'what-quarter': { skill: 'football-knowledge', concept: 'quarter-half-structure', purpose: 'currentSupported', grading: 'noStakes', tier: 'football', enabled: true },
-  'what-half': { skill: 'football-knowledge', concept: 'quarter-half-structure', purpose: 'currentSupported', grading: 'noStakes', tier: 'football', enabled: true },
-  'quarters-in-half': { skill: 'football-knowledge', concept: 'quarter-half-structure', purpose: 'currentSupported', grading: 'noStakes', tier: 'football', enabled: true },
-  'quarters-left': { skill: 'football-knowledge', concept: 'quarter-half-structure', purpose: 'currentSupported', grading: 'noStakes', tier: 'football', enabled: true },
-  'what-down': { skill: 'football-knowledge', concept: 'down-progression', purpose: 'currentSupported', grading: 'noStakes', tier: 'football', enabled: true },
-  'yards-needed': { skill: 'football-number-sense', concept: 'line-to-gain', purpose: 'coreReview', grading: 'gate', tier: 'within-10', enabled: true },
-  'yards-left': { skill: 'difference', concept: 'line-to-gain', purpose: 'weakSpot', grading: 'gate', tier: 'within-10', enabled: true },
-  'bonds-to-10': { skill: 'missing-part', concept: 'line-to-gain', purpose: 'weakSpot', grading: 'gate', tier: 'within-10', enabled: true },
-  'yards-short': { skill: 'difference', concept: 'line-to-gain', purpose: 'weakSpot', grading: 'gate', tier: 'within-10', enabled: true },
-  'what-happened': { skill: 'football-knowledge', concept: 'play-outcome', purpose: 'currentSupported', grading: 'noStakes', tier: 'football', enabled: true },
-};
-
-function scheduledEntry(entry) {
-  if (entry.skill) return entry;
-  const metadata = LEGACY_QUESTION_METADATA[entry.id];
-  return metadata ? { ...entry, ...metadata, weight: Math.min(entry.weight || 1, 0.7) } : { ...entry, enabled: false };
-}
-
-function pickQuestion(s, play, level) {
-  const candidates = QUESTION_BANK
-    .map(scheduledEntry)
-    .filter((entry) =>
-      entry.enabled !== false
-      && (entry.grading === 'noStakes' || (entry.minCompletedPage || 1) <= FOOTBALL_LEARNING.PROFILE.completedThroughPage)
-      && entry.canUse(s, play, level)
-    );
-  const entry = FOOTBALL_LEARNING.weightedPick(candidates, learningSession, logicRng)
-    || scheduledEntry(QUESTION_BANK.find((q) => q.id === 'add-within-10'));
-  const built = entry.build(s, play, level);
-  const initialSupport = FOOTBALL_LEARNING.supportFor(learningSession, entry.skill, built.math?.support || 'none');
-  const question = {
-    id: entry.id,
-    skill: entry.skill,
-    concept: entry.concept,
-    purpose: entry.purpose,
-    grading: entry.grading,
-    tier: entry.tier,
-    minCompletedPage: entry.minCompletedPage || 1,
-    ...built,
-    math: built.math ? { ...built.math, support: initialSupport } : null,
-  };
-  FOOTBALL_LEARNING.recordPresented(learningSession, question, { possession: s.possession, call: play.callKey });
-  return question;
-}
-
-function buildPlay(callKey, opts = {}) {
+function makeActiveSnap(callKey, opts = {}) {
   const call = OFFENSE_CALLS[callKey] || OFFENSE_CALLS.shortRun;
   const maxPossible = state.direction === 1 ? 100 - state.yd : state.yd;
   const maxG = Math.max(1, Math.min(call.gRange[1], maxPossible));
@@ -1203,10 +668,155 @@ function buildPlay(callKey, opts = {}) {
     gain = clamp(Math.round(gain * opts.gainMultiplier), 1, maxPossible);
   }
 
-  const play = makePlaySnapshot(state, gain, call);
-  const profile = makeJamesQuestionProfile();
-  const question = pickQuestion(state, play, profile);
-  return { ...play, ...question, callKey, learningTier: question.tier };
+  const calls = opts.calls || {
+    offense: callKey,
+    defense: null,
+    matchup: null,
+  };
+  const context = makeSnapContext(calls, opts.privateOpponentSnapshot || null);
+  let snap;
+  try {
+    snap = FOOTBALL_DOMAIN.createSnap(context, {
+      gain,
+      callKey,
+      label: call.label,
+    });
+  } catch (error) {
+    if (error && typeof error === 'object') error.contextId = error.contextId ?? context.contextId;
+    throw error;
+  }
+  const candidate = questionFaultMode === 'invalid-projection'
+    ? { ...snap.proposal, endYardLine: snap.proposal.endYardLine + state.direction }
+    : snap.proposal;
+  const validation = FOOTBALL_DOMAIN.validateTransition(snap, candidate);
+  if (!validation.ok) {
+    const error = new Error('The proposed football transition failed independent validation.');
+    error.code = 'invalid-projection';
+    error.diagnostics = validation.diagnostics;
+    error.contextId = snap.contextId;
+    throw error;
+  }
+  return snap;
+}
+
+function readQuestionPointer(root, path) {
+  if (typeof path !== 'string' || !path.startsWith('/')) return undefined;
+  return path.slice(1).split('/').reduce((value, token) => {
+    const key = token.replace(/~1/g, '/').replace(/~0/g, '~');
+    return value != null && Object.prototype.hasOwnProperty.call(value, key) ? value[key] : undefined;
+  }, root);
+}
+
+function sameContractValue(left, right) {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
+function validateQuestionInstance(snap, question) {
+  if (!question || typeof question !== 'object') throw Object.assign(new Error('Question builder returned no contract.'), { code: 'malformed-question' });
+  if (question.contextId !== snap.contextId || !question.questionInstanceId || question.id !== question.familyId) {
+    throw Object.assign(new Error('Question identity does not link to the frozen snap.'), { code: 'malformed-question' });
+  }
+  if (!Array.isArray(question.bindings) || question.bindings !== question.premises || !question.bindings.length) {
+    throw Object.assign(new Error('Question bindings are missing or have drifted.'), { code: 'malformed-question' });
+  }
+  for (const binding of question.bindings) {
+    if (binding?.source?.kind === 'context'
+      && binding.source.path.startsWith('/context/privateOpponentSnapshot')) {
+      throw Object.assign(new Error('Question bindings may not expose the private opponent snapshot.'), { code: 'malformed-question' });
+    }
+    const actual = binding?.source?.kind === 'context'
+      ? readQuestionPointer(snap, binding.source.path)
+      : binding?.source?.kind === 'rule'
+        ? FOOTBALL_CONTEXTUAL_QUESTIONS.RULES[binding.source.ruleId]
+        : undefined;
+    if (actual === undefined || !sameContractValue(actual, binding.value)) {
+      throw Object.assign(new Error(`Question binding ${binding?.id || 'unknown'} is not grounded in the snap.`), { code: 'malformed-question' });
+    }
+  }
+  if (!Array.isArray(question.choices) || question.choices.length < 2
+    || question.choices.some(choice => !choice || typeof choice.id !== 'string' || !Object.prototype.hasOwnProperty.call(choice, 'value'))) {
+    throw Object.assign(new Error('Question choices must be stable structured values.'), { code: 'malformed-question' });
+  }
+  const correct = question.choices.filter(choice => choice.id === question.correctChoiceId);
+  if (correct.length !== 1 || !sameContractValue(correct[0].value, question.answer?.value)) {
+    throw Object.assign(new Error('Question must contain exactly one linked correct choice.'), { code: 'malformed-question' });
+  }
+  for (const stage of ['initial', 'guided', 'worked']) {
+    const visual = question.visuals?.[stage];
+    if (!visual || typeof visual.ariaLabel !== 'string' || visual.ariaLabel.trim() === '') {
+      throw Object.assign(new Error(`Question is missing its ${stage} visual contract.`), { code: 'malformed-question' });
+    }
+  }
+  return question;
+}
+
+function pickQuestion(snap) {
+  const profile = contextualQuestionProfile();
+  const inspected = FOOTBALL_CONTEXTUAL_QUESTIONS.inspect(snap, profile);
+  const eligible = questionFaultMode === 'empty-pool' ? [] : inspected.eligible;
+  if (!eligible.length) {
+    const error = new Error('No truthful contextual question family is eligible for this valid snap.');
+    error.code = 'empty-pool';
+    error.declined = inspected.declined;
+    error.familyId = null;
+    error.contextId = snap.contextId;
+    error.questionInstanceId = null;
+    throw error;
+  }
+  const entry = FOOTBALL_LEARNING.weightedPick(eligible, learningSession, schedulerRng);
+  if (!entry) throw Object.assign(new Error('The contextual scheduler returned no family.'), { code: 'empty-pool' });
+  let question = null;
+  try {
+    if (questionFaultMode === 'build-throw') {
+      throw Object.assign(new Error('Injected contextual builder failure.'), { code: 'build-throw' });
+    }
+    const firstSupport = entry.curriculumSource === 'workbook'
+      && entry.introducedOnPage > inspected.profile.completedThroughPage
+      ? 'guided'
+      : 'initial';
+    const support = FOOTBALL_LEARNING.supportFor(learningSession, entry.skill, firstSupport);
+    const built = FOOTBALL_CONTEXTUAL_QUESTIONS.build(snap, entry.familyId, {
+      support,
+      presentationRng,
+      profile: inspected.profile,
+    });
+    const source = questionFaultMode === 'malformed'
+      ? { ...built, choices: [] }
+      : built;
+    question = FOOTBALL_DOMAIN.deepFreeze(FOOTBALL_DOMAIN.clone({
+      ...source,
+      contextId: snap.contextId,
+      questionInstanceId: nextQuestionInstanceId(),
+    }));
+    return validateQuestionInstance(snap, question);
+  } catch (error) {
+    const failure = error && typeof error === 'object' ? error : new Error(String(error));
+    failure.familyId = failure.familyId ?? entry.familyId;
+    failure.contextId = failure.contextId ?? snap.contextId;
+    failure.questionInstanceId = failure.questionInstanceId ?? question?.questionInstanceId ?? null;
+    throw failure;
+  }
+}
+
+function legacyPlayFromTransition(snap, transition = snap.proposal, question = null) {
+  return FOOTBALL_DOMAIN.deepFreeze({
+    gain: transition.appliedGain,
+    label: snap.call.label,
+    callKey: snap.call.key,
+    oldYd: transition.startYardLine,
+    newYd: transition.endYardLine,
+    oldFdYd: transition.oldFirstDownLine,
+    newFdYd: transition.newFirstDownLine,
+    oldDown: transition.oldDown,
+    newDown: transition.newDown,
+    ytg: transition.oldYardsToGo,
+    newYtg: transition.newYardsToGo,
+    isTouchdown: transition.resultKind === 'touchdown',
+    gotFirstDown: transition.resultKind === 'firstDown',
+    isTurnoverOnDowns: transition.resultKind === 'turnoverOnDowns',
+    resultKind: transition.resultKind,
+    learningTier: question?.tier || null,
+  });
 }
 
 // -- Field --------------------------------------------------------------------
@@ -1326,71 +936,85 @@ function hideMathVisual() {
   overlay.setAttribute('aria-label', '');
 }
 
-function mathNumberToken(value, className = '') {
-  return `<span class="math-number ${className}">${value}</span>`;
-}
-
 function renderMathVisual() {
   const overlay = document.getElementById('math-overlay');
-  const math = state.math;
-  if (!overlay || !math || !['question', 'explanation'].includes(state.phase)) {
+  const question = state.questionInstance;
+  const support = state.questionUi?.support || 'initial';
+  const visual = question?.visuals?.[support];
+  if (!overlay || !visual || !['question', 'explanation'].includes(state.phase)) {
     hideMathVisual();
     return;
   }
-  const support = state.mathSupport || math.support || 'none';
-  const worked = support === 'worked';
+  const data = visual.data || {};
   overlay.hidden = false;
-  overlay.dataset.type = math.type;
+  overlay.dataset.type = visual.type;
   overlay.dataset.support = support;
-  let accessibleLabel = math.ariaLabel || 'Math support';
-  if (!worked && math.type === 'hops') {
-    accessibleLabel = `Start at ${math.start}. Move ${math.delta >= 0 ? 'forward' : 'back'} ${Math.abs(math.delta)}. The landing spot is unknown.`;
-  } else if (!worked && math.type === 'gap') {
-    accessibleLabel = `A number line from ${math.start} to ${math.target} with an unknown gap.`;
-  } else if (!worked && math.type === 'parts') {
-    accessibleLabel = `${math.start} and an unknown part make ${math.target}.`;
-  } else if (!worked && math.type === 'base-ten-move') {
-    accessibleLabel = `Start at ${math.start}. Change by ${math.delta}. The answer is unknown.`;
-  }
-  overlay.setAttribute('aria-label', accessibleLabel);
+  overlay.setAttribute('aria-label', visual.ariaLabel);
 
-  if (math.type === 'base-ten' || math.type === 'base-ten-move') {
-    const shownValue = math.type === 'base-ten-move' && !worked ? math.start : math.target;
-    const tens = math.type === 'base-ten-move' ? Math.floor(shownValue / 10) : (math.tens ?? Math.floor(shownValue / 10));
-    const ones = math.type === 'base-ten-move' ? shownValue % 10 : (math.ones ?? shownValue % 10);
-    overlay.innerHTML =
-      `<span class="math-caption">TENS</span><span class="math-caption">ONES</span>` +
-      `<span class="math-block-value">${tens}</span><span class="math-block-value">${ones}</span>` +
-      `<span class="math-blocks math-tens" aria-hidden="true">${'<i></i>'.repeat(Math.min(tens, 10))}</span>` +
-      `<span class="math-blocks math-ones" aria-hidden="true">${'<i></i>'.repeat(Math.min(ones, 10))}</span>`;
-    return;
+  let tokens = [];
+  switch (visual.type) {
+    case 'down-distance':
+      tokens = [`${DOWN_NAMES[data.down] || data.down} & ${data.yardsToGo}`];
+      break;
+    case 'parts':
+    case 'fact-family':
+      tokens = [data.knownPart, '+', visual.result ? visual.result.value : '?', '=', data.total];
+      break;
+    case 'marker-strip':
+      tokens = [`NEED ${data.needed}`, `PLAY ${data.proposedGain}`, visual.result ? `PAST ${visual.result.value}` : 'PAST ?'];
+      break;
+    case 'goal-distance':
+      tokens = ['BALL', `${data.distance} YDS`, 'GOAL'];
+      break;
+    case 'base-ten-distance':
+      tokens = [`${data.tens} TENS`, `${data.ones} ONES`, `= ${data.distance}`];
+      break;
+    case 'drive-strip':
+      tokens = ['DRIVE START', visual.result ? `${visual.result.value} YDS` : '? YDS', 'NOW'];
+      break;
+    case 'score-parts':
+      tokens = [`DUKE ${data.playerScore}`, '+', `UNC ${data.opponentScore}`, visual.result ? `= ${visual.result.value}` : '= ?'];
+      break;
+    case 'score-difference':
+      tokens = [`DUKE ${data.playerScore}`, 'APART', `UNC ${data.opponentScore}`, visual.result ? `${visual.result.value}` : '?'];
+      break;
+    case 'scoreboard-read':
+      tokens = [data.label || 'SCOREBOARD'];
+      break;
+    case 'comparison': {
+      const relation = visual.result?.value;
+      const relationLabel = relation === '<' ? 'LESS THAN' : relation === '>' ? 'GREATER THAN' : relation === '=' ? 'EQUAL TO' : '?';
+      tokens = [`${data.leftLabel} ${data.leftValue}`, relationLabel, `${data.rightLabel} ${data.rightValue}`];
+      break;
+    }
+    case 'hundreds-move': {
+      if (support === 'initial') {
+        tokens = [`${data.team} TOTAL ${data.startTotal}`, `+${data.proposedGain}`, visual.result ? `= ${visual.result.value}` : '= ?'];
+      } else {
+        tokens = Array.from({ length: data.proposedGain }, (_, index) => data.startTotal + index);
+        tokens.push(visual.result ? visual.result.value : '?');
+      }
+      break;
+    }
+    case 'drive-play-order':
+      tokens = [`DRIVE PLAY ${data.playNumber}`, visual.result ? visual.result.value : 'ORDINAL ?'];
+      break;
+    case 'base-ten-move': {
+      const start = data.startDistance ?? 0;
+      const moved = (data.wholeTensMoved ?? 0) * 10;
+      tokens = [start, `${data.direction < 0 ? '−' : '+'}${moved}`, visual.result ? `= ${visual.result.value}` : '= ?'];
+      break;
+    }
+    case 'touchdown-rule':
+      tokens = ['TOUCHDOWN', visual.result ? `${visual.result.value} POINTS` : '? POINTS'];
+      break;
+    default:
+      tokens = Object.values(data).filter(value => value !== null && ['string', 'number'].includes(typeof value));
+      if (!tokens.length) tokens = ['FOOTBALL MATH'];
   }
-
-  if (math.type === 'comparison') {
-    const leftTens = Math.floor(math.left / 10);
-    const rightTens = Math.floor(math.right / 10);
-    overlay.innerHTML =
-      `<span class="math-compare-side">${mathNumberToken(math.left)}<small>${leftTens} tens</small></span>` +
-      `<span class="math-compare-mark">?</span>` +
-      `<span class="math-compare-side">${mathNumberToken(math.right)}<small>${rightTens} tens</small></span>`;
-    return;
-  }
-
-  if (math.type === 'parts') {
-    overlay.innerHTML =
-      `<span class="math-parts"><span>${math.start}</span><span>${worked ? math.delta : '?'}</span></span>` +
-      `<span class="math-equals">make</span>${mathNumberToken(math.target, 'math-target')}`;
-    return;
-  }
-
-  const deltaText = `${math.delta >= 0 ? '+' : '−'}${Math.abs(math.delta)}`;
-  const targetText = math.type === 'gap' || worked ? math.target : '?';
-  overlay.innerHTML =
-    `<div class="math-line" aria-hidden="true"><span class="math-line-fill"></span>` +
-      `<span class="math-point math-start">${math.start}</span>` +
-      `<span class="math-hop">${math.type === 'gap' ? '? more' : deltaText}</span>` +
-      `<span class="math-point math-target">${targetText}</span></div>` +
-    (worked ? `<span class="math-worked">${math.start} ${math.delta >= 0 ? '+' : '−'} ${Math.abs(math.delta)} = ${math.target}</span>` : '');
+  overlay.innerHTML = `<div class="math-context-row" aria-hidden="true">${tokens.map((token, index) =>
+    `<span class="${index % 2 === 0 ? 'math-context-token' : 'math-context-link'}">${token}</span>`
+  ).join('')}</div>` + (support === 'worked' ? `<span class="math-worked">${question.workedExplanation.text}</span>` : '');
 }
 
 function hideContinueButton() {
@@ -1435,6 +1059,8 @@ function hideAnswerButtons() {
     b.textContent = '';
     delete b.dataset.slot;
     delete b.dataset.value;
+    delete b.dataset.choiceId;
+    b.removeAttribute('aria-label');
     b.classList.remove('wrong', 'correct');
   });
   hideContinueButton();
@@ -1451,21 +1077,26 @@ function renderButtons() {
   hideCallGrid();
   const row = document.getElementById('btn-row');
   row.classList.remove('hidden');
-  row.dataset.choiceType = state.choiceType || 'number';
+  const choices = state.questionInstance?.choices || [];
+  row.dataset.choiceType = choices.every(choice => typeof choice.value === 'number') ? 'number' : 'text';
   hideContinueButton();
   [0, 1, 2, 3].forEach(i => {
     const b = document.getElementById('b' + i);
-    const hasChoice = i < state.choices.length;
+    const choice = choices[i];
+    const hasChoice = Boolean(choice);
     b.classList.toggle('hidden', !hasChoice);
     b.disabled = !hasChoice;
     b.classList.remove('wrong', 'correct');
     if (!hasChoice) {
       b.textContent = '';
+      delete b.dataset.choiceId;
       return;
     }
-    b.textContent = state.choices[i];
+    b.textContent = choice.label;
     b.dataset.slot = String.fromCharCode(65 + i);
-    b.dataset.value = String(state.choices[i]);
+    b.dataset.value = String(choice.value);
+    b.dataset.choiceId = choice.id;
+    b.setAttribute('aria-label', choice.ariaLabel || choice.label);
   });
 }
 
@@ -1609,10 +1240,13 @@ function updateMuteButton() {
 }
 
 // -- Play flow ----------------------------------------------------------------
-function showCallPrompt() {
+function showCallPrompt({ preserveOpponentSnapshot = false } = {}) {
   clearTimeout(advTimer);
+  const opponentSnapshot = preserveOpponentSnapshot ? state.opponentSnapshot : null;
   Object.assign(state, blankPlayState(), { phase: 'call' });
-  if (state.possession === 'defense') state.opponentSnapshot = planOpponentSnap();
+  if (state.possession === 'defense') {
+    state.opponentSnapshot = opponentSnapshot || planOpponentSnap();
+  }
   updateStatus();
   if (state.possession === 'offense') {
     document.getElementById('play-label').textContent = downDistanceLabel(state.down, state.ytg);
@@ -1644,46 +1278,182 @@ function startDrive(possession) {
   showCallPrompt();
 }
 
-function prepareQuestion(p, labelHtml) {
-  Object.assign(state, {
-    g: p.gain,
-    label: p.label,
-    callKey: p.callKey,
-    questionId: p.id,
-    questionSkill: p.skill,
-    questionConcept: p.concept,
-    questionPurpose: p.purpose,
-    questionGrading: p.grading,
-    question: p.q,
-    correct: p.correct,
-    choices: p.choices,
-    choiceType: p.choiceType || 'number',
-    explain: p.explain,
-    hint: p.hint || 'Use the model and try the same question again.',
-    math: p.math || null,
-    mathSupport: p.math?.support || 'none',
-    attempt: 1,
-    missedChoiceIndexes: [],
-    continueRequired: false,
-    outcomeCommitted: false,
-    outcomeMessage: null,
-    play: p,
-    phase: 'question',
+function syncQuestionMirrors() {
+  const question = state.questionInstance;
+  const ui = state.questionUi || makeQuestionUiState();
+  const visual = question?.visuals?.[ui.support] || null;
+  state.questionId = question?.familyId || null;
+  state.questionSkill = question?.skill || null;
+  state.questionConcept = question?.concept || null;
+  state.questionPurpose = question?.purpose || null;
+  state.questionGrading = question?.grading || null;
+  state.question = question?.prompt?.text || null;
+  state.correct = question?.answer?.value ?? null;
+  state.choices = question?.choices?.map(choice => choice.value) || [];
+  state.choiceType = question?.choices?.every(choice => typeof choice.value === 'number') ? 'number' : 'text';
+  state.explain = question?.workedExplanation?.text || null;
+  state.hint = question?.hint?.text || null;
+  state.math = visual ? { ...visual, support: ui.support } : null;
+  state.mathSupport = ui.support;
+  state.attempt = ui.attempt;
+  state.missedChoiceIndexes = question
+    ? question.choices.map((choice, index) => ui.missedChoiceIds.includes(choice.id) ? index : -1).filter(index => index >= 0)
+    : [];
+  state.continueRequired = ui.continueRequired;
+  state.outcomeCommitted = ui.outcomeCommitted;
+}
+
+function activateSnapMirrors(snap, question = null) {
+  const play = legacyPlayFromTransition(snap, snap.proposal, question);
+  state.activeSnap = snap;
+  state.questionInstance = question;
+  state.pendingResolution = null;
+  state.questionUi = makeQuestionUiState();
+  if (question) state.questionUi.support = question.support;
+  state.g = snap.proposal.appliedGain;
+  state.label = snap.call.label;
+  state.callKey = snap.call.key;
+  state.defenseCallKey = snap.context.calls.defense;
+  state.opponentCallKey = snap.context.possession === 'defense' ? snap.context.calls.offense : null;
+  state.matchup = snap.context.calls.matchup;
+  state.play = play;
+  state.outcomeMessage = null;
+  syncQuestionMirrors();
+}
+
+function prepareQuestion(bundle, labelHtml, feedbackCopy = '') {
+  const { snap, question } = bundle;
+  activateSnapMirrors(snap, question);
+  state.pendingResolution = FOOTBALL_DOMAIN.deepFreeze({
+    schemaVersion: 1,
+    policy: 'awaitingAnswer',
+    contextId: snap.contextId,
+    questionInstanceId: question.questionInstanceId,
+    transitionToCommit: null,
   });
-  beginStatsPlay(p);
+  state.phase = 'question';
   document.getElementById('play-label').innerHTML = labelHtml;
-  document.getElementById('question').textContent = state.question;
+  document.getElementById('question').textContent = question.prompt.text;
   applyDeskHeader(state.possession === 'offense' ? 'questionOffense' : 'questionDefense');
   syncUiState();
-  setFeedback('');
+  const visibleGuidance = question.support === 'guided' ? question.hint.text : '';
+  setFeedback([feedbackCopy, visibleGuidance].filter(Boolean).join(' '), visibleGuidance ? 'info' : 'neutral');
   renderButtons();
   renderMathVisual();
+  if (questionFaultMode === 'prepare-after-ui') {
+    throw Object.assign(new Error('Injected question preparation failure after UI setup.'), {
+      code: 'question-presentation-failure',
+    });
+  }
+  beginStatsPlay(snap, question);
+  FOOTBALL_LEARNING.recordPresented(learningSession, question);
+}
+
+function restoreCallAfterInvalid(opponentSnapshot = null) {
+  if (state.possession === 'defense' && opponentSnapshot) state.opponentSnapshot = opponentSnapshot;
+  showCallPrompt({ preserveOpponentSnapshot: state.possession === 'defense' && Boolean(opponentSnapshot) });
+  setFeedback('That snap could not be validated. Call the play again.', 'info');
+}
+
+function handleInvalidSnap(error, opponentSnapshot = null) {
+  pendingStatsPlay = null;
+  reportQuestionDiagnostic(error?.code || 'invalid-context', {
+    message: error?.message || 'The football context or projection was invalid.',
+    diagnostics: error?.diagnostics || null,
+    familyId: error?.familyId ?? null,
+    contextId: error?.contextId ?? null,
+    questionInstanceId: error?.questionInstanceId ?? null,
+  });
+  restoreCallAfterInvalid(opponentSnapshot);
+}
+
+function handleQuestionPreparationFailure(error, snap, question, opponentSnapshot = null) {
+  pendingStatsPlay = null;
+  const preservedSnapshot = opponentSnapshot || snap.context.privateOpponentSnapshot || null;
+  reportQuestionDiagnostic('question-presentation-failure', {
+    message: error?.message || 'The contextual question UI could not be prepared.',
+    familyId: question?.familyId ?? null,
+    contextId: snap?.contextId ?? null,
+    questionInstanceId: question?.questionInstanceId ?? null,
+  });
+
+  Object.assign(state, blankPlayState(), { phase: 'call' });
+  if (state.possession === 'defense' && preservedSnapshot) state.opponentSnapshot = preservedSnapshot;
+  try {
+    showCallPrompt({ preserveOpponentSnapshot: state.possession === 'defense' && Boolean(preservedSnapshot) });
+  } catch (rollbackError) {
+    console.warn('[football:question-presentation-rollback-failure]', rollbackError?.message || rollbackError);
+  }
+  throw error;
+}
+
+function makePendingResolution(policy, transition) {
+  const snap = state.activeSnap;
+  if (!snap) throw new Error('Cannot resolve a play without an active snap');
+  const allowReprojection = transition.requestedGain !== snap.proposal.requestedGain;
+  const validated = FOOTBALL_DOMAIN.validateTransition(snap, transition, { allowReprojection });
+  if (!validated.ok) {
+    const error = new Error('Resolution transition failed independent validation.');
+    error.code = 'invalid-projection';
+    error.diagnostics = validated.diagnostics;
+    throw error;
+  }
+  return FOOTBALL_DOMAIN.deepFreeze({
+    schemaVersion: 1,
+    policy,
+    contextId: snap.contextId,
+    questionInstanceId: state.questionInstance?.questionInstanceId || null,
+    transitionToCommit: validated.value,
+  });
+}
+
+function bypassQuestionSubsystem(snap, error, feedbackCopy) {
+  const exact = FOOTBALL_DOMAIN.validateTransition(snap, snap.proposal);
+  if (!exact.ok) {
+    handleInvalidSnap(Object.assign(new Error('Question fallback rejected a contradictory football proposal.'), {
+      code: 'invalid-projection',
+      diagnostics: exact.diagnostics,
+    }), snap.context.privateOpponentSnapshot || state.opponentSelectionSnapshot || state.opponentSnapshot);
+    return;
+  }
+  reportQuestionDiagnostic(error?.code || 'question-subsystem-failure', {
+    message: error?.message || 'The contextual question could not be built.',
+    familyId: error?.familyId ?? null,
+    contextId: error?.contextId ?? snap.contextId,
+    questionInstanceId: error?.questionInstanceId ?? null,
+  });
+  activateSnapMirrors(snap, null);
+  state.phase = 'feedback';
+  beginBypassedStatsPlay(snap);
+  state.pendingResolution = makePendingResolution('questionBypass', exact.value);
+  applyDeskHeader(state.possession === 'offense' ? 'resultOffense' : 'resultDefense');
+  setFeedback(feedbackCopy || 'The play goes on without a question.', 'info');
+  commitPendingResolution();
 }
 
 function selectOffenseCall(callKey) {
   if (state.phase !== 'call' || state.possession !== 'offense') return;
-  const p = buildPlay(callKey);
-  prepareQuestion(p, `${p.label} attempt for <span>${yds(p.gain)}</span>`);
+  let snap;
+  try {
+    snap = makeActiveSnap(callKey, {
+      calls: { offense: callKey, defense: null, matchup: null },
+    });
+  } catch (error) {
+    handleInvalidSnap(error);
+    return;
+  }
+  let question;
+  try {
+    question = pickQuestion(snap);
+  } catch (error) {
+    bypassQuestionSubsystem(snap, error, 'The snap is valid, so the full play counts without a question.');
+    return;
+  }
+  try {
+    prepareQuestion({ snap, question }, `${snap.call.label}: if it works, <span>${yds(snap.proposal.appliedGain)}</span>`);
+  } catch (error) {
+    handleQuestionPreparationFailure(error, snap, question);
+  }
 }
 
 function getOpponentTendency(overrides = {}, profile = 'balanced') {
@@ -1694,7 +1464,7 @@ function getOpponentTendency(overrides = {}, profile = 'balanced') {
   }, profile);
 }
 
-function planOpponentSnap(overrides = {}, profile = 'balanced', rng = logicRng) {
+function planOpponentSnap(overrides = {}, profile = 'balanced', rng = footballRng) {
   return FOOTBALL_OPPONENT.planSnap({
     ...state,
     possessionsPerQuarter: POSSESSIONS_PER_QUARTER,
@@ -1714,40 +1484,62 @@ function selectDefenseCall(defenseCallKey) {
   const opponentCallKey = selection.plannedCallKey;
   const matched = defenseMatches(defenseCallKey, opponentCallKey);
   const defenseCall = DEFENSE_CALLS[defenseCallKey];
-  const p = buildPlay(opponentCallKey, {
-    gainMultiplier: matched ? 0.65 : 1.2,
-  });
-  Object.assign(state, {
-    defenseCallKey,
-    opponentCallKey,
-    opponentSnapshot: null,
-    opponentTendency: selection.tendency,
-    matchup: matched ? 'matched' : 'mismatch',
-  });
+  let snap;
+  try {
+    snap = makeActiveSnap(opponentCallKey, {
+      gainMultiplier: matched ? 0.65 : 1.2,
+      privateOpponentSnapshot: selection,
+      calls: {
+        offense: opponentCallKey,
+        defense: defenseCallKey,
+        matchup: matched ? 'matched' : 'mismatch',
+      },
+    });
+  } catch (error) {
+    handleInvalidSnap(error, selection);
+    return;
+  }
+  state.opponentTendency = selection.tendency;
+  state.opponentSelectionSnapshot = snap.context.privateOpponentSnapshot;
+  state.opponentSnapshot = null;
   const call = OFFENSE_CALLS[opponentCallKey];
   const read = matched ? 'Good matchup' : 'Mismatch';
-  prepareQuestion(p, `Opponent ${call.label.toLowerCase()} for <span>${yds(p.gain)}</span>`);
-  setFeedback(`${read}: ${defenseCall.label} vs ${call.label}. Your learning plan stays the same.`, 'info');
+  let question;
+  try {
+    question = pickQuestion(snap);
+  } catch (error) {
+    bypassQuestionSubsystem(snap, error, 'The snap is valid, so the threatened play counts without a question.');
+    return;
+  }
+  try {
+    prepareQuestion(
+      { snap, question },
+      `UNC is threatening ${call.label.toLowerCase()} for <span>${yds(snap.proposal.appliedGain)}</span>`,
+      `${read}: ${defenseCall.label} vs ${call.label}.`,
+    );
+  } catch (error) {
+    handleQuestionPreparationFailure(error, snap, question, snap.context.privateOpponentSnapshot);
+  }
 }
 
 function handleAnswer(idx) {
   if (state.phase !== 'question') return;
   const btn = document.getElementById('b' + idx);
   if (!btn || btn.disabled || btn.classList.contains('hidden')) return;
-  const val = state.choices[idx];
+  const choice = state.questionInstance?.choices?.[idx];
+  if (!choice) return;
   const question = learningQuestionFromState();
-  const isCorrect = val === state.correct;
+  const isCorrect = choice.id === question.correctChoiceId;
   FOOTBALL_LEARNING.recordAttempt(learningSession, question, {
-    possession: state.possession,
-    call: state.callKey,
-    attempt: state.attempt,
+    attempt: state.questionUi.attempt,
+    selectedChoiceId: choice.id,
     correct: isCorrect,
-    support: state.mathSupport,
+    support: state.questionUi.support,
   });
   FOOTBALL_STATS.recordAttempt(pendingStatsPlay, {
-    number: state.attempt,
+    number: state.questionUi.attempt,
     correct: isCorrect,
-    support: state.mathSupport,
+    support: state.questionUi.support,
   });
 
   if (isCorrect) {
@@ -1755,66 +1547,46 @@ function handleAnswer(idx) {
     return;
   }
 
-  handleInstructionalMiss(btn, idx, question);
+  handleInstructionalMiss(btn, choice, question);
 }
 
 function learningQuestionFromState() {
-  return {
-    id: state.questionId,
-    skill: state.questionSkill,
-    concept: state.questionConcept,
-    purpose: state.questionPurpose,
-    grading: state.questionGrading,
-    math: state.math,
-  };
+  return state.questionInstance;
 }
 
 function completeCorrectAnswer(btn, question) {
-  const result = state.attempt === 1 ? 'firstTryCorrect' : 'retryCorrect';
-  FOOTBALL_LEARNING.recordResolved(learningSession, question, result, {
-    possession: state.possession,
-    call: state.callKey,
-    support: state.mathSupport,
-  });
-  FOOTBALL_STATS.recordResolution(pendingStatsPlay, result);
-  if (state.questionGrading !== 'noStakes') {
-    state.gradedQuestions++;
-    state.correctAnswers++;
-  }
-  state.outcomeCommitted = true;
+  const result = state.questionUi.attempt === 1 ? 'firstTryCorrect' : 'retryCorrect';
+  const transition = state.possession === 'offense'
+    ? state.activeSnap.proposal
+    : FOOTBALL_DOMAIN.reprojectGain(state.activeSnap, 0);
+  state.pendingResolution = makePendingResolution(result, transition);
   btn.classList.add('correct');
   disableAnswers();
   state.phase = 'feedback';
-  syncUiState();
   hideContinueButton();
-
-  if (state.possession === 'defense') {
-    playCorrect();
-    const msg = outcomeMessage(PLAY_OUTCOME_COPY.defenseStop, state.opponentCallKey);
-    state.outcomeMessage = msg;
-    applyDeskHeader('resultDefense');
-    setFeedback(state.attempt > 1 ? `Great retry. ${msg}` : `${msg} ${state.explain || ''}`.trim(), 'positive');
-    resolveDefenseStop(msg);
-    return;
-  }
-
-  applyDeskHeader('resultOffense');
-  if (state.attempt > 1) setFeedback('Great retry. The full play counts!', 'positive');
-  resolveOffensePlay();
+  const msg = state.possession === 'defense'
+    ? outcomeMessage(PLAY_OUTCOME_COPY.defenseStop, state.opponentCallKey)
+    : state.questionUi.attempt > 1
+      ? 'Great retry. The full play counts!'
+      : 'Correct. Run the play!';
+  state.outcomeMessage = msg;
+  applyDeskHeader(state.possession === 'offense' ? 'resultOffense' : 'resultDefense');
+  setFeedback(msg, 'positive');
+  commitPendingResolution();
 }
 
-function handleInstructionalMiss(btn, idx, question) {
+function handleInstructionalMiss(btn, choice, question) {
   btn.classList.add('wrong');
   btn.disabled = true;
-  state.missedChoiceIndexes.push(idx);
+  state.questionUi.missedChoiceIds.push(choice.id);
 
-  if (state.attempt === 1) {
-    state.attempt = 2;
-    state.mathSupport = FOOTBALL_LEARNING.nextSupport(state.mathSupport);
-    if (state.math) state.math = { ...state.math, support: state.mathSupport };
+  if (state.questionUi.attempt === 1) {
+    state.questionUi.attempt = 2;
+    state.questionUi.support = FOOTBALL_LEARNING.nextSupport(state.questionUi.support);
+    syncQuestionMirrors();
     renderMathVisual();
     applyDeskHeader(state.possession === 'offense' ? 'retryOffense' : 'retryDefense');
-    setFeedback(`Good try. ${state.hint}`, 'info');
+    setFeedback(`Good try. ${question.hint.text}`, 'info');
     const next = [0, 1, 2, 3]
       .map(i => document.getElementById('b' + i))
       .find(button => button && !button.disabled && !button.classList.contains('hidden'));
@@ -1822,193 +1594,205 @@ function handleInstructionalMiss(btn, idx, question) {
     return;
   }
 
-  state.mathSupport = 'worked';
-  if (state.math) state.math = { ...state.math, support: 'worked' };
+  state.questionUi.support = 'worked';
   state.phase = 'explanation';
-  state.continueRequired = true;
+  state.questionUi.continueRequired = true;
+  const transition = state.possession === 'offense'
+    ? FOOTBALL_DOMAIN.reprojectGain(state.activeSnap, 0)
+    : FOOTBALL_DOMAIN.reprojectGain(state.activeSnap, Math.min(state.activeSnap.proposal.appliedGain, 3));
+  state.pendingResolution = makePendingResolution('secondMiss', transition);
+  recordQuestionResolution('secondMiss');
   disableAnswers();
+  syncQuestionMirrors();
   syncUiState();
   renderMathVisual();
   applyDeskHeader(state.possession === 'offense' ? 'explainOffense' : 'explainDefense');
-  const preview = state.questionGrading === 'noStakes' ? 'This preview never costs the play. ' : '';
-  setFeedback(`${preview}${state.explain || `The answer is ${state.correct}.`}`, 'info');
+  setFeedback(question.workedExplanation.text, 'info');
   showContinueButton();
 }
 
-function continueAfterExplanation() {
-  if (state.phase !== 'explanation' || !state.continueRequired || state.outcomeCommitted) return;
-  state.continueRequired = false;
-  state.outcomeCommitted = true;
-  hideContinueButton();
-  const question = learningQuestionFromState();
-  FOOTBALL_LEARNING.recordResolved(learningSession, question, 'secondMiss', {
-    possession: state.possession,
-    call: state.callKey,
-    support: state.mathSupport,
+function recordQuestionResolution(result) {
+  if (!state.questionInstance || state.questionUi.resolutionRecorded) return false;
+  FOOTBALL_LEARNING.recordResolved(learningSession, state.questionInstance, result, {
+    support: state.questionUi.support,
   });
-  FOOTBALL_STATS.recordResolution(pendingStatsPlay, 'secondMiss');
-  if (state.questionGrading !== 'noStakes') state.gradedQuestions++;
-  state.phase = 'feedback';
-  syncUiState();
+  FOOTBALL_STATS.recordResolution(pendingStatsPlay, result);
+  state.gradedQuestions++;
+  if (result === 'firstTryCorrect' || result === 'retryCorrect') state.correctAnswers++;
+  state.questionUi.resolutionRecorded = true;
+  syncQuestionMirrors();
+  return true;
+}
 
-  if (state.questionGrading === 'noStakes') {
-    if (state.possession === 'defense') {
-      const msg = 'Preview complete. Your defense makes the stop.';
-      state.outcomeMessage = msg;
-      applyDeskHeader('resultDefense');
-      setFeedback(msg, 'positive');
-      resolveDefenseStop(msg);
-    } else {
-      applyDeskHeader('resultOffense');
-      setFeedback('Preview complete. The full play still counts.', 'positive');
-      resolveOffensePlay();
-    }
-    return;
-  }
+function continueAfterExplanation() {
+  if (state.phase !== 'explanation' || !state.questionUi.continueRequired || state.questionUi.outcomeCommitted) return;
+  state.questionUi.continueRequired = false;
+  hideContinueButton();
+  state.phase = 'feedback';
+  syncQuestionMirrors();
+  syncUiState();
 
   if (state.possession === 'offense') {
     const msg = outcomeMessage(PLAY_OUTCOME_COPY.offenseMiss, state.callKey);
     state.outcomeMessage = msg;
     applyDeskHeader('resultOffense');
     setFeedback(`${msg} No gain, then the next down.`, 'negative');
-    resolveOffenseMiss();
-    return;
+  } else {
+    const cappedGain = state.pendingResolution.transitionToCommit.appliedGain;
+    const msg = outcomeMessage(PLAY_OUTCOME_COPY.defenseGain, state.opponentCallKey);
+    state.outcomeMessage = msg;
+    applyDeskHeader('resultDefense');
+    setFeedback(`${msg} The mistake costs only ${yds(cappedGain)}.`, 'negative');
   }
-
-  const original = state.play;
-  const call = OFFENSE_CALLS[state.opponentCallKey] || OFFENSE_CALLS.shortRun;
-  const cappedGain = Math.min(original.gain, 3);
-  state.play = { ...makePlaySnapshot(state, cappedGain, call), id: original.id };
-  state.g = cappedGain;
-  const msg = outcomeMessage(PLAY_OUTCOME_COPY.defenseGain, state.opponentCallKey);
-  state.outcomeMessage = msg;
-  applyDeskHeader('resultDefense');
-  setFeedback(`${msg} The mistake costs only ${yds(cappedGain)}.`, 'negative');
-  resolveDefenseGain(msg);
+  commitPendingResolution();
 }
 
-function applyPlayState(p) {
-  state.yd = p.newYd;
-  state.fdYd = p.newFdYd;
-  state.down = p.newDown;
-  state.ytg = p.newYtg;
-  state.animYd = p.newYd;
+function liveStateMatchesSnap(snap) {
+  const context = snap.context;
+  return state.possession === context.possession
+    && state.direction === context.direction
+    && state.quarter === context.quarter
+    && state.down === context.down
+    && state.ytg === context.yardsToGo
+    && state.yd === context.yardLine
+    && state.fdYd === context.firstDownLine
+    && state.driveStart === context.driveStart
+    && state.playerScore === context.scores.player
+    && state.opponentScore === context.scores.opponent
+    && state.playerTotalYards === context.totalYards.player
+    && state.opponentTotalYards === context.totalYards.opponent
+    && state.plays === context.plays
+    && state.drivePlays === context.drivePlays;
+}
+
+function applyCanonicalTransition(transition) {
+  if (state.possession === 'offense') state.playerTotalYards += transition.appliedGain;
+  else state.opponentTotalYards += transition.appliedGain;
+  state.yd = transition.endYardLine;
+  state.fdYd = transition.newFirstDownLine;
+  state.down = transition.newDown;
+  state.ytg = transition.newYardsToGo;
+  state.animYd = transition.endYardLine;
   state.drivePlays++;
   state.plays++;
+  state.g = transition.appliedGain;
+  state.play = legacyPlayFromTransition(state.activeSnap, transition, state.questionInstance);
   updateField(true);
   updateStatus();
 }
 
-function resolveOffensePlay() {
-  const p = state.play;
-  applyPlayState(p);
-  if (p.gain > 0 || p.isTouchdown) {
-    startPlayerRun(p.isTouchdown || p.gotFirstDown || p.gain >= 8);
-  }
+function outcomeForTransition(transition, policy) {
+  if (transition.resultKind === 'touchdown') return 'touchdown';
+  if (transition.resultKind === 'firstDown') return 'firstDown';
+  if (transition.resultKind === 'turnoverOnDowns') return 'turnoverOnDowns';
+  if (state.possession === 'defense' && transition.appliedGain === 0 && policy !== 'questionBypass') return 'stop';
+  return transition.appliedGain > 0 ? 'gain' : 'noGain';
+}
 
-  if (p.isTouchdown) {
-    state.tds++;
-    state.playerScore += TD_POINTS;
-    updateStatus();
-    finalizeStatsPlay(p.gain, 'touchdown');
-    setFeedback('Touchdown!', 'positive');
-    advTimer = setTimeout(showTD, 900);
-    return;
-  }
+function finishCommittedTransition(transition, policy, outcome) {
+  const gain = transition.appliedGain;
+  const offense = state.possession === 'offense';
 
-  if (p.isTurnoverOnDowns) {
-    finalizeStatsPlay(p.gain, 'turnoverOnDowns');
-    showFieldFloat(p.gain > 0 ? '+' + p.gain + ' YDS' : 'NO GAIN', 'negative');
-    setFeedback('Turnover on downs.', 'negative');
-    advTimer = setTimeout(() => finishPossession('Turnover on downs. Time to play defense!'), 1400);
-    return;
-  }
-
-  if (p.gotFirstDown) {
-    state.firstDowns++;
-    finalizeStatsPlay(p.gain, 'firstDown');
-    showFieldFloat('FIRST DOWN!', 'first-down');
-    flashFdLine();
-    setFeedback('First down!', 'positive');
-    playFirstDown();
-    clearTimeout(playerCelebrateDelayTimer);
-    playerCelebrateDelayTimer = setTimeout(startPlayerCelebrate, 700);
+  if (offense && gain > 0) {
+    startPlayerRun(transition.resultKind === 'touchdown' || transition.resultKind === 'firstDown' || gain >= 8);
+  } else if (!offense && gain === 0) {
+    showFieldFloat('STOPPED', 'negative');
+    flashDefenseStop();
+  } else if (gain > 0) {
+    showFieldFloat(`+${gain} YDS`);
   } else {
-    finalizeStatsPlay(p.gain, p.gain > 0 ? 'gain' : 'noGain');
-    showFieldFloat('+' + (p.gain || 0) + ' YDS');
+    showFieldFloat('NO GAIN', 'negative');
+  }
+
+  if (outcome === 'touchdown') {
+    if (offense) {
+      state.tds++;
+      state.playerScore += TD_POINTS;
+    } else {
+      state.opponentTds++;
+      state.opponentScore += TD_POINTS;
+    }
+    updateStatus();
+    finalizeStatsPlay(gain, outcome);
+    setFeedback(offense ? 'Touchdown!' : 'Opponent touchdown.', offense ? 'positive' : 'negative');
+    advTimer = setTimeout(() => showTD(offense ? 'offense' : 'defense'), 900);
+    return;
+  }
+
+  if (outcome === 'turnoverOnDowns') {
+    if (!offense) state.defenseStops++;
+    updateStatus();
+    finalizeStatsPlay(gain, outcome);
+    setFeedback('Turnover on downs.', offense ? 'negative' : 'positive');
+    if (!offense && (policy === 'firstTryCorrect' || policy === 'retryCorrect')) playCorrect();
+    advTimer = setTimeout(() => finishPossession(
+      offense ? 'Turnover on downs. Time to play defense!' : `${state.outcomeMessage || 'Your defense held!'} Turnover on downs!`
+    ), offense ? 1400 : 1500);
+    return;
+  }
+
+  if (outcome === 'firstDown') {
+    if (offense) {
+      state.firstDowns++;
+      showFieldFloat('FIRST DOWN!', 'first-down');
+      flashFdLine();
+      setFeedback('First down!', 'positive');
+      playFirstDown();
+      clearTimeout(playerCelebrateDelayTimer);
+      playerCelebrateDelayTimer = setTimeout(startPlayerCelebrate, 700);
+    }
+    finalizeStatsPlay(gain, outcome);
+    advTimer = setTimeout(showCallPrompt, offense ? 1400 : 1600);
+    return;
+  }
+
+  finalizeStatsPlay(gain, outcome);
+  if (outcome === 'stop') playCorrect();
+  if (offense && policy !== 'secondMiss' && policy !== 'questionBypass') {
     setFeedback('Correct.', 'positive');
     playCorrect();
   }
-  advTimer = setTimeout(showCallPrompt, 1400);
+  advTimer = setTimeout(showCallPrompt, policy === 'secondMiss' ? 1800 : offense ? 1400 : 1500);
 }
 
-function resolveOffenseMiss() {
-  state.drivePlays++;
-  state.plays++;
-  showFieldFloat('NO GAIN', 'negative');
-  const nextDown = state.down + 1;
-
-  if (nextDown > 4) {
-    updateStatus();
-    finalizeStatsPlay(0, 'turnoverOnDowns');
-    advTimer = setTimeout(() => finishPossession('Turnover on downs. Time to play defense!'), 1800);
-    return;
+function commitPendingResolution() {
+  const pending = state.pendingResolution;
+  const snap = state.activeSnap;
+  if (!pending || !snap || state.questionUi.outcomeCommitted) return false;
+  if (pending.contextId !== snap.contextId || !liveStateMatchesSnap(snap)) {
+    handleInvalidSnap(Object.assign(new Error('Live football state no longer matches the frozen snap.'), {
+      code: 'invalid-context',
+    }), state.opponentSelectionSnapshot);
+    return false;
+  }
+  const allowReprojection = pending.transitionToCommit.requestedGain !== snap.proposal.requestedGain;
+  const validation = FOOTBALL_DOMAIN.validateTransition(snap, pending.transitionToCommit, { allowReprojection });
+  if (!validation.ok) {
+    handleInvalidSnap(Object.assign(new Error('The frozen resolution is not a valid football transition.'), {
+      code: 'invalid-projection',
+      diagnostics: validation.diagnostics,
+    }), state.opponentSelectionSnapshot);
+    return false;
   }
 
-  state.down = nextDown;
-  state.ytg = distanceToMarker(state.yd, state.fdYd, state.direction);
-  updateStatus();
-  finalizeStatsPlay(0, 'noGain');
-  advTimer = setTimeout(showCallPrompt, 1800);
-}
-
-function resolveDefenseStop(message) {
-  state.drivePlays++;
-  state.plays++;
-  showFieldFloat('STOPPED', 'negative');
-  flashDefenseStop();
-  const nextDown = state.down + 1;
-
-  if (nextDown > 4) {
-    state.defenseStops++;
-    updateStatus();
-    finalizeStatsPlay(0, 'turnoverOnDowns');
-    advTimer = setTimeout(() => finishPossession(`${message || 'Your defense held!'} Turnover on downs!`), 1500);
-    return;
-  }
-
-  state.down = nextDown;
-  state.ytg = distanceToMarker(state.yd, state.fdYd, state.direction);
-  updateStatus();
-  finalizeStatsPlay(0, 'stop');
-  advTimer = setTimeout(showCallPrompt, 1500);
-}
-
-function resolveDefenseGain(message) {
-  const p = state.play;
-  showFieldFloat('+' + (p.gain || 0) + ' YDS');
-  applyPlayState(p);
-
-  if (p.isTouchdown) {
-    state.opponentTds++;
-    state.opponentScore += TD_POINTS;
-    updateStatus();
-    finalizeStatsPlay(p.gain, 'touchdown');
-    setFeedback('Opponent touchdown.', 'negative');
-    advTimer = setTimeout(() => showTD('defense'), 900);
-    return;
-  }
-
-  if (p.isTurnoverOnDowns) {
-    state.defenseStops++;
-    updateStatus();
-    finalizeStatsPlay(p.gain, 'turnoverOnDowns');
-    advTimer = setTimeout(() => finishPossession(`${message || 'Defense holds!'} Turnover on downs!`), 1600);
-    return;
-  }
-
-  finalizeStatsPlay(p.gain, p.gotFirstDown ? 'firstDown' : p.gain > 0 ? 'gain' : 'noGain');
-  advTimer = setTimeout(showCallPrompt, 1600);
+  applyCanonicalTransition(validation.value);
+  state.questionUi.outcomeCommitted = true;
+  if (pending.policy !== 'questionBypass') recordQuestionResolution(pending.policy);
+  syncQuestionMirrors();
+  const outcome = outcomeForTransition(validation.value, pending.policy);
+  dispatchFootballEvent('football:result', {
+    schemaVersion: 1,
+    familyId: state.questionInstance?.familyId || null,
+    contextId: snap.contextId,
+    questionInstanceId: state.questionInstance?.questionInstanceId || null,
+    possession: snap.context.possession,
+    policy: pending.policy,
+    outcome,
+    transition: validation.value,
+  });
+  syncUiState();
+  finishCommittedTransition(validation.value, pending.policy, outcome);
+  return true;
 }
 
 // ── Player sprite animations ────────────────────────────────────────────────
@@ -2297,9 +2081,8 @@ function showStart() {
 
 function startGame() {
   clearTimeout(advTimer);
-  learningSession = createLearningSession();
-  statsSession = FOOTBALL_STATS.createSession();
-  pendingStatsPlay = null;
+  if (sessionInitialized) return;
+  initGameSession();
   state = createGameState();
   hideOverlays();
   startDrive('offense');
@@ -2462,7 +2245,7 @@ function populateEndStats() {
 }
 
 function buildCoachReport() {
-  const concepts = Object.entries(learningSession.byConcept)
+  const concepts = Object.entries(learningSession?.byConcept || {})
     .filter(([, mastery]) => mastery.resolved > 0)
     .map(([concept, mastery]) => ({
       concept,
@@ -2532,8 +2315,7 @@ function restart() {
   clearConfetti('ov-td-confetti');
   clearConfetti('ov-end-confetti');
   resetPlayerAnimations();
-  learningSession = createLearningSession();
-  statsSession = FOOTBALL_STATS.createSession();
+  clearGameSessionInitialization();
   pendingStatsPlay = null;
   state = createGameState();
   prevPlayerScore = -1;
@@ -2544,6 +2326,12 @@ function restart() {
 }
 
 function renderGameToText() {
+  const learning = learningSession || {
+    presented: 0,
+    resolved: 0,
+    byConcept: {},
+    historicalMastery: {},
+  };
   return JSON.stringify({
     mode: state.phase,
     quarter: state.quarter,
@@ -2552,6 +2340,10 @@ function renderGameToText() {
     score: {
       player: state.playerScore,
       opponent: state.opponentScore,
+    },
+    totalYards: {
+      player: state.playerTotalYards,
+      opponent: state.opponentTotalYards,
     },
     down: state.down,
     ytg: state.ytg,
@@ -2587,14 +2379,19 @@ function renderGameToText() {
     defenseRead: document.getElementById('defense-read')?.textContent || null,
     matchup: state.matchup,
     gain: state.g ?? null,
-    learningTier: state.play?.learningTier || null,
-    questionId: state.questionId || null,
+    learningTier: state.questionInstance?.tier || null,
+    contextId: state.activeSnap?.contextId || null,
+    questionInstanceId: state.questionInstance?.questionInstanceId || null,
+    questionFamilyId: state.questionInstance?.familyId || null,
+    questionId: state.questionInstance?.familyId || null,
     questionSkill: state.questionSkill || null,
     questionConcept: state.questionConcept || null,
     questionPurpose: state.questionPurpose || null,
     questionGrading: state.questionGrading || null,
     question: state.question || null,
     choices: state.choices || [],
+    choiceIds: state.questionInstance?.choices?.map(choice => choice.id) || [],
+    correctChoiceId: state.questionInstance?.correctChoiceId || null,
     correct: state.correct ?? null,
     explain: state.explain || null,
     hint: state.hint || null,
@@ -2603,18 +2400,19 @@ function renderGameToText() {
       support: state.mathSupport,
       visible: !document.getElementById('math-overlay')?.hidden,
     } : null,
-    attempt: state.attempt || null,
+    attempt: state.questionInstance ? state.questionUi.attempt : null,
+    missedChoiceIds: state.questionUi?.missedChoiceIds || [],
     missedChoiceIndexes: state.missedChoiceIndexes || [],
-    retryAvailable: state.phase === 'question' && state.attempt === 2,
-    continueRequired: Boolean(state.continueRequired),
-    outcomeCommitted: Boolean(state.outcomeCommitted),
+    retryAvailable: state.phase === 'question' && state.questionUi?.attempt === 2,
+    continueRequired: Boolean(state.questionUi?.continueRequired),
+    outcomeCommitted: Boolean(state.questionUi?.outcomeCommitted),
     learning: {
-      presented: learningSession.presented,
-      resolved: learningSession.resolved,
+      presented: learning.presented,
+      resolved: learning.resolved,
       currentSkill: state.questionSkill || null,
       currentConcept: state.questionConcept || null,
-      byConcept: FOOTBALL_LEARNING.snapshot(learningSession.byConcept),
-      historicalMastery: FOOTBALL_LEARNING.snapshot(learningSession.historicalMastery),
+      byConcept: FOOTBALL_LEARNING.snapshot(learning.byConcept),
+      historicalMastery: FOOTBALL_LEARNING.snapshot(learning.historicalMastery),
     },
     coachReport: buildCoachReport(),
     outcomeMessage: state.outcomeMessage || null,
@@ -2622,75 +2420,152 @@ function renderGameToText() {
   });
 }
 
+function activeContractsSnapshot() {
+  return {
+    activeSnap: state.activeSnap ? FOOTBALL_LEARNING.snapshot(state.activeSnap) : null,
+    questionInstance: state.questionInstance ? FOOTBALL_LEARNING.snapshot(state.questionInstance) : null,
+    pendingResolution: state.pendingResolution ? FOOTBALL_LEARNING.snapshot(state.pendingResolution) : null,
+    questionUi: FOOTBALL_LEARNING.snapshot(state.questionUi || makeQuestionUiState()),
+    render: JSON.parse(renderGameToText()),
+    statsSession: statsSession ? FOOTBALL_STATS.sessionSnapshot(statsSession) : null,
+    learning: learningSession ? FOOTBALL_LEARNING.snapshot(learningSession) : null,
+  };
+}
+
+function seedDriveStateForTest(overrides = {}) {
+  if (!sessionInitialized) initGameSession(0x54c0de);
+  clearTimeout(advTimer);
+  const possession = overrides.possession === 'defense' ? 'defense' : 'offense';
+  const direction = overrides.direction ?? directionFor(possession);
+  const yardLine = overrides.yardLine ?? overrides.yd ?? startingYardFor(possession);
+  const yardsToGo = overrides.yardsToGo ?? overrides.ytg ?? 10;
+  const firstDownLine = overrides.firstDownLine ?? overrides.fdYd ?? yardLine + (direction * yardsToGo);
+  const score = overrides.scores || overrides.score || {};
+  const totalYards = overrides.totalYards || {};
+  const context = FOOTBALL_DOMAIN.normalizeContext({
+    contextId: `seed-validation-${contextSequence}`,
+    possession,
+    direction,
+    quarter: overrides.quarter ?? 1,
+    down: overrides.down ?? 1,
+    yardsToGo,
+    yardLine,
+    firstDownLine,
+    driveStart: overrides.driveStart ?? yardLine,
+    scores: {
+      player: score.player ?? overrides.playerScore ?? 0,
+      opponent: score.opponent ?? overrides.opponentScore ?? 0,
+    },
+    totalYards: {
+      player: totalYards.player ?? overrides.playerTotalYards ?? 0,
+      opponent: totalYards.opponent ?? overrides.opponentTotalYards ?? 0,
+    },
+    plays: overrides.plays ?? 0,
+    drivePlays: overrides.drivePlays ?? 0,
+    calls: { offense: null, defense: null, matchup: null },
+  });
+  pendingStatsPlay = null;
+  state = {
+    ...createGameState(),
+    quarter: context.quarter,
+    playerScore: context.scores.player,
+    opponentScore: context.scores.opponent,
+    playerTotalYards: context.totalYards.player,
+    opponentTotalYards: context.totalYards.opponent,
+    plays: context.plays,
+    quarterPossessions: overrides.quarterPossessions ?? 0,
+    tds: overrides.tds ?? 0,
+    opponentTds: overrides.opponentTds ?? 0,
+    defenseStops: overrides.defenseStops ?? 0,
+    correctAnswers: overrides.correctAnswers ?? 0,
+    gradedQuestions: overrides.gradedQuestions ?? 0,
+    firstDowns: overrides.firstDowns ?? 0,
+    possession: context.possession,
+    direction: context.direction,
+    yd: context.yardLine,
+    fdYd: context.firstDownLine,
+    down: context.down,
+    ytg: context.yardsToGo,
+    driveStart: context.driveStart,
+    drivePlays: context.drivePlays,
+    animYd: context.yardLine,
+    ...blankPlayState(),
+    phase: 'call',
+  };
+  if (overrides.opponentSnapshot) {
+    state.opponentSnapshot = FOOTBALL_DOMAIN.deepFreeze(FOOTBALL_DOMAIN.clone(overrides.opponentSnapshot));
+  }
+  hideOverlays();
+  updateField(false);
+  updateStatus();
+  showCallPrompt({ preserveOpponentSnapshot: possession === 'defense' && Boolean(state.opponentSnapshot) });
+  return JSON.parse(renderGameToText());
+}
+
+function answerChoiceForTest(choiceId) {
+  if (state.phase !== 'question' || !state.questionInstance) return false;
+  let resolvedId = choiceId;
+  if (choiceId === 'correct') resolvedId = state.questionInstance.correctChoiceId;
+  if (choiceId === 'wrong') {
+    resolvedId = state.questionInstance.choices.find(choice =>
+      choice.id !== state.questionInstance.correctChoiceId
+      && !state.questionUi.missedChoiceIds.includes(choice.id)
+    )?.id;
+  }
+  const index = state.questionInstance.choices.findIndex(choice => choice.id === resolvedId);
+  const button = index >= 0 ? document.getElementById(`b${index}`) : null;
+  if (index < 0 || !button || button.disabled) return false;
+  handleAnswer(index);
+  return activeContractsSnapshot();
+}
+
 window.render_game_to_text = renderGameToText;
 window.advanceTime = () => {};
 window.__footballTest = {
-  setRng(fn) {
-    if (typeof fn !== 'function') throw new TypeError('setRng expects a function');
-    logicRng = fn;
+  setRootSeed(seed) {
+    installRngStreams(seed);
   },
-  resetRng() { logicRng = Math.random; },
-  resetLearning() { learningSession = FOOTBALL_LEARNING.createSession(); },
+  setRngStreams(streams) {
+    const values = streams && [streams.football, streams.scheduler, streams.presentation];
+    if (!values || values.some(fn => typeof fn !== 'function')) {
+      throw new TypeError('setRngStreams expects football, scheduler, and presentation functions');
+    }
+    if (new Set(values).size !== values.length) {
+      throw new TypeError('Logical RNG streams must be independent function instances');
+    }
+    [footballRng, schedulerRng, presentationRng] = values;
+  },
+  resetRng() { installRngStreams(0x54c0de); },
+  resetLearning() { learningSession = createLearningSession(); },
   learningProfile() { return FOOTBALL_LEARNING.snapshot(FOOTBALL_LEARNING.PROFILE); },
   learningState() { return FOOTBALL_LEARNING.snapshot(learningSession); },
   coachReport() { return FOOTBALL_LEARNING.snapshot(buildCoachReport()); },
   statsHistory() { return FOOTBALL_STATS.history(); },
-  statsSession() { return FOOTBALL_STATS.sessionSnapshot(statsSession); },
+  statsSession() { return statsSession ? FOOTBALL_STATS.sessionSnapshot(statsSession) : null; },
   opponentProfiles() { return FOOTBALL_OPPONENT.PROFILES; },
   opponentSnapshot() { return FOOTBALL_LEARNING.snapshot(state.opponentSnapshot); },
   getOpponentTendency(overrides = {}, profile = 'balanced') {
     return getOpponentTendency(overrides, profile);
   },
-  planOpponentSnap(overrides = {}, profile = 'balanced', rng = logicRng) {
+  planOpponentSnap(overrides = {}, profile = 'balanced', rng = footballRng) {
     return planOpponentSnap(overrides, profile, rng);
   },
-  pickOpponentCall(weights, rng = logicRng) {
+  pickOpponentCall(weights, rng = footballRng) {
     return FOOTBALL_OPPONENT.pickCall(weights, rng);
   },
-  questionBank() {
-    return QUESTION_BANK.map(scheduledEntry).filter(entry => entry.enabled !== false).map(entry => ({
-      id: entry.id,
-      skill: entry.skill,
-      concept: entry.concept,
-      purpose: entry.purpose,
-      grading: entry.grading,
-      tier: entry.tier,
-      minCompletedPage: entry.minCompletedPage || 1,
-    }));
+  setQuestionFault(mode) {
+    const allowed = [null, 'empty-pool', 'build-throw', 'malformed', 'prepare-after-ui', 'invalid-context', 'invalid-projection'];
+    if (!allowed.includes(mode)) throw new TypeError(`Unknown question fault mode: ${mode}`);
+    questionFaultMode = mode;
   },
-  buildPlayAt(overrides = {}, callKey = 'shortRun') {
-    const before = state;
-    try {
-      state = { ...createGameState(), ...overrides };
-      return FOOTBALL_LEARNING.snapshot(buildPlay(callKey));
-    } finally {
-      state = before;
-    }
+  seedDriveState(overrides = {}) {
+    return seedDriveStateForTest(overrides);
   },
-  forceQuestion(question, possession = 'offense') {
-    state.possession = possession;
-    prepareQuestion({
-      label: 'Learning Play',
-      callKey: 'shortRun',
-      id: question.id || 'test-question',
-      skill: question.skill || 'test-skill',
-      concept: question.concept || question.skill || 'test-concept',
-      purpose: question.purpose || 'coreReview',
-      grading: question.grading || 'gate',
-      tier: question.tier || 'within-10',
-      q: question.q,
-      correct: question.correct,
-      choices: question.choices,
-      choiceType: question.choiceType || 'number',
-      explain: question.explain,
-      hint: question.hint,
-      math: question.math,
-      newYd: state.yd,
-      newFdYd: state.fdYd,
-      newDown: state.down,
-      newYtg: state.ytg,
-      gain: 3,
-    }, 'Learning play');
+  answerChoice(choiceId) {
+    return answerChoiceForTest(choiceId);
+  },
+  activeContracts() {
+    return activeContractsSnapshot();
   },
 };
 
@@ -2705,6 +2580,7 @@ function applyBootMode() {
   const boot = new URLSearchParams(window.location.search).get('boot');
   if (boot === 'offense-call') { startGame(); return true; }
   if (boot === 'defense-call') {
+    initGameSession();
     state = createGameState();
     hideOverlays();
     startDrive('defense');

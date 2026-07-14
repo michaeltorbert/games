@@ -3,10 +3,12 @@
 
 const FOOTBALL_STATS = (() => {
   const STORAGE_KEY = 'footballMathStats:v1';
-  const SCHEMA_VERSION = 1;
+  const SCHEMA_VERSION = 2;
+  const LEGACY_SCHEMA_VERSION = 1;
   const MAX_RECENT_PLAYS = 200;
   const OUTCOMES = ['touchdown', 'firstDown', 'turnoverOnDowns', 'stop', 'gain', 'noGain'];
   const RESOLUTIONS = ['firstTryCorrect', 'retryCorrect', 'secondMiss'];
+  const INSTRUCTIONAL_STATUSES = Object.freeze(['presented', 'bypassed']);
   let idSequence = 0;
   let storeCache;
   let storageWritable = true;
@@ -99,6 +101,7 @@ const FOOTBALL_STATS = (() => {
       firstDownLine: safeNumber(context.firstDownLine),
       direction: context.direction === -1 ? -1 : 1,
       score: normalizeScore(context.score),
+      totalYards: normalizeScore(context.totalYards),
       plays: safeInteger(context.plays),
       drivePlays: safeInteger(context.drivePlays),
     };
@@ -115,7 +118,8 @@ const FOOTBALL_STATS = (() => {
   }
 
   function normalizeQuestion(value) {
-    const question = isRecord(value) ? value : {};
+    if (!isRecord(value)) return null;
+    const question = value;
     return {
       id: safeString(question.id, 'unknown'),
       skill: safeString(question.skill, 'unknown'),
@@ -123,6 +127,19 @@ const FOOTBALL_STATS = (() => {
       purpose: safeString(question.purpose, 'unknown'),
       grading: question.grading === 'noStakes' ? 'noStakes' : 'gate',
       tier: safeString(question.tier, 'unknown'),
+    };
+  }
+
+  function normalizeLinks(value, question = null) {
+    const source = isRecord(value) ? value : {};
+    const links = isRecord(source.links) ? source.links : {};
+    const sourceQuestion = isRecord(question) ? question : {};
+    return {
+      familyId: safeString(links.familyId ?? source.familyId ?? sourceQuestion.familyId ?? sourceQuestion.id),
+      contextId: safeString(links.contextId ?? source.contextId ?? sourceQuestion.contextId),
+      questionInstanceId: safeString(
+        links.questionInstanceId ?? source.questionInstanceId ?? sourceQuestion.questionInstanceId,
+      ),
     };
   }
 
@@ -154,20 +171,27 @@ const FOOTBALL_STATS = (() => {
 
   function normalizeRow(value) {
     if (!isRecord(value)) return null;
-    const attempts = Array.isArray(value.attempts)
+    const instructionalStatus = value.instructionalStatus === 'bypassed' ? 'bypassed' : 'presented';
+    const question = instructionalStatus === 'presented' ? normalizeQuestion(value.question) : null;
+    const resolution = instructionalStatus === 'presented' && RESOLUTIONS.includes(value.resolution)
+      ? value.resolution
+      : null;
+    if (instructionalStatus === 'presented' && (!question || !resolution)) return null;
+    const attempts = instructionalStatus === 'presented' && Array.isArray(value.attempts)
       ? value.attempts.slice(0, 2).map((attempt, index) => normalizeAttempt(attempt, index + 1))
       : [];
     const outcome = OUTCOMES.includes(value.outcome) ? value.outcome : 'noGain';
-    const resolution = RESOLUTIONS.includes(value.resolution) ? value.resolution : 'secondMiss';
     return {
       id: safeString(value.id, makeId('play')),
       gameId: safeString(value.gameId, 'unknown-game'),
       sequence: Math.max(1, safeInteger(value.sequence, 1)),
       completedAt: safeString(value.completedAt, new Date().toISOString()),
+      instructionalStatus,
+      links: normalizeLinks(value, value.question),
       preSnap: normalizeContext(value.preSnap),
       calls: normalizeCalls(value.calls),
       offeredYards: Math.max(0, safeNumber(value.offeredYards)),
-      question: normalizeQuestion(value.question),
+      question,
       attempts,
       resolution,
       actualYards: Math.max(0, safeNumber(value.actualYards)),
@@ -208,7 +232,7 @@ const FOOTBALL_STATS = (() => {
       parsed = JSON.parse(raw);
     } catch (error) {
       // Corrupt JSON at our known key is recoverable. Keep storage writable so
-      // the next completed play can replace it with a valid v1 payload.
+      // the next completed play can replace it with a valid current payload.
       storeCache = emptyStore();
       return storeCache;
     }
@@ -218,9 +242,10 @@ const FOOTBALL_STATS = (() => {
       storeCache = emptyStore();
       return storeCache;
     }
-    storeCache = isRecord(parsed) && parsed.schemaVersion === SCHEMA_VERSION
-      ? normalizeStore(parsed)
-      : emptyStore();
+    const supportedSchema = isRecord(parsed)
+      && (parsed.schemaVersion === SCHEMA_VERSION || parsed.schemaVersion === LEGACY_SCHEMA_VERSION);
+    storeCache = supportedSchema ? normalizeStore(parsed) : emptyStore();
+    if (supportedSchema && parsed.schemaVersion === LEGACY_SCHEMA_VERSION) saveStore(storeCache);
     return storeCache;
   }
 
@@ -265,16 +290,19 @@ const FOOTBALL_STATS = (() => {
     };
   }
 
-  function beginPlay(session, details) {
+  function beginPendingPlay(session, details, instructionalStatus) {
     const startedAtMs = monotonicNow();
+    const question = instructionalStatus === 'presented' ? details.question : null;
     return {
       id: makeId('play'),
       gameId: session.gameId,
       sequence: session.nextSequence++,
+      instructionalStatus,
+      links: normalizeLinks(details, question),
       preSnap: details.preSnap,
       calls: details.calls,
       offeredYards: details.offeredYards,
-      question: details.question,
+      question,
       attempts: [],
       resolution: null,
       startedAtMs,
@@ -283,8 +311,17 @@ const FOOTBALL_STATS = (() => {
     };
   }
 
+  function beginPlay(session, details) {
+    return beginPendingPlay(session, details, 'presented');
+  }
+
+  function beginBypassedPlay(session, details) {
+    return beginPendingPlay(session, details, 'bypassed');
+  }
+
   function recordAttempt(pending, details) {
-    if (!pending || pending.finalized || pending.attempts.length >= 2) return false;
+    if (!pending || pending.finalized || pending.instructionalStatus !== 'presented'
+      || pending.attempts.length >= 2) return false;
     const now = monotonicNow();
     pending.attempts.push({
       number: details.number,
@@ -297,7 +334,8 @@ const FOOTBALL_STATS = (() => {
   }
 
   function recordResolution(pending, resolution) {
-    if (!pending || pending.finalized || !RESOLUTIONS.includes(resolution)) return false;
+    if (!pending || pending.finalized || pending.instructionalStatus !== 'presented'
+      || !RESOLUTIONS.includes(resolution)) return false;
     pending.resolution = resolution;
     return true;
   }
@@ -307,6 +345,7 @@ const FOOTBALL_STATS = (() => {
     aggregates.actualYards += row.actualYards;
     aggregates.byPossession[row.preSnap.possession]++;
     aggregates.byOutcome[row.outcome]++;
+    if (row.instructionalStatus === 'bypassed') return;
     if (row.question.grading === 'noStakes') {
       aggregates.learning.noStakesPlays++;
       return;
@@ -316,7 +355,7 @@ const FOOTBALL_STATS = (() => {
   }
 
   function updateMastery(mastery, row) {
-    if (row.question.grading === 'noStakes') return;
+    if (row.instructionalStatus === 'bypassed' || row.question.grading === 'noStakes') return;
     const concept = row.question.concept;
     if (!mastery[concept]) {
       mastery[concept] = { resolved: 0, firstTryCorrect: 0, retryCorrect: 0, secondMiss: 0 };
@@ -338,8 +377,17 @@ const FOOTBALL_STATS = (() => {
   }
 
   function completePlay(session, pending, details) {
-    if (!pending || pending.finalized || !pending.resolution) return false;
-    pending.finalized = true;
+    if (!pending || pending.finalized || pending.instructionalStatus !== 'presented'
+      || !isRecord(pending.question) || !pending.resolution) return false;
+    return completePendingPlay(session, pending, details);
+  }
+
+  function completeBypassedPlay(session, pending, details) {
+    if (!pending || pending.finalized || pending.instructionalStatus !== 'bypassed') return false;
+    return completePendingPlay(session, pending, details);
+  }
+
+  function completePendingPlay(session, pending, details) {
     const row = normalizeRow({
       ...pending,
       completedAt: new Date().toISOString(),
@@ -347,6 +395,8 @@ const FOOTBALL_STATS = (() => {
       outcome: details.outcome,
       postPlay: details.postPlay,
     });
+    if (!row) return false;
+    pending.finalized = true;
     session.completedPlays.push(row);
     appendRow(row);
     return row;
@@ -360,11 +410,14 @@ const FOOTBALL_STATS = (() => {
     STORAGE_KEY,
     SCHEMA_VERSION,
     MAX_RECENT_PLAYS,
+    INSTRUCTIONAL_STATUSES,
     createSession,
     beginPlay,
+    beginBypassedPlay,
     recordAttempt,
     recordResolution,
     completePlay,
+    completeBypassedPlay,
     history: () => snapshot(loadStore()),
     masterySnapshot: () => snapshot(loadStore().mastery),
     sessionSnapshot: session => snapshot(session),
