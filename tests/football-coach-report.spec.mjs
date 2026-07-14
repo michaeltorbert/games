@@ -19,6 +19,23 @@ test('coach report uses this game only and keeps the final CTA above the fold', 
     { label: 'Learning today', value: 'Keep playing to build your learning recap' },
   ]);
 
+  const extensionLabels = await page.evaluate(() => {
+    const result = {};
+    for (const concept of ['line-to-gain-comparison', 'team-total-yards', 'drive-play-order']) {
+      learningSession.byConcept = {
+        [concept]: { resolved: 1, firstTryCorrect: 1, retryCorrect: 0, secondMiss: 0 },
+      };
+      result[concept] = buildCoachReport()[0].value;
+    }
+    learningSession.byConcept = {};
+    return result;
+  });
+  expect(extensionLabels).toEqual({
+    'line-to-gain-comparison': 'Comparing the play to the marker',
+    'team-total-yards': 'Team yards through 120',
+    'drive-play-order': 'Play order in the drive',
+  });
+
   await page.evaluate(() => {
     const base = { purpose: 'coreReview', grading: 'gate' };
     FOOTBALL_LEARNING.recordResolved(learningSession, {

@@ -17,6 +17,7 @@ const OFFENSE_SEED = Object.freeze({
   firstDownLine: 38,
   driveStart: 20,
   scores: { player: 7, opponent: 7 },
+  totalYards: { player: 83, opponent: 71 },
   plays: 4,
   drivePlays: 2,
 });
@@ -31,6 +32,7 @@ const DEFENSE_SEED = Object.freeze({
   firstDownLine: 60,
   driveStart: 80,
   scores: { player: 14, opponent: 7 },
+  totalYards: { player: 83, opponent: 71 },
   plays: 9,
   drivePlays: 2,
 });
@@ -160,6 +162,78 @@ test('presented questions carry linked IDs, grounded bindings, and structured st
   expect(questionInstanceIds.size).toBe(cases.length);
 });
 
+test('approved past-100 team yards start visibly guided and commit the real total once', async ({ page }, testInfo) => {
+  primaryOnly(testInfo);
+  await cleanBoot(page, 0x10054);
+  const seeded = await seedDrive(page, {
+    ...OFFENSE_SEED,
+    totalYards: { player: 98, opponent: 71 },
+  });
+
+  const schedulerDraw = await page.evaluate(() => {
+    const context = FOOTBALL_DOMAIN.normalizeContext({
+      contextId: 'past-100-probe',
+      possession: state.possession,
+      direction: state.direction,
+      quarter: state.quarter,
+      down: state.down,
+      yardsToGo: state.ytg,
+      yardLine: state.yd,
+      firstDownLine: state.fdYd,
+      driveStart: state.driveStart,
+      scores: { player: state.playerScore, opponent: state.opponentScore },
+      totalYards: { player: state.playerTotalYards, opponent: state.opponentTotalYards },
+      plays: state.plays,
+      drivePlays: state.drivePlays,
+      calls: { offense: 'shortRun', defense: null, matchup: null },
+    });
+    const snap = FOOTBALL_DOMAIN.createSnap(context, { gain: 2, callKey: 'shortRun', label: 'Short Run' });
+    const entries = FOOTBALL_CONTEXTUAL_QUESTIONS.inspect(snap, {
+      completedThroughPage: FOOTBALL_LEARNING.PROFILE.completedThroughPage,
+      includedThroughPage: FOOTBALL_LEARNING.PROFILE.includedThroughPage,
+      computationMax: FOOTBALL_LEARNING.PROFILE.computationMax,
+      displayMax: FOOTBALL_LEARNING.PROFILE.displayMax,
+    }).eligible;
+    const probeSession = FOOTBALL_LEARNING.createSession();
+    let draw = null;
+    for (let index = 0; index < 2000; index++) {
+      const candidate = (index + 0.5) / 2000;
+      if (FOOTBALL_LEARNING.weightedPick(entries, probeSession, () => candidate).familyId === 'team-yards-past-100') {
+        draw = candidate;
+        break;
+      }
+    }
+    if (draw === null) throw new Error('Could not target team-yards-past-100 in the scheduler pool');
+    window.__footballTest.setRngStreams({
+      football: () => 0,
+      scheduler: () => draw,
+      presentation: () => 0.4,
+    });
+    return draw;
+  });
+  expect(schedulerDraw).not.toBeNull();
+
+  await chooseCall(page, 'Short Run');
+  const before = await activeContracts(page);
+  expect(before.questionInstance.familyId).toBe('team-yards-past-100');
+  expect(before.questionInstance.introducedOnPage).toBe(149);
+  expect(before.questionUi.support).toBe('guided');
+  expect(before.questionInstance.visuals.guided.result).toBeNull();
+  await expect(page.locator('#feedback')).toContainText(before.questionInstance.hint.text);
+  await expect(page.locator('#math-overlay')).toHaveAttribute('data-type', 'hundreds-move');
+  await expect(page.locator('#math-overlay')).toContainText('98');
+  await expect(page.locator('#math-overlay')).toContainText('99');
+  await expect(page.locator('#math-overlay')).toContainText('?');
+  await expect(page.locator('#math-overlay')).not.toContainText('100');
+
+  const after = await answerChoice(page, before.questionInstance.correctChoiceId);
+  expect(after.activeSnap.proposal.appliedGain).toBe(2);
+  expect(after.render.totalYards).toEqual({ player: 100, opponent: 71 });
+  expect(after.statsSession.completedPlays).toHaveLength(1);
+  expect(after.statsSession.completedPlays[0].postPlay.totalYards).toEqual({ player: 100, opponent: 71 });
+  expect(seeded.totalYards).toEqual({ player: 98, opponent: 71 });
+});
+
 test('a correct offense answer commits the frozen proposal exactly once', async ({ page }, testInfo) => {
   primaryOnly(testInfo);
   await cleanBoot(page, 0x10154);
@@ -174,6 +248,10 @@ test('a correct offense answer commits the frozen proposal exactly once', async 
   expect(after.render.absoluteYard).toBe(snap.proposal.endYardLine);
   expect(after.render.absoluteYard - seeded.absoluteYard)
     .toBe(snap.context.direction * snap.proposal.appliedGain);
+  expect(after.render.totalYards).toEqual({
+    player: seeded.totalYards.player + snap.proposal.appliedGain,
+    opponent: seeded.totalYards.opponent,
+  });
 
   expect(after.statsSession.completedPlays).toHaveLength(1);
   const [row] = after.statsSession.completedPlays;
@@ -208,6 +286,7 @@ test('a second offense miss freezes zero gain until Continue and double Continue
   const after = await continueTwiceSynchronously(page);
   expect(after.render.plays).toBe(seeded.plays + 1);
   expect(after.render.absoluteYard).toBe(seeded.absoluteYard);
+  expect(after.render.totalYards).toEqual(seeded.totalYards);
   expect(after.statsSession.completedPlays).toHaveLength(1);
   expect(after.statsSession.completedPlays[0]).toMatchObject({ actualYards: 0 });
   expect(after.learning.resolved).toBe(before.learning.resolved + 1);
@@ -224,6 +303,7 @@ test('a correct defense answer commits a zero-yard stop', async ({ page }, testI
   const after = await answerChoice(page, before.questionInstance.correctChoiceId);
   expect(after.render.plays).toBe(seeded.plays + 1);
   expect(after.render.absoluteYard).toBe(seeded.absoluteYard);
+  expect(after.render.totalYards).toEqual(seeded.totalYards);
   expect(after.statsSession.completedPlays).toHaveLength(1);
   expect(after.statsSession.completedPlays[0]).toMatchObject({
     offeredYards: before.activeSnap.proposal.appliedGain,
@@ -249,6 +329,10 @@ test('a second defense miss caps the frozen result at min(proposal, 3)', async (
   const cappedGain = Math.min(proposal, 3);
   expect(after.render.plays).toBe(seeded.plays + 1);
   expect(after.render.absoluteYard).toBe(seeded.absoluteYard - cappedGain);
+  expect(after.render.totalYards).toEqual({
+    player: seeded.totalYards.player,
+    opponent: seeded.totalYards.opponent + cappedGain,
+  });
   expect(after.statsSession.completedPlays).toHaveLength(1);
   expect(after.statsSession.completedPlays[0]).toMatchObject({
     offeredYards: proposal,
@@ -282,6 +366,10 @@ for (const fault of ['empty-pool', 'build-throw', 'malformed']) {
     expect(row.actualYards).toBe(row.offeredYards);
     expect(after.render.absoluteYard - seeded.absoluteYard)
       .toBe(OFFENSE_SEED.direction * row.offeredYards);
+    expect(after.render.totalYards).toEqual({
+      player: seeded.totalYards.player + row.offeredYards,
+      opponent: seeded.totalYards.opponent,
+    });
     expect(row.links.familyId).toBeNull();
     expect(row.links.contextId).toEqual(expect.anything());
     expect(row.links.questionInstanceId).toBeNull();
@@ -321,6 +409,7 @@ test('invalid context commits nothing and reopens the same defense call with its
   expect(after.render.possession).toBe('defense');
   expect(after.render.plays).toBe(seeded.plays);
   expect(after.render.absoluteYard).toBe(seeded.absoluteYard);
+  expect(after.render.totalYards).toEqual(seeded.totalYards);
   expect(after.activeSnap).toBeNull();
   expect(after.questionInstance).toBeNull();
   expect(after.pendingResolution).toBeNull();
@@ -349,6 +438,7 @@ test('invalid projection commits nothing and reopens the same defense call with 
   expect(after.render.mode).toBe('call');
   expect(after.render.plays).toBe(seeded.plays);
   expect(after.render.absoluteYard).toBe(seeded.absoluteYard);
+  expect(after.render.totalYards).toEqual(seeded.totalYards);
   expect(after.activeSnap).toBeNull();
   expect(after.questionInstance).toBeNull();
   expect(after.pendingResolution).toBeNull();
@@ -398,6 +488,7 @@ test('late question preparation failure rolls back and never masquerades as a by
   expect(after.render.mode).toBe('call');
   expect(after.render.plays).toBe(seeded.plays);
   expect(after.render.absoluteYard).toBe(seeded.absoluteYard);
+  expect(after.render.totalYards).toEqual(seeded.totalYards);
   expect(after.activeSnap).toBeNull();
   expect(after.questionInstance).toBeNull();
   expect(after.pendingResolution).toBeNull();

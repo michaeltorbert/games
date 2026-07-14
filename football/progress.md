@@ -113,3 +113,21 @@ Original prompt: Make issue #54's football math genuinely arise from the live ga
 - Visually inspected offense question/retry and defense question/explanation states across representative iPad and phone targets; the live situation, answer controls, support, and Continue action remain readable and reachable.
 - Completed the prescribed browser-client smoke on a live offense question; `render_game_to_text()` exposed the sanitized snap-grounded contracts and no console/page-error artifact was produced.
 - Used no additional Claude capacity during implementation or verification; the implementation review remains intentionally deferred until the user's quota refreshes.
+
+---
+
+Original prompt: Expand Football question content through the end of Math Mammoth Grade 1-A while keeping every question relevant to the live game situation and conserving Claude usage.
+
+## Full-book question ceiling refinement
+
+- Audited the licensed 179-page workbook directly. Printed and PDF page numbers match; page 143 remains the last actually completed page, while page 179 is now the user-approved Football question ceiling.
+- Separated `completedThroughPage: 143` from `includedThroughPage: 179` so authorization does not falsely claim completion. Material introduced after page 143 begins with visible guided support.
+- Kept general computation within 10 while raising the honest display band to 120.
+- Added grounded families for proposed gain versus yards needed, real cumulative team yards crossing 100 through 120, and the current play's ordinal place in its drive.
+- Audited every family against the workbook: workbook-derived metadata now records the exact earliest source page, football-only literacy is marked separately, and the play-versus-need comparison stays in its genuine page-39 band through 16 instead of masquerading as the later page-145 place-value lesson.
+- Kept optional skip-counting unscheduled except where the existing whole-ten field-distance work already follows real 10-yard movement; inventing equal “jumps” inside a play would not describe the snap truthfully.
+- Added authoritative player/opponent cumulative-yard totals to the frozen snap, exact-once reducer, stats context, test seeding, and semantic state.
+- Kept workbook clock, AM/PM, and calendar topics authorized but unscheduled: Football has no truthful live-snap clock or date fact, so injecting them would recreate the unrelated-math problem from issue #54.
+- Added explicit visual renderers, accessible comparison labels, specific Coach Report labels, and visible guided-first hints for included-but-not-completed content.
+- Passed the complete six-device release gate after the full-book refinement: 26/26 Node checks, 161 Playwright tests passed, 145 intentional project skips, and 108/108 canonical screenshots verified. A final strengthened source/support assertion also passed 7/7 on the primary iPad project.
+- Used no Claude capacity for this refinement; independent Codex curriculum and code audits supplied the second-agent review.

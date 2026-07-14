@@ -255,6 +255,12 @@
     integerDiagnostic(playerScore, '/scores/player', 0, Number.MAX_SAFE_INTEGER, diagnostics);
     integerDiagnostic(opponentScore, '/scores/opponent', 0, Number.MAX_SAFE_INTEGER, diagnostics);
 
+    const totalYardsInput = isRecord(input.totalYards) ? input.totalYards : {};
+    const playerTotalYards = firstDefined(totalYardsInput.player, input.playerTotalYards, 0);
+    const opponentTotalYards = firstDefined(totalYardsInput.opponent, input.opponentTotalYards, 0);
+    integerDiagnostic(playerTotalYards, '/totalYards/player', 0, Number.MAX_SAFE_INTEGER, diagnostics);
+    integerDiagnostic(opponentTotalYards, '/totalYards/opponent', 0, Number.MAX_SAFE_INTEGER, diagnostics);
+
     const callsInput = isRecord(input.calls) ? input.calls : {};
     const offenseCallFallback = possession === 'defense'
       ? input.opponentCallKey
@@ -339,6 +345,10 @@
       scores: {
         player: playerScore,
         opponent: opponentScore,
+      },
+      totalYards: {
+        player: playerTotalYards,
+        opponent: opponentTotalYards,
       },
       plays,
       drivePlays,

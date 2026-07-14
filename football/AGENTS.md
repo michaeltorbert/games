@@ -14,6 +14,10 @@ repository-level `AGENTS.md`.
 - Do not infer that the learner completed two pages on every calendar day.
   `usualPagesPerDay` is a pacing norm; `completedThroughPage` changes only when
   the user provides a new progress update.
+- Keep factual completion separate from the user-approved Football question
+  ceiling. `includedThroughPage` may authorize later concepts without claiming
+  those workbook pages are complete. Material introduced after factual
+  completion starts with visible guided support.
 - Summarize or cite lesson concepts in implementation notes and reviews. Do not
   paste long passages or reproduce workbook pages in generated artifacts.
 
@@ -25,10 +29,16 @@ repository-level `AGENTS.md`.
   Addition/subtraction fluency may remain within 10 or 20 while current place-
   value work legitimately reads, decomposes, compares, and moves through
   two-digit numbers up to 100.
-- Use current and recently completed curriculum skills for graded questions.
-  Upcoming or curriculum-only practice does not belong in a live snap. A future
-  Coach Replay mode may provide pure curriculum practice without football
-  stakes once that mode is designed explicitly.
+- Use completed or explicitly included curriculum skills for graded questions,
+  but only when the concept is genuinely supplied by the live football state.
+  Approval through the end of a book authorizes concepts; it does not justify a
+  random worksheet question during a snap. Clock, AM/PM, and calendar work must
+  remain unscheduled until Football has a truthful relevant source for it. A
+  future Coach Replay mode may provide pure curriculum practice without
+  football stakes once that mode is designed explicitly.
+- Keep question-family source metadata auditable. Workbook-derived families
+  must name their earliest relevant workbook page; football-only display or
+  rule literacy must be labeled separately and must not claim a workbook page.
 - Every in-snap question must be derived from an immutable snapshot of the live
   football situation, including the selected calls and the exact proposed
   gain. The question gates that same frozen outcome; never substitute a random,

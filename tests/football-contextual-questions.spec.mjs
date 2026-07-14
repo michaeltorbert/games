@@ -48,6 +48,7 @@ function context(overrides = {}) {
     firstDownLine: overrides.firstDownLine ?? yardLine + (direction * yardsToGo),
     driveStart,
     scores: overrides.scores ?? { player: 3, opponent: 4 },
+    totalYards: overrides.totalYards ?? { player: 83, opponent: 71 },
     plays: overrides.plays ?? 6,
     drivePlays: overrides.drivePlays ?? 2,
     calls,
@@ -84,6 +85,11 @@ function recompute(question) {
   switch (question.operation.type) {
     case 'read': return operands[0];
     case 'ordinal': return ({ 1: '1st', 2: '2nd', 3: '3rd', 4: '4th' })[operands[0]];
+    case 'nextOrdinal': {
+      const value = operands[0] + 1;
+      const suffix = value === 1 ? 'st' : value === 2 ? 'nd' : value === 3 ? 'rd' : 'th';
+      return `${value}${suffix}`;
+    }
     case 'missingPart':
     case 'exactRemainder':
     case 'factFamilyMissingPart': return operands[0] - operands[1];
@@ -93,6 +99,7 @@ function recompute(question) {
     case 'onesOfDistance': return Math.abs(operands[0] - operands[1]) % 10;
     case 'absoluteDifference': return Math.abs(operands[0] - operands[1]);
     case 'add': return operands[0] + operands[1];
+    case 'compare': return operands[0] < operands[1] ? '<' : operands[0] > operands[1] ? '>' : '=';
     case 'goalDistanceAfterGain': return Math.abs(operands[0] - operands[1]) - operands[2];
     case 'driveDistancePlusGain': return Math.abs(operands[1] - operands[0]) + operands[2];
     case 'ruleValue': return operands[0];
@@ -153,30 +160,42 @@ function verifyGrounding(questions, snap, question) {
   }
 }
 
+function expectComparisonChoiceLabels(question) {
+  const labels = Object.fromEntries(question.choices.map((choice) => [choice.value, choice.ariaLabel]));
+  assert.deepEqual(labels, {
+    '<': 'less than',
+    '=': 'equal to',
+    '>': 'greater than',
+  });
+}
+
 test('exports one deeply frozen plain-global API with a closed contract', () => {
   const { questions } = loadModules();
   assert.ok(questions);
   assert.equal(questions.CURRENT_COMPLETED_PAGE, 143);
+  assert.equal(questions.INCLUDED_THROUGH_PAGE, 179);
   assert.equal(deepFrozen(questions), true);
   assert.deepEqual(plain(questions.DEFAULT_PROFILE), {
     completedThroughPage: 143,
+    includedThroughPage: 179,
     computationMax: 10,
-    displayMax: 100,
+    displayMax: 120,
   });
   assert.equal(typeof questions.inspect, 'function');
   assert.equal(typeof questions.build, 'function');
   assert.ok(questions.OPERATION_TYPES.length > 0);
   assert.ok(questions.ANSWER_EXPOSURE_POLICIES.includes('hidden-until-worked'));
+  assert.deepEqual(plain(questions.CURRICULUM_SOURCES), ['workbook', 'football-only']);
 });
 
-test('inspect is deterministic, immutable, scheduler-compatible, and capped at page 143', () => {
+test('inspect preserves page-143 completion while capping approved question content at page 179', () => {
   const { domain, questions } = loadModules();
   const snap = makeSnap(domain, { driveStart: 27 }, 4);
-  const first = questions.inspect(snap, { completedThroughPage: 999, computationMax: 99, displayMax: 999 });
-  const second = questions.inspect(snap, { completedThroughPage: 999, computationMax: 99, displayMax: 999 });
+  const first = questions.inspect(snap, { completedThroughPage: 999, includedThroughPage: 999, computationMax: 99, displayMax: 999 });
+  const second = questions.inspect(snap, { completedThroughPage: 999, includedThroughPage: 999, computationMax: 99, displayMax: 999 });
   assert.deepEqual(plain(first), plain(second));
   assert.equal(deepFrozen(first), true);
-  assert.deepEqual(plain(first.profile), { completedThroughPage: 143, computationMax: 10, displayMax: 100 });
+  assert.deepEqual(plain(first.profile), { completedThroughPage: 143, includedThroughPage: 179, computationMax: 10, displayMax: 120 });
   assert.ok(first.eligible.length > 0);
   assert.ok(first.declined.length > 0);
   assert.equal(new Set(first.eligible.map((candidate) => candidate.familyId)).size, first.eligible.length);
@@ -185,7 +204,13 @@ test('inspect is deterministic, immutable, scheduler-compatible, and capped at p
     assert.equal(candidate.grading, 'gate');
     assert.ok(candidate.skill && candidate.concept && candidate.purpose && candidate.tier);
     assert.ok(candidate.weight > 0);
-    assert.ok(candidate.minCompletedPage <= 143);
+    assert.ok(questions.CURRICULUM_SOURCES.includes(candidate.curriculumSource));
+    if (candidate.curriculumSource === 'workbook') {
+      assert.ok(Number.isInteger(candidate.introducedOnPage));
+      assert.ok(candidate.introducedOnPage >= 1 && candidate.introducedOnPage <= 179);
+    } else {
+      assert.equal(candidate.introducedOnPage, null);
+    }
     assert.ok(questions.OPERATION_TYPES.includes(candidate.operationType));
     assert.ok(questions.ANSWER_EXPOSURE_POLICIES.includes(candidate.answerExposure));
   }
@@ -270,19 +295,92 @@ test('goal distance, drive movement, place value, whole tens, committed scores, 
   }
 });
 
-test('high committed-score relations and invented arithmetic decline instead of synthesizing operands', () => {
+test('live comparison and approved later pages stay source-accurate and snap-grounded', () => {
+  const { domain, questions } = loadModules();
+  const comparison = makeSnap(domain, {
+    yardsToGo: 7, firstDownLine: 37, totalYards: { player: 83, opponent: 71 },
+  }, 12);
+  const past100 = makeSnap(domain, {
+    totalYards: { player: 98, opponent: 71 },
+  }, 3);
+  const reversePast100 = makeSnap(domain, {
+    possession: 'defense', direction: -1, yardLine: 70, firstDownLine: 60,
+    driveStart: 80, totalYards: { player: 91, opponent: 118 },
+  }, 2);
+
+  const cases = [
+    [comparison, ['gain-vs-needed-comparison', 'drive-play-ordinal']],
+    [past100, ['team-yards-past-100']],
+    [reversePast100, ['team-yards-past-100']],
+  ];
+  for (const [snap, familyIds] of cases) {
+    const inspection = questions.inspect(snap, questions.DEFAULT_PROFILE);
+    for (const familyId of familyIds) {
+      const candidate = inspection.eligible.find((entry) => entry.familyId === familyId);
+      assert.ok(candidate, `${familyId} should be eligible`);
+      assert.equal(candidate.curriculumSource, 'workbook');
+      if (familyId === 'gain-vs-needed-comparison') assert.equal(candidate.introducedOnPage, 39);
+      else assert.ok(candidate.introducedOnPage > questions.CURRENT_COMPLETED_PAGE);
+      verifyGrounding(questions, snap, questions.build(snap, familyId, { support: 'guided' }));
+    }
+  }
+
+  for (const [gain, expected] of [[4, '<'], [7, '='], [12, '>']]) {
+    const snap = makeSnap(domain, { yardsToGo: 7, firstDownLine: 37 }, gain);
+    const question = questions.build(snap, 'gain-vs-needed-comparison', { support: 'guided' });
+    expectComparisonChoiceLabels(question);
+    assert.equal(question.answer.value, expected);
+    verifyGrounding(questions, snap, question);
+  }
+
+  const beyondSourceBand = makeSnap(domain, { yardsToGo: 7, firstDownLine: 37 }, 17);
+  assert.equal(
+    questions.inspect(beyondSourceBand, questions.DEFAULT_PROFILE).eligible
+      .some((entry) => entry.familyId === 'gain-vs-needed-comparison'),
+    false,
+  );
+  assert.throws(
+    () => questions.build(beyondSourceBand, 'gain-vs-needed-comparison'),
+    (error) => error.code === 'family-not-eligible' && /outside-comparison-source-band/.test(error.message),
+  );
+
+  for (const [drivePlays, expected] of [[4, '5th'], [10, '11th'], [15, '16th']]) {
+    const snap = makeSnap(domain, { drivePlays }, 4);
+    const question = questions.build(snap, 'drive-play-ordinal', { support: 'guided' });
+    assert.equal(question.answer.value, expected);
+    verifyGrounding(questions, snap, question);
+  }
+
+  const narrowProfile = {
+    completedThroughPage: 143,
+    includedThroughPage: 143,
+    computationMax: 10,
+    displayMax: 120,
+  };
+  const narrow = questions.inspect(past100, narrowProfile);
+  assert.equal(narrow.eligible.some((entry) => entry.familyId === 'gain-vs-needed-comparison'), true);
+  assert.equal(narrow.eligible.some((entry) => entry.familyId === 'team-yards-past-100'), false);
+  assert.ok(narrow.declined.some((entry) => entry.familyId === 'team-yards-past-100'
+    && entry.reason.code === 'curriculum-not-included'));
+  assert.throws(
+    () => questions.build(past100, 'team-yards-past-100', { profile: narrowProfile }),
+    (error) => error.code === 'curriculum-not-included',
+  );
+});
+
+test('high committed-score relations and ungrounded clock or calendar work stay unavailable', () => {
   const { domain, questions } = loadModules();
   const snap = makeSnap(domain, { scores: { player: 14, opponent: 7 }, driveStart: 30 }, 4);
   const inspection = questions.inspect(snap, questions.DEFAULT_PROFILE);
   const eligibleIds = inspection.eligible.map((candidate) => candidate.familyId);
   assert.equal(eligibleIds.includes('committed-score-total'), false);
   assert.equal(eligibleIds.includes('committed-score-difference'), false);
-  for (const forbidden of ['compare-two-digit-preview', 'hundred-chart-small-move', 'add-within-10', 'clock-read', 'sack-loss']) {
+  for (const forbidden of ['compare-two-digit-preview', 'hundred-chart-small-move', 'add-within-10', 'clock-read', 'am-pm', 'calendar-read', 'sack-loss']) {
     assert.equal(eligibleIds.includes(forbidden), false);
     assert.throws(() => questions.build(snap, forbidden), (error) => error.code === 'unknown-family');
   }
   const allFamilyIds = [...inspection.eligible, ...inspection.declined].map((item) => item.familyId);
-  assert.equal(allFamilyIds.some((id) => /preview|comparison|clock|sack|loss|trivia/i.test(id)), false);
+  assert.equal(allFamilyIds.some((id) => /preview|clock|calendar|am-pm|sack|loss|trivia/i.test(id)), false);
 });
 
 test('non-source-visible initial and guided models never contain a result slot', () => {

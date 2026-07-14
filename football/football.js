@@ -33,6 +33,9 @@ const COACH_CONCEPT_LABELS = Object.freeze({
   'down-read': 'Reading the down',
   'scoring-rule': 'Touchdown points',
   'play-outcome': 'Reading the play result',
+  'line-to-gain-comparison': 'Comparing the play to the marker',
+  'team-total-yards': 'Team yards through 120',
+  'drive-play-order': 'Play order in the drive',
 });
 
 const OFFENSE_CALLS = {
@@ -397,6 +400,8 @@ function gameSnapshot() {
     quarter: state.quarter || 1,
     playerScore: state.playerScore || 0,
     opponentScore: state.opponentScore || 0,
+    playerTotalYards: state.playerTotalYards || 0,
+    opponentTotalYards: state.opponentTotalYards || 0,
     plays: state.plays || 0,
     quarterPossessions: state.quarterPossessions || 0,
     tds: state.tds || 0,
@@ -480,6 +485,8 @@ function createGameState() {
     quarter: 1,
     playerScore: 0,
     opponentScore: 0,
+    playerTotalYards: 0,
+    opponentTotalYards: 0,
     plays: 0,
     quarterPossessions: 0,
     tds: 0,
@@ -508,6 +515,10 @@ function statsContext() {
       player: state.playerScore,
       opponent: state.opponentScore,
     },
+    totalYards: {
+      player: state.playerTotalYards,
+      opponent: state.opponentTotalYards,
+    },
     plays: state.plays,
     drivePlays: state.drivePlays,
   };
@@ -526,6 +537,10 @@ function statsContextFromSnap(snap) {
     score: {
       player: context.scores.player,
       opponent: context.scores.opponent,
+    },
+    totalYards: {
+      player: context.totalYards.player,
+      opponent: context.totalYards.opponent,
     },
     plays: context.plays,
     drivePlays: context.drivePlays,
@@ -600,6 +615,7 @@ function outcomeMessage(messagesByCall, callKey) {
 function contextualQuestionProfile() {
   return {
     completedThroughPage: FOOTBALL_LEARNING.PROFILE.completedThroughPage,
+    includedThroughPage: FOOTBALL_LEARNING.PROFILE.includedThroughPage,
     computationMax: FOOTBALL_LEARNING.PROFILE.computationMax,
     displayMax: FOOTBALL_LEARNING.PROFILE.displayMax,
   };
@@ -627,6 +643,10 @@ function makeSnapContext(calls, privateOpponentSnapshot = null) {
     scores: {
       player: state.playerScore,
       opponent: state.opponentScore,
+    },
+    totalYards: {
+      player: state.playerTotalYards,
+      opponent: state.opponentTotalYards,
     },
     plays: state.plays,
     drivePlays: state.drivePlays,
@@ -731,7 +751,8 @@ function validateQuestionInstance(snap, question) {
 }
 
 function pickQuestion(snap) {
-  const inspected = FOOTBALL_CONTEXTUAL_QUESTIONS.inspect(snap, contextualQuestionProfile());
+  const profile = contextualQuestionProfile();
+  const inspected = FOOTBALL_CONTEXTUAL_QUESTIONS.inspect(snap, profile);
   const eligible = questionFaultMode === 'empty-pool' ? [] : inspected.eligible;
   if (!eligible.length) {
     const error = new Error('No truthful contextual question family is eligible for this valid snap.');
@@ -749,10 +770,15 @@ function pickQuestion(snap) {
     if (questionFaultMode === 'build-throw') {
       throw Object.assign(new Error('Injected contextual builder failure.'), { code: 'build-throw' });
     }
-    const support = FOOTBALL_LEARNING.supportFor(learningSession, entry.skill, 'initial');
+    const firstSupport = entry.curriculumSource === 'workbook'
+      && entry.introducedOnPage > inspected.profile.completedThroughPage
+      ? 'guided'
+      : 'initial';
+    const support = FOOTBALL_LEARNING.supportFor(learningSession, entry.skill, firstSupport);
     const built = FOOTBALL_CONTEXTUAL_QUESTIONS.build(snap, entry.familyId, {
       support,
       presentationRng,
+      profile: inspected.profile,
     });
     const source = questionFaultMode === 'malformed'
       ? { ...built, choices: [] }
@@ -954,6 +980,24 @@ function renderMathVisual() {
       break;
     case 'scoreboard-read':
       tokens = [data.label || 'SCOREBOARD'];
+      break;
+    case 'comparison': {
+      const relation = visual.result?.value;
+      const relationLabel = relation === '<' ? 'LESS THAN' : relation === '>' ? 'GREATER THAN' : relation === '=' ? 'EQUAL TO' : '?';
+      tokens = [`${data.leftLabel} ${data.leftValue}`, relationLabel, `${data.rightLabel} ${data.rightValue}`];
+      break;
+    }
+    case 'hundreds-move': {
+      if (support === 'initial') {
+        tokens = [`${data.team} TOTAL ${data.startTotal}`, `+${data.proposedGain}`, visual.result ? `= ${visual.result.value}` : '= ?'];
+      } else {
+        tokens = Array.from({ length: data.proposedGain }, (_, index) => data.startTotal + index);
+        tokens.push(visual.result ? visual.result.value : '?');
+      }
+      break;
+    }
+    case 'drive-play-order':
+      tokens = [`DRIVE PLAY ${data.playNumber}`, visual.result ? visual.result.value : 'ORDINAL ?'];
       break;
     case 'base-ten-move': {
       const start = data.startDistance ?? 0;
@@ -1302,7 +1346,8 @@ function prepareQuestion(bundle, labelHtml, feedbackCopy = '') {
   document.getElementById('question').textContent = question.prompt.text;
   applyDeskHeader(state.possession === 'offense' ? 'questionOffense' : 'questionDefense');
   syncUiState();
-  setFeedback(feedbackCopy);
+  const visibleGuidance = question.support === 'guided' ? question.hint.text : '';
+  setFeedback([feedbackCopy, visibleGuidance].filter(Boolean).join(' '), visibleGuidance ? 'info' : 'neutral');
   renderButtons();
   renderMathVisual();
   if (questionFaultMode === 'prepare-after-ui') {
@@ -1623,11 +1668,15 @@ function liveStateMatchesSnap(snap) {
     && state.driveStart === context.driveStart
     && state.playerScore === context.scores.player
     && state.opponentScore === context.scores.opponent
+    && state.playerTotalYards === context.totalYards.player
+    && state.opponentTotalYards === context.totalYards.opponent
     && state.plays === context.plays
     && state.drivePlays === context.drivePlays;
 }
 
 function applyCanonicalTransition(transition) {
+  if (state.possession === 'offense') state.playerTotalYards += transition.appliedGain;
+  else state.opponentTotalYards += transition.appliedGain;
   state.yd = transition.endYardLine;
   state.fdYd = transition.newFirstDownLine;
   state.down = transition.newDown;
@@ -2300,6 +2349,10 @@ function renderGameToText() {
       player: state.playerScore,
       opponent: state.opponentScore,
     },
+    totalYards: {
+      player: state.playerTotalYards,
+      opponent: state.opponentTotalYards,
+    },
     down: state.down,
     ytg: state.ytg,
     yardLine: ydLabel(state.yd),
@@ -2396,6 +2449,7 @@ function seedDriveStateForTest(overrides = {}) {
   const yardsToGo = overrides.yardsToGo ?? overrides.ytg ?? 10;
   const firstDownLine = overrides.firstDownLine ?? overrides.fdYd ?? yardLine + (direction * yardsToGo);
   const score = overrides.scores || overrides.score || {};
+  const totalYards = overrides.totalYards || {};
   const context = FOOTBALL_DOMAIN.normalizeContext({
     contextId: `seed-validation-${contextSequence}`,
     possession,
@@ -2410,6 +2464,10 @@ function seedDriveStateForTest(overrides = {}) {
       player: score.player ?? overrides.playerScore ?? 0,
       opponent: score.opponent ?? overrides.opponentScore ?? 0,
     },
+    totalYards: {
+      player: totalYards.player ?? overrides.playerTotalYards ?? 0,
+      opponent: totalYards.opponent ?? overrides.opponentTotalYards ?? 0,
+    },
     plays: overrides.plays ?? 0,
     drivePlays: overrides.drivePlays ?? 0,
     calls: { offense: null, defense: null, matchup: null },
@@ -2420,6 +2478,8 @@ function seedDriveStateForTest(overrides = {}) {
     quarter: context.quarter,
     playerScore: context.scores.player,
     opponentScore: context.scores.opponent,
+    playerTotalYards: context.totalYards.player,
+    opponentTotalYards: context.totalYards.opponent,
     plays: context.plays,
     quarterPossessions: overrides.quarterPossessions ?? 0,
     tds: overrides.tds ?? 0,

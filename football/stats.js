@@ -101,6 +101,7 @@ const FOOTBALL_STATS = (() => {
       firstDownLine: safeNumber(context.firstDownLine),
       direction: context.direction === -1 ? -1 : 1,
       score: normalizeScore(context.score),
+      totalYards: normalizeScore(context.totalYards),
       plays: safeInteger(context.plays),
       drivePlays: safeInteger(context.drivePlays),
     };

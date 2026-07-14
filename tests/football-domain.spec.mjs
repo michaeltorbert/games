@@ -27,6 +27,7 @@ function context(overrides = {}) {
     firstDownLine: 40,
     driveStart: 20,
     scores: { player: 7, opponent: 6 },
+    totalYards: { player: 83, opponent: 71 },
     plays: 8,
     drivePlays: 2,
     calls: { offense: 'shortRun', defense: null, matchup: null },
@@ -76,7 +77,8 @@ test('normalizes current-game aliases into one frozen canonical context', () => 
   const input = {
     contextId: 'snap-12', possession: 'offense', quarter: 3, down: 2,
     ytg: 7, yd: 43, fdYd: 50, driveStart: 25,
-    playerScore: 14, opponentScore: 12, plays: 9, drivePlays: 3,
+    playerScore: 14, opponentScore: 12, playerTotalYards: 103, opponentTotalYards: 88,
+    plays: 9, drivePlays: 3,
     callKey: 'mediumPass', defenseCallKey: 'zone', matchup: 'mismatch',
   };
   const normalized = domain.normalizeContext(input);
@@ -92,6 +94,7 @@ test('normalizes current-game aliases into one frozen canonical context', () => 
     firstDownLine: 50,
     driveStart: 25,
     scores: { player: 14, opponent: 12 },
+    totalYards: { player: 103, opponent: 88 },
     plays: 9,
     drivePlays: 3,
     calls: { offense: 'mediumPass', defense: 'zone', matchup: 'mismatch' },
@@ -99,6 +102,7 @@ test('normalizes current-game aliases into one frozen canonical context', () => 
   });
   assert.equal(Object.isFrozen(normalized), true);
   assert.equal(Object.isFrozen(normalized.scores), true);
+  assert.equal(Object.isFrozen(normalized.totalYards), true);
   assert.equal(Object.isFrozen(normalized.calls), true);
 });
 
@@ -107,8 +111,10 @@ test('clone is recursive and snapshots do not retain caller-owned references', (
   const original = context();
   const copied = domain.clone(original);
   copied.scores.player = 99;
+  copied.totalYards.player = 999;
   copied.calls.offense = 'longPass';
   assert.equal(original.scores.player, 7);
+  assert.equal(original.totalYards.player, 83);
   assert.equal(original.calls.offense, 'shortRun');
 
   const snap = domain.createSnap(original, { gain: 6, callKey: 'shortRun', label: 'Short run' });
@@ -353,6 +359,7 @@ test('returns structured diagnostics for malformed and contradictory contexts', 
     [context({ firstDownLine: 41 }), '/firstDownLine'],
     [context({ driveStart: 31 }), '/driveStart'],
     [context({ scores: { player: -1, opponent: 6 } }), '/scores/player'],
+    [context({ totalYards: { player: -1, opponent: 71 } }), '/totalYards/player'],
     [context({ calls: { offense: '', defense: null, matchup: null } }), '/calls/offense'],
     [context({ calls: { offense: 'run', defense: 'zone', matchup: 'tie' } }), '/calls/matchup'],
   ];

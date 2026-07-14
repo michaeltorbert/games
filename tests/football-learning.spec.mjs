@@ -55,7 +55,7 @@ function wrongChoiceIds(question) {
     .map((choice) => choice.id);
 }
 
-test('runtime curriculum profile matches the explicit page-143 record and scheduler recency stays positive', async ({ page }, testInfo) => {
+test('runtime keeps factual page-143 completion with a separate page-179 question ceiling', async ({ page }, testInfo) => {
   primaryOnly(testInfo);
   await page.goto('/football/?boot=offense-call');
 
@@ -86,8 +86,10 @@ test('runtime curriculum profile matches the explicit page-143 record and schedu
   expect(result.profile.schemaVersion).toBe(2);
   expect(result.profile.completedThroughPage).toBe(143);
   expect(result.profile.completedThroughPage).toBe(result.progress.learner.completedThroughPage);
+  expect(result.profile.includedThroughPage).toBe(179);
+  expect(result.profile.includedThroughPage).toBe(result.progress.footballQuestionPlan.includedThroughPage);
   expect(result.profile.computationMax).toBe(10);
-  expect(result.profile.displayMax).toBe(100);
+  expect(result.profile.displayMax).toBe(120);
   expect(result.profile.recencyWindow).toBe(3);
   expect(result.profile.recencyMultiplier).toBeGreaterThan(0);
   expect(result.profile.recencyMultiplier).toBeLessThan(1);
@@ -95,6 +97,7 @@ test('runtime curriculum profile matches the explicit page-143 record and schedu
     weakSpot: 0.38,
     coreReview: 0.32,
     completedPlaceValue: 0.30,
+    approvedExtension: 0.18,
   });
   expect(result.profile.purposeWeights).not.toHaveProperty('currentSupported');
   expect(result.counts['recent-family']).toBeGreaterThan(0);
@@ -312,7 +315,7 @@ test('second defensive miss records learning before Continue and commits one fro
   expect(afterDoubleContinue.learning.resolved).toBe(1);
 });
 
-test('a production snap exposes only completed, grounded, graded contextual content', async ({ page }, testInfo) => {
+test('a production snap exposes only approved, grounded, graded contextual content', async ({ page }, testInfo) => {
   primaryOnly(testInfo);
   await page.goto('/football/?boot=offense-call');
   await page.evaluate(() => window.__footballTest.setRootSeed(0xc011ab1e));
@@ -324,8 +327,14 @@ test('a production snap exposes only completed, grounded, graded contextual cont
 
   expect(question.id).toBe(question.familyId);
   expect(question.grading).toBe('gate');
-  expect(question.minCompletedPage).toBeLessThanOrEqual(143);
-  expect(question.familyId).not.toMatch(/preview|comparison|clock|sack|loss|trivia|add-within-10/i);
+  expect(['workbook', 'football-only']).toContain(question.curriculumSource);
+  if (question.curriculumSource === 'workbook') {
+    expect(question.introducedOnPage).toBeGreaterThanOrEqual(1);
+    expect(question.introducedOnPage).toBeLessThanOrEqual(179);
+  } else {
+    expect(question.introducedOnPage).toBeNull();
+  }
+  expect(question.familyId).not.toMatch(/preview|clock|calendar|am-pm|sack|loss|trivia|add-within-10/i);
   expect(question.bindings).toEqual(question.premises);
   expect(question.bindings.length).toBeGreaterThan(0);
   expect(question.choices.filter((choice) => choice.id === question.correctChoiceId)).toHaveLength(1);
@@ -337,6 +346,12 @@ test('a production snap exposes only completed, grounded, graded contextual cont
   if (question.answerExposure !== 'source-visible') {
     expect(question.visuals.initial.result).toBeNull();
     expect(question.visuals.guided.result).toBeNull();
+  }
+  const curriculumAhead = question.curriculumSource === 'workbook'
+    && question.introducedOnPage > 143;
+  expect(active.questionUi.support).toBe(curriculumAhead ? 'guided' : 'initial');
+  if (curriculumAhead) {
+    await expect(page.locator('#feedback')).toContainText(question.hint.text);
   }
 
   const text = await rendered(page);

@@ -6,8 +6,9 @@ const FOOTBALL_LEARNING = (() => {
   const PROFILE = Object.freeze({
     schemaVersion: 2,
     completedThroughPage: 143,
+    includedThroughPage: 179,
     computationMax: 10,
-    displayMax: 100,
+    displayMax: 120,
     recencyWindow: 3,
     recencyMultiplier: 0.18,
     maxEvents: 160,
@@ -15,6 +16,7 @@ const FOOTBALL_LEARNING = (() => {
       weakSpot: 0.38,
       coreReview: 0.32,
       completedPlaceValue: 0.30,
+      approvedExtension: 0.18,
     }),
   });
 

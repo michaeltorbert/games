@@ -6,6 +6,7 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
 
   const SCHEMA_VERSION = 1;
   const CURRENT_COMPLETED_PAGE = 143;
+  const INCLUDED_THROUGH_PAGE = 179;
 
   const OPERATION_TYPES = Object.freeze([
     'read',
@@ -22,12 +23,19 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
     'goalDistanceAfterGain',
     'driveDistancePlusGain',
     'ruleValue',
+    'compare',
+    'nextOrdinal',
   ]);
 
   const ANSWER_EXPOSURE_POLICIES = Object.freeze([
     'source-visible',
     'modeled-with-result-hidden',
     'hidden-until-worked',
+  ]);
+
+  const CURRICULUM_SOURCES = Object.freeze([
+    'workbook',
+    'football-only',
   ]);
 
   const RULES = deepFreeze({
@@ -38,8 +46,9 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
 
   const DEFAULT_PROFILE = deepFreeze({
     completedThroughPage: CURRENT_COMPLETED_PAGE,
+    includedThroughPage: INCLUDED_THROUGH_PAGE,
     computationMax: 10,
-    displayMax: 100,
+    displayMax: 120,
   });
 
   function isRecord(value) {
@@ -99,12 +108,16 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
     const input = isRecord(profile) ? profile : {};
     const positiveInt = (value, fallback) => Number.isInteger(value) && value >= 0 ? value : fallback;
     return {
-      // This module intentionally cannot be widened beyond the repository's
-      // explicit page-143 contract by a permissive caller profile. Narrower
-      // profiles are allowed and only remove candidates.
+      // Factual workbook completion and the user-approved question ceiling are
+      // separate. A permissive caller cannot widen either repository contract;
+      // narrower profiles are allowed and only remove candidates.
       completedThroughPage: Math.min(
         positiveInt(input.completedThroughPage, DEFAULT_PROFILE.completedThroughPage),
         DEFAULT_PROFILE.completedThroughPage,
+      ),
+      includedThroughPage: Math.min(
+        positiveInt(input.includedThroughPage, DEFAULT_PROFILE.includedThroughPage),
+        DEFAULT_PROFILE.includedThroughPage,
       ),
       computationMax: Math.min(
         positiveInt(input.computationMax, DEFAULT_PROFILE.computationMax),
@@ -118,7 +131,35 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
   }
 
   function ordinal(value) {
-    return ({ 1: '1st', 2: '2nd', 3: '3rd', 4: '4th' })[value] || String(value);
+    if (!Number.isInteger(value) || value < 1) return String(value);
+    const lastTwo = value % 100;
+    if (lastTwo >= 11 && lastTwo <= 13) return `${value}th`;
+    return `${value}${({ 1: 'st', 2: 'nd', 3: 'rd' })[value % 10] || 'th'}`;
+  }
+
+  function comparisonSymbol(left, right) {
+    if (left < right) return '<';
+    if (left > right) return '>';
+    return '=';
+  }
+
+  function ordinalChoices(value) {
+    const numbers = [value, value - 1, value + 1, value - 2, value + 2, 1, 16]
+      .filter((candidate, index, all) => candidate >= 1 && candidate <= 16 && all.indexOf(candidate) === index)
+      .slice(0, 4);
+    return numbers.map(ordinal);
+  }
+
+  function teamTotalYards(snap) {
+    return snap.context.possession === 'offense'
+      ? snap.context.totalYards.player
+      : snap.context.totalYards.opponent;
+  }
+
+  function teamTotalYardsBinding(snap) {
+    return snap.context.possession === 'offense'
+      ? contextBinding(snap, 'teamTotalYards', '/context/totalYards/player')
+      : contextBinding(snap, 'teamTotalYards', '/context/totalYards/opponent');
   }
 
   function goalRuleId(direction) {
@@ -153,6 +194,9 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
     if (!Number.isInteger(c.driveStart) || c.driveStart < 0 || c.driveStart > 100) return decline('invalid-drive-start', 'Drive start must be 0 through 100.');
     if (!isRecord(c.scores) || !Number.isInteger(c.scores.player) || c.scores.player < 0 || !Number.isInteger(c.scores.opponent) || c.scores.opponent < 0) {
       return decline('invalid-scores', 'Committed scores must be nonnegative integers.');
+    }
+    if (!isRecord(c.totalYards) || !Number.isInteger(c.totalYards.player) || c.totalYards.player < 0 || !Number.isInteger(c.totalYards.opponent) || c.totalYards.opponent < 0) {
+      return decline('invalid-total-yards', 'Committed team yard totals must be nonnegative integers.');
     }
     if (!Number.isInteger(p.appliedGain) || p.appliedGain < 0) return decline('invalid-gain', 'Applied gain must be a nonnegative integer.');
     if (!Number.isInteger(p.startYardLine) || p.startYardLine !== c.yardLine) return decline('invalid-proposal-start', 'Proposal must start at the contextual yard line.');
@@ -194,10 +238,18 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
     weight,
     operationType,
     answerExposure,
-    minCompletedPage = 1,
+    curriculumSource,
+    introducedOnPage = null,
   }) {
     if (!OPERATION_TYPES.includes(operationType)) throw new Error(`Unknown operation type ${operationType}.`);
     if (!ANSWER_EXPOSURE_POLICIES.includes(answerExposure)) throw new Error(`Unknown answer-exposure policy ${answerExposure}.`);
+    if (!CURRICULUM_SOURCES.includes(curriculumSource)) throw new Error(`Unknown curriculum source ${curriculumSource}.`);
+    if (curriculumSource === 'workbook' && (!Number.isInteger(introducedOnPage) || introducedOnPage < 1 || introducedOnPage > INCLUDED_THROUGH_PAGE)) {
+      throw new Error('Workbook-sourced families need an exact introducedOnPage within the approved book.');
+    }
+    if (curriculumSource === 'football-only' && introducedOnPage !== null) {
+      throw new Error('Football-only families must not claim a workbook source page.');
+    }
     return Object.freeze({
       id: familyId,
       familyId,
@@ -206,7 +258,8 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
       purpose,
       grading: 'gate',
       tier,
-      minCompletedPage,
+      curriculumSource,
+      introducedOnPage,
       weight,
       operationType,
       answerExposure,
@@ -272,7 +325,7 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
 
   const FAMILY_DEFINITIONS = [
     {
-      meta: makeMeta({ familyId: 'yards-to-go-read', skill: 'football-number-sense', concept: 'line-to-gain', purpose: 'coreReview', tier: 'within-10', weight: 4, operationType: 'read', answerExposure: 'source-visible' }),
+      meta: makeMeta({ familyId: 'yards-to-go-read', skill: 'football-number-sense', concept: 'line-to-gain', purpose: 'coreReview', tier: 'within-10', weight: 4, operationType: 'read', answerExposure: 'source-visible', curriculumSource: 'football-only' }),
       derive(snap) {
         const answer = snap.context.yardsToGo;
         return eligible(makeSemantic({
@@ -293,7 +346,7 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
       },
     },
     {
-      meta: makeMeta({ familyId: 'line-to-gain-missing-part', skill: 'missing-part', concept: 'line-to-gain', purpose: 'weakSpot', tier: 'within-10', weight: 3.2, operationType: 'missingPart', answerExposure: 'modeled-with-result-hidden' }),
+      meta: makeMeta({ familyId: 'line-to-gain-missing-part', skill: 'missing-part', concept: 'line-to-gain', purpose: 'weakSpot', tier: 'within-10', weight: 3.2, operationType: 'missingPart', answerExposure: 'modeled-with-result-hidden', curriculumSource: 'workbook', introducedOnPage: 41 }),
       derive(snap, profile) {
         const needed = snap.context.yardsToGo;
         const gain = appliedGain(snap);
@@ -315,7 +368,7 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
       },
     },
     {
-      meta: makeMeta({ familyId: 'line-to-gain-exact', skill: 'difference', concept: 'line-to-gain', purpose: 'weakSpot', tier: 'within-10', weight: 2.4, operationType: 'exactRemainder', answerExposure: 'modeled-with-result-hidden' }),
+      meta: makeMeta({ familyId: 'line-to-gain-exact', skill: 'difference', concept: 'line-to-gain', purpose: 'weakSpot', tier: 'within-10', weight: 2.4, operationType: 'exactRemainder', answerExposure: 'modeled-with-result-hidden', curriculumSource: 'workbook', introducedOnPage: 110 }),
       derive(snap, profile) {
         const needed = snap.context.yardsToGo;
         const gain = appliedGain(snap);
@@ -335,7 +388,7 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
       },
     },
     {
-      meta: makeMeta({ familyId: 'line-to-gain-surplus', skill: 'difference', concept: 'line-to-gain', purpose: 'weakSpot', tier: 'within-10', weight: 2.6, operationType: 'surplus', answerExposure: 'modeled-with-result-hidden' }),
+      meta: makeMeta({ familyId: 'line-to-gain-surplus', skill: 'difference', concept: 'line-to-gain', purpose: 'weakSpot', tier: 'within-10', weight: 2.6, operationType: 'surplus', answerExposure: 'modeled-with-result-hidden', curriculumSource: 'workbook', introducedOnPage: 110 }),
       derive(snap, profile) {
         const needed = snap.context.yardsToGo;
         const gain = appliedGain(snap);
@@ -356,7 +409,7 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
       },
     },
     {
-      meta: makeMeta({ familyId: 'line-to-gain-fact-family', skill: 'fact-family', concept: 'line-to-gain', purpose: 'coreReview', tier: 'within-10', weight: 2.3, operationType: 'factFamilyMissingPart', answerExposure: 'modeled-with-result-hidden' }),
+      meta: makeMeta({ familyId: 'line-to-gain-fact-family', skill: 'fact-family', concept: 'line-to-gain', purpose: 'coreReview', tier: 'within-10', weight: 2.3, operationType: 'factFamilyMissingPart', answerExposure: 'modeled-with-result-hidden', curriculumSource: 'workbook', introducedOnPage: 98 }),
       derive(snap, profile) {
         const total = snap.context.yardsToGo;
         const part = appliedGain(snap);
@@ -377,7 +430,50 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
       },
     },
     {
-      meta: makeMeta({ familyId: 'goal-distance-read', skill: 'place-value', concept: 'field-distance', purpose: 'completedPlaceValue', tier: 'two-digit-structure', weight: 2.2, operationType: 'distance', answerExposure: 'source-visible' }),
+      meta: makeMeta({
+        familyId: 'gain-vs-needed-comparison',
+        skill: 'comparison',
+        concept: 'line-to-gain-comparison',
+        purpose: 'coreReview',
+        tier: 'within-16',
+        weight: 2.4,
+        operationType: 'compare',
+        answerExposure: 'modeled-with-result-hidden',
+        curriculumSource: 'workbook',
+        introducedOnPage: 39,
+      }),
+      derive(snap, profile) {
+        const gain = appliedGain(snap);
+        const needed = snap.context.yardsToGo;
+        if (gain > 16 || needed > 16) {
+          return { decline: decline('outside-comparison-source-band', 'This live comparison must stay within the workbook page-39 number band through 16.') };
+        }
+        if (!inDisplayBand(profile, gain, needed)) return { decline: decline('outside-display-band', 'Gain and yards needed must fit the approved comparison display band.') };
+        const answer = comparisonSymbol(gain, needed);
+        const comparisonHint = gain >= 10 || needed >= 10
+          ? 'Compare the tens first. If they match, compare the ones. The open side points to the greater number.'
+          : 'Compare the two amounts. The open side points to the greater number.';
+        return eligible(makeSemantic({
+          bindings: [
+            contextBinding(snap, 'proposedGain', '/proposal/appliedGain'),
+            contextBinding(snap, 'yardsToGo', '/context/yardsToGo'),
+          ],
+          operationType: 'compare', operandIds: ['proposedGain', 'yardsToGo'], answer,
+          prompt: `This exact play is set to gain ${gain} yards, and ${needed} yards are needed. Which symbol makes ${gain} ? ${needed} true?`,
+          hint: comparisonHint,
+          explanation: `${gain} ${answer} ${needed}. The proposed gain is ${gain === needed ? 'exactly the same as' : gain > needed ? 'greater than' : 'less than'} the yards needed.`,
+          choiceSpec: fixedChoiceSpec(['<', '=', '>']), visualType: 'comparison',
+          visualData: { leftLabel: 'PLAY', leftValue: gain, rightLabel: 'NEED', rightValue: needed },
+          initialAriaLabel: `Compare the proposed gain of ${gain} yards with the ${needed} yards needed; the comparison symbol is hidden.`,
+          guidedAriaLabel: gain >= 10 || needed >= 10
+            ? `Compare ${gain} and ${needed} by tens, then ones; the symbol remains hidden.`
+            : `Compare ${gain} and ${needed}; the symbol remains hidden.`,
+          workedAriaLabel: `${gain} ${answer} ${needed}.`,
+        }));
+      },
+    },
+    {
+      meta: makeMeta({ familyId: 'goal-distance-read', skill: 'place-value', concept: 'field-distance', purpose: 'completedPlaceValue', tier: 'two-digit-structure', weight: 2.2, operationType: 'distance', answerExposure: 'source-visible', curriculumSource: 'workbook', introducedOnPage: 126 }),
       derive(snap, profile) {
         const answer = goalDistance(snap);
         if (!inDisplayBand(profile, answer)) return { decline: decline('outside-display-band', 'Goal distance must fit the completed display band.') };
@@ -395,7 +491,7 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
       },
     },
     {
-      meta: makeMeta({ familyId: 'goal-distance-tens', skill: 'place-value', concept: 'place-value', purpose: 'completedPlaceValue', tier: 'two-digit-structure', weight: 2.4, operationType: 'tensOfDistance', answerExposure: 'source-visible' }),
+      meta: makeMeta({ familyId: 'goal-distance-tens', skill: 'place-value', concept: 'place-value', purpose: 'completedPlaceValue', tier: 'two-digit-structure', weight: 2.4, operationType: 'tensOfDistance', answerExposure: 'source-visible', curriculumSource: 'workbook', introducedOnPage: 124 }),
       derive(snap, profile) {
         const distance = goalDistance(snap);
         if (distance < 10 || !inDisplayBand(profile, distance)) return { decline: decline('not-two-digit-distance', 'Tens work needs a displayed goal distance from 10 through 100.') };
@@ -414,7 +510,7 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
       },
     },
     {
-      meta: makeMeta({ familyId: 'goal-distance-ones', skill: 'place-value', concept: 'place-value', purpose: 'completedPlaceValue', tier: 'two-digit-structure', weight: 2, operationType: 'onesOfDistance', answerExposure: 'source-visible' }),
+      meta: makeMeta({ familyId: 'goal-distance-ones', skill: 'place-value', concept: 'place-value', purpose: 'completedPlaceValue', tier: 'two-digit-structure', weight: 2, operationType: 'onesOfDistance', answerExposure: 'source-visible', curriculumSource: 'workbook', introducedOnPage: 124 }),
       derive(snap, profile) {
         const distance = goalDistance(snap);
         if (distance < 10 || !inDisplayBand(profile, distance)) return { decline: decline('not-two-digit-distance', 'Ones work needs a displayed goal distance from 10 through 100.') };
@@ -433,7 +529,46 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
       },
     },
     {
-      meta: makeMeta({ familyId: 'drive-distance-scaffolded', skill: 'difference', concept: 'drive-distance', purpose: 'weakSpot', tier: 'within-10', weight: 1.8, operationType: 'absoluteDifference', answerExposure: 'modeled-with-result-hidden' }),
+      meta: makeMeta({
+        familyId: 'team-yards-past-100',
+        skill: 'numbers-past-100',
+        concept: 'team-total-yards',
+        purpose: 'approvedExtension',
+        tier: 'through-120',
+        weight: 1.8,
+        operationType: 'add',
+        answerExposure: 'modeled-with-result-hidden',
+        curriculumSource: 'workbook',
+        introducedOnPage: 149,
+      }),
+      derive(snap, profile) {
+        const current = teamTotalYards(snap);
+        const gain = appliedGain(snap);
+        const answer = current + gain;
+        if (!(gain >= 1 && gain <= 3 && answer >= 100 && answer <= 120)) {
+          return { decline: decline('not-past-100-small-move', 'This exact play must move a real team total across or within 100 through 120 by one to three yards.') };
+        }
+        if (!inDisplayBand(profile, current, gain, answer)) return { decline: decline('outside-display-band', 'The team-yard relation must stay within the approved display band through 120.') };
+        const team = snap.context.possession === 'offense' ? 'Duke' : 'UNC';
+        return eligible(makeSemantic({
+          bindings: [
+            teamTotalYardsBinding(snap),
+            contextBinding(snap, 'proposedGain', '/proposal/appliedGain'),
+          ],
+          operationType: 'add', operandIds: ['teamTotalYards', 'proposedGain'], answer,
+          prompt: `${team} has ${current} total offensive yards. If this exact play gains ${gain}, what would the team total be?`,
+          hint: `Count forward ${gain} from ${current}, one yard at a time.`,
+          explanation: `${current} + ${gain} = ${answer}, so ${team} would have ${answer} total offensive yards.`,
+          choiceSpec: numericChoiceSpec(90, 120), visualType: 'hundreds-move',
+          visualData: { team, startTotal: current, proposedGain: gain, resultTotal: null },
+          initialAriaLabel: `${team} has ${current} total offensive yards with ${gain} proposed yards; the new total is hidden.`,
+          guidedAriaLabel: `Count forward ${gain} single yards from ${current}; the final total remains hidden.`,
+          workedAriaLabel: `${current} plus ${gain} is ${answer} total offensive yards for ${team}.`,
+        }));
+      },
+    },
+    {
+      meta: makeMeta({ familyId: 'drive-distance-scaffolded', skill: 'difference', concept: 'drive-distance', purpose: 'weakSpot', tier: 'within-10', weight: 1.8, operationType: 'absoluteDifference', answerExposure: 'modeled-with-result-hidden', curriculumSource: 'workbook', introducedOnPage: 110 }),
       derive(snap, profile) {
         const answer = Math.abs(snap.context.yardLine - snap.context.driveStart);
         if (!(answer > 0 && inComputationBand(profile, answer))) return { decline: decline('drive-distance-not-scaffoldable', 'Current drive movement must be a positive distance within the computation band.') };
@@ -452,7 +587,7 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
       },
     },
     {
-      meta: makeMeta({ familyId: 'committed-score-total', skill: 'addition', concept: 'committed-score', purpose: 'coreReview', tier: 'within-10', weight: 1.3, operationType: 'add', answerExposure: 'modeled-with-result-hidden' }),
+      meta: makeMeta({ familyId: 'committed-score-total', skill: 'addition', concept: 'committed-score', purpose: 'coreReview', tier: 'within-10', weight: 1.3, operationType: 'add', answerExposure: 'modeled-with-result-hidden', curriculumSource: 'workbook', introducedOnPage: 18 }),
       derive(snap, profile) {
         const player = snap.context.scores.player;
         const opponent = snap.context.scores.opponent;
@@ -473,7 +608,7 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
       },
     },
     {
-      meta: makeMeta({ familyId: 'committed-score-difference', skill: 'difference', concept: 'committed-score', purpose: 'weakSpot', tier: 'within-10', weight: 1.2, operationType: 'absoluteDifference', answerExposure: 'modeled-with-result-hidden' }),
+      meta: makeMeta({ familyId: 'committed-score-difference', skill: 'difference', concept: 'committed-score', purpose: 'weakSpot', tier: 'within-10', weight: 1.2, operationType: 'absoluteDifference', answerExposure: 'modeled-with-result-hidden', curriculumSource: 'workbook', introducedOnPage: 110 }),
       derive(snap, profile) {
         const player = snap.context.scores.player;
         const opponent = snap.context.scores.opponent;
@@ -494,7 +629,38 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
       },
     },
     {
-      meta: makeMeta({ familyId: 'quarter-read', skill: 'football-number-sense', concept: 'quarter-read', purpose: 'coreReview', tier: 'football-context', weight: 0.8, operationType: 'ordinal', answerExposure: 'source-visible' }),
+      meta: makeMeta({
+        familyId: 'drive-play-ordinal',
+        skill: 'ordinal-numbers',
+        concept: 'drive-play-order',
+        purpose: 'approvedExtension',
+        tier: 'football-context',
+        weight: 1.2,
+        operationType: 'nextOrdinal',
+        answerExposure: 'modeled-with-result-hidden',
+        curriculumSource: 'workbook',
+        introducedOnPage: 155,
+      }),
+      derive(snap) {
+        const playNumber = snap.context.drivePlays + 1;
+        if (playNumber < 1 || playNumber > 16) return { decline: decline('drive-play-outside-ordinal-band', 'The current drive play must be first through sixteenth.') };
+        const answer = ordinal(playNumber);
+        return eligible(makeSemantic({
+          bindings: [contextBinding(snap, 'completedDrivePlays', '/context/drivePlays')],
+          operationType: 'nextOrdinal', operandIds: ['completedDrivePlays'], answer,
+          prompt: `This snap is play number ${playNumber} of the drive. Which ordinal name tells its place in the drive?`,
+          hint: `Say the ordinal for ${playNumber}: not how many plays there are, but where this play comes in order.`,
+          explanation: `Play number ${playNumber} is the ${answer} play of the drive.`,
+          choiceSpec: fixedChoiceSpec(ordinalChoices(playNumber)), visualType: 'drive-play-order',
+          visualData: { completedDrivePlays: snap.context.drivePlays, playNumber },
+          initialAriaLabel: `The current snap is play number ${playNumber} of the drive; its ordinal name is hidden.`,
+          guidedAriaLabel: `Translate play number ${playNumber} into its ordinal place without revealing the answer.`,
+          workedAriaLabel: `Play number ${playNumber} is the ${answer} play of the drive.`,
+        }));
+      },
+    },
+    {
+      meta: makeMeta({ familyId: 'quarter-read', skill: 'football-number-sense', concept: 'quarter-read', purpose: 'coreReview', tier: 'football-context', weight: 0.8, operationType: 'ordinal', answerExposure: 'source-visible', curriculumSource: 'football-only' }),
       derive(snap) {
         const answer = ordinal(snap.context.quarter);
         return eligible(makeSemantic({
@@ -511,7 +677,7 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
       },
     },
     {
-      meta: makeMeta({ familyId: 'down-read', skill: 'football-number-sense', concept: 'down-read', purpose: 'coreReview', tier: 'football-context', weight: 1.1, operationType: 'ordinal', answerExposure: 'source-visible' }),
+      meta: makeMeta({ familyId: 'down-read', skill: 'football-number-sense', concept: 'down-read', purpose: 'coreReview', tier: 'football-context', weight: 1.1, operationType: 'ordinal', answerExposure: 'source-visible', curriculumSource: 'football-only' }),
       derive(snap) {
         const answer = ordinal(snap.context.down);
         return eligible(makeSemantic({
@@ -528,7 +694,7 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
       },
     },
     {
-      meta: makeMeta({ familyId: 'goal-distance-minus-whole-tens', skill: 'plus-minus-ten', concept: 'field-distance', purpose: 'completedPlaceValue', tier: 'two-digit-structure', weight: 1.9, operationType: 'goalDistanceAfterGain', answerExposure: 'modeled-with-result-hidden' }),
+      meta: makeMeta({ familyId: 'goal-distance-minus-whole-tens', skill: 'plus-minus-ten', concept: 'field-distance', purpose: 'completedPlaceValue', tier: 'two-digit-structure', weight: 1.9, operationType: 'goalDistanceAfterGain', answerExposure: 'modeled-with-result-hidden', curriculumSource: 'workbook', introducedOnPage: 140 }),
       derive(snap, profile) {
         const before = goalDistance(snap);
         const gain = appliedGain(snap);
@@ -552,7 +718,7 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
       },
     },
     {
-      meta: makeMeta({ familyId: 'drive-distance-plus-whole-tens', skill: 'plus-minus-ten', concept: 'drive-distance', purpose: 'completedPlaceValue', tier: 'two-digit-structure', weight: 1.5, operationType: 'driveDistancePlusGain', answerExposure: 'modeled-with-result-hidden' }),
+      meta: makeMeta({ familyId: 'drive-distance-plus-whole-tens', skill: 'plus-minus-ten', concept: 'drive-distance', purpose: 'completedPlaceValue', tier: 'two-digit-structure', weight: 1.5, operationType: 'driveDistancePlusGain', answerExposure: 'modeled-with-result-hidden', curriculumSource: 'workbook', introducedOnPage: 140 }),
       derive(snap, profile) {
         const current = Math.abs(snap.context.yardLine - snap.context.driveStart);
         const gain = appliedGain(snap);
@@ -578,7 +744,7 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
       },
     },
     {
-      meta: makeMeta({ familyId: 'touchdown-points', skill: 'football-number-sense', concept: 'scoring-rule', purpose: 'coreReview', tier: 'football-context', weight: 0.7, operationType: 'ruleValue', answerExposure: 'hidden-until-worked' }),
+      meta: makeMeta({ familyId: 'touchdown-points', skill: 'football-number-sense', concept: 'scoring-rule', purpose: 'coreReview', tier: 'football-context', weight: 0.7, operationType: 'ruleValue', answerExposure: 'hidden-until-worked', curriculumSource: 'football-only' }),
       derive(snap) {
         if (snap.proposal.resultKind !== 'touchdown') return { decline: decline('not-touchdown-proposal', 'The scoring constant is contextual only for a touchdown proposal.', ['/proposal/resultKind']) };
         const answer = RULES['game.touchdownPoints'];
@@ -610,8 +776,8 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
       const meta = definition.meta;
       let reason = commonReason;
       let result = null;
-      if (!reason && meta.minCompletedPage > profile.completedThroughPage) {
-        reason = decline('curriculum-not-completed', `Family needs page ${meta.minCompletedPage}, but progress is page ${profile.completedThroughPage}.`);
+      if (!reason && meta.curriculumSource === 'workbook' && meta.introducedOnPage > profile.includedThroughPage) {
+        reason = decline('curriculum-not-included', `Family comes from page ${meta.introducedOnPage}, but the approved question ceiling is page ${profile.includedThroughPage}.`);
       }
       if (!reason) {
         try {
@@ -645,6 +811,13 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
 
   function sameValue(left, right) {
     return typeof left === typeof right && Object.is(left, right);
+  }
+
+  function choiceAriaLabel(value) {
+    if (value === '<') return 'less than';
+    if (value === '>') return 'greater than';
+    if (value === '=') return 'equal to';
+    return String(value);
   }
 
   function numericDistractors(answer, spec) {
@@ -715,7 +888,12 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
     const commonReason = baseShapeReason(snap);
     if (commonReason) throw contractError(commonReason.code, commonReason.detail);
 
-    const result = definition.derive(snap, DEFAULT_PROFILE);
+    const profile = normalizeProfile(options.profile || DEFAULT_PROFILE);
+    if (definition.meta.curriculumSource === 'workbook' && definition.meta.introducedOnPage > profile.includedThroughPage) {
+      throw contractError('curriculum-not-included', `${familyId} comes from page ${definition.meta.introducedOnPage}, beyond the approved question ceiling of page ${profile.includedThroughPage}.`);
+    }
+
+    const result = definition.derive(snap, profile);
     if (result.decline || !result.semantic) {
       const reason = result.decline || decline('invalid-family-result', 'Family did not produce a semantic question.');
       throw contractError('family-not-eligible', `${familyId}: ${reason.code}: ${reason.detail}`);
@@ -731,7 +909,7 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
       id: `${familyId}--choice-${stableValueToken(value)}`,
       value,
       label: String(value),
-      ariaLabel: String(value),
+      ariaLabel: choiceAriaLabel(value),
     }));
     const correctChoice = choices.find((choice) => sameValue(choice.value, semantic.answer));
     if (!correctChoice || choices.filter((choice) => sameValue(choice.value, semantic.answer)).length !== 1) {
@@ -777,9 +955,11 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
   return deepFreeze({
     SCHEMA_VERSION,
     CURRENT_COMPLETED_PAGE,
+    INCLUDED_THROUGH_PAGE,
     DEFAULT_PROFILE,
     OPERATION_TYPES,
     ANSWER_EXPOSURE_POLICIES,
+    CURRICULUM_SOURCES,
     RULES,
     inspect,
     build,
