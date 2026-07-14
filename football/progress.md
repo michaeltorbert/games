@@ -143,3 +143,18 @@ Original prompt: btw we just completed through 145 today
 - Moved the completed comparison work from pages 144-145 into the review band; pages 146-179 remain included but not yet recorded as completed and therefore open with guided support when a truthful live-snap family exists.
 - Passed the focused update checks (26/26 Node contracts and 22/22 primary-iPad learning/integration tests), then passed the complete release gate again: 161 Playwright tests, 145 intentional project skips, and 108/108 canonical screenshots across six targets.
 - Completed the browser-client smoke on a live question, inspected the rendered gameplay state, and found no browser-error artifact.
+
+---
+
+Original prompt: Fix the three validated post-review findings, add focused regression tests, use Opus 4.8 for the main review, and reserve one Fable 5 pass for the final audit.
+
+## Post-review hardening
+
+- Added failing-first regressions for rejected-commit stats cleanup, the lean awaiting-answer contract, and correct-versus-missed/bypassed defensive fourth-down audio.
+- Cleared the abandoned in-memory stats draft whenever an invalid snap is rolled back.
+- Restored the positive cue only for correct defensive turnover-on-downs resolutions; second misses and question-subsystem bypasses remain silent.
+- Removed the unused precomputed awaiting-answer resolution table; chosen transitions continue through independent validation before commit.
+- Confirmed the focused regressions fail against the old behavior, then pass 27/27 on the primary iPad project after the three production fixes.
+- Completed the browser-client smoke on a live offense question with linked snap/question IDs, truthful semantic state, and no browser-error artifact.
+- Passed the complete release gate: 26/26 Node checks, 168 Playwright tests passed, 150 intentional project skips, and 108/108 canonical screenshots across all six targets.
+- Visually inspected offense-question, defense-question, and defense-feedback screenshots on the primary iPad and both phone widths; controls and feedback remain readable and reachable.

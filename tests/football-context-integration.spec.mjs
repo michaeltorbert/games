@@ -268,6 +268,44 @@ test('a correct offense answer commits the frozen proposal exactly once', async 
   expect(after.learning.resolved).toBe(before.learning.resolved + 1);
 });
 
+test('a rejected late commit abandons its pending stats draft before the next call', async ({ page }, testInfo) => {
+  primaryOnly(testInfo);
+  await cleanBoot(page, 0x11154);
+  const seeded = await seedDrive(page, OFFENSE_SEED);
+  await chooseCall(page, 'Short Run');
+  const before = await activeContracts(page);
+  const pendingBefore = await page.evaluate(() => pendingStatsPlay && ({
+    sequence: pendingStatsPlay.sequence,
+    finalized: pendingStatsPlay.finalized,
+  }));
+
+  expect(pendingBefore).toMatchObject({ sequence: 1, finalized: false });
+  await page.evaluate(() => { state.playerScore += 1; });
+  const rejected = await answerChoice(page, before.questionInstance.correctChoiceId);
+
+  expect(rejected.render.mode).toBe('call');
+  expect(rejected.render.plays).toBe(seeded.plays);
+  expect(rejected.statsSession).toEqual(before.statsSession);
+  expect(rejected.statsSession.completedPlays).toHaveLength(0);
+  expect(rejected.activeSnap).toBeNull();
+  expect(rejected.questionInstance).toBeNull();
+  expect(rejected.pendingResolution).toBeNull();
+  expect(await page.evaluate(() => pendingStatsPlay)).toBeNull();
+
+  await chooseCall(page, 'Short Run');
+  const retry = await activeContracts(page);
+  const committed = await answerChoice(page, retry.questionInstance.correctChoiceId);
+  expect(committed.statsSession.completedPlays).toHaveLength(1);
+  expect(committed.statsSession.completedPlays[0]).toMatchObject({
+    sequence: before.statsSession.nextSequence,
+    links: {
+      contextId: retry.activeSnap.contextId,
+      questionInstanceId: retry.questionInstance.questionInstanceId,
+    },
+  });
+  expect(await page.evaluate(() => pendingStatsPlay)).toBeNull();
+});
+
 test('a second offense miss freezes zero gain until Continue and double Continue is idempotent', async ({ page }, testInfo) => {
   primaryOnly(testInfo);
   await cleanBoot(page, 0x20254);

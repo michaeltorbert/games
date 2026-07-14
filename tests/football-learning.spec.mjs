@@ -45,7 +45,13 @@ async function beginSnap(page, possession = 'offense', overrides = {}) {
   const active = await contracts(page);
   expect(active.activeSnap).not.toBeNull();
   expect(active.questionInstance).not.toBeNull();
-  expect(active.pendingResolution).not.toBeNull();
+  expect(active.pendingResolution).toEqual({
+    schemaVersion: 1,
+    policy: 'awaitingAnswer',
+    contextId: active.activeSnap.contextId,
+    questionInstanceId: active.questionInstance.questionInstanceId,
+    transitionToCommit: null,
+  });
   return active;
 }
 

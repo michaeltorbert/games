@@ -1324,22 +1324,12 @@ function activateSnapMirrors(snap, question = null) {
 function prepareQuestion(bundle, labelHtml, feedbackCopy = '') {
   const { snap, question } = bundle;
   activateSnapMirrors(snap, question);
-  const correctTransition = snap.context.possession === 'offense'
-    ? snap.proposal
-    : FOOTBALL_DOMAIN.reprojectGain(snap, 0);
-  const secondMissTransition = snap.context.possession === 'offense'
-    ? FOOTBALL_DOMAIN.reprojectGain(snap, 0)
-    : FOOTBALL_DOMAIN.reprojectGain(snap, Math.min(snap.proposal.appliedGain, 3));
   state.pendingResolution = FOOTBALL_DOMAIN.deepFreeze({
     schemaVersion: 1,
     policy: 'awaitingAnswer',
     contextId: snap.contextId,
     questionInstanceId: question.questionInstanceId,
     transitionToCommit: null,
-    resolutionTable: {
-      correct: correctTransition,
-      secondMiss: secondMissTransition,
-    },
   });
   state.phase = 'question';
   document.getElementById('play-label').innerHTML = labelHtml;
@@ -1366,6 +1356,7 @@ function restoreCallAfterInvalid(opponentSnapshot = null) {
 }
 
 function handleInvalidSnap(error, opponentSnapshot = null) {
+  pendingStatsPlay = null;
   reportQuestionDiagnostic(error?.code || 'invalid-context', {
     message: error?.message || 'The football context or projection was invalid.',
     diagnostics: error?.diagnostics || null,
@@ -1733,6 +1724,7 @@ function finishCommittedTransition(transition, policy, outcome) {
     updateStatus();
     finalizeStatsPlay(gain, outcome);
     setFeedback('Turnover on downs.', offense ? 'negative' : 'positive');
+    if (!offense && (policy === 'firstTryCorrect' || policy === 'retryCorrect')) playCorrect();
     advTimer = setTimeout(() => finishPossession(
       offense ? 'Turnover on downs. Time to play defense!' : `${state.outcomeMessage || 'Your defense held!'} Turnover on downs!`
     ), offense ? 1400 : 1500);

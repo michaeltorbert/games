@@ -7,6 +7,40 @@ function trackErrors(page) {
   return errors;
 }
 
+async function installAudioMock(page) {
+  await page.addInitScript(() => {
+    window.__audioEvents = [];
+
+    class AudioParamMock {
+      value = 0;
+      setValueAtTime(value) { this.value = value; }
+      exponentialRampToValueAtTime(value) { this.value = value; }
+      linearRampToValueAtTime(value) { this.value = value; }
+    }
+
+    class AudioNodeMock {
+      constructor(kind) {
+        this.kind = kind;
+        this.type = 'sine';
+        this.frequency = new AudioParamMock();
+        this.gain = new AudioParamMock();
+      }
+      connect() { return this; }
+      start() { window.__audioEvents.push(`${this.kind}:${this.type}:start`); }
+      stop() { window.__audioEvents.push(`${this.kind}:${this.type}:stop`); }
+    }
+
+    class AudioContextMock {
+      constructor() { this.state = 'suspended'; this.currentTime = 0; this.destination = {}; }
+      resume() { this.state = 'running'; window.__audioEvents.push('resume'); return Promise.resolve(); }
+      createOscillator() { return new AudioNodeMock('oscillator'); }
+      createGain() { return new AudioNodeMock('gain'); }
+    }
+
+    window.AudioContext = AudioContextMock;
+  });
+}
+
 async function installDeterministicStreams(page, footballRoll = 0) {
   await page.evaluate((roll) => {
     const football = () => roll;
@@ -30,6 +64,27 @@ async function seedOffense(page, { yardLine = 20, firstDownLine = 30 } = {}) {
     plays: 0,
     drivePlays: 0,
   });
+}
+
+async function seedFourthDownDefense(page) {
+  await page.evaluate((drive) => window.__footballTest.seedDriveState(drive), {
+    possession: 'defense',
+    direction: -1,
+    quarter: 1,
+    down: 4,
+    yardsToGo: 10,
+    yardLine: 70,
+    firstDownLine: 60,
+    driveStart: 80,
+    scores: { player: 0, opponent: 0 },
+    plays: 0,
+    drivePlays: 0,
+  });
+}
+
+async function oscillatorStarts(page) {
+  return page.evaluate(() => window.__audioEvents
+    .filter(event => event.startsWith('oscillator:') && event.endsWith(':start')));
 }
 
 async function chooseCall(page, label) {
@@ -94,37 +149,7 @@ test('storage failures degrade safely', async ({ page }) => {
 
 test('negative cues stay silent while positive cues remain wired', async ({ page }) => {
   const errors = trackErrors(page);
-  await page.addInitScript(() => {
-    window.__audioEvents = [];
-
-    class AudioParamMock {
-      value = 0;
-      setValueAtTime(value) { this.value = value; }
-      exponentialRampToValueAtTime(value) { this.value = value; }
-      linearRampToValueAtTime(value) { this.value = value; }
-    }
-
-    class AudioNodeMock {
-      constructor(kind) {
-        this.kind = kind;
-        this.type = 'sine';
-        this.frequency = new AudioParamMock();
-        this.gain = new AudioParamMock();
-      }
-      connect() { return this; }
-      start() { window.__audioEvents.push(`${this.kind}:${this.type}:start`); }
-      stop() { window.__audioEvents.push(`${this.kind}:${this.type}:stop`); }
-    }
-
-    class AudioContextMock {
-      constructor() { this.state = 'suspended'; this.currentTime = 0; this.destination = {}; }
-      resume() { this.state = 'running'; window.__audioEvents.push('resume'); return Promise.resolve(); }
-      createOscillator() { return new AudioNodeMock('oscillator'); }
-      createGain() { return new AudioNodeMock('gain'); }
-    }
-
-    window.AudioContext = AudioContextMock;
-  });
+  await installAudioMock(page);
 
   await page.goto('/football/');
   await page.locator('#ov-start .ov-btn').click();
@@ -164,5 +189,78 @@ test('negative cues stay silent while positive cues remain wired', async ({ page
   expect(positiveStarts).toHaveLength(10);
   expect(positiveStarts.slice(0, 2).every(event => event.includes(':sine:'))).toBe(true);
   expect(positiveStarts.slice(2).every(event => event.includes(':triangle:'))).toBe(true);
+  expect(errors).toEqual([]);
+});
+
+test('correct fourth-down defense celebrates while misses and bypasses stay silent', async ({ page }) => {
+  const errors = trackErrors(page);
+  await installAudioMock(page);
+  await page.goto('/football/');
+  await page.locator('#ov-start .ov-btn').click();
+  await page.evaluate(() => { window.__audioEvents = []; });
+
+  await installDeterministicStreams(page);
+  await seedFourthDownDefense(page);
+  const correct = await chooseCall(page, 'Run Defense');
+  const correctResult = await answerChoice(page, correct.questionInstance.correctChoiceId);
+  expect(correctResult.statsSession.completedPlays.at(-1)).toMatchObject({
+    resolution: 'firstTryCorrect',
+    actualYards: 0,
+    outcome: 'turnoverOnDowns',
+  });
+  const correctStarts = await oscillatorStarts(page);
+  expect(correctStarts).toHaveLength(2);
+  expect(correctStarts.every(event => event.includes(':sine:'))).toBe(true);
+
+  await page.evaluate(() => { window.__audioEvents = []; });
+  await installDeterministicStreams(page);
+  await seedFourthDownDefense(page);
+  const retried = await chooseCall(page, 'Run Defense');
+  const retryWrongId = retried.questionInstance.choices
+    .find(choice => choice.id !== retried.questionInstance.correctChoiceId)?.id;
+  expect(retryWrongId).toEqual(expect.any(String));
+  await answerChoice(page, retryWrongId);
+  const retryResult = await answerChoice(page, retried.questionInstance.correctChoiceId);
+  expect(retryResult.statsSession.completedPlays.at(-1)).toMatchObject({
+    resolution: 'retryCorrect',
+    actualYards: 0,
+    outcome: 'turnoverOnDowns',
+  });
+  const retryStarts = await oscillatorStarts(page);
+  expect(retryStarts).toHaveLength(2);
+  expect(retryStarts.every(event => event.includes(':sine:'))).toBe(true);
+
+  await page.evaluate(() => { window.__audioEvents = []; });
+  await installDeterministicStreams(page);
+  await seedFourthDownDefense(page);
+  const missed = await chooseCall(page, 'Run Defense');
+  const wrongIds = missed.questionInstance.choices
+    .filter(choice => choice.id !== missed.questionInstance.correctChoiceId)
+    .map(choice => choice.id);
+  expect(wrongIds.length).toBeGreaterThanOrEqual(2);
+  await answerChoice(page, wrongIds[0]);
+  await answerChoice(page, wrongIds[1]);
+  await page.locator('#question-continue').click();
+  const missResult = await page.evaluate(() => window.__footballTest.activeContracts());
+  expect(missResult.statsSession.completedPlays.at(-1)).toMatchObject({
+    resolution: 'secondMiss',
+    outcome: 'turnoverOnDowns',
+  });
+  expect(await oscillatorStarts(page)).toEqual([]);
+
+  await page.evaluate(() => { window.__audioEvents = []; });
+  await installDeterministicStreams(page);
+  await seedFourthDownDefense(page);
+  await page.evaluate(() => window.__footballTest.setQuestionFault('empty-pool'));
+  await page.locator('#call-grid .call-btn').filter({ hasText: 'Run Defense' }).first().click();
+  await expect(page.locator('#ui-desk')).toHaveAttribute('data-phase', 'feedback');
+  await page.evaluate(() => window.__footballTest.setQuestionFault(null));
+  const bypassResult = await page.evaluate(() => window.__footballTest.activeContracts());
+  expect(bypassResult.statsSession.completedPlays.at(-1)).toMatchObject({
+    instructionalStatus: 'bypassed',
+    resolution: null,
+    outcome: 'turnoverOnDowns',
+  });
+  expect(await oscillatorStarts(page)).toEqual([]);
   expect(errors).toEqual([]);
 });
