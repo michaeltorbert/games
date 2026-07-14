@@ -60,3 +60,6 @@ Original prompt: Complete Football issue #54 using the committed Math Mammoth Gr
 - Generated and verified all 108 required release screenshots across the six target projects; visually inspected retry and explanation states on the primary iPad and both phone widths.
 - The first full release run had one transient external-resource `ERR_CONNECTION_CLOSED` in the iPad Pro call-layout test; the exact failed project rerun passed, and all 108 canonical artifacts verified.
 - Completed the skill-required browser-client smoke with a live question snapshot and no browser error artifact.
+- Claude Fable 5 reviewed draft PR #69 through `claude-bot-mt[bot]`, found no blockers, and left several non-blocking hardening notes.
+- Addressed the actionable review notes by enforcing completed-page gates in the runtime scheduler, making bounded telemetry sequence IDs monotonic, removing a hidden dead highlight, simplifying the fixed James profile, and restoring test-only global state with `try/finally`.
+- Re-ran the primary flow and the complete release gate after review fixes: 95 passed, 25 intentionally skipped, and 108/108 screenshots verified.

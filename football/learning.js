@@ -24,6 +24,7 @@ const FOOTBALL_LEARNING = (() => {
       bySkill: {},
       presented: 0,
       resolved: 0,
+      nextSequence: 1,
       events: [],
     };
   }
@@ -43,7 +44,7 @@ const FOOTBALL_LEARNING = (() => {
     const event = {
       schemaVersion: PROFILE.schemaVersion,
       type,
-      sequence: session.events.length + 1,
+      sequence: session.nextSequence++,
       ...payload,
     };
     session.events.push(event);

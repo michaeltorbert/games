@@ -383,17 +383,13 @@ function fitsLevelNumber(value, level) {
   return value >= 0 && value <= level.numberMax;
 }
 
-function makeQuestionProfileForRating(baseRating) {
+function makeJamesQuestionProfile() {
   return {
     key: 'hard',
     maxRating: 2,
     choiceCount: 4,
     numberMax: 20,
   };
-}
-
-function makeQuestionProfile(callKey, ratingAdjust = 0) {
-  return makeQuestionProfileForRating(2);
 }
 
 function makeNumericChoices(correct, level, opts = {}) {
@@ -1100,7 +1096,11 @@ function weightedPick(items) {
 function pickQuestion(s, play, level) {
   const candidates = QUESTION_BANK
     .map(scheduledEntry)
-    .filter((entry) => entry.enabled !== false && entry.canUse(s, play, level));
+    .filter((entry) =>
+      entry.enabled !== false
+      && (entry.grading === 'noStakes' || (entry.minCompletedPage || 1) <= FOOTBALL_LEARNING.PROFILE.completedThroughPage)
+      && entry.canUse(s, play, level)
+    );
   const entry = FOOTBALL_LEARNING.weightedPick(candidates, learningSession, logicRng)
     || scheduledEntry(QUESTION_BANK.find((q) => q.id === 'add-within-10'));
   const built = entry.build(s, play, level);
@@ -1131,7 +1131,7 @@ function buildPlay(callKey, opts = {}) {
   }
 
   const play = makePlaySnapshot(state, gain, call);
-  const profile = makeQuestionProfile(callKey);
+  const profile = makeJamesQuestionProfile();
   const question = pickQuestion(state, play, profile);
   return { ...play, ...question, callKey, learningTier: question.tier };
 }
@@ -1716,8 +1716,6 @@ function handleInstructionalMiss(btn, idx, question) {
   state.phase = 'explanation';
   state.continueRequired = true;
   disableAnswers();
-  const correctIndex = state.choices.indexOf(state.correct);
-  if (correctIndex >= 0) document.getElementById('b' + correctIndex).classList.add('correct');
   syncUiState();
   renderMathVisual();
   applyDeskHeader(state.possession === 'offense' ? 'explainOffense' : 'explainDefense');
@@ -2460,15 +2458,16 @@ window.__footballTest = {
   },
   buildPlayAt(overrides = {}, callKey = 'shortRun') {
     const before = state;
-    state = { ...createGameState(), ...overrides };
-    const result = buildPlay(callKey);
-    state = before;
-    return FOOTBALL_LEARNING.snapshot(result);
+    try {
+      state = { ...createGameState(), ...overrides };
+      return FOOTBALL_LEARNING.snapshot(buildPlay(callKey));
+    } finally {
+      state = before;
+    }
   },
   forceQuestion(question, possession = 'offense') {
     state.possession = possession;
     prepareQuestion({
-      gain: 3,
       label: 'Learning Play',
       callKey: 'shortRun',
       id: question.id || 'test-question',
