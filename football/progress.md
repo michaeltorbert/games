@@ -84,3 +84,5 @@ Original prompt: ok do the agreeded on recommendation from you + claude fable 5.
 - Passed the complete six-device release gate: 144 passed, 60 intentional project skips, and 108/108 required screenshots verified.
 - Visually inspected the defensive read and final coach report on all six targets; call grids, coach rows, and replay controls remain visible without clipping.
 - Completed the browser-client defensive-call smoke with sanitized semantic state and no browser-error artifact.
+- Opened draft PR #70 through `codex-bot-mt[bot]` with all four issues linked for closure.
+- Started the focused Claude Opus 4.8 review through the verified `claude-bot-mt[bot]` path; Claude generation was blocked by the organization's monthly spend limit before any review or comment was posted, so the PR remains draft and consensus is still pending.
