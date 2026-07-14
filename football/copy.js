@@ -107,6 +107,10 @@ const DESK_HEADER_COPY = {
   callDefense: { chip: 'Next Snap', kicker: 'Set the Duke defense.', action: 'Choose a defense card.' },
   questionOffense: { chip: 'Live Math', kicker: 'Run the play.', action: 'Answer the question.' },
   questionDefense: { chip: 'Live Math', kicker: 'Beat the snap.', action: 'Answer the question.' },
+  retryOffense: { chip: 'Coach Hint', kicker: 'Same play. Try again.', action: 'Use the model and choose again.' },
+  retryDefense: { chip: 'Coach Hint', kicker: 'Same snap. Try again.', action: 'Use the model and choose again.' },
+  explainOffense: { chip: 'Film Room', kicker: 'See how it works.', action: 'Review, then continue.' },
+  explainDefense: { chip: 'Film Room', kicker: 'See how it works.', action: 'Review, then continue.' },
   resultOffense: { chip: 'Result', kicker: 'Play outcome.', action: 'Watch the result.' },
   resultDefense: { chip: 'Result', kicker: 'Defensive result.', action: 'Watch the result.' },
 };

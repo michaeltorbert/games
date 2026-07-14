@@ -1,0 +1,70 @@
+{
+  "curriculum": {
+    "title": "Math Mammoth Grade 1-A",
+    "edition": 2026,
+    "referenceFile": "Math Mammoth Grade 1-A.pdf",
+    "repositoryUse": "Included with permission from the license holder for educational use"
+  },
+  "learner": {
+    "name": "James",
+    "completedThroughPage": 143,
+    "asOfDate": "2026-07-13",
+    "usualPagesPerDay": 2,
+    "progressRule": "Advance completedThroughPage only from an explicit user update"
+  },
+  "instructionalBands": {
+    "completedReview": [
+      "addition within 0-10",
+      "subtraction within 0-10",
+      "equations and equality",
+      "fact families",
+      "missing parts and how-many-more problems",
+      "difference and subtraction word problems",
+      "place value through 100",
+      "tens and ones decomposition",
+      "adding and subtracting whole tens",
+      "adding and subtracting 10"
+    ],
+    "currentNext": [
+      {
+        "pages": "144-147",
+        "skills": [
+          "compare two-digit numbers",
+          "use less-than, greater-than, and equal symbols",
+          "order two-digit numbers",
+          "place numbers approximately on a number line"
+        ]
+      }
+    ],
+    "nearTermExposure": [
+      {
+        "pages": "148-151",
+        "skills": [
+          "count and read numbers through 120",
+          "hundreds, tens, and ones",
+          "mixed place-value and comparison practice"
+        ]
+      },
+      {
+        "pages": "152-154",
+        "optional": true,
+        "skills": [
+          "skip-count by 2, 3, 4, 5, and 10",
+          "recognize number-chart patterns"
+        ]
+      },
+      {
+        "pages": "155-156",
+        "skills": [
+          "ordinal numbers"
+        ]
+      }
+    ]
+  },
+  "footballImplementationGuidance": {
+    "computationBand": "Keep demanding mental arithmetic mostly within 10 or 20 unless a completed lesson explicitly supports more",
+    "placeValueBand": "Two-digit values through 100 are appropriate for reading, decomposition, comparison, ordering, number-line placement, and adding or subtracting 10",
+    "exposureBand": "Treat numbers 101-120 and optional skip-counting lessons as supported or no-stakes exposure until completion is confirmed",
+    "fieldConstraint": "Avoid confusing cross-midfield label arithmetic; use a separate math visualization when football field labels reverse"
+  }
+}

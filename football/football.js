@@ -1,4 +1,4 @@
-const GAME_VERSION = '1.17.0';
+const GAME_VERSION = '1.18.0';
 let prevPlayerScore = -1, prevOpponentScore = -1;
 let playerRunTimer = 0, playerCelebrateTimer = 0, playerCelebrateDelayTimer = 0;
 const EZ = 5;
@@ -15,41 +15,36 @@ const OFFENSE_CALLS = {
   shortRun: {
     key: 'shortRun',
     label: 'Short Run',
-    desc: 'Easy · 2-4 yds',
+    desc: 'Steady · 2-4 yds',
     risk: 'easy',
-    rating: 1,
     gRange: [2, 4],
   },
   shortPass: {
     key: 'shortPass',
     label: 'Short Pass',
-    desc: 'Easy · 4-7 yds',
+    desc: 'Quick · 4-7 yds',
     risk: 'easy',
-    rating: 2,
     gRange: [4, 7],
   },
   longRun: {
     key: 'longRun',
     label: 'Long Run',
-    desc: 'Medium · 6-12 yds',
+    desc: 'Bold · 6-12 yds',
     risk: 'medium',
-    rating: 3,
     gRange: [6, 12],
   },
   mediumPass: {
     key: 'mediumPass',
     label: 'Medium Pass',
-    desc: 'Hard · 8-16 yds',
+    desc: 'Big play · 8-16 yds',
     risk: 'hard',
-    rating: 4,
     gRange: [8, 16],
   },
   longPass: {
     key: 'longPass',
     label: 'Long Pass',
-    desc: 'Very hard · 12-25 yds',
+    desc: 'Deep shot · 12-25 yds',
     risk: 'very-hard',
-    rating: 5,
     gRange: [12, 25],
   },
 };
@@ -58,33 +53,29 @@ const DEFENSE_CALLS = {
   run: {
     key: 'run',
     label: 'Run Defense',
-    desc: 'Easy math · stops runs',
+    desc: 'Closes run lanes',
     risk: 'easy',
-    rating: 1,
     covers: ['shortRun', 'longRun'],
   },
   shortPass: {
     key: 'shortPass',
     label: 'Short Pass D',
-    desc: 'Easy math · quick throws',
+    desc: 'Covers quick throws',
     risk: 'easy',
-    rating: 2,
     covers: ['shortPass'],
   },
   mediumPass: {
     key: 'mediumPass',
     label: 'Medium Pass D',
-    desc: 'Medium math · middle',
+    desc: 'Protects the middle',
     risk: 'medium',
-    rating: 3,
     covers: ['mediumPass'],
   },
   deepPass: {
     key: 'deepPass',
     label: 'Deep Pass D',
-    desc: 'Hard math · deep ball',
+    desc: 'Protects the deep ball',
     risk: 'hard',
-    rating: 4,
     covers: ['longPass'],
   },
 };
@@ -124,19 +115,21 @@ function playDiagramSvg(callKey, possession) {
 
 let state = {};
 let advTimer = null;
+let logicRng = Math.random;
+let learningSession = FOOTBALL_LEARNING.createSession();
 
 function choose(a) {
-  return a[Math.floor(Math.random() * a.length)];
+  return a[Math.floor(logicRng() * a.length)];
 }
 
 function randomInt(min, max) {
-  return Math.floor(Math.random() * (max - min + 1)) + min;
+  return Math.floor(logicRng() * (max - min + 1)) + min;
 }
 
 function shuffle(a) {
   a = [...a];
   for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
+    const j = Math.floor(logicRng() * (i + 1));
     [a[i], a[j]] = [a[j], a[i]];
   }
   return a;
@@ -202,6 +195,7 @@ function syncUiState() {
     desk.dataset.phase = state.phase || 'start';
     desk.dataset.possession = state.possession || 'offense';
   }
+  if (!['question', 'explanation'].includes(state.phase)) hideMathVisual();
   updatePromptContext();
 }
 
@@ -231,7 +225,7 @@ function playContextText() {
     bits.push(`${DOWN_NAMES[state.down] || state.down} & ${state.ytg}`);
   }
 
-  if (state.phase === 'question' || state.phase === 'feedback') {
+  if (state.phase === 'question' || state.phase === 'explanation' || state.phase === 'feedback') {
     if (state.g != null) bits.push(`${state.g} YDS IN PLAY`);
     if (state.possession === 'defense' && state.matchup) {
       bits.push(state.matchup === 'matched' ? 'GOOD MATCHUP' : 'MISMATCH');
@@ -307,6 +301,7 @@ function gameSnapshot() {
     opponentTds: state.opponentTds || 0,
     defenseStops: state.defenseStops || 0,
     correctAnswers: state.correctAnswers || 0,
+    gradedQuestions: state.gradedQuestions || 0,
     firstDowns: state.firstDowns || 0,
     pendingNextPossession: state.pendingNextPossession || null,
   };
@@ -321,11 +316,21 @@ function blankPlayState() {
     opponentCallKey: null,
     matchup: null,
     questionId: null,
+    questionSkill: null,
+    questionPurpose: null,
+    questionGrading: null,
     question: null,
     correct: null,
     choices: [],
     choiceType: 'number',
     explain: null,
+    hint: null,
+    math: null,
+    mathSupport: 'none',
+    attempt: 1,
+    missedChoiceIndexes: [],
+    continueRequired: false,
+    outcomeCommitted: false,
     outcomeMessage: null,
     touchdownSide: null,
     play: null,
@@ -360,6 +365,7 @@ function createGameState() {
     opponentTds: 0,
     defenseStops: 0,
     correctAnswers: 0,
+    gradedQuestions: 0,
     firstDowns: 0,
     pendingNextPossession: null,
     phase: 'start',
@@ -374,22 +380,16 @@ function sortedOrShuffled(values, level) {
 }
 
 function fitsLevelNumber(value, level) {
-  return value <= level.numberMax;
+  return value >= 0 && value <= level.numberMax;
 }
 
-function makeQuestionProfileForRating(baseRating) {
-  const rating = clamp(baseRating, 1, 5);
+function makeJamesQuestionProfile() {
   return {
-    key: rating <= 2 ? 'easy' : 'hard',
-    maxRating: rating,
+    key: 'hard',
+    maxRating: 2,
     choiceCount: 4,
-    numberMax: rating <= 1 ? 10 : rating <= 2 ? 20 : rating <= 3 ? 50 : 100,
+    numberMax: 20,
   };
-}
-
-function makeQuestionProfile(callKey, ratingAdjust = 0) {
-  const call = OFFENSE_CALLS[callKey] || OFFENSE_CALLS.shortRun;
-  return makeQuestionProfileForRating(call.rating + ratingAdjust);
 }
 
 function makeNumericChoices(correct, level, opts = {}) {
@@ -547,7 +547,264 @@ function makePlaySnapshot(s, gain, call) {
   };
 }
 
+function makeCurriculumMath(type, values, support, ariaLabel) {
+  return {
+    type,
+    support: support || 'none',
+    displayMin: Math.min(...values),
+    displayMax: Math.max(...values),
+    ariaLabel,
+  };
+}
+
+const CURRICULUM_QUESTION_BANK = [
+  {
+    id: 'missing-part-to-10',
+    skill: 'missing-part',
+    purpose: 'weakSpot',
+    grading: 'gate',
+    tier: 'within-10',
+    minCompletedPage: 1,
+    weight: 4,
+    canUse: () => true,
+    build: (s, p, level) => {
+      const playFits = s.ytg >= 2 && s.ytg <= 10 && p.gain >= 1 && p.gain < s.ytg;
+      const target = playFits ? s.ytg : randomInt(3, 10);
+      const known = playFits ? p.gain : randomInt(1, target - 1);
+      const correct = target - known;
+      return {
+        q: `The first down needs ${target} yards. The play gets ${known}.\nHow many more are needed?`,
+        correct,
+        choices: makeNumericChoices(correct, level, { min: 0, max: 10 }),
+        choiceType: 'number',
+        hint: `Count from ${known} up to ${target}.`,
+        explain: `${known} + ${correct} = ${target}, so ${correct} more ${correct === 1 ? 'yard is' : 'yards are'} needed.`,
+        math: { ...makeCurriculumMath('gap', [known, target], 'none', `A gap from ${known} to ${target}`), start: known, delta: correct, target },
+      };
+    },
+  },
+  {
+    id: 'difference-within-10',
+    skill: 'difference',
+    purpose: 'weakSpot',
+    grading: 'gate',
+    tier: 'within-10',
+    minCompletedPage: 1,
+    weight: 3.5,
+    canUse: () => true,
+    build: (s, p, level) => {
+      const playFits = p.gain < s.ytg && s.ytg <= 10;
+      const needed = playFits ? s.ytg : randomInt(3, 10);
+      const gained = playFits ? p.gain : randomInt(1, needed - 1);
+      const correct = needed - gained;
+      return {
+        q: `${gained} yards gained. ${needed} yards were needed.\nHow many yards short?`,
+        correct,
+        choices: makeNumericChoices(correct, level, { min: 0, max: 10 }),
+        choiceType: 'number',
+        hint: `Start at ${gained} and count up to ${needed}.`,
+        explain: `${needed} - ${gained} = ${correct}. The play is ${correct} ${correct === 1 ? 'yard' : 'yards'} short.`,
+        math: { ...makeCurriculumMath('gap', [gained, needed], 'none', `Compare ${gained} with ${needed}`), start: gained, delta: correct, target: needed },
+      };
+    },
+  },
+  {
+    id: 'add-within-10',
+    skill: 'addition',
+    purpose: 'coreReview',
+    grading: 'gate',
+    tier: 'within-10',
+    minCompletedPage: 1,
+    weight: 1.4,
+    canUse: () => true,
+    build: (s, p, level) => {
+      const a = randomInt(1, 6);
+      const b = randomInt(1, 10 - a);
+      const correct = a + b;
+      return {
+        q: `A run gets ${a} yards, then another gets ${b}.\nHow many yards altogether?`,
+        correct,
+        choices: makeNumericChoices(correct, level, { min: 0, max: 10 }),
+        choiceType: 'number',
+        hint: `Start at ${a} and hop forward ${b}.`,
+        explain: `${a} + ${b} = ${correct}.`,
+        math: { ...makeCurriculumMath('hops', [a, correct], 'none', `Start at ${a} and move forward ${b} to ${correct}`), start: a, delta: b, target: correct },
+      };
+    },
+  },
+  {
+    id: 'subtract-within-10',
+    skill: 'subtraction',
+    purpose: 'coreReview',
+    grading: 'gate',
+    tier: 'within-10',
+    minCompletedPage: 1,
+    weight: 1.4,
+    canUse: () => true,
+    build: (s, p, level) => {
+      const a = randomInt(3, 10);
+      const b = randomInt(1, a);
+      const correct = a - b;
+      return {
+        q: `The marker is ${a} yards away. A play covers ${b}.\nHow many yards remain?`,
+        correct,
+        choices: makeNumericChoices(correct, level, { min: 0, max: 10 }),
+        choiceType: 'number',
+        hint: `Start at ${a} and hop back ${b}.`,
+        explain: `${a} - ${b} = ${correct}.`,
+        math: { ...makeCurriculumMath('hops', [a, correct], 'none', `Start at ${a} and move back ${b} to ${correct}`), start: a, delta: -b, target: correct },
+      };
+    },
+  },
+  {
+    id: 'fact-family-within-10',
+    skill: 'fact-family',
+    purpose: 'coreReview',
+    grading: 'gate',
+    tier: 'within-10',
+    minCompletedPage: 1,
+    weight: 1.25,
+    canUse: () => true,
+    build: (s, p, level) => {
+      const total = randomInt(3, 10);
+      const part = randomInt(1, total - 1);
+      const correct = total - part;
+      return {
+        q: `${part} + ? = ${total}\nWhat number makes the equation true?`,
+        correct,
+        choices: makeNumericChoices(correct, level, { min: 0, max: 10 }),
+        choiceType: 'number',
+        hint: `The two parts must join to make ${total}.`,
+        explain: `${part} + ${correct} = ${total}. The matching subtraction fact is ${total} - ${part} = ${correct}.`,
+        math: { ...makeCurriculumMath('parts', [part, correct, total], 'none', `${part} and an unknown part make ${total}`), start: part, delta: correct, target: total },
+      };
+    },
+  },
+  {
+    id: 'teen-decomposition',
+    skill: 'teen-place-value',
+    purpose: 'completedPlaceValue',
+    grading: 'gate',
+    tier: 'two-digit-structure',
+    minCompletedPage: 1,
+    weight: 1.6,
+    canUse: () => true,
+    build: (s, p, level) => {
+      const number = randomInt(11, 19);
+      const correct = number - 10;
+      return {
+        q: `${number} is 10 and how many more?`,
+        correct,
+        choices: makeNumericChoices(correct, level, { min: 0, max: 10 }),
+        choiceType: 'number',
+        hint: 'Make one full group of 10. Count the ones left over.',
+        explain: `${number} is 1 ten and ${correct} ones: 10 + ${correct} = ${number}.`,
+        math: { ...makeCurriculumMath('base-ten', [10, correct, number], 'guided', `${number} shown as one ten and ${correct} ones`), tens: 1, ones: correct, target: number },
+      };
+    },
+  },
+  {
+    id: 'two-digit-place-value',
+    skill: 'place-value',
+    purpose: 'completedPlaceValue',
+    grading: 'gate',
+    tier: 'two-digit-structure',
+    minCompletedPage: 1,
+    weight: 2,
+    canUse: () => true,
+    build: (s, p, level) => {
+      const number = randomInt(20, 99);
+      const correct = Math.floor(number / 10);
+      const ones = number % 10;
+      return {
+        q: `How many tens are in ${number}?`,
+        correct,
+        choices: makeNumericChoices(correct, level, { min: 0, max: 10 }),
+        choiceType: 'number',
+        hint: `Look at the tens digit in ${number}.`,
+        explain: `${number} has ${correct} tens and ${ones} ones.`,
+        math: { ...makeCurriculumMath('base-ten', [correct, ones, number], 'guided', `${number} shown as ${correct} tens and ${ones} ones`), tens: correct, ones, target: number },
+      };
+    },
+  },
+  {
+    id: 'add-or-subtract-10',
+    skill: 'plus-minus-ten',
+    purpose: 'completedPlaceValue',
+    grading: 'gate',
+    tier: 'two-digit-structure',
+    minCompletedPage: 1,
+    weight: 1.8,
+    canUse: () => true,
+    build: (s, p, level) => {
+      const adding = logicRng() < 0.5;
+      const start = adding ? randomInt(1, 8) * 10 + randomInt(0, 9) : randomInt(2, 9) * 10 + randomInt(0, 9);
+      const delta = adding ? 10 : -10;
+      const correct = start + delta;
+      return {
+        q: `${start} ${adding ? '+' : '−'} 10 = ?`,
+        correct,
+        choices: makeNumericChoices(correct, { ...level, numberMax: 100 }, { min: 0, max: 100 }),
+        choiceType: 'number',
+        hint: `Change the tens digit by 1. The ones digit stays ${start % 10}.`,
+        explain: `${start} ${adding ? '+' : '−'} 10 = ${correct}. The ones digit stayed the same.`,
+        math: { ...makeCurriculumMath('base-ten-move', [start, correct], 'none', `Move ${adding ? 'forward' : 'back'} one ten from ${start} to ${correct}`), start, delta, target: correct, ones: start % 10 },
+      };
+    },
+  },
+  {
+    id: 'hundred-chart-small-move',
+    skill: 'hundred-chart',
+    purpose: 'completedPlaceValue',
+    grading: 'gate',
+    tier: 'two-digit-structure',
+    minCompletedPage: 1,
+    weight: 1.4,
+    canUse: () => true,
+    build: (s, p, level) => {
+      const delta = choose([-4, -3, -2, -1, 1, 2, 3, 4]);
+      const start = delta > 0 ? randomInt(1, 100 - delta) : randomInt(1 - delta, 100);
+      const correct = start + delta;
+      return {
+        q: `Start at ${start}. Move ${Math.abs(delta)} ${delta > 0 ? 'forward' : 'back'}.\nWhere do you land?`,
+        correct,
+        choices: makeNumericChoices(correct, { ...level, numberMax: 100 }, { min: 1, max: 100 }),
+        choiceType: 'number',
+        hint: `Count ${delta > 0 ? 'up' : 'back'} ${Math.abs(delta)} from ${start}.`,
+        explain: `${start} ${delta > 0 ? '+' : '−'} ${Math.abs(delta)} = ${correct}.`,
+        math: { ...makeCurriculumMath('hops', [start, correct], 'none', `Start at ${start} and move ${delta} to ${correct}`), start, delta, target: correct },
+      };
+    },
+  },
+  {
+    id: 'compare-two-digit-preview',
+    skill: 'two-digit-comparison',
+    purpose: 'currentSupported',
+    grading: 'noStakes',
+    tier: 'supported-comparison',
+    minCompletedPage: 144,
+    weight: 1,
+    canUse: () => true,
+    build: () => {
+      const left = randomInt(10, 99);
+      let right = randomInt(10, 99);
+      if (logicRng() < 0.2) right = left;
+      const correct = left === right ? '=' : left > right ? '>' : '<';
+      return {
+        q: `Which symbol makes this true?\n${left}  ?  ${right}`,
+        correct,
+        choices: ['<', '=', '>'],
+        choiceType: 'category',
+        hint: 'Compare the tens first. If the tens match, compare the ones.',
+        explain: `${left} ${correct} ${right}. Compare tens first, then ones.`,
+        math: { ...makeCurriculumMath('comparison', [left, right], 'guided', `Compare ${left} and ${right}`), left, right, target: correct },
+      };
+    },
+  },
+];
+
 const QUESTION_BANK = [
+  ...CURRICULUM_QUESTION_BANK,
   {
     id: 'what-quarter',
     rating: 1,
@@ -807,9 +1064,28 @@ const QUESTION_BANK = [
   },
 ];
 
+const LEGACY_QUESTION_METADATA = {
+  'what-quarter': { skill: 'football-knowledge', purpose: 'currentSupported', grading: 'noStakes', tier: 'football', enabled: true },
+  'what-half': { skill: 'football-knowledge', purpose: 'currentSupported', grading: 'noStakes', tier: 'football', enabled: true },
+  'quarters-in-half': { skill: 'football-knowledge', purpose: 'currentSupported', grading: 'noStakes', tier: 'football', enabled: true },
+  'quarters-left': { skill: 'football-knowledge', purpose: 'currentSupported', grading: 'noStakes', tier: 'football', enabled: true },
+  'what-down': { skill: 'football-knowledge', purpose: 'currentSupported', grading: 'noStakes', tier: 'football', enabled: true },
+  'yards-needed': { skill: 'football-number-sense', purpose: 'coreReview', grading: 'gate', tier: 'within-10', enabled: true },
+  'yards-left': { skill: 'difference', purpose: 'weakSpot', grading: 'gate', tier: 'within-10', enabled: true },
+  'bonds-to-10': { skill: 'missing-part', purpose: 'weakSpot', grading: 'gate', tier: 'within-10', enabled: true },
+  'yards-short': { skill: 'difference', purpose: 'weakSpot', grading: 'gate', tier: 'within-10', enabled: true },
+  'what-happened': { skill: 'football-knowledge', purpose: 'currentSupported', grading: 'noStakes', tier: 'football', enabled: true },
+};
+
+function scheduledEntry(entry) {
+  if (entry.skill) return entry;
+  const metadata = LEGACY_QUESTION_METADATA[entry.id];
+  return metadata ? { ...entry, ...metadata, weight: Math.min(entry.weight || 1, 0.7) } : { ...entry, enabled: false };
+}
+
 function weightedPick(items) {
   const total = items.reduce((sum, item) => sum + item.weight, 0);
-  let r = Math.random() * total;
+  let r = logicRng() * total;
   for (const item of items) {
     r -= item.weight;
     if (r <= 0) return item;
@@ -818,11 +1094,29 @@ function weightedPick(items) {
 }
 
 function pickQuestion(s, play, level) {
-  const candidates = QUESTION_BANK.filter((entry) =>
-    entry.rating <= level.maxRating && entry.canUse(s, play, level)
-  );
-  const entry = candidates.length ? weightedPick(candidates) : QUESTION_BANK.find((q) => q.id === 'yards-needed');
-  return { id: entry.id, ...entry.build(s, play, level) };
+  const candidates = QUESTION_BANK
+    .map(scheduledEntry)
+    .filter((entry) =>
+      entry.enabled !== false
+      && (entry.grading === 'noStakes' || (entry.minCompletedPage || 1) <= FOOTBALL_LEARNING.PROFILE.completedThroughPage)
+      && entry.canUse(s, play, level)
+    );
+  const entry = FOOTBALL_LEARNING.weightedPick(candidates, learningSession, logicRng)
+    || scheduledEntry(QUESTION_BANK.find((q) => q.id === 'add-within-10'));
+  const built = entry.build(s, play, level);
+  const initialSupport = FOOTBALL_LEARNING.supportFor(learningSession, entry.skill, built.math?.support || 'none');
+  const question = {
+    id: entry.id,
+    skill: entry.skill,
+    purpose: entry.purpose,
+    grading: entry.grading,
+    tier: entry.tier,
+    minCompletedPage: entry.minCompletedPage || 1,
+    ...built,
+    math: built.math ? { ...built.math, support: initialSupport } : null,
+  };
+  FOOTBALL_LEARNING.recordPresented(learningSession, question, { possession: s.possession, call: play.callKey });
+  return question;
 }
 
 function buildPlay(callKey, opts = {}) {
@@ -837,11 +1131,9 @@ function buildPlay(callKey, opts = {}) {
   }
 
   const play = makePlaySnapshot(state, gain, call);
-  const profile = opts.questionRating
-    ? makeQuestionProfileForRating(opts.questionRating)
-    : makeQuestionProfile(callKey, opts.ratingAdjust || 0);
+  const profile = makeJamesQuestionProfile();
   const question = pickQuestion(state, play, profile);
-  return { ...play, ...question, callKey, questionRating: profile.maxRating };
+  return { ...play, ...question, callKey, learningTier: question.tier };
 }
 
 // -- Field --------------------------------------------------------------------
@@ -952,6 +1244,97 @@ function setFeedback(t, tone = 'neutral') {
   }
 }
 
+function hideMathVisual() {
+  const overlay = document.getElementById('math-overlay');
+  if (!overlay) return;
+  overlay.hidden = true;
+  overlay.innerHTML = '';
+  overlay.removeAttribute('data-type');
+  overlay.setAttribute('aria-label', '');
+}
+
+function mathNumberToken(value, className = '') {
+  return `<span class="math-number ${className}">${value}</span>`;
+}
+
+function renderMathVisual() {
+  const overlay = document.getElementById('math-overlay');
+  const math = state.math;
+  if (!overlay || !math || !['question', 'explanation'].includes(state.phase)) {
+    hideMathVisual();
+    return;
+  }
+  const support = state.mathSupport || math.support || 'none';
+  const worked = support === 'worked';
+  overlay.hidden = false;
+  overlay.dataset.type = math.type;
+  overlay.dataset.support = support;
+  let accessibleLabel = math.ariaLabel || 'Math support';
+  if (!worked && math.type === 'hops') {
+    accessibleLabel = `Start at ${math.start}. Move ${math.delta >= 0 ? 'forward' : 'back'} ${Math.abs(math.delta)}. The landing spot is unknown.`;
+  } else if (!worked && math.type === 'gap') {
+    accessibleLabel = `A number line from ${math.start} to ${math.target} with an unknown gap.`;
+  } else if (!worked && math.type === 'parts') {
+    accessibleLabel = `${math.start} and an unknown part make ${math.target}.`;
+  } else if (!worked && math.type === 'base-ten-move') {
+    accessibleLabel = `Start at ${math.start}. Change by ${math.delta}. The answer is unknown.`;
+  }
+  overlay.setAttribute('aria-label', accessibleLabel);
+
+  if (math.type === 'base-ten' || math.type === 'base-ten-move') {
+    const shownValue = math.type === 'base-ten-move' && !worked ? math.start : math.target;
+    const tens = math.type === 'base-ten-move' ? Math.floor(shownValue / 10) : (math.tens ?? Math.floor(shownValue / 10));
+    const ones = math.type === 'base-ten-move' ? shownValue % 10 : (math.ones ?? shownValue % 10);
+    overlay.innerHTML =
+      `<span class="math-caption">TENS</span><span class="math-caption">ONES</span>` +
+      `<span class="math-block-value">${tens}</span><span class="math-block-value">${ones}</span>` +
+      `<span class="math-blocks math-tens" aria-hidden="true">${'<i></i>'.repeat(Math.min(tens, 10))}</span>` +
+      `<span class="math-blocks math-ones" aria-hidden="true">${'<i></i>'.repeat(Math.min(ones, 10))}</span>`;
+    return;
+  }
+
+  if (math.type === 'comparison') {
+    const leftTens = Math.floor(math.left / 10);
+    const rightTens = Math.floor(math.right / 10);
+    overlay.innerHTML =
+      `<span class="math-compare-side">${mathNumberToken(math.left)}<small>${leftTens} tens</small></span>` +
+      `<span class="math-compare-mark">?</span>` +
+      `<span class="math-compare-side">${mathNumberToken(math.right)}<small>${rightTens} tens</small></span>`;
+    return;
+  }
+
+  if (math.type === 'parts') {
+    overlay.innerHTML =
+      `<span class="math-parts"><span>${math.start}</span><span>${worked ? math.delta : '?'}</span></span>` +
+      `<span class="math-equals">make</span>${mathNumberToken(math.target, 'math-target')}`;
+    return;
+  }
+
+  const deltaText = `${math.delta >= 0 ? '+' : '−'}${Math.abs(math.delta)}`;
+  const targetText = math.type === 'gap' || worked ? math.target : '?';
+  overlay.innerHTML =
+    `<div class="math-line" aria-hidden="true"><span class="math-line-fill"></span>` +
+      `<span class="math-point math-start">${math.start}</span>` +
+      `<span class="math-hop">${math.type === 'gap' ? '? more' : deltaText}</span>` +
+      `<span class="math-point math-target">${targetText}</span></div>` +
+    (worked ? `<span class="math-worked">${math.start} ${math.delta >= 0 ? '+' : '−'} ${Math.abs(math.delta)} = ${math.target}</span>` : '');
+}
+
+function hideContinueButton() {
+  const button = document.getElementById('question-continue');
+  if (!button) return;
+  button.classList.add('hidden');
+  button.disabled = true;
+}
+
+function showContinueButton() {
+  const button = document.getElementById('question-continue');
+  if (!button) return;
+  button.classList.remove('hidden');
+  button.disabled = false;
+  requestAnimationFrame(() => button.focus());
+}
+
 function setActionSubcopy(t) {
   const el = document.getElementById('action-subcopy');
   if (el) el.textContent = t;
@@ -969,6 +1352,7 @@ function hideAnswerButtons() {
     delete b.dataset.value;
     b.classList.remove('wrong', 'correct');
   });
+  hideContinueButton();
 }
 
 function hideCallGrid() {
@@ -983,6 +1367,7 @@ function renderButtons() {
   const row = document.getElementById('btn-row');
   row.classList.remove('hidden');
   row.dataset.choiceType = state.choiceType || 'number';
+  hideContinueButton();
   [0, 1, 2, 3].forEach(i => {
     const b = document.getElementById('b' + i);
     const hasChoice = i < state.choices.length;
@@ -1001,6 +1386,7 @@ function renderButtons() {
 
 function renderCallGrid(calls, onPick) {
   hideAnswerButtons();
+  hideMathVisual();
   const grid = document.getElementById('call-grid');
   grid.innerHTML = '';
   grid.classList.remove('hidden');
@@ -1144,7 +1530,7 @@ function showCallPrompt() {
   updateStatus();
   if (state.possession === 'offense') {
     document.getElementById('play-label').textContent = downDistanceLabel(state.down, state.ytg);
-    document.getElementById('question').textContent = 'Call the snap. Bigger gains bring tougher math.';
+    document.getElementById('question').textContent = 'Call the snap. Every play uses your learning plan.';
     applyDeskHeader('callOffense');
     renderCallGrid(Object.values(OFFENSE_CALLS), selectOffenseCall);
   } else {
@@ -1178,11 +1564,21 @@ function prepareQuestion(p, labelHtml) {
     label: p.label,
     callKey: p.callKey,
     questionId: p.id,
+    questionSkill: p.skill,
+    questionPurpose: p.purpose,
+    questionGrading: p.grading,
     question: p.q,
     correct: p.correct,
     choices: p.choices,
     choiceType: p.choiceType || 'number',
     explain: p.explain,
+    hint: p.hint || 'Use the model and try the same question again.',
+    math: p.math || null,
+    mathSupport: p.math?.support || 'none',
+    attempt: 1,
+    missedChoiceIndexes: [],
+    continueRequired: false,
+    outcomeCommitted: false,
     outcomeMessage: null,
     play: p,
     phase: 'question',
@@ -1193,6 +1589,7 @@ function prepareQuestion(p, labelHtml) {
   syncUiState();
   setFeedback('');
   renderButtons();
+  renderMathVisual();
 }
 
 function selectOffenseCall(callKey) {
@@ -1216,7 +1613,6 @@ function selectDefenseCall(defenseCallKey) {
   const matched = defenseMatches(defenseCallKey, opponentCallKey);
   const defenseCall = DEFENSE_CALLS[defenseCallKey];
   const p = buildPlay(opponentCallKey, {
-    questionRating: defenseCall.rating,
     gainMultiplier: matched ? 0.65 : 1.2,
   });
   Object.assign(state, {
@@ -1227,7 +1623,7 @@ function selectDefenseCall(defenseCallKey) {
   const call = OFFENSE_CALLS[opponentCallKey];
   const read = matched ? 'Good matchup' : 'Mismatch';
   prepareQuestion(p, `Opponent ${call.label.toLowerCase()} for <span>${yds(p.gain)}</span>`);
-  setFeedback(`${read}: ${defenseCall.label} vs ${call.label}. Math level comes from your defense call.`, 'info');
+  setFeedback(`${read}: ${defenseCall.label} vs ${call.label}. Your learning plan stays the same.`, 'info');
 }
 
 function handleAnswer(idx) {
@@ -1235,58 +1631,147 @@ function handleAnswer(idx) {
   const btn = document.getElementById('b' + idx);
   if (!btn || btn.disabled || btn.classList.contains('hidden')) return;
   const val = state.choices[idx];
+  const question = learningQuestionFromState();
+  const isCorrect = val === state.correct;
+  FOOTBALL_LEARNING.recordAttempt(learningSession, question, {
+    possession: state.possession,
+    call: state.callKey,
+    attempt: state.attempt,
+    correct: isCorrect,
+    support: state.mathSupport,
+  });
 
-  if (state.possession === 'defense') {
-    handleDefenseAnswer(btn, val);
+  if (isCorrect) {
+    completeCorrectAnswer(btn, question);
     return;
   }
 
-  if (val !== state.correct) {
-    const msg = outcomeMessage(PLAY_OUTCOME_COPY.offenseMiss, state.callKey);
-    btn.classList.add('wrong');
-    disableAnswers();
-    state.phase = 'feedback';
-    syncUiState();
-    state.outcomeMessage = msg;
-    applyDeskHeader('resultOffense');
-    setFeedback(`${msg} ${state.explain || 'That answer misses it.'}`, 'negative');
-    resolveOffenseMiss();
-    return;
-  }
+  handleInstructionalMiss(btn, idx, question);
+}
 
-  state.correctAnswers++;
+function learningQuestionFromState() {
+  return {
+    id: state.questionId,
+    skill: state.questionSkill,
+    purpose: state.questionPurpose,
+    grading: state.questionGrading,
+    math: state.math,
+  };
+}
+
+function completeCorrectAnswer(btn, question) {
+  const result = state.attempt === 1 ? 'firstTryCorrect' : 'retryCorrect';
+  FOOTBALL_LEARNING.recordResolved(learningSession, question, result, {
+    possession: state.possession,
+    call: state.callKey,
+    support: state.mathSupport,
+  });
+  if (state.questionGrading !== 'noStakes') {
+    state.gradedQuestions++;
+    state.correctAnswers++;
+  }
+  state.outcomeCommitted = true;
   btn.classList.add('correct');
   disableAnswers();
   state.phase = 'feedback';
   syncUiState();
-  applyDeskHeader('resultOffense');
-  resolveOffensePlay();
-}
+  hideContinueButton();
 
-function handleDefenseAnswer(btn, val) {
-  if (val === state.correct) {
-    state.correctAnswers++;
-    btn.classList.add('correct');
+  if (state.possession === 'defense') {
     playCorrect();
-    disableAnswers();
-    state.phase = 'feedback';
-    syncUiState();
     const msg = outcomeMessage(PLAY_OUTCOME_COPY.defenseStop, state.opponentCallKey);
     state.outcomeMessage = msg;
     applyDeskHeader('resultDefense');
-    setFeedback(`${msg} ${state.explain || ''}`.trim(), 'positive');
+    setFeedback(state.attempt > 1 ? `Great retry. ${msg}` : `${msg} ${state.explain || ''}`.trim(), 'positive');
     resolveDefenseStop(msg);
     return;
   }
 
+  applyDeskHeader('resultOffense');
+  if (state.attempt > 1) setFeedback('Great retry. The full play counts!', 'positive');
+  resolveOffensePlay();
+}
+
+function handleInstructionalMiss(btn, idx, question) {
   btn.classList.add('wrong');
+  btn.disabled = true;
+  state.missedChoiceIndexes.push(idx);
+
+  if (state.attempt === 1) {
+    state.attempt = 2;
+    state.mathSupport = FOOTBALL_LEARNING.nextSupport(state.mathSupport);
+    if (state.math) state.math = { ...state.math, support: state.mathSupport };
+    renderMathVisual();
+    applyDeskHeader(state.possession === 'offense' ? 'retryOffense' : 'retryDefense');
+    setFeedback(`Good try. ${state.hint}`, 'info');
+    const next = [0, 1, 2, 3]
+      .map(i => document.getElementById('b' + i))
+      .find(button => button && !button.disabled && !button.classList.contains('hidden'));
+    if (next) next.focus();
+    return;
+  }
+
+  state.mathSupport = 'worked';
+  if (state.math) state.math = { ...state.math, support: 'worked' };
+  state.phase = 'explanation';
+  state.continueRequired = true;
   disableAnswers();
+  syncUiState();
+  renderMathVisual();
+  applyDeskHeader(state.possession === 'offense' ? 'explainOffense' : 'explainDefense');
+  const preview = state.questionGrading === 'noStakes' ? 'This preview never costs the play. ' : '';
+  setFeedback(`${preview}${state.explain || `The answer is ${state.correct}.`}`, 'info');
+  showContinueButton();
+}
+
+function continueAfterExplanation() {
+  if (state.phase !== 'explanation' || !state.continueRequired || state.outcomeCommitted) return;
+  state.continueRequired = false;
+  state.outcomeCommitted = true;
+  hideContinueButton();
+  const question = learningQuestionFromState();
+  FOOTBALL_LEARNING.recordResolved(learningSession, question, 'secondMiss', {
+    possession: state.possession,
+    call: state.callKey,
+    support: state.mathSupport,
+  });
+  if (state.questionGrading !== 'noStakes') state.gradedQuestions++;
   state.phase = 'feedback';
   syncUiState();
+
+  if (state.questionGrading === 'noStakes') {
+    if (state.possession === 'defense') {
+      const msg = 'Preview complete. Your defense makes the stop.';
+      state.outcomeMessage = msg;
+      applyDeskHeader('resultDefense');
+      setFeedback(msg, 'positive');
+      resolveDefenseStop(msg);
+    } else {
+      applyDeskHeader('resultOffense');
+      setFeedback('Preview complete. The full play still counts.', 'positive');
+      resolveOffensePlay();
+    }
+    return;
+  }
+
+  if (state.possession === 'offense') {
+    const msg = outcomeMessage(PLAY_OUTCOME_COPY.offenseMiss, state.callKey);
+    state.outcomeMessage = msg;
+    applyDeskHeader('resultOffense');
+    setFeedback(`${msg} No gain, then the next down.`, 'negative');
+    resolveOffenseMiss();
+    return;
+  }
+
+  const original = state.play;
+  const call = OFFENSE_CALLS[state.opponentCallKey] || OFFENSE_CALLS.shortRun;
+  const cappedGain = Math.min(original.gain, 3);
+  state.play = { ...makePlaySnapshot(state, cappedGain, call), id: original.id };
+  state.g = cappedGain;
   const msg = outcomeMessage(PLAY_OUTCOME_COPY.defenseGain, state.opponentCallKey);
   state.outcomeMessage = msg;
   applyDeskHeader('resultDefense');
-  setFeedback(`${msg} ${state.explain || 'That answer misses it.'} Opponent gains ${yds(state.g)}.`, 'negative');
+  setFeedback(`${msg} The mistake costs only ${yds(cappedGain)}.`, 'negative');
   resolveDefenseGain(msg);
 }
 
@@ -1689,6 +2174,7 @@ function showStart() {
 
 function startGame() {
   clearTimeout(advTimer);
+  learningSession = FOOTBALL_LEARNING.createSession();
   state = createGameState();
   hideOverlays();
   startDrive('offense');
@@ -1823,7 +2309,7 @@ function nextQuarter() {
 function populateEndStats() {
   const stats = document.getElementById('ov-end-stats');
   if (!stats) return;
-  const total = state.plays || 0;
+  const total = state.gradedQuestions || 0;
   const correct = state.correctAnswers || 0;
   const accuracy = total > 0 ? Math.round((correct / total) * 100) : 0;
   const tiles = [
@@ -1879,6 +2365,7 @@ function restart() {
   clearConfetti('ov-td-confetti');
   clearConfetti('ov-end-confetti');
   resetPlayerAnimations();
+  learningSession = FOOTBALL_LEARNING.createSession();
   state = createGameState();
   prevPlayerScore = -1;
   prevOpponentScore = -1;
@@ -1904,6 +2391,8 @@ function renderGameToText() {
     firstDownLine: ydLabel(state.fdYd),
     direction: state.direction,
     plays: state.plays,
+    correctAnswers: state.correctAnswers,
+    gradedQuestions: state.gradedQuestions,
     quarterPossessions: state.quarterPossessions,
     possessionsPerQuarter: POSSESSIONS_PER_QUARTER,
     pendingNextPossession: state.pendingNextPossession || null,
@@ -1916,12 +2405,31 @@ function renderGameToText() {
     opponentCall: state.opponentCallKey,
     matchup: state.matchup,
     gain: state.g ?? null,
-    questionRating: state.play?.questionRating ?? null,
+    learningTier: state.play?.learningTier || null,
     questionId: state.questionId || null,
+    questionSkill: state.questionSkill || null,
+    questionPurpose: state.questionPurpose || null,
+    questionGrading: state.questionGrading || null,
     question: state.question || null,
     choices: state.choices || [],
     correct: state.correct ?? null,
     explain: state.explain || null,
+    hint: state.hint || null,
+    math: state.math ? {
+      ...state.math,
+      support: state.mathSupport,
+      visible: !document.getElementById('math-overlay')?.hidden,
+    } : null,
+    attempt: state.attempt || null,
+    missedChoiceIndexes: state.missedChoiceIndexes || [],
+    retryAvailable: state.phase === 'question' && state.attempt === 2,
+    continueRequired: Boolean(state.continueRequired),
+    outcomeCommitted: Boolean(state.outcomeCommitted),
+    learning: {
+      presented: learningSession.presented,
+      resolved: learningSession.resolved,
+      currentSkill: state.questionSkill || null,
+    },
     outcomeMessage: state.outcomeMessage || null,
     touchdownSide: state.touchdownSide || null,
   });
@@ -1929,6 +2437,59 @@ function renderGameToText() {
 
 window.render_game_to_text = renderGameToText;
 window.advanceTime = () => {};
+window.__footballTest = {
+  setRng(fn) {
+    if (typeof fn !== 'function') throw new TypeError('setRng expects a function');
+    logicRng = fn;
+  },
+  resetRng() { logicRng = Math.random; },
+  resetLearning() { learningSession = FOOTBALL_LEARNING.createSession(); },
+  learningProfile() { return FOOTBALL_LEARNING.snapshot(FOOTBALL_LEARNING.PROFILE); },
+  learningState() { return FOOTBALL_LEARNING.snapshot(learningSession); },
+  questionBank() {
+    return QUESTION_BANK.map(scheduledEntry).filter(entry => entry.enabled !== false).map(entry => ({
+      id: entry.id,
+      skill: entry.skill,
+      purpose: entry.purpose,
+      grading: entry.grading,
+      tier: entry.tier,
+      minCompletedPage: entry.minCompletedPage || 1,
+    }));
+  },
+  buildPlayAt(overrides = {}, callKey = 'shortRun') {
+    const before = state;
+    try {
+      state = { ...createGameState(), ...overrides };
+      return FOOTBALL_LEARNING.snapshot(buildPlay(callKey));
+    } finally {
+      state = before;
+    }
+  },
+  forceQuestion(question, possession = 'offense') {
+    state.possession = possession;
+    prepareQuestion({
+      label: 'Learning Play',
+      callKey: 'shortRun',
+      id: question.id || 'test-question',
+      skill: question.skill || 'test-skill',
+      purpose: question.purpose || 'coreReview',
+      grading: question.grading || 'gate',
+      tier: question.tier || 'within-10',
+      q: question.q,
+      correct: question.correct,
+      choices: question.choices,
+      choiceType: question.choiceType || 'number',
+      explain: question.explain,
+      hint: question.hint,
+      math: question.math,
+      newYd: state.yd,
+      newFdYd: state.fdYd,
+      newDown: state.down,
+      newYtg: state.ytg,
+      gain: 3,
+    }, 'Learning play');
+  },
+};
 
 // -- Init ---------------------------------------------------------------------
 buildField();

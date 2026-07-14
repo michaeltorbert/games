@@ -4,14 +4,14 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <title>Football Math!</title>
-<link rel="apple-touch-icon" href="apple-touch-icon.png?v=1.17.0">
-<link rel="icon" type="image/png" href="apple-touch-icon.png?v=1.17.0">
+<link rel="apple-touch-icon" href="apple-touch-icon.png?v=1.18.0">
+<link rel="icon" type="image/png" href="apple-touch-icon.png?v=1.18.0">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow+Condensed:wght@600;700;800&display=swap">
-<link rel="stylesheet" href="../shared/fonts.css?v=1.17.0">
-<link rel="stylesheet" href="../shared/reset.css?v=1.17.0">
-<link rel="stylesheet" href="football.css?v=1.17.0">
+<link rel="stylesheet" href="../shared/fonts.css?v=1.18.0">
+<link rel="stylesheet" href="../shared/reset.css?v=1.18.0">
+<link rel="stylesheet" href="football.css?v=1.18.0">
 </head>
 <body>
 <div id="broadcast-shell">
@@ -58,6 +58,7 @@
           <div class="fd-chain-link"></div>
           <div class="fd-chain-badge">TO GAIN</div>
         </div>
+        <div id="math-overlay" role="img" aria-label="" hidden></div>
         <div id="ball" aria-hidden="true">
           <svg viewBox="-34 -22 68 44" role="img">
             <ellipse cx="0" cy="0" rx="30" ry="18" />
@@ -106,6 +107,7 @@
           <button class="ans-btn" id="b2" onclick="handleAnswer(2)">-</button>
           <button class="ans-btn" id="b3" onclick="handleAnswer(3)">-</button>
         </div>
+        <button id="question-continue" class="question-continue hidden" type="button" onclick="continueAfterExplanation()">Continue</button>
       </section>
     </div>
 
@@ -228,11 +230,12 @@
   </div>
 </div>
 
-<script src="copy.js?v=1.17.0"></script>
-<script src="football.js?v=1.17.0"></script>
+<script src="copy.js?v=1.18.0"></script>
+<script src="learning.js?v=1.18.0"></script>
+<script src="football.js?v=1.18.0"></script>
 <script>
   document.getElementById('version-display').textContent = `v${GAME_VERSION}`;
 </script>
-<script src="../shared/updater.js?v=1.17.0"></script>
+<script src="../shared/updater.js?v=1.18.0"></script>
 </body>
 </html>
