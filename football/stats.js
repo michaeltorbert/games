@@ -48,7 +48,7 @@ const FOOTBALL_STATS = (() => {
         },
       },
       recentPlays: [],
-      // Reserved for a later mastery model. Issue #8 does not infer mastery.
+      // Per-concept graded resolutions; no-stakes previews never enter mastery.
       mastery: {},
     };
   }
@@ -119,10 +119,27 @@ const FOOTBALL_STATS = (() => {
     return {
       id: safeString(question.id, 'unknown'),
       skill: safeString(question.skill, 'unknown'),
+      concept: safeString(question.concept, 'unknown'),
       purpose: safeString(question.purpose, 'unknown'),
       grading: question.grading === 'noStakes' ? 'noStakes' : 'gate',
       tier: safeString(question.tier, 'unknown'),
     };
+  }
+
+  function normalizeMastery(value) {
+    const input = isRecord(value) ? value : {};
+    return Object.fromEntries(Object.entries(input).map(([concept, raw]) => {
+      const mastery = isRecord(raw) ? raw : {};
+      const firstTryCorrect = safeInteger(mastery.firstTryCorrect);
+      const retryCorrect = safeInteger(mastery.retryCorrect);
+      const secondMiss = safeInteger(mastery.secondMiss);
+      return [concept, {
+        resolved: firstTryCorrect + retryCorrect + secondMiss,
+        firstTryCorrect,
+        retryCorrect,
+        secondMiss,
+      }];
+    }));
   }
 
   function normalizeAttempt(value, fallbackNumber) {
@@ -167,7 +184,7 @@ const FOOTBALL_STATS = (() => {
       schemaVersion: SCHEMA_VERSION,
       aggregates: normalizeAggregates(value.aggregates),
       recentPlays: recent,
-      mastery: isRecord(value.mastery) ? JSON.parse(JSON.stringify(value.mastery)) : {},
+      mastery: normalizeMastery(value.mastery),
     };
   }
 
@@ -298,12 +315,23 @@ const FOOTBALL_STATS = (() => {
     aggregates.learning[row.resolution]++;
   }
 
+  function updateMastery(mastery, row) {
+    if (row.question.grading === 'noStakes') return;
+    const concept = row.question.concept;
+    if (!mastery[concept]) {
+      mastery[concept] = { resolved: 0, firstTryCorrect: 0, retryCorrect: 0, secondMiss: 0 };
+    }
+    mastery[concept].resolved++;
+    mastery[concept][row.resolution]++;
+  }
+
   function appendRow(value) {
     const row = normalizeRow(value);
     if (!row) return false;
     const store = loadStore();
     if (!storageWritable || store.recentPlays.some(existing => existing.id === row.id)) return false;
     updateAggregates(store.aggregates, row);
+    updateMastery(store.mastery, row);
     store.recentPlays.push(row);
     store.recentPlays = store.recentPlays.slice(-MAX_RECENT_PLAYS);
     return saveStore(store);
@@ -338,6 +366,7 @@ const FOOTBALL_STATS = (() => {
     recordResolution,
     completePlay,
     history: () => snapshot(loadStore()),
+    masterySnapshot: () => snapshot(loadStore().mastery),
     sessionSnapshot: session => snapshot(session),
   });
 })();

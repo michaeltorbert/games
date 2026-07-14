@@ -18,10 +18,24 @@ const FOOTBALL_LEARNING = (() => {
     }),
   });
 
-  function createSession() {
+  function normalizeMasterySnapshot(value) {
+    const input = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+    return Object.fromEntries(Object.entries(input).map(([concept, raw]) => {
+      const stats = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+      const firstTryCorrect = Math.max(0, Math.floor(Number(stats.firstTryCorrect) || 0));
+      const retryCorrect = Math.max(0, Math.floor(Number(stats.retryCorrect) || 0));
+      const secondMiss = Math.max(0, Math.floor(Number(stats.secondMiss) || 0));
+      const resolved = firstTryCorrect + retryCorrect + secondMiss;
+      return [concept, { resolved, firstTryCorrect, retryCorrect, secondMiss }];
+    }));
+  }
+
+  function createSession(historicalMastery = {}) {
     return {
       recentIds: [],
       bySkill: {},
+      byConcept: {},
+      historicalMastery: normalizeMasterySnapshot(historicalMastery),
       presented: 0,
       resolved: 0,
       nextSequence: 1,
@@ -38,6 +52,13 @@ const FOOTBALL_LEARNING = (() => {
       session.bySkill[skill] = { presented: 0, firstTryCorrect: 0, retryCorrect: 0, secondMiss: 0 };
     }
     return session.bySkill[skill];
+  }
+
+  function conceptState(session, concept) {
+    if (!session.byConcept[concept]) {
+      session.byConcept[concept] = { resolved: 0, firstTryCorrect: 0, retryCorrect: 0, secondMiss: 0 };
+    }
+    return session.byConcept[concept];
   }
 
   function addEvent(session, type, payload = {}) {
@@ -63,6 +84,7 @@ const FOOTBALL_LEARNING = (() => {
     addEvent(session, 'presented', {
       questionId: question.id,
       skill: question.skill,
+      concept: question.concept || question.skill,
       purpose: question.purpose,
       grading: question.grading,
       possession: context.possession,
@@ -75,6 +97,7 @@ const FOOTBALL_LEARNING = (() => {
     addEvent(session, 'attempt', {
       questionId: question.id,
       skill: question.skill,
+      concept: question.concept || question.skill,
       purpose: question.purpose,
       grading: question.grading,
       possession: context.possession,
@@ -90,10 +113,14 @@ const FOOTBALL_LEARNING = (() => {
     if (question.grading !== 'noStakes') {
       const stats = skillState(session, question.skill);
       stats[result] = (stats[result] || 0) + 1;
+      const mastery = conceptState(session, question.concept || question.skill);
+      mastery.resolved++;
+      mastery[result] = (mastery[result] || 0) + 1;
     }
     addEvent(session, 'resolved', {
       questionId: question.id,
       skill: question.skill,
+      concept: question.concept || question.skill,
       purpose: question.purpose,
       grading: question.grading,
       possession: context.possession,
@@ -117,6 +144,14 @@ const FOOTBALL_LEARNING = (() => {
     return 1;
   }
 
+  function historicalNeedMultiplier(session, entry) {
+    if (entry.grading === 'noStakes') return 1;
+    const stats = session.historicalMastery[entry.concept || entry.skill];
+    if (!stats || stats.resolved < 3) return 1;
+    const supported = stats.retryCorrect + stats.secondMiss;
+    return Math.min(1.25, Math.max(1, 1 + 0.25 * (supported / stats.resolved)));
+  }
+
   function purposeWeight(entry) {
     return PROFILE.purposeWeights[entry.purpose] || 0.12;
   }
@@ -133,7 +168,8 @@ const FOOTBALL_LEARNING = (() => {
       entry,
       weight: Math.max(
         0.0001,
-        purposeWeight(entry) * ((entry.weight || 1) / purposeTotals[entry.purpose]) * needMultiplier(session, entry)
+        purposeWeight(entry) * ((entry.weight || 1) / purposeTotals[entry.purpose])
+          * needMultiplier(session, entry) * historicalNeedMultiplier(session, entry)
       ),
     }));
     const total = weighted.reduce((sum, item) => sum + item.weight, 0);

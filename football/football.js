@@ -11,6 +11,26 @@ const START_YARD = 20;
 const TD_POINTS = 7;
 const POSSESSIONS_PER_QUARTER = 4;
 
+const COACH_CONCEPT_LABELS = Object.freeze({
+  'missing-part': 'Missing parts to 10',
+  difference: 'Finding the difference',
+  addition: 'Adding within 10',
+  subtraction: 'Subtracting within 10',
+  'fact-family': 'Fact families',
+  'teen-place-value': 'Teen numbers',
+  'place-value': 'Tens and ones',
+  'plus-minus-ten': 'Adding or taking 10',
+  'hundred-chart': 'Hundred chart moves',
+  'two-digit-comparison': 'Comparing two-digit numbers',
+  'quarter-half-structure': 'Quarters and halves',
+  'down-progression': 'Down order',
+  'line-to-gain': 'Yards to a first down',
+  'yard-line-translation': 'Reading yard lines',
+  'red-zone-math': 'Red-zone math',
+  'field-distance': 'Field distance',
+  'play-outcome': 'Reading the play result',
+});
+
 const OFFENSE_CALLS = {
   shortRun: {
     key: 'shortRun',
@@ -108,7 +128,11 @@ function playDiagramSvg(callKey, possession) {
 let state = {};
 let advTimer = null;
 let logicRng = Math.random;
-let learningSession = FOOTBALL_LEARNING.createSession();
+function createLearningSession() {
+  return FOOTBALL_LEARNING.createSession(FOOTBALL_STATS.masterySnapshot());
+}
+
+let learningSession = createLearningSession();
 let statsSession = FOOTBALL_STATS.createSession();
 let pendingStatsPlay = null;
 
@@ -312,6 +336,7 @@ function blankPlayState() {
     matchup: null,
     questionId: null,
     questionSkill: null,
+    questionConcept: null,
     questionPurpose: null,
     questionGrading: null,
     question: null,
@@ -400,6 +425,7 @@ function beginStatsPlay(play) {
     question: {
       id: play.id,
       skill: play.skill,
+      concept: play.concept,
       purpose: play.purpose,
       grading: play.grading,
       tier: play.tier,
@@ -605,6 +631,7 @@ const CURRICULUM_QUESTION_BANK = [
   {
     id: 'missing-part-to-10',
     skill: 'missing-part',
+    concept: 'missing-part',
     purpose: 'weakSpot',
     grading: 'gate',
     tier: 'within-10',
@@ -630,6 +657,7 @@ const CURRICULUM_QUESTION_BANK = [
   {
     id: 'difference-within-10',
     skill: 'difference',
+    concept: 'difference',
     purpose: 'weakSpot',
     grading: 'gate',
     tier: 'within-10',
@@ -655,6 +683,7 @@ const CURRICULUM_QUESTION_BANK = [
   {
     id: 'add-within-10',
     skill: 'addition',
+    concept: 'addition',
     purpose: 'coreReview',
     grading: 'gate',
     tier: 'within-10',
@@ -679,6 +708,7 @@ const CURRICULUM_QUESTION_BANK = [
   {
     id: 'subtract-within-10',
     skill: 'subtraction',
+    concept: 'subtraction',
     purpose: 'coreReview',
     grading: 'gate',
     tier: 'within-10',
@@ -703,6 +733,7 @@ const CURRICULUM_QUESTION_BANK = [
   {
     id: 'fact-family-within-10',
     skill: 'fact-family',
+    concept: 'fact-family',
     purpose: 'coreReview',
     grading: 'gate',
     tier: 'within-10',
@@ -727,6 +758,7 @@ const CURRICULUM_QUESTION_BANK = [
   {
     id: 'teen-decomposition',
     skill: 'teen-place-value',
+    concept: 'teen-place-value',
     purpose: 'completedPlaceValue',
     grading: 'gate',
     tier: 'two-digit-structure',
@@ -750,6 +782,7 @@ const CURRICULUM_QUESTION_BANK = [
   {
     id: 'two-digit-place-value',
     skill: 'place-value',
+    concept: 'place-value',
     purpose: 'completedPlaceValue',
     grading: 'gate',
     tier: 'two-digit-structure',
@@ -774,6 +807,7 @@ const CURRICULUM_QUESTION_BANK = [
   {
     id: 'add-or-subtract-10',
     skill: 'plus-minus-ten',
+    concept: 'plus-minus-ten',
     purpose: 'completedPlaceValue',
     grading: 'gate',
     tier: 'two-digit-structure',
@@ -799,6 +833,7 @@ const CURRICULUM_QUESTION_BANK = [
   {
     id: 'hundred-chart-small-move',
     skill: 'hundred-chart',
+    concept: 'hundred-chart',
     purpose: 'completedPlaceValue',
     grading: 'gate',
     tier: 'two-digit-structure',
@@ -823,6 +858,7 @@ const CURRICULUM_QUESTION_BANK = [
   {
     id: 'compare-two-digit-preview',
     skill: 'two-digit-comparison',
+    concept: 'two-digit-comparison',
     purpose: 'currentSupported',
     grading: 'noStakes',
     tier: 'supported-comparison',
@@ -1109,16 +1145,16 @@ const QUESTION_BANK = [
 ];
 
 const LEGACY_QUESTION_METADATA = {
-  'what-quarter': { skill: 'football-knowledge', purpose: 'currentSupported', grading: 'noStakes', tier: 'football', enabled: true },
-  'what-half': { skill: 'football-knowledge', purpose: 'currentSupported', grading: 'noStakes', tier: 'football', enabled: true },
-  'quarters-in-half': { skill: 'football-knowledge', purpose: 'currentSupported', grading: 'noStakes', tier: 'football', enabled: true },
-  'quarters-left': { skill: 'football-knowledge', purpose: 'currentSupported', grading: 'noStakes', tier: 'football', enabled: true },
-  'what-down': { skill: 'football-knowledge', purpose: 'currentSupported', grading: 'noStakes', tier: 'football', enabled: true },
-  'yards-needed': { skill: 'football-number-sense', purpose: 'coreReview', grading: 'gate', tier: 'within-10', enabled: true },
-  'yards-left': { skill: 'difference', purpose: 'weakSpot', grading: 'gate', tier: 'within-10', enabled: true },
-  'bonds-to-10': { skill: 'missing-part', purpose: 'weakSpot', grading: 'gate', tier: 'within-10', enabled: true },
-  'yards-short': { skill: 'difference', purpose: 'weakSpot', grading: 'gate', tier: 'within-10', enabled: true },
-  'what-happened': { skill: 'football-knowledge', purpose: 'currentSupported', grading: 'noStakes', tier: 'football', enabled: true },
+  'what-quarter': { skill: 'football-knowledge', concept: 'quarter-half-structure', purpose: 'currentSupported', grading: 'noStakes', tier: 'football', enabled: true },
+  'what-half': { skill: 'football-knowledge', concept: 'quarter-half-structure', purpose: 'currentSupported', grading: 'noStakes', tier: 'football', enabled: true },
+  'quarters-in-half': { skill: 'football-knowledge', concept: 'quarter-half-structure', purpose: 'currentSupported', grading: 'noStakes', tier: 'football', enabled: true },
+  'quarters-left': { skill: 'football-knowledge', concept: 'quarter-half-structure', purpose: 'currentSupported', grading: 'noStakes', tier: 'football', enabled: true },
+  'what-down': { skill: 'football-knowledge', concept: 'down-progression', purpose: 'currentSupported', grading: 'noStakes', tier: 'football', enabled: true },
+  'yards-needed': { skill: 'football-number-sense', concept: 'line-to-gain', purpose: 'coreReview', grading: 'gate', tier: 'within-10', enabled: true },
+  'yards-left': { skill: 'difference', concept: 'line-to-gain', purpose: 'weakSpot', grading: 'gate', tier: 'within-10', enabled: true },
+  'bonds-to-10': { skill: 'missing-part', concept: 'line-to-gain', purpose: 'weakSpot', grading: 'gate', tier: 'within-10', enabled: true },
+  'yards-short': { skill: 'difference', concept: 'line-to-gain', purpose: 'weakSpot', grading: 'gate', tier: 'within-10', enabled: true },
+  'what-happened': { skill: 'football-knowledge', concept: 'play-outcome', purpose: 'currentSupported', grading: 'noStakes', tier: 'football', enabled: true },
 };
 
 function scheduledEntry(entry) {
@@ -1142,6 +1178,7 @@ function pickQuestion(s, play, level) {
   const question = {
     id: entry.id,
     skill: entry.skill,
+    concept: entry.concept,
     purpose: entry.purpose,
     grading: entry.grading,
     tier: entry.tier,
@@ -1599,6 +1636,7 @@ function prepareQuestion(p, labelHtml) {
     callKey: p.callKey,
     questionId: p.id,
     questionSkill: p.skill,
+    questionConcept: p.concept,
     questionPurpose: p.purpose,
     questionGrading: p.grading,
     question: p.q,
@@ -1707,6 +1745,7 @@ function learningQuestionFromState() {
   return {
     id: state.questionId,
     skill: state.questionSkill,
+    concept: state.questionConcept,
     purpose: state.questionPurpose,
     grading: state.questionGrading,
     math: state.math,
@@ -2241,7 +2280,7 @@ function showStart() {
 
 function startGame() {
   clearTimeout(advTimer);
-  learningSession = FOOTBALL_LEARNING.createSession();
+  learningSession = createLearningSession();
   statsSession = FOOTBALL_STATS.createSession();
   pendingStatsPlay = null;
   state = createGameState();
@@ -2388,6 +2427,7 @@ function populateEndStats() {
     { label: 'Defensive Stops', value: state.defenseStops || 0 },
     { label: 'First Downs', value: state.firstDowns || 0 },
   ];
+  const coachRows = buildCoachReport();
   stats.innerHTML =
     '<span class="ov-stats-title">Way to go!</span>' +
     '<div class="ov-stats-grid">' +
@@ -2395,7 +2435,48 @@ function populateEndStats() {
       `<div class="ov-stat"><span class="ov-stat-value">${t.value}</span>` +
       `<span class="ov-stat-label">${t.label}</span></div>`
     ).join('') +
+    '</div>' +
+    '<div class="ov-coach-report" role="list" aria-label="Coach report">' +
+    coachRows.map((row) =>
+      `<div class="ov-coach-row" role="listitem"><span class="ov-coach-label">${row.label}</span>` +
+      `<span class="ov-coach-value">${row.value}</span></div>`
+    ).join('') +
     '</div>';
+}
+
+function buildCoachReport() {
+  const concepts = Object.entries(learningSession.byConcept)
+    .filter(([, mastery]) => mastery.resolved > 0)
+    .map(([concept, mastery]) => ({
+      concept,
+      label: COACH_CONCEPT_LABELS[concept] || 'Football math',
+      ...mastery,
+    }));
+
+  if (!concepts.length) {
+    return [{ label: 'Learning today', value: 'Keep playing to build your learning recap' }];
+  }
+
+  const score = (item) => (item.firstTryCorrect + 0.75 * item.retryCorrect) / item.resolved;
+  const supportNeed = (item) => (item.retryCorrect + item.secondMiss) / item.resolved;
+  const strongest = concepts
+    .filter((item) => item.firstTryCorrect + item.retryCorrect > 0)
+    .sort((a, b) => score(b) - score(a) || b.resolved - a.resolved || a.label.localeCompare(b.label))[0];
+  const practice = concepts
+    .filter((item) => item.retryCorrect + item.secondMiss > 0)
+    .sort((a, b) => supportNeed(b) - supportNeed(a) || b.secondMiss - a.secondMiss || a.label.localeCompare(b.label))[0];
+  const rows = [];
+
+  if (strongest) rows.push({ label: 'Strong today', value: strongest.label });
+  if (practice) {
+    rows.push({ label: 'Practice next', value: practice.label });
+  } else if (strongest) {
+    const challenge = [...concepts]
+      .sort((a, b) => a.resolved - b.resolved || a.label.localeCompare(b.label))[0];
+    rows.push({ label: 'Next challenge', value: challenge.label });
+  }
+  if (!strongest) rows.push({ label: 'Keep going', value: 'Every try builds your skill' });
+  return rows.slice(0, 2);
 }
 
 function showGameOver() {
@@ -2434,7 +2515,7 @@ function restart() {
   clearConfetti('ov-td-confetti');
   clearConfetti('ov-end-confetti');
   resetPlayerAnimations();
-  learningSession = FOOTBALL_LEARNING.createSession();
+  learningSession = createLearningSession();
   statsSession = FOOTBALL_STATS.createSession();
   pendingStatsPlay = null;
   state = createGameState();
@@ -2480,6 +2561,7 @@ function renderGameToText() {
     learningTier: state.play?.learningTier || null,
     questionId: state.questionId || null,
     questionSkill: state.questionSkill || null,
+    questionConcept: state.questionConcept || null,
     questionPurpose: state.questionPurpose || null,
     questionGrading: state.questionGrading || null,
     question: state.question || null,
@@ -2501,7 +2583,11 @@ function renderGameToText() {
       presented: learningSession.presented,
       resolved: learningSession.resolved,
       currentSkill: state.questionSkill || null,
+      currentConcept: state.questionConcept || null,
+      byConcept: FOOTBALL_LEARNING.snapshot(learningSession.byConcept),
+      historicalMastery: FOOTBALL_LEARNING.snapshot(learningSession.historicalMastery),
     },
+    coachReport: buildCoachReport(),
     outcomeMessage: state.outcomeMessage || null,
     touchdownSide: state.touchdownSide || null,
   });
@@ -2518,6 +2604,7 @@ window.__footballTest = {
   resetLearning() { learningSession = FOOTBALL_LEARNING.createSession(); },
   learningProfile() { return FOOTBALL_LEARNING.snapshot(FOOTBALL_LEARNING.PROFILE); },
   learningState() { return FOOTBALL_LEARNING.snapshot(learningSession); },
+  coachReport() { return FOOTBALL_LEARNING.snapshot(buildCoachReport()); },
   statsHistory() { return FOOTBALL_STATS.history(); },
   statsSession() { return FOOTBALL_STATS.sessionSnapshot(statsSession); },
   opponentProfiles() { return FOOTBALL_OPPONENT.PROFILES; },
@@ -2531,6 +2618,7 @@ window.__footballTest = {
     return QUESTION_BANK.map(scheduledEntry).filter(entry => entry.enabled !== false).map(entry => ({
       id: entry.id,
       skill: entry.skill,
+      concept: entry.concept,
       purpose: entry.purpose,
       grading: entry.grading,
       tier: entry.tier,
@@ -2553,6 +2641,7 @@ window.__footballTest = {
       callKey: 'shortRun',
       id: question.id || 'test-question',
       skill: question.skill || 'test-skill',
+      concept: question.concept || question.skill || 'test-concept',
       purpose: question.purpose || 'coreReview',
       grading: question.grading || 'gate',
       tier: question.tier || 'within-10',

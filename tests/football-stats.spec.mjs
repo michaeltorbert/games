@@ -39,7 +39,6 @@ test('completed play rows persist normalized context without prompts or answer c
   const stored = await page.evaluate(() => JSON.parse(localStorage.getItem(FOOTBALL_STATS.STORAGE_KEY)));
   expect(stored.schemaVersion).toBe(1);
   expect(stored.recentPlays).toHaveLength(1);
-  expect(stored.mastery).toEqual({});
   expect(stored.aggregates.completedPlays).toBe(1);
   expect(stored.aggregates.byPossession.offense).toBe(1);
   expect(stored.aggregates.byOutcome.touchdown).toBe(1);
@@ -51,6 +50,7 @@ test('completed play rows persist normalized context without prompts or answer c
   expect(row.question).toEqual(expect.objectContaining({
     id: expect.any(String),
     skill: expect.any(String),
+    concept: expect.any(String),
     purpose: expect.any(String),
     grading: expect.stringMatching(/^(gate|noStakes)$/),
     tier: expect.any(String),
@@ -59,6 +59,13 @@ test('completed play rows persist normalized context without prompts or answer c
     expect.objectContaining({ number: 1, correct: true, elapsedMs: expect.any(Number) }),
   ]);
   expect(row.resolution).toBe('firstTryCorrect');
+  if (row.question.grading === 'gate') {
+    expect(stored.mastery[row.question.concept]).toEqual({
+      resolved: 1, firstTryCorrect: 1, retryCorrect: 0, secondMiss: 0,
+    });
+  } else {
+    expect(stored.mastery).toEqual({});
+  }
   expect(row.actualYards).toBe(offeredYards);
   expect(row.outcome).toBe('touchdown');
   expect(row.postPlay.score.player).toBe(7);
@@ -148,7 +155,10 @@ test('retry, miss, defense, and no-stakes paths log realized outcomes exactly on
     firstTryCorrect: 1,
     secondMiss: 2,
   });
-  expect(stored.mastery).toEqual({});
+  expect(stored.mastery).toEqual({
+    difference: { resolved: 1, firstTryCorrect: 0, retryCorrect: 0, secondMiss: 1 },
+    addition: { resolved: 2, firstTryCorrect: 1, retryCorrect: 0, secondMiss: 1 },
+  });
   expect(new Set(stored.recentPlays.map(row => row.id)).size).toBe(4);
   expect(errors).toEqual([]);
 });
