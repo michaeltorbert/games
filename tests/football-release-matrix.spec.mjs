@@ -99,13 +99,13 @@ async function assertOverlay(page, testInfo, id, phase, label) {
   await shot(page, testInfo, label);
 }
 
-async function liveAnswerIndex(page, kind) {
-  const index = await page.evaluate(answerKind => {
+async function liveAnswerIndex(page, kind, excluded = []) {
+  const index = await page.evaluate(({ answerKind, excludedIndexes }) => {
     const correctIndex = state.choices.indexOf(state.correct);
     return answerKind === 'correct'
       ? correctIndex
-      : state.choices.findIndex(choice => choice !== state.correct);
-  }, kind);
+      : state.choices.findIndex((choice, index) => choice !== state.correct && !excludedIndexes.includes(index));
+  }, { answerKind: kind, excludedIndexes: excluded });
   expect(index, `${kind} answer index`).toBeGreaterThanOrEqual(0);
   return index;
 }
@@ -125,6 +125,7 @@ test('full football state matrix follows production transitions', async ({ page 
   });
   await page.clock.install({ time: new Date('2026-01-01T12:00:00Z') });
   await page.goto('/football/');
+  let game;
 
   await assertOverlay(page, testInfo, 'ov-start', 'start', '01-start');
 
@@ -144,8 +145,17 @@ test('full football state matrix follows production transitions', async ({ page 
   await assertPhaseAndShot(page, testInfo, 'question', '03-offense-question');
 
   await pauseClockBeforeAnswer(page);
+  const offenseWrong = await liveAnswerIndex(page, 'wrong');
+  await page.locator(`#b${offenseWrong}`).click();
+  game = await renderedState(page);
+  expect(game.score).toEqual({ player: 0, opponent: 0 });
+  expect(game.plays).toBe(0);
+  expect(game.attempt).toBe(2);
+  expect(game.retryAvailable).toBe(true);
+  await assertPhaseAndShot(page, testInfo, 'question', '03b-offense-retry');
+
   await page.locator(`#b${await liveAnswerIndex(page, 'correct')}`).click();
-  let game = await renderedState(page);
+  game = await renderedState(page);
   expect(game.score).toEqual({ player: 7, opponent: 0 });
   expect(game.playerTouchdowns).toBe(1);
   expect(game.plays).toBe(1);
@@ -177,7 +187,24 @@ test('full football state matrix follows production transitions', async ({ page 
   await assertPhaseAndShot(page, testInfo, 'question', '08-defense-question');
 
   await pauseClockBeforeAnswer(page);
-  await page.locator(`#b${await liveAnswerIndex(page, 'wrong')}`).click();
+  const defenseWrongOne = await liveAnswerIndex(page, 'wrong');
+  await page.locator(`#b${defenseWrongOne}`).click();
+  game = await renderedState(page);
+  expect(game.score).toEqual({ player: 7, opponent: 0 });
+  expect(game.plays).toBe(1);
+  expect(game.attempt).toBe(2);
+  await assertPhaseAndShot(page, testInfo, 'question', '08b-defense-retry');
+
+  const defenseWrongTwo = await liveAnswerIndex(page, 'wrong', [defenseWrongOne]);
+  await page.locator(`#b${defenseWrongTwo}`).click();
+  game = await renderedState(page);
+  expect(game.score).toEqual({ player: 7, opponent: 0 });
+  expect(game.plays).toBe(1);
+  expect(game.continueRequired).toBe(true);
+  expect(game.outcomeCommitted).toBe(false);
+  await assertPhaseAndShot(page, testInfo, 'explanation', '08c-defense-explanation');
+
+  await page.locator('#question-continue').click();
   game = await renderedState(page);
   expect(game.score).toEqual({ player: 7, opponent: 7 });
   expect(game.opponentTouchdowns).toBe(1);
@@ -235,7 +262,12 @@ test('post-game accuracy counts wrong offense and defense answers', async ({ pag
   await page.goto('/football/?boot=offense-call');
   await page.locator('#call-grid .call-btn').first().click();
   await expect(page.locator('#ui-desk')).toHaveAttribute('data-phase', 'question');
-  await page.locator(`#b${await liveAnswerIndex(page, 'wrong')}`).click();
+  await page.evaluate(() => { state.questionGrading = 'gate'; });
+  let firstWrong = await liveAnswerIndex(page, 'wrong');
+  await page.locator(`#b${firstWrong}`).click();
+  await page.locator(`#b${await liveAnswerIndex(page, 'wrong', [firstWrong])}`).click();
+  await expect(page.locator('#ui-desk')).toHaveAttribute('data-phase', 'explanation');
+  await page.locator('#question-continue').click();
   await expect(page.locator('#ui-desk')).toHaveAttribute('data-phase', 'feedback');
 
   await page.evaluate(() => {
@@ -244,7 +276,12 @@ test('post-game accuracy counts wrong offense and defense answers', async ({ pag
   });
   await page.locator('#call-grid .call-btn').first().click();
   await expect(page.locator('#ui-desk')).toHaveAttribute('data-phase', 'question');
-  await page.locator(`#b${await liveAnswerIndex(page, 'wrong')}`).click();
+  await page.evaluate(() => { state.questionGrading = 'gate'; });
+  firstWrong = await liveAnswerIndex(page, 'wrong');
+  await page.locator(`#b${firstWrong}`).click();
+  await page.locator(`#b${await liveAnswerIndex(page, 'wrong', [firstWrong])}`).click();
+  await expect(page.locator('#ui-desk')).toHaveAttribute('data-phase', 'explanation');
+  await page.locator('#question-continue').click();
   await expect(page.locator('#ui-desk')).toHaveAttribute('data-phase', 'feedback');
 
   await page.evaluate(() => showGameOver());

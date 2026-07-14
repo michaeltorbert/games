@@ -103,7 +103,7 @@ Each project archives these 14 required states:
 13. halftime
 14. final
 
-A fifteenth screenshot records the reduced-motion state. The post-test gate requires all 90 PNGs (15 screenshots × 6 projects) to exist and be non-empty. Missing states, clipped or undersized controls, horizontal overflow, uncaught browser errors, failed behavior contracts, or missing artifacts make the command exit nonzero.
+An eighteenth screenshot records the reduced-motion state after the matrix also captures offense retry, defense retry, and the blocking explanation/Continue state. The post-test gate requires all 108 PNGs (18 screenshots × 6 projects) to exist and be non-empty. Missing states, clipped or undersized controls, horizontal overflow, uncaught browser errors, failed behavior contracts, or missing artifacts make the command exit nonzero.
 
 Canonical screenshots are retained at:
 
