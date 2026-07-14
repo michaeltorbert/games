@@ -87,3 +87,29 @@ Original prompt: ok do the agreeded on recommendation from you + claude fable 5.
 - Opened draft PR #70 through `codex-bot-mt[bot]` with all four issues linked for closure.
 - The first focused Claude review attempt stopped before posting when the organization hit its monthly spend limit. After access was restored, Claude Fable 5 reviewed the full untruncated PR diff at `9e8a49d` through `claude-bot-mt[bot]`, approved it with no material issues, and left five non-blocking future-hardening notes.
 - Classified the review notes as cosmetic/schema clarification or future-feature/layout considerations; no current acceptance, correctness, privacy, or release blocker remains.
+
+---
+
+Original prompt: Make issue #54's football math genuinely arise from the live game situation, using Codex subagents as needed and conserving Claude usage until more capacity is available.
+
+## Contextual Football math correction
+
+- Reopened issue #54 and completed a multi-round Codex/Fable planning loop; the final issue plan has current-run Codex-Claude consensus.
+- Created `codex/issue-54-contextual-football` from v1.19 at `3152fbb`, then rebased onto the workflow-only `origin/main` update at `9958827` before publication while preserving the merged learning-history, opponent-tendency, and coach-report work.
+- Split non-overlapping pure-domain and contextual-question modules across Codex subagents while keeping the v1.19 game integration with the lead agent.
+- Started the schema-version-2 learning-event and positive-recency scheduler migration; Claude implementation review is intentionally deferred while the user's current Claude session is near its limit.
+- Added a recursively frozen, DOM-free football domain that normalizes canonical field coordinates and independently projects or reprojects every touchdown, first down, fourth-down turnover, and ordinary advance.
+- Added a DOM-free contextual question seam with page-143 curriculum gates, closed operations, dereferenceable context/rule bindings, structured stable choices, staged accessible visuals, and exhaustive two-direction property coverage.
+- Rewired offense and defense so the full call/matchup and proposed transition are frozen before scheduling; valid question subsystem failures now bypass instruction and commit the exact verified play, while invalid context/projection commits nothing and preserves the defensive pre-snap read.
+- Split football, scheduler, and presentation randomness into independent seeded streams; IDs and telemetry consume no logical RNG draws.
+- Replaced flattened resolution authority with `activeSnap`, `questionInstance`, `pendingResolution`, and mutable `questionUi`; second-miss learning resolves before Continue, while the football reducer commits only the already frozen zero-yard/capped transition and ignores duplicate Continue.
+- Upgraded learning events and persisted football stats links to schema 2 with family/context/question-instance IDs, plus v1 stats migration and explicit presented/bypassed rows.
+- Added focused production-handler integration coverage for grounding, both possession resolution tables, exact-once commits, fault injection, telemetry privacy, and RNG isolation; the initial combined domain/context and learning/integration run passed 40/40 checks.
+- Bumped Football and every cache-busting/version surface to v1.20.0. Claude implementation review remains deferred to preserve the user's near-limit session.
+- Removed the unreachable legacy random-question bank so the only runtime instructional path is the snap-grounded contextual system.
+- Independent Codex review caught and closed four edge contracts before publication: guided support can never reveal a worked answer after the first miss; late UI preparation rolls back and rethrows instead of masquerading as a bypass; every diagnostic carries the stable three-ID linkage shape; and each completed defensive snap privately owns the exact frozen pre-snap opponent plan.
+- Added invalid-projection, preparation-rollback, private-snapshot privacy, guided-retry, and Replay session regressions.
+- Passed the final complete six-device release gate: 25/25 Node checks, 160 Playwright tests passed, 140 intentional project skips, and 108/108 canonical screenshots verified.
+- Visually inspected offense question/retry and defense question/explanation states across representative iPad and phone targets; the live situation, answer controls, support, and Continue action remain readable and reachable.
+- Completed the prescribed browser-client smoke on a live offense question; `render_game_to_text()` exposed the sanitized snap-grounded contracts and no console/page-error artifact was produced.
+- Used no additional Claude capacity during implementation or verification; the implementation review remains intentionally deferred until the user's quota refreshes.

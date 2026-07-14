@@ -54,6 +54,9 @@ Run these on both iPhone sizes:
 - no hover-only dependency on call selection or answer selection
 - offense call grid is fully visible without scrolling on both iPads, both phones, and iPad 11 landscape
 - defense call shows one concise, truthful pre-snap look and tendency; choosing a call does not reroll or reveal the opponent's planned call
+- every question names or models facts from the exact pending snap (down/distance, field or drive distance, committed score, quarter/down, or a real scoring rule); no unrelated fact interrupts the play
+- first miss keeps the same frozen question and adds guided support; a second miss shows the worked model and blocks the football outcome behind Continue
+- initial and guided visuals do not announce a hidden answer in either visible copy or the accessible label
 - final overlay shows a compact, supportive current-game coach report without pushing the replay control below the fold
 - scorebug remains readable without clipped LIVE ribbon or possession indicator
 - field, line-to-gain badge, and lower-third do not collide at device edges
@@ -86,7 +89,7 @@ Run the complete Football release verifier before merge:
 npm run test:football:release
 ```
 
-The release command runs every Football contract and UI spec against all six device projects, including bounded stats persistence, mastery/coach-report behavior, situational opponent tendencies, and pre-snap hint truthfulness. Its state matrix follows the game’s production paths: a correct offense answer produces the player touchdown, a wrong defense answer produces the opponent touchdown, touchdown buttons produce both possession transitions, and `finishPossession()` produces quarter-end, halftime, and final.
+The release command first runs DOM-free football-domain and contextual-question property tests, then runs every Football contract and UI spec against all six device projects. Coverage includes frozen-snap grounding, structured choice IDs, valid-question-failure bypass telemetry, invalid-context fail-closed behavior, independent RNG streams, bounded stats persistence, mastery/coach-report behavior, situational opponent tendencies, and pre-snap hint truthfulness. Its state matrix follows the game’s production paths: a correct offense answer produces the player touchdown, a second defensive miss produces the capped opponent touchdown path, touchdown buttons produce both possession transitions, and `finishPossession()` produces quarter-end, halftime, and final.
 
 Each project archives these 14 required states:
 

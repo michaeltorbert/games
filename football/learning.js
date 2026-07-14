@@ -4,17 +4,17 @@
 
 const FOOTBALL_LEARNING = (() => {
   const PROFILE = Object.freeze({
-    schemaVersion: 1,
+    schemaVersion: 2,
     completedThroughPage: 143,
     computationMax: 10,
     displayMax: 100,
     recencyWindow: 3,
+    recencyMultiplier: 0.18,
     maxEvents: 160,
     purposeWeights: Object.freeze({
       weakSpot: 0.38,
-      coreReview: 0.22,
+      coreReview: 0.32,
       completedPlaceValue: 0.30,
-      currentSupported: 0.10,
     }),
   });
 
@@ -32,7 +32,7 @@ const FOOTBALL_LEARNING = (() => {
 
   function createSession(historicalMastery = {}) {
     return {
-      recentIds: [],
+      recentFamilyIds: [],
       bySkill: {},
       byConcept: {},
       historicalMastery: normalizeMasterySnapshot(historicalMastery),
@@ -76,35 +76,48 @@ const FOOTBALL_LEARNING = (() => {
     return event;
   }
 
+  function questionIdentity(question) {
+    return {
+      familyId: question.familyId || question.id,
+      contextId: question.contextId || null,
+      questionInstanceId: question.questionInstanceId || null,
+    };
+  }
+
+  function questionEvidence(question) {
+    const bindings = question.bindings || question.premises;
+    return bindings ? { bindings: copy(bindings) } : {};
+  }
+
   function recordPresented(session, question, context = {}) {
     session.presented++;
     skillState(session, question.skill).presented++;
-    session.recentIds.push(question.id);
-    session.recentIds = session.recentIds.slice(-PROFILE.recencyWindow);
+    const identity = questionIdentity(question);
+    session.recentFamilyIds.push(identity.familyId);
+    session.recentFamilyIds = session.recentFamilyIds.slice(-PROFILE.recencyWindow);
     addEvent(session, 'presented', {
-      questionId: question.id,
+      ...identity,
       skill: question.skill,
       concept: question.concept || question.skill,
       purpose: question.purpose,
       grading: question.grading,
-      possession: context.possession,
-      call: context.call,
       support: question.math?.support || 'none',
+      ...questionEvidence(question),
     });
   }
 
   function recordAttempt(session, question, context = {}) {
     addEvent(session, 'attempt', {
-      questionId: question.id,
+      ...questionIdentity(question),
       skill: question.skill,
       concept: question.concept || question.skill,
       purpose: question.purpose,
       grading: question.grading,
-      possession: context.possession,
-      call: context.call,
       attempt: context.attempt,
+      selectedChoiceId: context.selectedChoiceId || null,
       correct: Boolean(context.correct),
       support: context.support || 'none',
+      ...questionEvidence(question),
     });
   }
 
@@ -118,15 +131,14 @@ const FOOTBALL_LEARNING = (() => {
       mastery[result] = (mastery[result] || 0) + 1;
     }
     addEvent(session, 'resolved', {
-      questionId: question.id,
+      ...questionIdentity(question),
       skill: question.skill,
       concept: question.concept || question.skill,
       purpose: question.purpose,
       grading: question.grading,
-      possession: context.possession,
-      call: context.call,
       result,
       support: context.support || 'none',
+      ...questionEvidence(question),
     });
   }
 
@@ -157,19 +169,18 @@ const FOOTBALL_LEARNING = (() => {
   }
 
   function weightedPick(entries, session, rng) {
-    const recent = new Set(session.recentIds);
-    const fresh = entries.filter((entry) => !recent.has(entry.id));
-    const pool = fresh.length ? fresh : entries;
-    const purposeTotals = pool.reduce((totals, entry) => {
+    const recent = new Set(session.recentFamilyIds);
+    const purposeTotals = entries.reduce((totals, entry) => {
       totals[entry.purpose] = (totals[entry.purpose] || 0) + (entry.weight || 1);
       return totals;
     }, {});
-    const weighted = pool.map((entry) => ({
+    const weighted = entries.map((entry) => ({
       entry,
       weight: Math.max(
         0.0001,
         purposeWeight(entry) * ((entry.weight || 1) / purposeTotals[entry.purpose])
           * needMultiplier(session, entry) * historicalNeedMultiplier(session, entry)
+          * (recent.has(entry.familyId || entry.id) ? PROFILE.recencyMultiplier : 1)
       ),
     }));
     const total = weighted.reduce((sum, item) => sum + item.weight, 0);
@@ -191,8 +202,11 @@ const FOOTBALL_LEARNING = (() => {
   }
 
   function nextSupport(current) {
-    if (!current || current === 'none') return 'guided';
-    return 'worked';
+    // The in-snap retry is always guided. Worked support is reserved for the
+    // explicit second-miss explanation so it can never reveal an answer before
+    // the child has had both attempts.
+    if (current === 'worked') return 'worked';
+    return 'guided';
   }
 
   function fitsDisplay(value, min = 0, max = PROFILE.displayMax) {

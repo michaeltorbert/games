@@ -7,6 +7,48 @@ function trackErrors(page) {
   return errors;
 }
 
+async function installDeterministicStreams(page, footballRoll = 0) {
+  await page.evaluate((roll) => {
+    const football = () => roll;
+    const scheduler = () => 0.25;
+    const presentation = () => 0.5;
+    window.__footballTest.setRngStreams({ football, scheduler, presentation });
+  }, footballRoll);
+}
+
+async function seedOffense(page, { yardLine = 20, firstDownLine = 30 } = {}) {
+  await page.evaluate((drive) => window.__footballTest.seedDriveState(drive), {
+    possession: 'offense',
+    direction: 1,
+    quarter: 1,
+    down: 1,
+    yardsToGo: firstDownLine - yardLine,
+    yardLine,
+    firstDownLine,
+    driveStart: yardLine,
+    scores: { player: 0, opponent: 0 },
+    plays: 0,
+    drivePlays: 0,
+  });
+}
+
+async function chooseCall(page, label) {
+  const button = page.locator('#call-grid .call-btn').filter({ hasText: label }).first();
+  await expect(button).toBeVisible();
+  await button.click();
+  await expect(page.locator('#ui-desk')).toHaveAttribute('data-phase', 'question');
+  const contracts = await page.evaluate(() => window.__footballTest.activeContracts());
+  expect(contracts.activeSnap).not.toBeNull();
+  expect(contracts.questionInstance).not.toBeNull();
+  return contracts;
+}
+
+async function answerChoice(page, choiceId) {
+  const contracts = await page.evaluate((id) => window.__footballTest.answerChoice(id), choiceId);
+  expect(contracts).not.toBe(false);
+  return contracts;
+}
+
 test('mute target and preference survive reloads', async ({ page }) => {
   const errors = trackErrors(page);
   await page.goto('/football/');
@@ -90,18 +132,32 @@ test('negative cues stay silent while positive cues remain wired', async ({ page
   expect(await page.evaluate(() => typeof playWhistle)).toBe('undefined');
   expect(await page.evaluate(() => typeof playWrong)).toBe('undefined');
 
-  await page.locator('#call-grid .call-btn').first().click();
-  await page.evaluate(() => {
-    const wrongIndex = state.choices.findIndex(choice => choice !== state.correct);
-    handleAnswer(wrongIndex);
-  });
+  await installDeterministicStreams(page);
+  await seedOffense(page);
+  const negative = await chooseCall(page, 'Short Run');
+  const wrongChoiceId = negative.questionInstance.choices
+    .find((choice) => choice.id !== negative.questionInstance.correctChoiceId)?.id;
+  expect(wrongChoiceId).toEqual(expect.any(String));
+  await answerChoice(page, wrongChoiceId);
   expect(await page.evaluate(() => window.__audioEvents.filter(event => event.includes('oscillator')))).toEqual([]);
 
-  await page.evaluate(() => {
-    playCorrect();
-    playFirstDown();
-    playTouchdown();
-  });
+  await seedOffense(page);
+  const ordinary = await chooseCall(page, 'Short Run');
+  await answerChoice(page, ordinary.questionInstance.correctChoiceId);
+
+  await seedOffense(page, { yardLine: 28, firstDownLine: 30 });
+  const firstDown = await chooseCall(page, 'Short Run');
+  expect(firstDown.activeSnap.proposal.resultKind).toBe('firstDown');
+  await answerChoice(page, firstDown.questionInstance.correctChoiceId);
+
+  await seedOffense(page, { yardLine: 98, firstDownLine: 100 });
+  const touchdown = await chooseCall(page, 'Short Run');
+  expect(touchdown.activeSnap.proposal.resultKind).toBe('touchdown');
+  await answerChoice(page, touchdown.questionInstance.correctChoiceId);
+  await expect.poll(() => page.evaluate(() =>
+    window.__audioEvents.filter(event => event.startsWith('oscillator:') && event.endsWith(':start')).length
+  ), { timeout: 3000 }).toBe(10);
+
   const positiveStarts = await page.evaluate(() =>
     window.__audioEvents.filter(event => event.startsWith('oscillator:') && event.endsWith(':start'))
   );

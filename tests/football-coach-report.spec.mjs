@@ -11,7 +11,7 @@ test('coach report uses this game only and keeps the final CTA above the fold', 
       },
     }));
   });
-  await page.goto('/football/');
+  await page.goto('/football/?boot=offense-call');
 
   expect(await page.evaluate(() => window.__footballTest.learningState().historicalMastery.addition))
     .toEqual({ resolved: 8, firstTryCorrect: 8, retryCorrect: 0, secondMiss: 0 });

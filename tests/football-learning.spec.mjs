@@ -1,133 +1,159 @@
 import { test, expect } from '@playwright/test';
 
 function primaryOnly(testInfo) {
-  test.skip(testInfo.project.name !== 'ipad-11-landscape', 'Learning property checks run once on the primary target.');
+  test.skip(testInfo.project.name !== 'ipad-11-landscape', 'Learning contract checks run once on the primary target.');
 }
 
-async function answerIndex(page, kind, excluded = []) {
-  return page.evaluate(({ answerKind, excludedIndexes }) => {
-    const correct = state.choices.indexOf(state.correct);
-    if (answerKind === 'correct') return correct;
-    return state.choices.findIndex((choice, index) => choice !== state.correct && !excludedIndexes.includes(index));
-  }, { answerKind: kind, excludedIndexes: excluded });
+async function rendered(page) {
+  return JSON.parse(await page.evaluate(() => window.render_game_to_text()));
 }
 
-test('curriculum scheduler is deterministic, bounded, fresh, and call-independent in level', async ({ page }, testInfo) => {
+async function contracts(page) {
+  return page.evaluate(() => window.__footballTest.activeContracts());
+}
+
+async function answerChoice(page, choiceId) {
+  const result = await page.evaluate((id) => window.__footballTest.answerChoice(id), choiceId);
+  expect(result).not.toBe(false);
+  return result;
+}
+
+async function seedDrive(page, possession = 'offense', overrides = {}) {
+  const direction = possession === 'offense' ? 1 : -1;
+  const yardLine = overrides.yardLine ?? (direction === 1 ? 30 : 70);
+  const yardsToGo = overrides.yardsToGo ?? 10;
+  const driveStart = overrides.driveStart ?? (direction === 1 ? 20 : 80);
+  return page.evaluate((drive) => window.__footballTest.seedDriveState(drive), {
+    possession,
+    direction,
+    quarter: overrides.quarter ?? 2,
+    down: overrides.down ?? 2,
+    yardsToGo,
+    yardLine,
+    firstDownLine: overrides.firstDownLine ?? yardLine + (direction * yardsToGo),
+    driveStart,
+    scores: overrides.scores ?? { player: 7, opponent: 0 },
+    plays: overrides.plays ?? 4,
+    drivePlays: overrides.drivePlays ?? 1,
+  });
+}
+
+async function beginSnap(page, possession = 'offense', overrides = {}) {
+  await seedDrive(page, possession, overrides);
+  await page.locator('#call-grid .call-btn').first().click();
+  await expect(page.locator('#ui-desk')).toHaveAttribute('data-phase', 'question');
+  const active = await contracts(page);
+  expect(active.activeSnap).not.toBeNull();
+  expect(active.questionInstance).not.toBeNull();
+  expect(active.pendingResolution).not.toBeNull();
+  return active;
+}
+
+function wrongChoiceIds(question) {
+  return question.choices
+    .filter((choice) => choice.id !== question.correctChoiceId)
+    .map((choice) => choice.id);
+}
+
+test('runtime curriculum profile matches the explicit page-143 record and scheduler recency stays positive', async ({ page }, testInfo) => {
+  primaryOnly(testInfo);
+  await page.goto('/football/?boot=offense-call');
+
+  const result = await page.evaluate(async () => {
+    const progress = await fetch('./curriculum-progress.json').then((response) => response.json());
+    const profile = window.__footballTest.learningProfile();
+    const entries = [
+      {
+        id: 'recent-family', familyId: 'recent-family', skill: 'difference', concept: 'line-to-gain',
+        purpose: 'weakSpot', grading: 'gate', weight: 1,
+      },
+      {
+        id: 'fresh-family', familyId: 'fresh-family', skill: 'difference', concept: 'line-to-gain',
+        purpose: 'weakSpot', grading: 'gate', weight: 1,
+      },
+    ];
+    const session = FOOTBALL_LEARNING.createSession();
+    session.recentFamilyIds.push('recent-family');
+    const counts = { 'recent-family': 0, 'fresh-family': 0 };
+    for (let index = 0; index < 2000; index++) {
+      const draw = (index + 0.5) / 2000;
+      counts[FOOTBALL_LEARNING.weightedPick(entries, session, () => draw).familyId]++;
+    }
+    const onlyRecent = FOOTBALL_LEARNING.weightedPick([entries[0]], session, () => 0.999999).familyId;
+    return { progress, profile, counts, onlyRecent };
+  });
+
+  expect(result.profile.schemaVersion).toBe(2);
+  expect(result.profile.completedThroughPage).toBe(143);
+  expect(result.profile.completedThroughPage).toBe(result.progress.learner.completedThroughPage);
+  expect(result.profile.computationMax).toBe(10);
+  expect(result.profile.displayMax).toBe(100);
+  expect(result.profile.recencyWindow).toBe(3);
+  expect(result.profile.recencyMultiplier).toBeGreaterThan(0);
+  expect(result.profile.recencyMultiplier).toBeLessThan(1);
+  expect(result.profile.purposeWeights).toEqual({
+    weakSpot: 0.38,
+    coreReview: 0.32,
+    completedPlaceValue: 0.30,
+  });
+  expect(result.profile.purposeWeights).not.toHaveProperty('currentSupported');
+  expect(result.counts['recent-family']).toBeGreaterThan(0);
+  expect(result.counts['fresh-family']).toBeGreaterThan(result.counts['recent-family']);
+  expect(result.onlyRecent).toBe('recent-family');
+});
+
+test('adaptation and schema-v2 learning events retain grounded question identity', async ({ page }, testInfo) => {
   primaryOnly(testInfo);
   await page.goto('/football/?boot=offense-call');
 
   const result = await page.evaluate(() => {
-    function makeRng(seedValue) {
-      let seed = seedValue >>> 0;
-      return () => {
-        seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
-        return seed / 0x100000000;
-      };
-    }
-
-    function sequence(calls) {
-      window.__footballTest.resetLearning();
-      window.__footballTest.setRng(makeRng(0x54c0de));
-      return calls.map(call => window.__footballTest.buildPlayAt({
-        possession: 'offense', direction: 1, yd: 30, fdYd: 40, down: 1, ytg: 10, driveStart: 20,
-      }, call));
-    }
-
-    const calls = Array.from({ length: 240 }, (_, index) => Object.keys(OFFENSE_CALLS)[index % 5]);
-    const first = sequence(calls);
-    const second = sequence(calls);
-    const metadata = window.__footballTest.questionBank();
-    return {
-      first,
-      second,
-      metadata,
-      profile: window.__footballTest.learningProfile(),
-    };
-  });
-
-  expect(result.first).toEqual(result.second);
-  expect(result.profile.completedThroughPage).toBe(143);
-  expect(result.profile.computationMax).toBe(10);
-  expect(result.profile.displayMax).toBe(100);
-
-  for (const meta of result.metadata) {
-    expect(meta.id).toBeTruthy();
-    expect(meta.skill).toBeTruthy();
-    expect(meta.concept).toBeTruthy();
-    expect(meta.purpose).toBeTruthy();
-    expect(meta.grading).toMatch(/^(gate|noStakes)$/);
-    expect(meta.tier).toBeTruthy();
-    if (meta.grading === 'gate') expect(meta.minCompletedPage).toBeLessThanOrEqual(143);
-  }
-
-  for (let index = 0; index < result.first.length; index++) {
-    const question = result.first[index];
-    expect(new Set(question.choices).size, question.id).toBe(question.choices.length);
-    expect(question.choices.filter(choice => choice === question.correct), question.id).toHaveLength(1);
-    expect(question.learningTier, question.id).toBeTruthy();
-    if (question.math) {
-      expect(question.math.displayMin, question.id).toBeGreaterThanOrEqual(0);
-      expect(question.math.displayMax, question.id).toBeLessThanOrEqual(100);
-      if (question.math.delta != null && question.grading === 'gate') {
-        expect(Math.abs(question.math.delta), question.id).toBeLessThanOrEqual(10);
-      }
-    }
-    if (index >= 3) {
-      expect(result.first.slice(index - 3, index).map(item => item.id), 'three-question recency window')
-        .not.toContain(question.id);
-    }
-  }
-
-  const purposeCounts = result.first.reduce((counts, question) => {
-    counts[question.purpose] = (counts[question.purpose] || 0) + 1;
-    return counts;
-  }, {});
-  const share = purpose => (purposeCounts[purpose] || 0) / result.first.length;
-  expect(share('weakSpot')).toBeGreaterThanOrEqual(0.30);
-  expect(share('weakSpot')).toBeLessThanOrEqual(0.48);
-  expect(share('coreReview')).toBeGreaterThanOrEqual(0.15);
-  expect(share('coreReview')).toBeLessThanOrEqual(0.30);
-  expect(share('completedPlaceValue')).toBeGreaterThanOrEqual(0.22);
-  expect(share('completedPlaceValue')).toBeLessThanOrEqual(0.40);
-  expect(share('currentSupported')).toBeLessThanOrEqual(0.15);
-
-  const tiersByCall = new Map();
-  result.first.forEach((question, index) => {
-    const call = ['shortRun', 'shortPass', 'longRun', 'mediumPass', 'longPass'][index % 5];
-    if (!tiersByCall.has(call)) tiersByCall.set(call, new Set());
-    tiersByCall.get(call).add(question.learningTier);
-  });
-  for (const tiers of tiersByCall.values()) {
-    expect([...tiers].every(tier => ['within-10', 'two-digit-structure', 'supported-comparison', 'football'].includes(tier))).toBe(true);
-  }
-});
-
-test('concept mastery counts only graded resolutions and historical need starts after three results', async ({ page }, testInfo) => {
-  primaryOnly(testInfo);
-  await page.goto('/football/');
-
-  const result = await page.evaluate(() => {
+    const context = FOOTBALL_DOMAIN.normalizeContext({
+      contextId: 77,
+      possession: 'offense', direction: 1, quarter: 2, down: 2,
+      yardsToGo: 10, yardLine: 30, firstDownLine: 40, driveStart: 27,
+      scores: { player: 3, opponent: 4 }, plays: 5, drivePlays: 1,
+      calls: { offense: 'shortRun', defense: null, matchup: null },
+    });
+    const snap = FOOTBALL_DOMAIN.createSnap(context, { gain: 4, callKey: 'shortRun' });
+    const built = FOOTBALL_CONTEXTUAL_QUESTIONS.build(snap, 'line-to-gain-missing-part', {
+      support: 'initial', presentationRng: () => 0.25,
+    });
     const question = {
-      id: 'concept-check', skill: 'difference', concept: 'line-to-gain',
-      purpose: 'weakSpot', grading: 'gate',
+      ...built,
+      contextId: snap.contextId,
+      questionInstanceId: 19,
     };
     const session = FOOTBALL_LEARNING.createSession({
       'line-to-gain': { firstTryCorrect: 0, retryCorrect: 0, secondMiss: 3 },
     });
-    FOOTBALL_LEARNING.recordResolved(session, question, 'retryCorrect');
-    FOOTBALL_LEARNING.recordResolved(session, { ...question, grading: 'noStakes' }, 'secondMiss');
+    const wrong = question.choices.find((choice) => choice.id !== question.correctChoiceId);
+    FOOTBALL_LEARNING.recordPresented(session, question);
+    FOOTBALL_LEARNING.recordAttempt(session, question, {
+      attempt: 1, selectedChoiceId: wrong.id, correct: false, support: 'initial',
+    });
+    FOOTBALL_LEARNING.recordResolved(session, question, 'retryCorrect', { support: 'guided' });
 
     const entries = [
-      { id: 'needs-practice', skill: 'difference', concept: 'line-to-gain', purpose: 'weakSpot', grading: 'gate', weight: 1 },
-      { id: 'comparison', skill: 'difference', concept: 'field-distance', purpose: 'weakSpot', grading: 'gate', weight: 1 },
+      {
+        id: 'needs-practice', familyId: 'needs-practice', skill: 'difference',
+        concept: 'line-to-gain', purpose: 'weakSpot', grading: 'gate', weight: 1,
+      },
+      {
+        id: 'other-concept', familyId: 'other-concept', skill: 'difference',
+        concept: 'field-distance', purpose: 'weakSpot', grading: 'gate', weight: 1,
+      },
     ];
     const beforeThreshold = FOOTBALL_LEARNING.createSession({
       'line-to-gain': { firstTryCorrect: 0, retryCorrect: 0, secondMiss: 2 },
     });
     return {
       session,
-      atThree: FOOTBALL_LEARNING.weightedPick(entries, session, () => 0.55).id,
-      beforeThree: FOOTBALL_LEARNING.weightedPick(entries, beforeThreshold, () => 0.55).id,
+      atThree: FOOTBALL_LEARNING.weightedPick(entries, session, () => 0.55).familyId,
+      beforeThree: FOOTBALL_LEARNING.weightedPick(entries, beforeThreshold, () => 0.55).familyId,
+      supportAfterPractice: FOOTBALL_LEARNING.supportFor({
+        bySkill: { difference: { firstTryCorrect: 0, retryCorrect: 1, secondMiss: 1 } },
+      }, 'difference', 'initial'),
+      supportAfterGuidedMiss: FOOTBALL_LEARNING.nextSupport('guided'),
     };
   });
 
@@ -137,118 +163,219 @@ test('concept mastery counts only graded resolutions and historical need starts 
   expect(result.session.historicalMastery['line-to-gain']).toEqual({
     resolved: 3, firstTryCorrect: 0, retryCorrect: 0, secondMiss: 3,
   });
-  expect(result.session.events.map(event => event.concept)).toEqual(['line-to-gain', 'line-to-gain']);
+  expect(result.session.recentFamilyIds).toEqual(['line-to-gain-missing-part']);
+  expect(result.session.events.map((event) => event.type)).toEqual(['presented', 'attempt', 'resolved']);
+  for (const event of result.session.events) {
+    expect(event.schemaVersion).toBe(2);
+    expect(event.familyId).toBe('line-to-gain-missing-part');
+    expect(event.contextId).toBe(77);
+    expect(event.questionInstanceId).toBe(19);
+    expect(event.bindings.length).toBeGreaterThan(0);
+    expect(event).not.toHaveProperty('possession');
+    expect(event).not.toHaveProperty('call');
+  }
+  expect(result.session.events[1].selectedChoiceId).toMatch(/^line-to-gain-missing-part--choice-/);
   expect(result.atThree).toBe('needs-practice');
-  expect(result.beforeThree).toBe('comparison');
+  expect(result.beforeThree).toBe('other-concept');
+  expect(result.supportAfterPractice).toBe('guided');
+  expect(result.supportAfterGuidedMiss).toBe('guided');
 });
 
-test('first miss gives a same-question retry and retry correct resolves one play', async ({ page }, testInfo) => {
+test('first miss keeps one frozen question and retry correct commits the full proposed offense play once', async ({ page }, testInfo) => {
   primaryOnly(testInfo);
   await page.goto('/football/?boot=offense-call');
-  await page.locator('#call-grid .call-btn').first().click();
+  await page.evaluate(() => {
+    window.__learningEvents = [];
+    window.addEventListener('football:learning', (event) => window.__learningEvents.push(event.detail));
+    window.__footballTest.setRootSeed(0x54c0de);
+  });
 
-  const before = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
-  const wrong = await answerIndex(page, 'wrong');
-  await page.locator(`#b${wrong}`).click();
-  const retry = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
+  const beforeContracts = await beginSnap(page, 'offense');
+  const before = await rendered(page);
+  const question = beforeContracts.questionInstance;
+  const wrongId = wrongChoiceIds(question)[0];
+
+  await answerChoice(page, wrongId);
+  const retryContracts = await contracts(page);
+  const retry = await rendered(page);
 
   expect(retry.mode).toBe('question');
-  expect(retry.questionId).toBe(before.questionId);
-  expect(retry.attempt).toBe(2);
-  expect(retry.retryAvailable).toBe(true);
+  expect(retryContracts.questionInstance).toEqual(question);
+  expect(retryContracts.questionUi.attempt).toBe(2);
+  expect(retryContracts.questionUi.missedChoiceIds).toEqual([wrongId]);
   expect(retry.plays).toBe(before.plays);
   expect(retry.absoluteYard).toBe(before.absoluteYard);
   expect(retry.outcomeCommitted).toBe(false);
-  if (before.math) expect(retry.math?.visible).toBe(true);
-  await expect(page.locator(`#b${wrong}`)).toBeDisabled();
-  await expect(page.locator('#feedback')).toContainText(/Good try/);
+  await expect(page.locator(`[data-choice-id="${wrongId}"]`)).toBeDisabled();
+  await expect(page.locator('#feedback')).toContainText(/Good try/i);
 
-  const correct = await answerIndex(page, 'correct');
-  await page.locator(`#b${correct}`).click();
-  const resolved = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
+  await answerChoice(page, question.correctChoiceId);
+  const resolvedContracts = await contracts(page);
+  const resolved = await rendered(page);
+  const expectedYard = beforeContracts.activeSnap.proposal.endYardLine;
+
   expect(resolved.mode).toBe('feedback');
   expect(resolved.plays).toBe(before.plays + 1);
+  expect(resolved.absoluteYard).toBe(expectedYard);
   expect(resolved.outcomeCommitted).toBe(true);
   expect(resolved.learning.resolved).toBe(1);
-  expect(resolved.correctAnswers).toBe(before.questionGrading === 'noStakes' ? 0 : 1);
+  expect(resolved.correctAnswers).toBe(before.correctAnswers + 1);
+  expect(resolvedContracts.questionUi.outcomeCommitted).toBe(true);
+
+  const events = await page.evaluate(() => window.__learningEvents);
+  expect(events.map((event) => event.type)).toEqual(['presented', 'attempt', 'attempt', 'resolved']);
+  expect(events.every((event) => event.schemaVersion === 2)).toBe(true);
+  expect(events.every((event) => event.familyId === question.familyId)).toBe(true);
+  expect(events.every((event) => event.contextId === question.contextId)).toBe(true);
+  expect(events.every((event) => event.questionInstanceId === question.questionInstanceId)).toBe(true);
+  expect(events[1].selectedChoiceId).toBe(wrongId);
+  expect(events[2].selectedChoiceId).toBe(question.correctChoiceId);
+  expect(events[3].result).toBe('retryCorrect');
+  expect(events.every((event) => Array.isArray(event.bindings) && event.bindings.length > 0)).toBe(true);
 });
 
-test('second miss blocks football until Continue and applies one modest setback', async ({ page }, testInfo) => {
+test('a question that starts guided stays answer-hidden until the second miss', async ({ page }, testInfo) => {
+  primaryOnly(testInfo);
+  await page.goto('/football/?boot=offense-call');
+  await page.evaluate(() => window.__footballTest.setRootSeed(1));
+
+  const beforeContracts = await beginSnap(page, 'offense');
+  const question = beforeContracts.questionInstance;
+  expect(question.answerExposure).not.toBe('source-visible');
+
+  await page.evaluate(() => {
+    state.questionUi.support = 'guided';
+    syncQuestionMirrors();
+    renderMathVisual();
+  });
+  const guidedBefore = await rendered(page);
+  expect(guidedBefore.math.support).toBe('guided');
+  expect(guidedBefore.math.revealsAnswer).toBe(false);
+  expect(guidedBefore.math.result).toBeNull();
+
+  await answerChoice(page, wrongChoiceIds(question)[0]);
+
+  const retryContracts = await contracts(page);
+  const retry = await rendered(page);
+  expect(retry.mode).toBe('question');
+  expect(retry.retryAvailable).toBe(true);
+  expect(retryContracts.questionInstance.questionInstanceId).toBe(question.questionInstanceId);
+  expect(retryContracts.questionUi.support).toBe('guided');
+  expect(retry.math.support).toBe('guided');
+  expect(retry.math.revealsAnswer).toBe(false);
+  expect(retry.math.result).toBeNull();
+  await expect(page.locator(`[data-choice-id="${question.correctChoiceId}"]`)).toBeEnabled();
+});
+
+test('second defensive miss records learning before Continue and commits one frozen capped transition idempotently', async ({ page }, testInfo) => {
   primaryOnly(testInfo);
   await page.goto('/football/?boot=defense-call');
-  await page.locator('#call-grid .call-btn').first().click();
-  await page.evaluate(() => { state.questionGrading = 'gate'; });
-  const before = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
+  await page.evaluate(() => window.__footballTest.setRootSeed(0xdefe115e));
 
-  const firstWrong = await answerIndex(page, 'wrong');
-  await page.locator(`#b${firstWrong}`).click();
-  const secondWrong = await answerIndex(page, 'wrong', [firstWrong]);
-  await page.locator(`#b${secondWrong}`).click();
+  const beforeContracts = await beginSnap(page, 'defense');
+  const before = await rendered(page);
+  const question = beforeContracts.questionInstance;
+  const wrongIds = wrongChoiceIds(question);
+  expect(wrongIds.length).toBeGreaterThanOrEqual(2);
 
-  const explanation = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
+  await answerChoice(page, wrongIds[0]);
+  await answerChoice(page, wrongIds[1]);
+
+  const explanationContracts = await contracts(page);
+  const explanation = await rendered(page);
+  const proposedGain = beforeContracts.activeSnap.proposal.appliedGain;
+  const expectedGain = Math.min(proposedGain, 3);
+
   expect(explanation.mode).toBe('explanation');
   expect(explanation.continueRequired).toBe(true);
   expect(explanation.outcomeCommitted).toBe(false);
   expect(explanation.plays).toBe(before.plays);
   expect(explanation.absoluteYard).toBe(before.absoluteYard);
+  expect(explanation.learning.resolved).toBe(1);
+  expect(explanationContracts.questionUi.support).toBe('worked');
+  expect(explanationContracts.pendingResolution.transitionToCommit.appliedGain).toBe(expectedGain);
   await expect(page.locator('#question-continue')).toBeVisible();
   await expect(page.locator('#question-continue')).toBeFocused();
-  await page.waitForTimeout(500);
-  expect(JSON.parse(await page.evaluate(() => window.render_game_to_text())).plays).toBe(before.plays);
 
   await page.locator('#question-continue').click();
-  const resolved = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
-  expect(resolved.mode).toBe('feedback');
-  expect(resolved.outcomeCommitted).toBe(true);
-  expect(resolved.plays).toBe(before.plays + 1);
-  expect(resolved.gain).toBeLessThanOrEqual(3);
-  expect(Math.abs(resolved.absoluteYard - before.absoluteYard)).toBeLessThanOrEqual(3);
-  expect(resolved.learning.resolved).toBe(1);
+  const committed = await rendered(page);
+  expect(committed.mode).toBe('feedback');
+  expect(committed.outcomeCommitted).toBe(true);
+  expect(committed.plays).toBe(before.plays + 1);
+  expect(Math.abs(committed.absoluteYard - before.absoluteYard)).toBe(expectedGain);
+  expect(committed.learning.resolved).toBe(1);
+
+  await page.evaluate(() => document.getElementById('question-continue').click());
+  const afterDoubleContinue = await rendered(page);
+  expect(afterDoubleContinue.plays).toBe(committed.plays);
+  expect(afterDoubleContinue.absoluteYard).toBe(committed.absoluteYard);
+  expect(afterDoubleContinue.learning.resolved).toBe(1);
 });
 
-test('all three visual model families render without mutating field state', async ({ page }, testInfo) => {
+test('a production snap exposes only completed, grounded, graded contextual content', async ({ page }, testInfo) => {
   primaryOnly(testInfo);
   await page.goto('/football/?boot=offense-call');
-  const startYard = JSON.parse(await page.evaluate(() => window.render_game_to_text())).absoluteYard;
-  const models = [
-    { id: 'hops-test', q: 'Where do you land?', correct: 7, choices: [6, 7, 8, 9], hint: 'Hop.', explain: '3 + 4 = 7.', math: { type: 'hops', start: 3, delta: 4, target: 7, support: 'guided', displayMin: 3, displayMax: 7, ariaLabel: 'Hop from 3 to 7' } },
-    { id: 'base-ten-test', q: 'How many tens?', correct: 4, choices: [3, 4, 5, 6], hint: 'Count tens.', explain: '42 has 4 tens.', math: { type: 'base-ten', tens: 4, ones: 2, target: 42, support: 'guided', displayMin: 2, displayMax: 42, ariaLabel: '42 as 4 tens and 2 ones' } },
-    { id: 'compare-test', q: 'Choose the sign.', correct: '>', choices: ['<', '=', '>'], choiceType: 'category', hint: 'Compare tens.', explain: '54 > 49.', grading: 'noStakes', math: { type: 'comparison', left: 54, right: 49, target: '>', support: 'guided', displayMin: 49, displayMax: 54, ariaLabel: 'Compare 54 and 49' } },
-  ];
+  await page.evaluate(() => window.__footballTest.setRootSeed(0xc011ab1e));
+  const active = await beginSnap(page, 'offense', {
+    quarter: 4, down: 4, yardsToGo: 7, yardLine: 43, firstDownLine: 50,
+    driveStart: 40, scores: { player: 7, opponent: 7 },
+  });
+  const question = active.questionInstance;
 
-  for (const model of models) {
-    await page.evaluate(question => window.__footballTest.forceQuestion(question), model);
-    await expect(page.locator('#math-overlay')).toBeVisible();
-    await expect(page.locator('#math-overlay')).toHaveAttribute('data-type', model.math.type);
-    expect(JSON.parse(await page.evaluate(() => window.render_game_to_text())).absoluteYard).toBe(startYard);
+  expect(question.id).toBe(question.familyId);
+  expect(question.grading).toBe('gate');
+  expect(question.minCompletedPage).toBeLessThanOrEqual(143);
+  expect(question.familyId).not.toMatch(/preview|comparison|clock|sack|loss|trivia|add-within-10/i);
+  expect(question.bindings).toEqual(question.premises);
+  expect(question.bindings.length).toBeGreaterThan(0);
+  expect(question.choices.filter((choice) => choice.id === question.correctChoiceId)).toHaveLength(1);
+  expect(new Set(question.choices.map((choice) => choice.id)).size).toBe(question.choices.length);
+  expect(['source-visible', 'modeled-with-result-hidden', 'hidden-until-worked']).toContain(question.answerExposure);
+  expect(question.visuals.initial.ariaLabel).toBeTruthy();
+  expect(question.visuals.guided.ariaLabel).toBeTruthy();
+  expect(question.visuals.worked.ariaLabel).toBeTruthy();
+  if (question.answerExposure !== 'source-visible') {
+    expect(question.visuals.initial.result).toBeNull();
+    expect(question.visuals.guided.result).toBeNull();
   }
+
+  const text = await rendered(page);
+  expect(text.questionFamilyId ?? text.questionId).toBe(question.familyId);
+  expect(text.contextId).toBe(question.contextId);
+  expect(text.questionInstanceId).toBe(question.questionInstanceId);
 });
 
-test('supported preview never changes graded accuracy or applies a setback', async ({ page }, testInfo) => {
+test('Coach Report uses this game\'s real contextual resolution, not historical mastery', async ({ page }, testInfo) => {
   primaryOnly(testInfo);
+  await page.addInitScript(() => {
+    localStorage.setItem('footballMathStats:v1', JSON.stringify({
+      schemaVersion: 1,
+      aggregates: {},
+      recentPlays: [],
+      mastery: {
+        addition: { resolved: 8, firstTryCorrect: 8, retryCorrect: 0, secondMiss: 0 },
+      },
+    }));
+  });
   await page.goto('/football/?boot=offense-call');
-  await page.evaluate(() => window.__footballTest.forceQuestion({
-    id: 'preview-test',
-    skill: 'two-digit-comparison',
-    purpose: 'currentSupported',
-    grading: 'noStakes',
-    tier: 'supported-comparison',
-    q: 'Which sign is true? 54 ? 49',
-    correct: '>',
-    choices: ['<', '=', '>'],
-    choiceType: 'category',
-    hint: 'Compare tens first.',
-    explain: '54 > 49.',
-    math: { type: 'comparison', left: 54, right: 49, target: '>', support: 'guided', displayMin: 49, displayMax: 54, ariaLabel: 'Compare 54 and 49' },
-  }));
-  const before = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
-  await page.locator('#b0').click();
-  await page.locator('#b1').click();
-  await expect(page.locator('#ui-desk')).toHaveAttribute('data-phase', 'explanation');
-  await page.locator('#question-continue').click();
-  const after = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
-  expect(after.plays).toBe(before.plays + 1);
-  expect(after.absoluteYard).toBe(before.absoluteYard);
-  expect(after.gradedQuestions).toBe(0);
-  expect(after.correctAnswers).toBe(0);
+  await page.evaluate(() => window.__footballTest.setRootSeed(0xc0ac4));
+
+  expect(await page.evaluate(() => window.__footballTest.learningState().historicalMastery.addition))
+    .toEqual({ resolved: 8, firstTryCorrect: 8, retryCorrect: 0, secondMiss: 0 });
+  expect(await page.evaluate(() => window.__footballTest.coachReport())).toEqual([
+    { label: 'Learning today', value: 'Keep playing to build your learning recap' },
+  ]);
+
+  const active = await beginSnap(page, 'offense');
+  await answerChoice(page, active.questionInstance.correctChoiceId);
+  const learning = await page.evaluate(() => window.__footballTest.learningState());
+  const report = await page.evaluate(() => window.__footballTest.coachReport());
+
+  expect(Object.keys(learning.byConcept)).toEqual([active.questionInstance.concept]);
+  expect(learning.byConcept[active.questionInstance.concept]).toEqual({
+    resolved: 1, firstTryCorrect: 1, retryCorrect: 0, secondMiss: 0,
+  });
+  expect(report[0].label).toBe('Strong today');
+  expect(report.map((row) => row.value)).not.toContain('Adding within 10');
+  expect(report.every((row) => row.value !== 'Football math')).toBe(true);
 });

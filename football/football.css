@@ -686,6 +686,32 @@ body::after {
   text-align: center;
 }
 
+.math-context-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.math-context-token {
+  min-width: 58px;
+  padding: 8px 12px 7px;
+  border-radius: 14px;
+  background: #fff;
+  color: #07152f;
+  font-family: 'Bebas Neue', 'Barlow Condensed', sans-serif;
+  font-size: 30px;
+  line-height: 1;
+  text-align: center;
+}
+
+.math-context-link {
+  color: #ffd62e;
+  font-size: 20px;
+  letter-spacing: 0.04em;
+}
+
 #math-overlay[data-type="base-ten"],
 #math-overlay[data-type="base-ten-move"] {
   grid-template-columns: repeat(2, minmax(80px, 1fr));

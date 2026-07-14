@@ -118,8 +118,21 @@ or bundlers. Preserve each `index.html` load order.
 
 ### Football
 
-Football uses one `state` object. `buildPlay()` selects `buildType1()` through
-`buildType4()`, and `handleAnswer()` drives transitions. The field is DOM-based.
+Football is DOM-based and keeps one UI `state` object, but its football and
+instructional authority are split across ordered plain-global scripts:
+
+`copy.js` → `learning.js` → `stats.js` → `opponent.js` →
+`football-domain.js` → `contextual-questions.js` → `football.js`
+
+- `football-domain.js` owns immutable snap contexts and independently validated
+  transition projection/reprojection.
+- `contextual-questions.js` owns DOM-free, snap-grounded question families and
+  structured stable choices.
+- `learning.js`, `stats.js`, and `opponent.js` own scheduling/support,
+  privacy-safe linked history, and the exact frozen opponent plan respectively.
+- `football.js` orchestrates the UI around authoritative `activeSnap`,
+  `questionInstance`, and `pendingResolution` contracts and commits each snap
+  atomically after instruction resolves.
 
 ### Kayak
 

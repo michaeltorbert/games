@@ -49,6 +49,8 @@ test('football runtime assets share one release version', async ({ page }) => {
       learning: queryVersion(document.querySelector('script[src*="learning.js"]').src),
       stats: queryVersion(document.querySelector('script[src*="stats.js"]').src),
       opponent: queryVersion(document.querySelector('script[src*="opponent.js"]').src),
+      domain: queryVersion(document.querySelector('script[src*="football-domain.js"]').src),
+      contextual: queryVersion(document.querySelector('script[src*="contextual-questions.js"]').src),
       js: queryVersion(document.querySelector('script[src*="football.js"]').src),
     };
   });

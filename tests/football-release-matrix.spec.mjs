@@ -31,11 +31,13 @@ async function shot(page, testInfo, label) {
 }
 
 async function renderedState(page) {
-  return page.evaluate(() => ({
-    ...JSON.parse(window.render_game_to_text()),
-    correctAnswers: state.correctAnswers,
-    playIsTouchdown: Boolean(state.play?.isTouchdown),
-  }));
+  return page.evaluate(() => {
+    const contracts = window.__footballTest.activeContracts();
+    return {
+      ...contracts.render,
+      playIsTouchdown: contracts.activeSnap?.proposal?.resultKind === 'touchdown',
+    };
+  });
 }
 
 async function assertViewport(page, label) {
@@ -99,15 +101,28 @@ async function assertOverlay(page, testInfo, id, phase, label) {
   await shot(page, testInfo, label);
 }
 
-async function liveAnswerIndex(page, kind, excluded = []) {
-  const index = await page.evaluate(({ answerKind, excludedIndexes }) => {
-    const correctIndex = state.choices.indexOf(state.correct);
+async function liveChoiceId(page, kind, excluded = []) {
+  const choiceId = await page.evaluate(({ answerKind, excludedChoiceIds }) => {
+    const { questionInstance } = window.__footballTest.activeContracts();
+    if (!questionInstance) return null;
     return answerKind === 'correct'
-      ? correctIndex
-      : state.choices.findIndex((choice, index) => choice !== state.correct && !excludedIndexes.includes(index));
-  }, { answerKind: kind, excludedIndexes: excluded });
-  expect(index, `${kind} answer index`).toBeGreaterThanOrEqual(0);
-  return index;
+      ? questionInstance.correctChoiceId
+      : questionInstance.choices.find(choice => (
+        choice.id !== questionInstance.correctChoiceId
+        && !excludedChoiceIds.includes(choice.id)
+      ))?.id || null;
+  }, { answerKind: kind, excludedChoiceIds: excluded });
+  expect(choiceId, `${kind} stable choice ID`).toEqual(expect.any(String));
+  return choiceId;
+}
+
+async function answerChoice(page, choiceId) {
+  const contracts = await page.evaluate(
+    id => window.__footballTest.answerChoice(id),
+    choiceId,
+  );
+  expect(contracts, `answer choice ${choiceId}`).not.toBe(false);
+  return contracts;
 }
 
 async function pauseClockBeforeAnswer(page) {
@@ -134,19 +149,31 @@ test('full football state matrix follows production transitions', async ({ page 
   let metrics = await assertPhaseAndShot(page, testInfo, 'call', '02-offense-call');
   expect(metrics.scrollY).toBe(0);
 
-  await page.evaluate(() => {
-    Object.assign(state, { yd: 99, fdYd: 100, ytg: 1, animYd: 99, down: 1 });
-    updateField(false);
-    updateStatus();
-    showCallPrompt();
-  });
+  await page.evaluate(() => window.__footballTest.seedDriveState({
+    possession: 'offense',
+    direction: 1,
+    quarter: 1,
+    down: 1,
+    yardsToGo: 1,
+    yardLine: 99,
+    firstDownLine: 100,
+    driveStart: 99,
+    scores: { player: 0, opponent: 0 },
+    plays: 0,
+    drivePlays: 0,
+    quarterPossessions: 0,
+    tds: 0,
+    opponentTds: 0,
+    correctAnswers: 0,
+    gradedQuestions: 0,
+  }));
   await page.locator('#call-grid .call-btn').first().click();
   expect((await renderedState(page)).playIsTouchdown, 'seeded offense play reaches the end zone').toBe(true);
   await assertPhaseAndShot(page, testInfo, 'question', '03-offense-question');
 
   await pauseClockBeforeAnswer(page);
-  const offenseWrong = await liveAnswerIndex(page, 'wrong');
-  await page.locator(`#b${offenseWrong}`).click();
+  const offenseWrong = await liveChoiceId(page, 'wrong');
+  await answerChoice(page, offenseWrong);
   game = await renderedState(page);
   expect(game.score).toEqual({ player: 0, opponent: 0 });
   expect(game.plays).toBe(0);
@@ -154,7 +181,7 @@ test('full football state matrix follows production transitions', async ({ page 
   expect(game.retryAvailable).toBe(true);
   await assertPhaseAndShot(page, testInfo, 'question', '03b-offense-retry');
 
-  await page.locator(`#b${await liveAnswerIndex(page, 'correct')}`).click();
+  await answerChoice(page, await liveChoiceId(page, 'correct'));
   game = await renderedState(page);
   expect(game.score).toEqual({ player: 7, opponent: 0 });
   expect(game.playerTouchdowns).toBe(1);
@@ -183,27 +210,39 @@ test('full football state matrix follows production transitions', async ({ page 
   metrics = await assertPhaseAndShot(page, testInfo, 'call', '07-defense-call');
   expect(metrics.scrollY).toBe(0);
 
-  await page.evaluate(() => {
-    Object.assign(state, { yd: 1, fdYd: 0, ytg: 1, animYd: 1, down: 1 });
-    updateField(false);
-    updateStatus();
-    showCallPrompt();
-  });
+  await page.evaluate(() => window.__footballTest.seedDriveState({
+    possession: 'defense',
+    direction: -1,
+    quarter: 1,
+    down: 1,
+    yardsToGo: 1,
+    yardLine: 1,
+    firstDownLine: 0,
+    driveStart: 1,
+    scores: { player: 7, opponent: 0 },
+    plays: 1,
+    drivePlays: 0,
+    quarterPossessions: 1,
+    tds: 1,
+    opponentTds: 0,
+    correctAnswers: 1,
+    gradedQuestions: 1,
+  }));
   await page.locator('#call-grid .call-btn').first().click();
   expect((await renderedState(page)).playIsTouchdown, 'seeded opponent play reaches the end zone').toBe(true);
   await assertPhaseAndShot(page, testInfo, 'question', '08-defense-question');
 
   await pauseClockBeforeAnswer(page);
-  const defenseWrongOne = await liveAnswerIndex(page, 'wrong');
-  await page.locator(`#b${defenseWrongOne}`).click();
+  const defenseWrongOne = await liveChoiceId(page, 'wrong');
+  await answerChoice(page, defenseWrongOne);
   game = await renderedState(page);
   expect(game.score).toEqual({ player: 7, opponent: 0 });
   expect(game.plays).toBe(1);
   expect(game.attempt).toBe(2);
   await assertPhaseAndShot(page, testInfo, 'question', '08b-defense-retry');
 
-  const defenseWrongTwo = await liveAnswerIndex(page, 'wrong', [defenseWrongOne]);
-  await page.locator(`#b${defenseWrongTwo}`).click();
+  const defenseWrongTwo = await liveChoiceId(page, 'wrong', [defenseWrongOne]);
+  await answerChoice(page, defenseWrongTwo);
   game = await renderedState(page);
   expect(game.score).toEqual({ player: 7, opponent: 0 });
   expect(game.plays).toBe(1);
@@ -229,8 +268,24 @@ test('full football state matrix follows production transitions', async ({ page 
 
   await page.locator('#ov-offense .ov-btn').click();
   await page.evaluate(() => {
-    state.quarter = 1;
-    state.quarterPossessions = POSSESSIONS_PER_QUARTER - 1;
+    window.__footballTest.seedDriveState({
+      possession: 'offense',
+      direction: 1,
+      quarter: 1,
+      down: 1,
+      yardsToGo: 10,
+      yardLine: 20,
+      firstDownLine: 30,
+      driveStart: 20,
+      scores: { player: 7, opponent: 7 },
+      plays: 2,
+      drivePlays: 0,
+      quarterPossessions: POSSESSIONS_PER_QUARTER - 1,
+      tds: 1,
+      opponentTds: 1,
+      correctAnswers: 1,
+      gradedQuestions: 2,
+    });
     finishPossession('Quarter complete.');
   });
   game = await renderedState(page);
@@ -241,8 +296,24 @@ test('full football state matrix follows production transitions', async ({ page 
   await page.locator('#ov-quarter .ov-btn').click();
   expect((await renderedState(page)).possession).toBe('defense');
   await page.evaluate(() => {
-    state.quarter = 2;
-    state.quarterPossessions = POSSESSIONS_PER_QUARTER - 1;
+    window.__footballTest.seedDriveState({
+      possession: 'defense',
+      direction: -1,
+      quarter: 2,
+      down: 1,
+      yardsToGo: 10,
+      yardLine: 80,
+      firstDownLine: 70,
+      driveStart: 80,
+      scores: { player: 7, opponent: 7 },
+      plays: 2,
+      drivePlays: 0,
+      quarterPossessions: POSSESSIONS_PER_QUARTER - 1,
+      tds: 1,
+      opponentTds: 1,
+      correctAnswers: 1,
+      gradedQuestions: 2,
+    });
     finishPossession('First half complete.');
   });
   game = await renderedState(page);
@@ -253,8 +324,24 @@ test('full football state matrix follows production transitions', async ({ page 
   await page.locator('#ov-halftime .ov-btn').click();
   expect((await renderedState(page)).possession).toBe('defense');
   await page.evaluate(() => {
-    state.quarter = 4;
-    state.quarterPossessions = POSSESSIONS_PER_QUARTER - 1;
+    window.__footballTest.seedDriveState({
+      possession: 'defense',
+      direction: -1,
+      quarter: 4,
+      down: 1,
+      yardsToGo: 10,
+      yardLine: 80,
+      firstDownLine: 70,
+      driveStart: 80,
+      scores: { player: 7, opponent: 7 },
+      plays: 2,
+      drivePlays: 0,
+      quarterPossessions: POSSESSIONS_PER_QUARTER - 1,
+      tds: 1,
+      opponentTds: 1,
+      correctAnswers: 1,
+      gradedQuestions: 2,
+    });
     finishPossession('Game complete.');
   });
   game = await renderedState(page);
@@ -269,24 +356,36 @@ test('post-game accuracy counts wrong offense and defense answers', async ({ pag
   await page.goto('/football/?boot=offense-call');
   await page.locator('#call-grid .call-btn').first().click();
   await expect(page.locator('#ui-desk')).toHaveAttribute('data-phase', 'question');
-  await page.evaluate(() => { state.questionGrading = 'gate'; });
-  let firstWrong = await liveAnswerIndex(page, 'wrong');
-  await page.locator(`#b${firstWrong}`).click();
-  await page.locator(`#b${await liveAnswerIndex(page, 'wrong', [firstWrong])}`).click();
+  let firstWrong = await liveChoiceId(page, 'wrong');
+  await answerChoice(page, firstWrong);
+  await answerChoice(page, await liveChoiceId(page, 'wrong', [firstWrong]));
   await expect(page.locator('#ui-desk')).toHaveAttribute('data-phase', 'explanation');
   await page.locator('#question-continue').click();
   await expect(page.locator('#ui-desk')).toHaveAttribute('data-phase', 'feedback');
 
-  await page.evaluate(() => {
-    clearTimeout(advTimer);
-    startDrive('defense');
-  });
+  await page.evaluate(() => window.__footballTest.seedDriveState({
+    possession: 'defense',
+    direction: -1,
+    quarter: 1,
+    down: 1,
+    yardsToGo: 10,
+    yardLine: 80,
+    firstDownLine: 70,
+    driveStart: 80,
+    scores: { player: 0, opponent: 0 },
+    plays: 1,
+    drivePlays: 0,
+    quarterPossessions: 0,
+    tds: 0,
+    opponentTds: 0,
+    correctAnswers: 0,
+    gradedQuestions: 1,
+  }));
   await page.locator('#call-grid .call-btn').first().click();
   await expect(page.locator('#ui-desk')).toHaveAttribute('data-phase', 'question');
-  await page.evaluate(() => { state.questionGrading = 'gate'; });
-  firstWrong = await liveAnswerIndex(page, 'wrong');
-  await page.locator(`#b${firstWrong}`).click();
-  await page.locator(`#b${await liveAnswerIndex(page, 'wrong', [firstWrong])}`).click();
+  firstWrong = await liveChoiceId(page, 'wrong');
+  await answerChoice(page, firstWrong);
+  await answerChoice(page, await liveChoiceId(page, 'wrong', [firstWrong]));
   await expect(page.locator('#ui-desk')).toHaveAttribute('data-phase', 'explanation');
   await page.locator('#question-continue').click();
   await expect(page.locator('#ui-desk')).toHaveAttribute('data-phase', 'feedback');
