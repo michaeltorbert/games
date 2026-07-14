@@ -18,7 +18,7 @@ Required behavior:
 - Prefer `github-app-token` and `github-app-curl` for GitHub API writes. Use an explicit profile argument when you need to select the agent profile directly.
 - Agent-specific defaults for GitHub writes:
   - Claude agents use `github-app-curl --profile claude` and appear as `claude-bot-mt[bot]`.
-  - Codex agents use the default `games-codex` profile and appear as `codex-bot-mt[bot]`.
+  - Codex agents use `github-app-curl --profile games-codex` and appear as `codex-bot-mt[bot]`.
 - When asked to perform a GitHub write, do it directly as the agent bot. Do not offer "draft for you to post" or "post as the user" as alternatives unless the user explicitly asks for personal-account posting. You may still ask clarifying questions about what to write.
 - For issue comments, PR comments, PR reviews, PR creation, merges, labels, and similar GitHub writes, use the agent bot by default.
 - Do not use connector-backed GitHub writes if they would attribute the action to `@michaeltorbert`.
@@ -26,6 +26,15 @@ Required behavior:
   - `git config user.name` = `codex-michaeltorbert[bot]`
   - `git config user.email` = `3357630+codex-michaeltorbert[bot]@users.noreply.github.com`
 - If bot attribution cannot be guaranteed, stop and report that explicitly instead of writing as the user.
+- Every PR body must declare the actual implementation author with exactly one
+  hidden marker: `<!-- ai-author: codex -->`, `<!-- ai-author: claude -->`, or
+  `<!-- ai-author: human -->`. Reviewer independence follows this marker, not
+  the PR opener or the shared commit identity. Update it if implementation
+  ownership materially changes.
+
+Keep this identity block within the first 180 lines. The Claude PR-review helper
+injects that prefix into its review prompt and marks longer instruction files as
+truncated.
 
 ## Device Targets
 
@@ -66,3 +75,73 @@ Any UI change to football must be verified against the primary targets before me
 | iPhone 17 Pro Max | portrait (440×956) | full offense cycle + call grid above fold (no scroll) |
 
 Each full playthrough must exercise all overlay states: start, player-TD, defense transition, offense transition, quarter-end, halftime, final — plus offense call/question/feedback and defense call/question/feedback.
+
+## Local Development
+
+There is no build step. From the repository root, run:
+
+```bash
+python3 -m http.server 8080
+```
+
+Use `http://localhost:8080/`, `/football/`, `/kayak/`, or `/prague/`. Serving
+from the root preserves each game's `../shared/` paths.
+
+Install the pinned test dependency with `npm install`, then run:
+
+```bash
+npm run test:football
+npm run test:football:release
+```
+
+Use `test:football` for the focused layout suite and
+`test:football:release` for the complete football release matrix.
+
+## Repository Structure
+
+```text
+games/
+├── index.html, games.js       # portal and game registry
+├── shared/                    # reset, fonts, and portal CSS
+├── football/                  # DOM-based math quiz
+├── kayak/                     # canvas kayak game
+└── prague/                    # canvas endless runner
+```
+
+The portal renders entries from the global `GAMES` array in `games.js`. Add a
+game by adding one registry entry and a folder containing `index.html`.
+
+## Architecture
+
+Every game uses plain globals and ordered `<script>` tags; there are no modules
+or bundlers. Preserve each `index.html` load order.
+
+### Football
+
+Football uses one `state` object. `buildPlay()` selects `buildType1()` through
+`buildType4()`, and `handleAnswer()` drives transitions. The field is DOM-based.
+
+### Kayak
+
+Load order: `kayak.js` → `physics.js` → `renderer.js` → `levels.js` → inline
+initialization.
+
+- `kayak.js`: canvas, dimensions, game state, initialization, input, render loop.
+- `physics.js`: lake geometry, collectibles, audio, effects, and `update()`.
+- `renderer.js`: shared drawing plus all `drawScene*()` functions.
+- `levels.js`: `LEVELS` definitions referencing renderer functions.
+
+### Prague
+
+Load order: `prague.js` → `chars.js` → `obstacles.js` → `renderer.js` → inline
+`loop()`.
+
+- `prague.js`: canvas, globals, input, update/reset/loop.
+- `chars.js`: character definitions and rider drawing.
+- `obstacles.js`: spawning, hit testing, and collision handling.
+- `renderer.js`: backgrounds, player, obstacles, HUD, and screens.
+
+## Routing and Deployment
+
+Static hosts route each folder's `index.html` naturally—for example,
+`/football/`. Publish the repository root with no build command.
