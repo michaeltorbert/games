@@ -1,4 +1,4 @@
-const GAME_VERSION = '1.18.0';
+const GAME_VERSION = '1.19.0';
 let prevPlayerScore = -1, prevOpponentScore = -1;
 let playerRunTimer = 0, playerCelebrateTimer = 0, playerCelebrateDelayTimer = 0;
 const EZ = 5;
@@ -2573,7 +2573,17 @@ function renderGameToText() {
     defenseCall: state.defenseCallKey,
     opponentCall: state.opponentCallKey,
     opponentTendency: state.opponentTendency || null,
-    opponentSnapshot: state.opponentSnapshot || null,
+    opponentSnapshot: state.opponentSnapshot ? {
+      look: {
+        key: state.opponentSnapshot.look.key,
+        label: state.opponentSnapshot.look.label,
+        alignment: state.opponentSnapshot.look.alignment,
+      },
+      lean: {
+        key: state.opponentSnapshot.lean.key,
+        label: state.opponentSnapshot.lean.label,
+      },
+    } : null,
     defenseRead: document.getElementById('defense-read')?.textContent || null,
     matchup: state.matchup,
     gain: state.g ?? null,
@@ -2627,6 +2637,7 @@ window.__footballTest = {
   statsHistory() { return FOOTBALL_STATS.history(); },
   statsSession() { return FOOTBALL_STATS.sessionSnapshot(statsSession); },
   opponentProfiles() { return FOOTBALL_OPPONENT.PROFILES; },
+  opponentSnapshot() { return FOOTBALL_LEARNING.snapshot(state.opponentSnapshot); },
   getOpponentTendency(overrides = {}, profile = 'balanced') {
     return getOpponentTendency(overrides, profile);
   },

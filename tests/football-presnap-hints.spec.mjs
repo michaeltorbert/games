@@ -26,6 +26,7 @@ test('defense sees one truthful snap read and the coverage click never rerolls t
     return {
       rolls: window.__snapRolls,
       state: JSON.parse(window.render_game_to_text()),
+      internalSnapshot: window.__footballTest.opponentSnapshot(),
       expectedWeights: window.__footballTest.getOpponentTendency().weights,
       readHidden: document.getElementById('defense-read').hidden,
     };
@@ -35,10 +36,12 @@ test('defense sees one truthful snap read and the coverage click never rerolls t
   expect(before.state.mode).toBe('call');
   expect(before.state.opponentCall).toBeNull();
   expect(before.state.opponentTendency).toBeNull();
-  expect(before.state.opponentSnapshot.plannedCallKey).toBe('shortRun');
+  expect(before.internalSnapshot.plannedCallKey).toBe('shortRun');
   expect(before.state.opponentSnapshot.look.key).toBe('spread');
-  expect(before.state.opponentSnapshot.look.leanKeys).toContain(before.state.opponentSnapshot.lean.key);
-  expect(before.state.opponentSnapshot.weights).toEqual(before.expectedWeights);
+  expect(before.internalSnapshot.look.leanKeys).toContain(before.state.opponentSnapshot.lean.key);
+  expect(before.internalSnapshot.weights).toEqual(before.expectedWeights);
+  expect(before.state.opponentSnapshot).not.toHaveProperty('plannedCallKey');
+  expect(before.state.opponentSnapshot).not.toHaveProperty('weights');
   expect(before.readHidden).toBe(false);
   expect(before.state.defenseRead).toContain(before.state.opponentSnapshot.look.label);
   expect(before.state.defenseRead).toContain(before.state.opponentSnapshot.look.alignment);
@@ -73,13 +76,15 @@ test('defense sees one truthful snap read and the coverage click never rerolls t
   const nextSnap = await page.evaluate(() => ({
     rolls: window.__nextSnapRolls,
     state: JSON.parse(window.render_game_to_text()),
+    internalSnapshot: window.__footballTest.opponentSnapshot(),
   }));
   // One roll selects the result-copy variant; the second is the next snap's
   // single planned-call sample.
   expect(nextSnap.rolls).toBe(2);
   expect(nextSnap.state.opponentCall).toBeNull();
-  expect(nextSnap.state.opponentSnapshot.plannedCallKey).toBe('longPass');
+  expect(nextSnap.internalSnapshot.plannedCallKey).toBe('longPass');
   expect(nextSnap.state.opponentSnapshot.look.key).toBe('spread');
+  expect(nextSnap.state.opponentSnapshot).not.toHaveProperty('plannedCallKey');
   expect(nextSnap.state.defenseRead).toContain('Spread set');
   expect(errors).toEqual([]);
 });
