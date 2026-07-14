@@ -1391,6 +1391,25 @@ body::after {
   line-height: 1.14;
 }
 
+#defense-read {
+  width: fit-content;
+  max-width: 29ch;
+  margin-top: 12px;
+  padding: 8px 12px;
+  border: 1px solid rgba(244, 164, 59, 0.38);
+  border-radius: 12px;
+  background: linear-gradient(90deg, rgba(108, 57, 15, 0.52), rgba(40, 20, 6, 0.2));
+  color: #ffe5c5;
+  font-family: 'Barlow Condensed', 'Nunito', sans-serif;
+  font-size: 17px;
+  font-weight: 800;
+  line-height: 1.1;
+}
+
+#defense-read[hidden] {
+  display: none;
+}
+
 #ui-desk[data-phase="question"] #question,
 #ui-desk[data-phase="feedback"] #question {
   position: relative;
@@ -2017,6 +2036,42 @@ body::after {
   gap: 12px;
 }
 
+.ov-coach-report {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.ov-coach-row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+  padding: 9px 12px;
+  border-left: 3px solid rgba(255, 215, 0, 0.78);
+  border-radius: 4px 12px 12px 4px;
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.ov-coach-label {
+  flex: 0 0 auto;
+  color: var(--gold);
+  font-family: 'Barlow Condensed', 'Nunito', sans-serif;
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.ov-coach-value {
+  min-width: 0;
+  color: #eef4ff;
+  font-family: 'Barlow Condensed', 'Nunito', sans-serif;
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 1.05;
+}
+
 .ov-stat {
   display: flex;
   flex-direction: column;
@@ -2045,6 +2100,50 @@ body::after {
   font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
+}
+
+@media (max-height: 760px) and (min-width: 700px) {
+  #ov-end .overlay-card {
+    min-height: 0;
+    padding: 28px 48px 24px 68px;
+  }
+
+  #ov-end .ov-title {
+    margin-top: 12px;
+    font-size: 72px;
+  }
+
+  #ov-end .ov-final-score {
+    font-size: 92px;
+  }
+
+  #ov-end .ov-sub {
+    margin-top: 8px;
+    font-size: 24px;
+  }
+
+  #ov-end .ov-stats {
+    gap: 8px;
+    margin-top: 12px;
+  }
+
+  #ov-end .ov-stats-title {
+    font-size: 28px;
+  }
+
+  #ov-end .ov-stat {
+    padding: 10px 8px 9px;
+  }
+
+  #ov-end .ov-stat-value {
+    font-size: 34px;
+  }
+
+  #ov-end .ov-btn {
+    margin-top: 14px;
+    padding: 13px 24px 11px;
+    font-size: 30px;
+  }
 }
 
 .ov-confetti {
@@ -2527,6 +2626,13 @@ body::after {
     line-height: 1.04;
   }
 
+  #defense-read {
+    max-width: 28ch;
+    margin-top: 8px;
+    padding: 6px 9px;
+    font-size: 14px;
+  }
+
   #ui-desk[data-phase="question"],
   #ui-desk[data-phase="feedback"] {
     grid-template-columns: minmax(320px, 0.82fr) minmax(0, 1.18fr);
@@ -2944,6 +3050,23 @@ body::after {
   .ov-stat-label {
     font-size: 12px;
     letter-spacing: 0.02em;
+  }
+
+  .ov-coach-report {
+    grid-template-columns: 1fr;
+    gap: 7px;
+  }
+
+  .ov-coach-row {
+    padding: 7px 10px;
+  }
+
+  .ov-coach-label {
+    font-size: 12px;
+  }
+
+  .ov-coach-value {
+    font-size: 15px;
   }
   .ov-scorebug {
     gap: 6px 10px;

@@ -53,6 +53,7 @@ test('curriculum scheduler is deterministic, bounded, fresh, and call-independen
   for (const meta of result.metadata) {
     expect(meta.id).toBeTruthy();
     expect(meta.skill).toBeTruthy();
+    expect(meta.concept).toBeTruthy();
     expect(meta.purpose).toBeTruthy();
     expect(meta.grading).toMatch(/^(gate|noStakes)$/);
     expect(meta.tier).toBeTruthy();
@@ -99,6 +100,46 @@ test('curriculum scheduler is deterministic, bounded, fresh, and call-independen
   for (const tiers of tiersByCall.values()) {
     expect([...tiers].every(tier => ['within-10', 'two-digit-structure', 'supported-comparison', 'football'].includes(tier))).toBe(true);
   }
+});
+
+test('concept mastery counts only graded resolutions and historical need starts after three results', async ({ page }, testInfo) => {
+  primaryOnly(testInfo);
+  await page.goto('/football/');
+
+  const result = await page.evaluate(() => {
+    const question = {
+      id: 'concept-check', skill: 'difference', concept: 'line-to-gain',
+      purpose: 'weakSpot', grading: 'gate',
+    };
+    const session = FOOTBALL_LEARNING.createSession({
+      'line-to-gain': { firstTryCorrect: 0, retryCorrect: 0, secondMiss: 3 },
+    });
+    FOOTBALL_LEARNING.recordResolved(session, question, 'retryCorrect');
+    FOOTBALL_LEARNING.recordResolved(session, { ...question, grading: 'noStakes' }, 'secondMiss');
+
+    const entries = [
+      { id: 'needs-practice', skill: 'difference', concept: 'line-to-gain', purpose: 'weakSpot', grading: 'gate', weight: 1 },
+      { id: 'comparison', skill: 'difference', concept: 'field-distance', purpose: 'weakSpot', grading: 'gate', weight: 1 },
+    ];
+    const beforeThreshold = FOOTBALL_LEARNING.createSession({
+      'line-to-gain': { firstTryCorrect: 0, retryCorrect: 0, secondMiss: 2 },
+    });
+    return {
+      session,
+      atThree: FOOTBALL_LEARNING.weightedPick(entries, session, () => 0.55).id,
+      beforeThree: FOOTBALL_LEARNING.weightedPick(entries, beforeThreshold, () => 0.55).id,
+    };
+  });
+
+  expect(result.session.byConcept).toEqual({
+    'line-to-gain': { resolved: 1, firstTryCorrect: 0, retryCorrect: 1, secondMiss: 0 },
+  });
+  expect(result.session.historicalMastery['line-to-gain']).toEqual({
+    resolved: 3, firstTryCorrect: 0, retryCorrect: 0, secondMiss: 3,
+  });
+  expect(result.session.events.map(event => event.concept)).toEqual(['line-to-gain', 'line-to-gain']);
+  expect(result.atThree).toBe('needs-practice');
+  expect(result.beforeThree).toBe('comparison');
 });
 
 test('first miss gives a same-question retry and retry correct resolves one play', async ({ page }, testInfo) => {

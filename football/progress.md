@@ -63,3 +63,27 @@ Original prompt: Complete Football issue #54 using the committed Math Mammoth Gr
 - Claude Fable 5 reviewed draft PR #69 through `claude-bot-mt[bot]`, found no blockers, and left several non-blocking hardening notes.
 - Addressed the actionable review notes by enforcing completed-page gates in the runtime scheduler, making bounded telemetry sequence IDs monotonic, removing a hidden dead highlight, simplifying the fixed James profile, and restoring test-only global state with `try/finally`.
 - Re-ran the primary flow and the complete release gate after review fixes: 95 passed, 25 intentionally skipped, and 108/108 screenshots verified.
+
+---
+
+Original prompt: ok do the agreeded on recommendation from you + claude fable 5. spin up subagents as needed. use your skills and workflows needed, including your two collab skills
+
+## Football learning and strategy foundation
+
+- Verified `michaeltorbert/games` and started one integrated release branch from live `origin/main` at `30f35bf`.
+- Consulted Claude Fable 5 in a repository-aware, read-only planning pass and used independent subagents for persistence, opponent behavior, mastery/reporting, pre-snap hints, integration, and review.
+- Added privacy-conscious local play history with bounded recent rows, stable aggregates, exact-once resolution logging, safe malformed-data recovery, and fail-closed future-schema handling.
+- Added situation-aware opponent play tendencies while preserving the existing coverage matchup model and deterministic seeded tests.
+- Added explicit question concepts, persistent mastery summaries, a modest history-informed learning bias, and a compact current-game coach report on the existing final overlay.
+- Added one truthful defensive pre-snap look and qualitative tendency per snap; the opponent's planned call is sampled once and never exposed before the player's choice.
+- Added focused Playwright coverage for stats, opponent tendencies, mastery/reporting, and pre-snap hints, and included every new contract in the complete Football release command.
+- Updated the manual verification checklist for the defensive read and final coach report.
+- An independent integrated review caught the opponent's exact planned call in `render_game_to_text()`; sanitized the public semantic state to player-visible look/lean fields and retained exact-plan assertions behind the narrow test hook.
+- Bumped Football and all cache-busting/version surfaces to v1.19.0.
+- Passed the combined primary-target suite: 24/24 tests.
+- Passed the complete six-device release gate: 144 passed, 60 intentional project skips, and 108/108 required screenshots verified.
+- Visually inspected the defensive read and final coach report on all six targets; call grids, coach rows, and replay controls remain visible without clipping.
+- Completed the browser-client defensive-call smoke with sanitized semantic state and no browser-error artifact.
+- Opened draft PR #70 through `codex-bot-mt[bot]` with all four issues linked for closure.
+- The first focused Claude review attempt stopped before posting when the organization hit its monthly spend limit. After access was restored, Claude Fable 5 reviewed the full untruncated PR diff at `9e8a49d` through `claude-bot-mt[bot]`, approved it with no material issues, and left five non-blocking future-hardening notes.
+- Classified the review notes as cosmetic/schema clarification or future-feature/layout considerations; no current acceptance, correctness, privacy, or release blocker remains.

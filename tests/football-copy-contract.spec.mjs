@@ -5,7 +5,7 @@ test('copy tables cover their exact runtime key domains', async ({ page }) => {
   const contract = await page.evaluate(() => {
     const sorted = values => [...values].sort();
     const offenseKeys = sorted(Object.keys(OFFENSE_CALLS));
-    const opponentKeys = sorted(OPPONENT_CALL_WEIGHTS.map(entry => entry.key));
+    const opponentKeys = sorted(FOOTBALL_OPPONENT.CALL_KEYS);
     const tableKeys = table => sorted(Object.keys(table));
     const validMessageTable = table => Object.values(table).every(messages =>
       Array.isArray(messages) && messages.length > 0 && messages.every(message => typeof message === 'string' && message.length > 0)
@@ -46,6 +46,9 @@ test('football runtime assets share one release version', async ({ page }) => {
       game: GAME_VERSION,
       css: queryVersion(document.querySelector('link[href*="football.css"]').href),
       copy: queryVersion(document.querySelector('script[src*="copy.js"]').src),
+      learning: queryVersion(document.querySelector('script[src*="learning.js"]').src),
+      stats: queryVersion(document.querySelector('script[src*="stats.js"]').src),
+      opponent: queryVersion(document.querySelector('script[src*="opponent.js"]').src),
       js: queryVersion(document.querySelector('script[src*="football.js"]').src),
     };
   });

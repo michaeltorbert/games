@@ -53,6 +53,8 @@ Run these on both iPhone sizes:
 - touch targets on `.call-btn` and `.ans-btn` stay comfortably tappable
 - no hover-only dependency on call selection or answer selection
 - offense call grid is fully visible without scrolling on both iPads, both phones, and iPad 11 landscape
+- defense call shows one concise, truthful pre-snap look and tendency; choosing a call does not reroll or reveal the opponent's planned call
+- final overlay shows a compact, supportive current-game coach report without pushing the replay control below the fold
 - scorebug remains readable without clipped LIVE ribbon or possession indicator
 - field, line-to-gain badge, and lower-third do not collide at device edges
 - overlays fit without broken clipping or unreadable buttons
@@ -84,7 +86,7 @@ Run the complete Football release verifier before merge:
 npm run test:football:release
 ```
 
-The release command runs every Football contract and UI spec against all six device projects. Its state matrix follows the game’s production paths: a correct offense answer produces the player touchdown, a wrong defense answer produces the opponent touchdown, touchdown buttons produce both possession transitions, and `finishPossession()` produces quarter-end, halftime, and final.
+The release command runs every Football contract and UI spec against all six device projects, including bounded stats persistence, mastery/coach-report behavior, situational opponent tendencies, and pre-snap hint truthfulness. Its state matrix follows the game’s production paths: a correct offense answer produces the player touchdown, a wrong defense answer produces the opponent touchdown, touchdown buttons produce both possession transitions, and `finishPossession()` produces quarter-end, halftime, and final.
 
 Each project archives these 14 required states:
 
