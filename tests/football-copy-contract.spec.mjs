@@ -46,6 +46,8 @@ test('football runtime assets share one release version', async ({ page }) => {
       game: GAME_VERSION,
       css: queryVersion(document.querySelector('link[href*="football.css"]').href),
       copy: queryVersion(document.querySelector('script[src*="copy.js"]').src),
+      learning: queryVersion(document.querySelector('script[src*="learning.js"]').src),
+      stats: queryVersion(document.querySelector('script[src*="stats.js"]').src),
       js: queryVersion(document.querySelector('script[src*="football.js"]').src),
     };
   });

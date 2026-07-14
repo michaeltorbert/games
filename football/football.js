@@ -117,6 +117,8 @@ let state = {};
 let advTimer = null;
 let logicRng = Math.random;
 let learningSession = FOOTBALL_LEARNING.createSession();
+let statsSession = FOOTBALL_STATS.createSession();
+let pendingStatsPlay = null;
 
 function choose(a) {
   return a[Math.floor(logicRng() * a.length)];
@@ -372,6 +374,55 @@ function createGameState() {
     ...makeDriveState('offense'),
     ...blankPlayState(),
   };
+}
+
+function statsContext() {
+  return {
+    quarter: state.quarter,
+    possession: state.possession,
+    down: state.down,
+    yardsToGo: state.ytg,
+    yardLine: state.yd,
+    firstDownLine: state.fdYd,
+    direction: state.direction,
+    score: {
+      player: state.playerScore,
+      opponent: state.opponentScore,
+    },
+    plays: state.plays,
+    drivePlays: state.drivePlays,
+  };
+}
+
+function beginStatsPlay(play) {
+  pendingStatsPlay = FOOTBALL_STATS.beginPlay(statsSession, {
+    preSnap: statsContext(),
+    calls: {
+      offense: play.callKey,
+      defense: state.defenseCallKey,
+      opponent: state.opponentCallKey,
+      matchup: state.matchup,
+    },
+    offeredYards: play.gain,
+    question: {
+      id: play.id,
+      skill: play.skill,
+      purpose: play.purpose,
+      grading: play.grading,
+      tier: play.tier,
+    },
+  });
+}
+
+function finalizeStatsPlay(actualYards, outcome) {
+  const pending = pendingStatsPlay;
+  pendingStatsPlay = null;
+  if (!pending) return false;
+  return FOOTBALL_STATS.completePlay(statsSession, pending, {
+    actualYards,
+    outcome,
+    postPlay: statsContext(),
+  });
 }
 
 function sortedOrShuffled(values, level) {
@@ -1583,6 +1634,7 @@ function prepareQuestion(p, labelHtml) {
     play: p,
     phase: 'question',
   });
+  beginStatsPlay(p);
   document.getElementById('play-label').innerHTML = labelHtml;
   document.getElementById('question').textContent = state.question;
   applyDeskHeader(state.possession === 'offense' ? 'questionOffense' : 'questionDefense');
@@ -1640,6 +1692,11 @@ function handleAnswer(idx) {
     correct: isCorrect,
     support: state.mathSupport,
   });
+  FOOTBALL_STATS.recordAttempt(pendingStatsPlay, {
+    number: state.attempt,
+    correct: isCorrect,
+    support: state.mathSupport,
+  });
 
   if (isCorrect) {
     completeCorrectAnswer(btn, question);
@@ -1666,6 +1723,7 @@ function completeCorrectAnswer(btn, question) {
     call: state.callKey,
     support: state.mathSupport,
   });
+  FOOTBALL_STATS.recordResolution(pendingStatsPlay, result);
   if (state.questionGrading !== 'noStakes') {
     state.gradedQuestions++;
     state.correctAnswers++;
@@ -1735,6 +1793,7 @@ function continueAfterExplanation() {
     call: state.callKey,
     support: state.mathSupport,
   });
+  FOOTBALL_STATS.recordResolution(pendingStatsPlay, 'secondMiss');
   if (state.questionGrading !== 'noStakes') state.gradedQuestions++;
   state.phase = 'feedback';
   syncUiState();
@@ -1798,12 +1857,14 @@ function resolveOffensePlay() {
     state.tds++;
     state.playerScore += TD_POINTS;
     updateStatus();
+    finalizeStatsPlay(p.gain, 'touchdown');
     setFeedback('Touchdown!', 'positive');
     advTimer = setTimeout(showTD, 900);
     return;
   }
 
   if (p.isTurnoverOnDowns) {
+    finalizeStatsPlay(p.gain, 'turnoverOnDowns');
     showFieldFloat(p.gain > 0 ? '+' + p.gain + ' YDS' : 'NO GAIN', 'negative');
     setFeedback('Turnover on downs.', 'negative');
     advTimer = setTimeout(() => finishPossession('Turnover on downs. Time to play defense!'), 1400);
@@ -1812,6 +1873,7 @@ function resolveOffensePlay() {
 
   if (p.gotFirstDown) {
     state.firstDowns++;
+    finalizeStatsPlay(p.gain, 'firstDown');
     showFieldFloat('FIRST DOWN!', 'first-down');
     flashFdLine();
     setFeedback('First down!', 'positive');
@@ -1819,6 +1881,7 @@ function resolveOffensePlay() {
     clearTimeout(playerCelebrateDelayTimer);
     playerCelebrateDelayTimer = setTimeout(startPlayerCelebrate, 700);
   } else {
+    finalizeStatsPlay(p.gain, p.gain > 0 ? 'gain' : 'noGain');
     showFieldFloat('+' + (p.gain || 0) + ' YDS');
     setFeedback('Correct.', 'positive');
     playCorrect();
@@ -1834,6 +1897,7 @@ function resolveOffenseMiss() {
 
   if (nextDown > 4) {
     updateStatus();
+    finalizeStatsPlay(0, 'turnoverOnDowns');
     advTimer = setTimeout(() => finishPossession('Turnover on downs. Time to play defense!'), 1800);
     return;
   }
@@ -1841,6 +1905,7 @@ function resolveOffenseMiss() {
   state.down = nextDown;
   state.ytg = distanceToMarker(state.yd, state.fdYd, state.direction);
   updateStatus();
+  finalizeStatsPlay(0, 'noGain');
   advTimer = setTimeout(showCallPrompt, 1800);
 }
 
@@ -1854,6 +1919,7 @@ function resolveDefenseStop(message) {
   if (nextDown > 4) {
     state.defenseStops++;
     updateStatus();
+    finalizeStatsPlay(0, 'turnoverOnDowns');
     advTimer = setTimeout(() => finishPossession(`${message || 'Your defense held!'} Turnover on downs!`), 1500);
     return;
   }
@@ -1861,6 +1927,7 @@ function resolveDefenseStop(message) {
   state.down = nextDown;
   state.ytg = distanceToMarker(state.yd, state.fdYd, state.direction);
   updateStatus();
+  finalizeStatsPlay(0, 'stop');
   advTimer = setTimeout(showCallPrompt, 1500);
 }
 
@@ -1873,6 +1940,7 @@ function resolveDefenseGain(message) {
     state.opponentTds++;
     state.opponentScore += TD_POINTS;
     updateStatus();
+    finalizeStatsPlay(p.gain, 'touchdown');
     setFeedback('Opponent touchdown.', 'negative');
     advTimer = setTimeout(() => showTD('defense'), 900);
     return;
@@ -1881,10 +1949,12 @@ function resolveDefenseGain(message) {
   if (p.isTurnoverOnDowns) {
     state.defenseStops++;
     updateStatus();
+    finalizeStatsPlay(p.gain, 'turnoverOnDowns');
     advTimer = setTimeout(() => finishPossession(`${message || 'Defense holds!'} Turnover on downs!`), 1600);
     return;
   }
 
+  finalizeStatsPlay(p.gain, p.gotFirstDown ? 'firstDown' : p.gain > 0 ? 'gain' : 'noGain');
   advTimer = setTimeout(showCallPrompt, 1600);
 }
 
@@ -2175,6 +2245,8 @@ function showStart() {
 function startGame() {
   clearTimeout(advTimer);
   learningSession = FOOTBALL_LEARNING.createSession();
+  statsSession = FOOTBALL_STATS.createSession();
+  pendingStatsPlay = null;
   state = createGameState();
   hideOverlays();
   startDrive('offense');
@@ -2366,6 +2438,8 @@ function restart() {
   clearConfetti('ov-end-confetti');
   resetPlayerAnimations();
   learningSession = FOOTBALL_LEARNING.createSession();
+  statsSession = FOOTBALL_STATS.createSession();
+  pendingStatsPlay = null;
   state = createGameState();
   prevPlayerScore = -1;
   prevOpponentScore = -1;
@@ -2446,6 +2520,8 @@ window.__footballTest = {
   resetLearning() { learningSession = FOOTBALL_LEARNING.createSession(); },
   learningProfile() { return FOOTBALL_LEARNING.snapshot(FOOTBALL_LEARNING.PROFILE); },
   learningState() { return FOOTBALL_LEARNING.snapshot(learningSession); },
+  statsHistory() { return FOOTBALL_STATS.history(); },
+  statsSession() { return FOOTBALL_STATS.sessionSnapshot(statsSession); },
   questionBank() {
     return QUESTION_BANK.map(scheduledEntry).filter(entry => entry.enabled !== false).map(entry => ({
       id: entry.id,
