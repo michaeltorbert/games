@@ -173,27 +173,37 @@ const FOOTBALL_STATS = (() => {
 
   function loadStore() {
     if (storeCache) return storeCache;
+    let raw;
     try {
-      const raw = window.localStorage.getItem(STORAGE_KEY);
-      if (!raw) {
-        storeCache = emptyStore();
-        return storeCache;
-      }
-      const parsed = JSON.parse(raw);
-      if (isRecord(parsed) && Number.isFinite(parsed.schemaVersion) && parsed.schemaVersion > SCHEMA_VERSION) {
-        // Never replace a store written by code with a schema this build does not know.
-        storageWritable = false;
-        storeCache = emptyStore();
-        return storeCache;
-      }
-      storeCache = isRecord(parsed) && parsed.schemaVersion === SCHEMA_VERSION
-        ? normalizeStore(parsed)
-        : emptyStore();
+      raw = window.localStorage.getItem(STORAGE_KEY);
     } catch (error) {
       // Reading may fail in private/locked-down contexts. Avoid a blind overwrite.
       storageWritable = false;
       storeCache = emptyStore();
+      return storeCache;
     }
+    if (!raw) {
+      storeCache = emptyStore();
+      return storeCache;
+    }
+    let parsed;
+    try {
+      parsed = JSON.parse(raw);
+    } catch (error) {
+      // Corrupt JSON at our known key is recoverable. Keep storage writable so
+      // the next completed play can replace it with a valid v1 payload.
+      storeCache = emptyStore();
+      return storeCache;
+    }
+    if (isRecord(parsed) && Number.isFinite(parsed.schemaVersion) && parsed.schemaVersion > SCHEMA_VERSION) {
+      // Never replace a store written by code with a schema this build does not know.
+      storageWritable = false;
+      storeCache = emptyStore();
+      return storeCache;
+    }
+    storeCache = isRecord(parsed) && parsed.schemaVersion === SCHEMA_VERSION
+      ? normalizeStore(parsed)
+      : emptyStore();
     return storeCache;
   }
 

@@ -235,6 +235,23 @@ test('history is capped, aggregates are guarded, completion is deduplicated, and
 test('future schemas are never overwritten and storage failures never break play', async ({ browser, baseURL }, testInfo) => {
   primaryOnly(testInfo);
 
+  const malformedContext = await browser.newContext();
+  const malformedPage = await malformedContext.newPage();
+  const malformedErrors = trackErrors(malformedPage);
+  await malformedPage.addInitScript(() => {
+    if (location.pathname.startsWith('/football')) {
+      localStorage.setItem('footballMathStats:v1', '{invalid-json');
+    }
+  });
+  await malformedPage.goto(`${baseURL}/football/?boot=offense-call`);
+  await malformedPage.locator('#call-grid .call-btn').first().click();
+  await answer(malformedPage, 'correct');
+  const repaired = await malformedPage.evaluate(() => JSON.parse(localStorage.getItem('footballMathStats:v1')));
+  expect(repaired.schemaVersion).toBe(1);
+  expect(repaired.recentPlays).toHaveLength(1);
+  expect(malformedErrors).toEqual([]);
+  await malformedContext.close();
+
   const futureContext = await browser.newContext();
   const futurePage = await futureContext.newPage();
   const futureErrors = trackErrors(futurePage);
