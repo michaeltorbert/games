@@ -46,6 +46,22 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
     'game.touchdownPoints': 7,
   });
 
+  const CALL_AFFINITY_MULTIPLIER = 1.75;
+  // This central map lives beside the family registry so every family reference
+  // can be validated at module initialization. UI call-key coverage is pinned
+  // against the production registries through the football test seam.
+  const CALL_AFFINITIES = deepFreeze({
+    'offense:shortRun': ['yards-to-go-read', 'line-to-gain-missing-part', 'line-to-gain-exact', 'line-to-gain-surplus', 'line-to-gain-fact-family', 'gain-vs-needed-comparison', 'team-yards-past-100'],
+    'offense:shortPass': ['yards-to-go-read', 'line-to-gain-missing-part', 'line-to-gain-exact', 'line-to-gain-surplus', 'line-to-gain-fact-family', 'gain-vs-needed-comparison', 'next-down'],
+    'offense:longRun': ['gain-vs-needed-comparison', 'goal-distance-read', 'drive-distance-scaffolded', 'next-down', 'touchdown-points'],
+    'offense:mediumPass': ['gain-vs-needed-comparison', 'goal-distance-read', 'goal-distance-tens', 'goal-distance-ones', 'next-down', 'touchdown-points'],
+    'offense:longPass': ['gain-vs-needed-comparison', 'goal-distance-read', 'goal-distance-tens', 'goal-distance-ones', 'goal-distance-minus-whole-tens', 'drive-distance-plus-whole-tens', 'touchdown-points'],
+    'defense:run': ['yards-to-go-read', 'line-to-gain-missing-part', 'line-to-gain-exact', 'line-to-gain-surplus', 'line-to-gain-fact-family', 'gain-vs-needed-comparison'],
+    'defense:shortPass': ['yards-to-go-read', 'line-to-gain-missing-part', 'line-to-gain-exact', 'line-to-gain-surplus', 'gain-vs-needed-comparison', 'next-down'],
+    'defense:mediumPass': ['gain-vs-needed-comparison', 'goal-distance-read', 'next-down'],
+    'defense:deepPass': ['goal-distance-read', 'goal-distance-tens', 'goal-distance-ones', 'touchdown-points'],
+  });
+
   const DEFAULT_PROFILE = deepFreeze({
     completedThroughPage: CURRENT_COMPLETED_PAGE,
     includedThroughPage: INCLUDED_THROUGH_PAGE,
@@ -842,6 +858,31 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
 
   const FAMILY_BY_ID = new Map(FAMILY_DEFINITIONS.map((definition) => [definition.meta.familyId, definition]));
 
+  for (const familyIds of Object.values(CALL_AFFINITIES)) {
+    for (const familyId of familyIds) {
+      if (!FAMILY_BY_ID.has(familyId)) throw new Error(`Call affinity references unknown family ${familyId}.`);
+    }
+  }
+
+  function selectionFor(snap, familyId) {
+    const role = snap?.context?.possession;
+    const callKey = role === 'offense'
+      ? snap?.context?.calls?.offense
+      : role === 'defense'
+        ? snap?.context?.calls?.defense
+        : null;
+    const selectedCallId = typeof callKey === 'string' ? `${role}:${callKey}` : null;
+    const multiplier = selectedCallId && CALL_AFFINITIES[selectedCallId]?.includes(familyId)
+      ? CALL_AFFINITY_MULTIPLIER
+      : 1;
+    return deepFreeze({
+      strategy: 'selected-call-affinity-v1',
+      role: role === 'offense' || role === 'defense' ? role : null,
+      selectedCallId: CALL_AFFINITIES[selectedCallId] ? selectedCallId : null,
+      multiplier,
+    });
+  }
+
   function inspect(snap, profileInput = DEFAULT_PROFILE) {
     const profile = normalizeProfile(profileInput);
     const commonReason = baseShapeReason(snap);
@@ -1025,6 +1066,7 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
       support,
       math: { ...visuals[support], support },
       grounding: { bindingIds, answerId },
+      selection: selectionFor(snap, familyId),
     };
     const frozen = deepFreeze(question);
     // Preserve an intentional alias so consumers cannot let premises and
@@ -1042,6 +1084,9 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
     ANSWER_EXPOSURE_POLICIES,
     CURRICULUM_SOURCES,
     RULES,
+    CALL_AFFINITY_MULTIPLIER,
+    CALL_AFFINITIES,
+    selectionFor,
     inspect,
     build,
   });

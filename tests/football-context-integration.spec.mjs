@@ -201,7 +201,10 @@ test('approved past-100 team yards start visibly guided and commit the real tota
       includedThroughPage: FOOTBALL_LEARNING.PROFILE.includedThroughPage,
       computationMax: FOOTBALL_LEARNING.PROFILE.computationMax,
       displayMax: FOOTBALL_LEARNING.PROFILE.displayMax,
-    }).eligible;
+    }).eligible.map((entry) => ({
+      ...entry,
+      selectionMultiplier: FOOTBALL_CONTEXTUAL_QUESTIONS.selectionFor(snap, entry.familyId).multiplier,
+    }));
     const probeSession = FOOTBALL_LEARNING.createSession();
     let draw = null;
     for (let index = 0; index < 2000; index++) {
@@ -276,7 +279,10 @@ test('next-down asks about the frozen play situation and commits the projected d
       includedThroughPage: FOOTBALL_LEARNING.PROFILE.includedThroughPage,
       computationMax: FOOTBALL_LEARNING.PROFILE.computationMax,
       displayMax: FOOTBALL_LEARNING.PROFILE.displayMax,
-    }).eligible;
+    }).eligible.map((entry) => ({
+      ...entry,
+      selectionMultiplier: FOOTBALL_CONTEXTUAL_QUESTIONS.selectionFor(snap, entry.familyId).multiplier,
+    }));
     const probeSession = FOOTBALL_LEARNING.createSession();
     let draw = null;
     for (let index = 0; index < 2000; index++) {
