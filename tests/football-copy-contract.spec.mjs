@@ -14,6 +14,10 @@ test('copy tables cover their exact runtime key domains', async ({ page }) => {
       offenseKeys,
       opponentKeys,
       offenseMissKeys: tableKeys(PLAY_OUTCOME_COPY.offenseMiss),
+      secondMissOutcomeKeys: tableKeys(SECOND_MISS_OUTCOMES),
+      secondMissReasonKeys: sorted(new Set(Object.values(SECOND_MISS_OUTCOMES)
+        .map(outcome => outcome.resultReason))),
+      secondMissCopyKeys: tableKeys(PLAY_OUTCOME_COPY.secondMiss),
       defenseStopKeys: tableKeys(PLAY_OUTCOME_COPY.defenseStop),
       defenseGainKeys: tableKeys(PLAY_OUTCOME_COPY.defenseGain),
       validOffenseMiss: validMessageTable(PLAY_OUTCOME_COPY.offenseMiss),
@@ -29,6 +33,8 @@ test('copy tables cover their exact runtime key domains', async ({ page }) => {
   });
 
   expect(contract.offenseMissKeys).toEqual(contract.offenseKeys);
+  expect(contract.secondMissOutcomeKeys).toEqual(contract.offenseKeys);
+  expect(contract.secondMissReasonKeys).toEqual(contract.secondMissCopyKeys);
   expect(contract.defenseStopKeys).toEqual(contract.opponentKeys);
   expect(contract.defenseGainKeys).toEqual(contract.opponentKeys);
   expect(contract.validOffenseMiss).toBe(true);

@@ -457,7 +457,7 @@ test('a rejected late commit abandons its pending stats draft before the next ca
   expect(await page.evaluate(() => pendingStatsPlay)).toBeNull();
 });
 
-test('a second offense miss freezes zero gain until Continue and duplicate commit is idempotent', async ({ page }, testInfo) => {
+test('a second short-pass miss freezes an incompletion until Continue and duplicate commit is idempotent', async ({ page }, testInfo) => {
   primaryOnly(testInfo);
   await cleanBoot(page, 0x20254);
   const seeded = await seedDrive(page, OFFENSE_SEED);
@@ -513,6 +513,48 @@ test('a rejected second-miss Continue never records a learning or stats resoluti
   expect(committed.learning.byConcept).toEqual(before.learning.byConcept);
   expect(committed.statsSession.completedPlays).toHaveLength(0);
   expect(await page.evaluate(() => pendingStatsPlay)).toBeNull();
+});
+
+test('an unresolvable terminal miss fails before mutating its second-choice UI state', async ({ page }, testInfo) => {
+  primaryOnly(testInfo);
+  await cleanBoot(page, 0x21254);
+  await seedDrive(page, OFFENSE_SEED);
+  await chooseCall(page, 'Short Run');
+  const before = await activeContracts(page);
+  const wrongIds = before.questionInstance.choices
+    .filter(choice => choice.id !== before.questionInstance.correctChoiceId)
+    .map(choice => choice.id);
+  await answerChoice(page, wrongIds[0]);
+
+  const result = await page.evaluate((secondWrongId) => {
+    const index = state.questionInstance.choices.findIndex(choice => choice.id === secondWrongId);
+    const button = document.getElementById(`b${index}`);
+    state.activeSnap = FOOTBALL_DOMAIN.deepFreeze({
+      ...FOOTBALL_DOMAIN.clone(state.activeSnap),
+      call: { ...FOOTBALL_DOMAIN.clone(state.activeSnap.call), key: 'unknown-call' },
+    });
+    const beforeUi = FOOTBALL_LEARNING.snapshot(state.questionUi);
+    let code = null;
+    try {
+      handleAnswer(index);
+    } catch (error) {
+      code = error.code;
+    }
+    return {
+      code,
+      beforeUi,
+      afterUi: FOOTBALL_LEARNING.snapshot(state.questionUi),
+      phase: state.phase,
+      buttonWrong: button.classList.contains('wrong'),
+      buttonDisabled: button.disabled,
+    };
+  }, wrongIds[1]);
+
+  expect(result.code).toBe('invalid-resolution-policy');
+  expect(result.afterUi).toEqual(result.beforeUi);
+  expect(result.phase).toBe('question');
+  expect(result.buttonWrong).toBe(false);
+  expect(result.buttonDisabled).toBe(false);
 });
 
 test('commit-time policy enforcement rejects a candidate-selected gain for every resolution path', async ({ page }, testInfo) => {
@@ -610,7 +652,7 @@ test('every resolution policy authorizes only its exact frozen requested gain', 
     const cases = [
       [offenseSnap, 'firstTryCorrect', 8],
       [offenseSnap, 'retryCorrect', 8],
-      [offenseSnap, 'secondMiss', 0],
+      [offenseSnap, 'secondMiss', -2, { resultKind: 'turnover', resultReason: 'fumble' }],
       [offenseSnap, 'questionBypass', 8],
       [defenseSnap, 'firstTryCorrect', 0],
       [defenseSnap, 'retryCorrect', 0],
@@ -620,7 +662,7 @@ test('every resolution policy authorizes only its exact frozen requested gain', 
     ];
 
     const previousSnap = state.activeSnap;
-    const creationChecks = cases.map(([snap, policy, expectedGain]) => {
+    const creationChecks = cases.map(([snap, policy, expectedGain, outcomeOptions]) => {
       const neighboringGain = expectedGain === 0 ? 1 : expectedGain - 1;
       state.activeSnap = snap;
       let exactPending = null;
@@ -628,7 +670,7 @@ test('every resolution policy authorizes only its exact frozen requested gain', 
       try {
         exactPending = makePendingResolution(
           policy,
-          FOOTBALL_DOMAIN.reprojectGain(snap, expectedGain),
+          FOOTBALL_DOMAIN.reprojectGain(snap, expectedGain, outcomeOptions),
         );
       } catch (error) {}
       try {
@@ -650,7 +692,7 @@ test('every resolution policy authorizes only its exact frozen requested gain', 
     state.activeSnap = previousSnap;
 
     return {
-      cases: cases.map(([snap, policy, expectedGain]) => {
+      cases: cases.map(([snap, policy, expectedGain, outcomeOptions]) => {
         const neighboringGain = expectedGain === 0 ? 1 : expectedGain - 1;
         return {
           policy,
@@ -660,7 +702,7 @@ test('every resolution policy authorizes only its exact frozen requested gain', 
           exactAccepted: validateResolutionTransition(
             snap,
             policy,
-            FOOTBALL_DOMAIN.reprojectGain(snap, expectedGain),
+            FOOTBALL_DOMAIN.reprojectGain(snap, expectedGain, outcomeOptions),
           ).ok,
           neighboringRejected: !validateResolutionTransition(
             snap,
@@ -691,6 +733,139 @@ test('every resolution policy authorizes only its exact frozen requested gain', 
     expect(result.neighboringRejected, `pending:${result.possession}:${result.policy}`).toBe(true);
   }
   expect(checks.unknownPolicyRejected).toBe(true);
+});
+
+test('second-miss outcomes are deterministic by call family and only long calls turn over', async ({ page }, testInfo) => {
+  primaryOnly(testInfo);
+  await cleanBoot(page, 0x29254);
+  const outcomes = await page.evaluate(() => {
+    const base = {
+      contextId: 'bad-outcome-probe', possession: 'offense', direction: 1, quarter: 2,
+      down: 2, yardsToGo: 8, yardLine: 30, firstDownLine: 38, driveStart: 20,
+      scores: { player: 7, opponent: 7 }, totalYards: { player: 83, opponent: 71 },
+      plays: 4, drivePlays: 2, calls: { offense: 'shortRun', defense: null, matchup: null },
+      privateOpponentSnapshot: null,
+    };
+    return ['shortRun', 'shortPass', 'mediumPass', 'longRun', 'longPass'].map((callKey, index) => {
+      const snap = FOOTBALL_DOMAIN.createSnap({
+        ...base, contextId: `bad-outcome-${index}`, calls: { ...base.calls, offense: callKey },
+      }, { gain: 8, callKey });
+      const outcome = secondMissOutcomeForSnap(snap);
+      const transition = FOOTBALL_DOMAIN.reprojectGain(snap, outcome.requestedGain,
+        outcome.resultReason ? {
+          resultKind: outcome.resultKind || undefined, resultReason: outcome.resultReason,
+        } : null);
+      return { callKey, ...outcome, transition, valid: validateResolutionTransition(snap, 'secondMiss', transition).ok };
+    });
+  });
+
+  expect(outcomes.map(({ callKey, requestedGain, resultKind, resultReason, valid }) => ({
+    callKey, requestedGain, resultKind, resultReason, valid,
+  }))).toEqual([
+    { callKey: 'shortRun', requestedGain: -1, resultKind: null, resultReason: 'stuff', valid: true },
+    { callKey: 'shortPass', requestedGain: 0, resultKind: null, resultReason: 'incompletion', valid: true },
+    { callKey: 'mediumPass', requestedGain: -3, resultKind: null, resultReason: 'sack', valid: true },
+    { callKey: 'longRun', requestedGain: -2, resultKind: 'turnover', resultReason: 'fumble', valid: true },
+    { callKey: 'longPass', requestedGain: 0, resultKind: 'turnover', resultReason: 'interception', valid: true },
+  ]);
+  expect(outcomes.slice(0, 3).every(item => item.transition.resultKind !== 'turnover')).toBe(true);
+  expect(outcomes.slice(3).every(item => item.transition.resultKind === 'turnover')).toBe(true);
+});
+
+test('own-1 offensive second-miss loss validates with zero applied yards', async ({ page }, testInfo) => {
+  primaryOnly(testInfo);
+  await cleanBoot(page, 0x2a254);
+  const result = await page.evaluate(() => [
+    { direction: 1, yardLine: 1, firstDownLine: 11, possession: 'offense' },
+  ].map((spot, index) => {
+    const snap = FOOTBALL_DOMAIN.createSnap({
+      contextId: `own-one-${index}`, quarter: 1, down: 2, yardsToGo: 10,
+      driveStart: spot.direction === 1 ? 20 : 80,
+      scores: { player: 0, opponent: 0 }, totalYards: { player: 0, opponent: 0 },
+      plays: 1, drivePlays: 1, calls: { offense: 'mediumPass', defense: null, matchup: null },
+      privateOpponentSnapshot: null, ...spot,
+    }, { gain: 8, callKey: 'mediumPass' });
+    const outcome = secondMissOutcomeForSnap(snap);
+    const transition = FOOTBALL_DOMAIN.reprojectGain(snap, outcome.requestedGain, {
+      resultReason: outcome.resultReason,
+    });
+    return {
+      valid: validateResolutionTransition(snap, 'secondMiss', transition).ok,
+      appliedGain: transition.appliedGain,
+      negativeZero: Object.is(transition.appliedGain, -0),
+      endYardLine: transition.endYardLine,
+    };
+  }));
+  expect(result).toEqual([
+    { valid: true, appliedGain: 0, negativeZero: false, endYardLine: 1 },
+  ]);
+});
+
+test('a long-run second miss commits one fumble and reaches the possession transition', async ({ page }, testInfo) => {
+  primaryOnly(testInfo);
+  await cleanBoot(page, 0x2b254);
+  const seeded = await seedDrive(page, OFFENSE_SEED);
+  await chooseCall(page, 'Long Run');
+  const before = await activeContracts(page);
+  await missTwice(page, before);
+  await page.evaluate(() => {
+    window.__turnoverResults = [];
+    window.addEventListener('football:result', event => window.__turnoverResults.push(event.detail));
+    document.getElementById('question-continue').click();
+    window.__turnoverFloat = document.querySelector('.field-float')?.textContent || '';
+    commitPendingResolution();
+  });
+  await page.waitForTimeout(1650);
+  const after = await activeContracts(page);
+  const details = await page.evaluate(() => window.__turnoverResults);
+  expect(await page.evaluate(() => window.__turnoverFloat)).toBe('FUMBLE!');
+
+  expect(details).toHaveLength(1);
+  expect(details[0]).toMatchObject({
+    policy: 'secondMiss', outcome: 'turnover',
+    transition: { appliedGain: -2, resultKind: 'turnover', resultReason: 'fumble' },
+  });
+  expect(after.statsSession.completedPlays).toHaveLength(1);
+  expect(after.statsSession.completedPlays[0]).toMatchObject({
+    resolution: 'secondMiss', actualYards: -2, outcome: 'turnover',
+  });
+  expect(after.render.plays).toBe(seeded.plays + 1);
+  expect(after.render.absoluteYard).toBe(seeded.absoluteYard - 2);
+  expect(after.render.mode).toBe('transition');
+});
+
+test('a medium-pass loss creates 2nd and 13 and the next snap still builds a question', async ({ page }, testInfo) => {
+  primaryOnly(testInfo);
+  await cleanBoot(page, 0x2c254);
+  await page.evaluate(() => {
+    window.__lossDiagnostics = [];
+    window.addEventListener('football:diagnostic', event => window.__lossDiagnostics.push(event.detail));
+  });
+  await seedDrive(page, {
+    ...OFFENSE_SEED,
+    down: 1,
+    yardsToGo: 10,
+    yardLine: 30,
+    firstDownLine: 40,
+    totalYards: { player: 0, opponent: 0 },
+  });
+  await chooseCall(page, 'Medium Pass');
+  const before = await activeContracts(page);
+  await missTwice(page, before);
+  await page.evaluate(() => document.getElementById('question-continue').click());
+  await page.waitForTimeout(1900);
+  const between = await activeContracts(page);
+  expect(between.render.mode).toBe('call');
+  expect(between.render.down).toBe(2);
+  expect(between.render.ytg).toBe(13);
+  expect(between.render.totalYards.player).toBe(-3);
+
+  await chooseCall(page, 'Short Run');
+  const next = await activeContracts(page);
+  expect(next.render.mode).toBe('question');
+  expect(next.questionInstance).toBeTruthy();
+  expect(await page.evaluate(() => window.__lossDiagnostics
+    .filter(item => ['invalid-context', 'empty-pool'].includes(item.code)))).toEqual([]);
 });
 
 test('a correct defense answer commits a zero-yard stop', async ({ page }, testInfo) => {

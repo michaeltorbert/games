@@ -2,6 +2,13 @@
 // before football.js so these tables are ready when the game reads them.
 
 const PLAY_OUTCOME_COPY = {
+  secondMiss: {
+    stuff: 'The defense stuffs the run behind the line.',
+    incompletion: 'The short pass falls incomplete.',
+    sack: 'The rush gets home for a sack.',
+    fumble: 'The runner loses the ball, and the defense recovers.',
+    interception: 'The deep pass is intercepted.',
+  },
   offenseMiss: {
     shortRun: [
       'Your run was stuffed at the line.',

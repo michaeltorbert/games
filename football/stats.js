@@ -6,7 +6,7 @@ const FOOTBALL_STATS = (() => {
   const SCHEMA_VERSION = 2;
   const LEGACY_SCHEMA_VERSION = 1;
   const MAX_RECENT_PLAYS = 200;
-  const OUTCOMES = ['touchdown', 'firstDown', 'turnoverOnDowns', 'stop', 'gain', 'noGain'];
+  const OUTCOMES = ['touchdown', 'firstDown', 'turnoverOnDowns', 'turnover', 'stop', 'gain', 'loss', 'noGain'];
   const RESOLUTIONS = ['firstTryCorrect', 'retryCorrect', 'secondMiss'];
   const INSTRUCTIONAL_STATUSES = Object.freeze(['presented', 'bypassed']);
   let idSequence = 0;
@@ -27,6 +27,10 @@ const FOOTBALL_STATS = (() => {
 
   function safeNumber(value, fallback = 0) {
     return Number.isFinite(value) ? value : fallback;
+  }
+
+  function safeSignedInteger(value, fallback = 0) {
+    return Number.isSafeInteger(value) ? value : fallback;
   }
 
   function emptyCounts(keys) {
@@ -92,6 +96,14 @@ const FOOTBALL_STATS = (() => {
     };
   }
 
+  function normalizeTotalYards(value) {
+    const totals = isRecord(value) ? value : {};
+    return {
+      player: safeSignedInteger(totals.player),
+      opponent: safeSignedInteger(totals.opponent),
+    };
+  }
+
   function normalizeContext(value) {
     const context = isRecord(value) ? value : {};
     return {
@@ -103,7 +115,7 @@ const FOOTBALL_STATS = (() => {
       firstDownLine: safeNumber(context.firstDownLine),
       direction: context.direction === -1 ? -1 : 1,
       score: normalizeScore(context.score),
-      totalYards: normalizeScore(context.totalYards),
+      totalYards: normalizeTotalYards(context.totalYards),
       plays: safeInteger(context.plays),
       drivePlays: safeInteger(context.drivePlays),
     };
@@ -201,8 +213,7 @@ const FOOTBALL_STATS = (() => {
       question,
       attempts,
       resolution,
-      // Unlike offered yards, actual outcome yards are signed history. Current
-      // gameplay still rejects negative proposals in football-domain.js.
+      // Offered yards stay nonnegative; actual outcome yards are signed.
       actualYards: safeNumber(value.actualYards),
       outcome,
       postPlay: normalizeContext(value.postPlay),

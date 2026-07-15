@@ -5,6 +5,7 @@
     'touchdown',
     'firstDown',
     'turnoverOnDowns',
+    'turnover',
     'advance',
   ]);
 
@@ -23,6 +24,7 @@
     'oldFirstDownLine',
     'newFirstDownLine',
     'resultKind',
+    'resultReason',
     'crossedMidfield',
     'driveTotal',
     'distanceToGoalBefore',
@@ -212,10 +214,10 @@
 
     const yardLineOkay = integerDiagnostic(yardLine, '/yardLine', 1, 99, diagnostics);
     const markerOkay = integerDiagnostic(firstDownLine, '/firstDownLine', 0, 100, diagnostics);
-    const distanceOkay = integerDiagnostic(yardsToGo, '/yardsToGo', 1, 10, diagnostics);
+    const distanceOkay = integerDiagnostic(yardsToGo, '/yardsToGo', 1, 99, diagnostics);
     integerDiagnostic(quarter, '/quarter', 1, 4, diagnostics);
     integerDiagnostic(down, '/down', 1, 4, diagnostics);
-    const driveStartOkay = integerDiagnostic(driveStart, '/driveStart', 0, 100, diagnostics);
+    integerDiagnostic(driveStart, '/driveStart', 0, 100, diagnostics);
     integerDiagnostic(plays, '/plays', 0, Number.MAX_SAFE_INTEGER, diagnostics);
     integerDiagnostic(drivePlays, '/drivePlays', 0, Number.MAX_SAFE_INTEGER, diagnostics);
 
@@ -232,18 +234,8 @@
       }
     }
 
-    if (yardLineOkay && driveStartOkay && (direction === 1 || direction === -1)) {
-      const driveMovedBackward = direction === 1 ? driveStart > yardLine : driveStart < yardLine;
-      if (driveMovedBackward) {
-        diagnostics.push(diagnostic(
-          'INCONSISTENT_DRIVE_START',
-          '/driveStart',
-          'Drive start cannot be ahead of the current ball in the offense direction.',
-          direction === 1 ? `<= ${yardLine}` : `>= ${yardLine}`,
-          driveStart,
-        ));
-      }
-    }
+    // Losses can move an offense behind its drive start, so driveStart is a
+    // historical anchor rather than a lower bound on the current field spot.
 
     const scoreInput = isRecord(input.scores)
       ? input.scores
@@ -258,8 +250,8 @@
     const totalYardsInput = isRecord(input.totalYards) ? input.totalYards : {};
     const playerTotalYards = firstDefined(totalYardsInput.player, input.playerTotalYards, 0);
     const opponentTotalYards = firstDefined(totalYardsInput.opponent, input.opponentTotalYards, 0);
-    integerDiagnostic(playerTotalYards, '/totalYards/player', 0, Number.MAX_SAFE_INTEGER, diagnostics);
-    integerDiagnostic(opponentTotalYards, '/totalYards/opponent', 0, Number.MAX_SAFE_INTEGER, diagnostics);
+    integerDiagnostic(playerTotalYards, '/totalYards/player', Number.MIN_SAFE_INTEGER, Number.MAX_SAFE_INTEGER, diagnostics);
+    integerDiagnostic(opponentTotalYards, '/totalYards/opponent', Number.MIN_SAFE_INTEGER, Number.MAX_SAFE_INTEGER, diagnostics);
 
     const callsInput = isRecord(input.calls) ? input.calls : {};
     const offenseCallFallback = possession === 'defense'
@@ -396,27 +388,46 @@
     return direction === 1 ? yardLine >= target : yardLine <= target;
   }
 
-  function projectGain(input, requestedGain) {
+  function projectGain(input, requestedGain, outcomeOptions = null) {
     const context = normalizeContext(input && input.context ? input.context : input);
     const diagnostics = [];
-    if (!Number.isInteger(requestedGain) || requestedGain < 0 || requestedGain > 100) {
+    if (!Number.isInteger(requestedGain) || requestedGain < -100 || requestedGain > 100) {
       diagnostics.push(diagnostic(
         'INVALID_GAIN',
         '/requestedGain',
-        'Gain must be an integer from 0 through 100.',
-        { integer: true, min: 0, max: 100 },
+        'Net yards must be an integer from -100 through 100.',
+        { integer: true, min: -100, max: 100 },
         requestedGain,
       ));
       throw new FootballDomainError('INVALID_GAIN', diagnostics);
     }
 
     const distanceBefore = distanceToGoal(context.yardLine, context.direction);
-    const appliedGain = Math.min(requestedGain, distanceBefore);
+    const distanceToOwnOne = context.direction === 1 ? context.yardLine - 1 : 99 - context.yardLine;
+    const unclampedGain = requestedGain >= 0
+      ? Math.min(requestedGain, distanceBefore)
+      : Math.max(requestedGain, -distanceToOwnOne);
+    const appliedGain = Object.is(unclampedGain, -0) ? 0 : unclampedGain;
     const endYardLine = context.yardLine + (appliedGain * context.direction);
-    const touchdown = endYardLine === (context.direction === 1 ? 100 : 0);
-    const firstDown = !touchdown && reachedLine(endYardLine, context.firstDownLine, context.direction);
-    const turnoverOnDowns = !touchdown && !firstDown && context.down === 4;
-    const resultKind = touchdown
+    const forcedTurnover = outcomeOptions?.resultKind === 'turnover';
+    const allowedReasons = ['stuff', 'incompletion', 'sack', 'fumble', 'interception'];
+    const resultReason = outcomeOptions && allowedReasons.includes(outcomeOptions.resultReason)
+      ? outcomeOptions.resultReason
+      : null;
+    if (outcomeOptions && (!resultReason
+      || ![undefined, 'turnover'].includes(outcomeOptions.resultKind)
+      || (forcedTurnover !== ['fumble', 'interception'].includes(resultReason)))) {
+      throw new FootballDomainError('INVALID_OUTCOME', [diagnostic(
+        'INVALID_OUTCOME', '/outcome', 'The requested football outcome is not canonical.',
+      )]);
+    }
+    const touchdown = !forcedTurnover && endYardLine === (context.direction === 1 ? 100 : 0);
+    const firstDown = !forcedTurnover && !touchdown
+      && reachedLine(endYardLine, context.firstDownLine, context.direction);
+    const turnoverOnDowns = !forcedTurnover && !touchdown && !firstDown && context.down === 4;
+    const resultKind = forcedTurnover
+      ? 'turnover'
+      : touchdown
       ? 'touchdown'
       : firstDown
         ? 'firstDown'
@@ -433,6 +444,8 @@
     const newYardsToGo = touchdown
       ? 0
       : Math.abs(newFirstDownLine - endYardLine);
+    const rawDriveTotal = (endYardLine - context.driveStart) * context.direction;
+    const driveTotal = Object.is(rawDriveTotal, -0) ? 0 : rawDriveTotal;
 
     return immutable({
       contextId: context.contextId,
@@ -449,10 +462,11 @@
       oldFirstDownLine: context.firstDownLine,
       newFirstDownLine,
       resultKind,
+      resultReason,
       crossedMidfield: context.direction === 1
         ? context.yardLine < 50 && endYardLine >= 50
         : context.yardLine > 50 && endYardLine <= 50,
-      driveTotal: Math.abs(endYardLine - context.driveStart),
+      driveTotal,
       distanceToGoalBefore: distanceBefore,
       distanceToGoalAfter: distanceToGoal(endYardLine, context.direction),
     });
@@ -482,6 +496,11 @@
     }
 
     const gain = firstDefined(proposal.gain, proposal.requestedGain);
+    if (!Number.isInteger(gain) || gain < 0) {
+      throw new FootballDomainError('INVALID_PROPOSAL', [diagnostic(
+        'INVALID_PROPOSAL', '/proposal/gain', 'Snap proposals must remain non-negative.',
+      )]);
+    }
     const projection = projectGain(context, gain);
     const call = normalizeCall(proposal, context);
     if (proposal.callKey !== undefined && call.key === null) {
@@ -515,8 +534,8 @@
     return source && isRecord(source) && isRecord(source.context) ? source.context : source;
   }
 
-  function reprojectGain(source, requestedGain) {
-    return projectGain(contextFrom(source), requestedGain);
+  function reprojectGain(source, requestedGain, outcomeOptions = null) {
+    return projectGain(contextFrom(source), requestedGain, outcomeOptions);
   }
 
   function compareProjection(expected, candidate) {
@@ -577,7 +596,10 @@
         : sourceIsSnap
           ? source.proposal.requestedGain
           : candidate && candidate.requestedGain;
-      const expected = projectGain(context, requestedGain);
+      const outcomeOptions = isRecord(options) && options.expectedResultReason
+        ? { resultKind: options.expectedResultKind, resultReason: options.expectedResultReason }
+        : null;
+      const expected = projectGain(context, requestedGain, outcomeOptions);
       return validationResult(expected, compareProjection(expected, candidate));
     } catch (error) {
       if (error instanceof FootballDomainError) return validationResult(null, error.diagnostics);

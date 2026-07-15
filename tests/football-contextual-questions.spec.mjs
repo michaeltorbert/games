@@ -79,6 +79,56 @@ function bindingValues(question) {
   return Object.fromEntries(question.bindings.map((binding) => [binding.id, binding.value]));
 }
 
+test('long distance and signed team totals retain a nonempty buildable question pool', () => {
+  const { domain, questions } = loadModules();
+  for (const totalYards of [
+    { player: -7, opponent: 12 },
+    { player: 12, opponent: -7 },
+  ]) {
+    const snap = makeSnap(domain, {
+      yardsToGo: 13,
+      firstDownLine: 43,
+      totalYards,
+    }, 4);
+    const inspection = questions.inspect(snap, questions.DEFAULT_PROFILE);
+    assert.ok(inspection.eligible.length > 0);
+    for (const candidate of inspection.eligible) {
+      assert.doesNotThrow(() => questions.build(snap, candidate.familyId, {
+        ...questions.DEFAULT_PROFILE,
+        presentationRng: () => 0.5,
+      }), candidate.familyId);
+    }
+    assert.ok(inspection.declined.some(item => item.familyId === 'yards-to-go-read'
+      && item.reason.code === 'outside-read-band'));
+  }
+});
+
+test('every reachable long-distance state retains a nonempty fully buildable pool in both directions', () => {
+  const { domain, questions } = loadModules();
+  for (const direction of [1, -1]) {
+    for (let yardsToGo = 11; yardsToGo <= 19; yardsToGo++) {
+      const possession = direction === 1 ? 'offense' : 'defense';
+      const yardLine = direction === 1 ? 30 : 70;
+      const snap = makeSnap(domain, {
+        possession,
+        direction,
+        yardLine,
+        yardsToGo,
+        firstDownLine: yardLine + (direction * yardsToGo),
+        totalYards: direction === 1 ? { player: -9, opponent: 4 } : { player: 4, opponent: -9 },
+      }, 4);
+      const inspection = questions.inspect(snap, questions.DEFAULT_PROFILE);
+      assert.ok(inspection.eligible.length > 0, `${direction}:${yardsToGo}`);
+      for (const candidate of inspection.eligible) {
+        assert.doesNotThrow(() => questions.build(snap, candidate.familyId, {
+          ...questions.DEFAULT_PROFILE,
+          presentationRng: () => 0.5,
+        }), `${direction}:${yardsToGo}:${candidate.familyId}`);
+      }
+    }
+  }
+});
+
 function recompute(question) {
   const values = bindingValues(question);
   const operands = question.operation.operandIds.map((id) => values[id]);
