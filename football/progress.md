@@ -176,4 +176,6 @@ Original prompt: Execute the agreed two-release Football plan from current live 
 - Isolated the first run's single iPad Pro particle-timing failure; the exact rerun passed, and the subsequent complete gate passed cleanly with 30/30 Node checks, 177 Playwright passes, 195 intentional project skips, and 108/108 canonical screenshots verified across all six targets.
 - Visually inspected primary-iPad offense/defense questions, the phone question layout, and the large-iPad final report; child-facing copy, answer controls, and above-the-fold layout remain readable without exposing a hidden answer.
 - Completed the prescribed browser-client smoke on a live offense question; `render_game_to_text()` reported a linked, uncommitted question state and no browser-error artifact was produced.
-- Opus review, GitHub publication, merge, and live deployment verification remain TODO.
+- Published Codex-authored draft PR #76 through `codex-bot-mt[bot]`; Opus 4.8's full-diff pass confirmed the commit/rollback/answer-withholding invariants and identified one theoretical 100-yard place-value boundary.
+- Made the two-digit family contract explicitly 10 through 99 and added a maximum-legal-distance plus malformed-100-yard regression; focused unit and browser checks pass.
+- Follow-up Opus review, merge, and live deployment verification remain TODO.

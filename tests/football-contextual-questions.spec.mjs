@@ -451,6 +451,35 @@ test('goal-distance place-value questions use plain football copy and hide the r
   assert.match(oneYardRead.visuals.initial.ariaLabel, /1 yard,/i);
   assert.doesNotMatch(oneYardRead.visuals.initial.ariaLabel, /1 yards/i);
   assert.doesNotMatch(oneYardRead.visuals.guided.ariaLabel, /both digits/i);
+
+  const maximumLegalDistance = makeSnap(domain, {
+    yardLine: 1,
+    firstDownLine: 11,
+    yardsToGo: 10,
+    driveStart: 1,
+  }, 1);
+  for (const familyId of ['goal-distance-tens', 'goal-distance-ones']) {
+    const question = questions.build(maximumLegalDistance, familyId);
+    assert.equal(question.visuals.initial.data.distance, 99);
+    assert.ok(question.choices.every((choice) => Number.isInteger(choice.value)
+      && choice.value >= 0 && choice.value <= 9));
+    assert.ok(question.choices.some((choice) => choice.id === question.correctChoiceId));
+  }
+
+  const malformedHundredYardSnap = plain(maximumLegalDistance);
+  malformedHundredYardSnap.context.yardLine = 0;
+  malformedHundredYardSnap.context.driveStart = 0;
+  malformedHundredYardSnap.context.firstDownLine = 10;
+  malformedHundredYardSnap.proposal.startYardLine = 0;
+  malformedHundredYardSnap.proposal.endYardLine = 1;
+  const malformedInspection = questions.inspect(malformedHundredYardSnap);
+  assert.equal(malformedInspection.eligible.length, 0);
+  for (const familyId of ['goal-distance-tens', 'goal-distance-ones']) {
+    assert.equal(
+      malformedInspection.declined.find((entry) => entry.familyId === familyId)?.reason.code,
+      'invalid-yard-line',
+    );
+  }
 });
 
 test('singular boundary states use child-facing yard and space grammar', () => {

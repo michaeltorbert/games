@@ -510,7 +510,7 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
       meta: makeMeta({ familyId: 'goal-distance-tens', skill: 'place-value', concept: 'place-value', purpose: 'completedPlaceValue', tier: 'two-digit-structure', weight: 2.4, operationType: 'tensOfDistance', answerExposure: 'modeled-with-result-hidden', curriculumSource: 'workbook', introducedOnPage: 124 }),
       derive(snap, profile) {
         const distance = goalDistance(snap);
-        if (distance < 10 || !inDisplayBand(profile, distance)) return { decline: decline('not-two-digit-distance', 'Tens work needs a displayed goal distance from 10 through 100.') };
+        if (distance < 10 || distance > 99 || !inDisplayBand(profile, distance)) return { decline: decline('not-two-digit-distance', 'Tens work needs a two-digit goal distance from 10 through 99.') };
         const answer = Math.floor(distance / 10);
         return eligible(makeSemantic({
           bindings: goalBindings(snap), operationType: 'tensOfDistance', operandIds: ['ballYardLine', 'goalLine'], answer,
@@ -529,7 +529,7 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
       meta: makeMeta({ familyId: 'goal-distance-ones', skill: 'place-value', concept: 'place-value', purpose: 'completedPlaceValue', tier: 'two-digit-structure', weight: 2, operationType: 'onesOfDistance', answerExposure: 'modeled-with-result-hidden', curriculumSource: 'workbook', introducedOnPage: 124 }),
       derive(snap, profile) {
         const distance = goalDistance(snap);
-        if (distance < 10 || !inDisplayBand(profile, distance)) return { decline: decline('not-two-digit-distance', 'Ones work needs a displayed goal distance from 10 through 100.') };
+        if (distance < 10 || distance > 99 || !inDisplayBand(profile, distance)) return { decline: decline('not-two-digit-distance', 'Ones work needs a two-digit goal distance from 10 through 99.') };
         const answer = distance % 10;
         return eligible(makeSemantic({
           bindings: goalBindings(snap), operationType: 'onesOfDistance', operandIds: ['ballYardLine', 'goalLine'], answer,
