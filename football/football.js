@@ -1,4 +1,4 @@
-const GAME_VERSION = '1.20.0';
+const GAME_VERSION = '1.20.1';
 let prevPlayerScore = -1, prevOpponentScore = -1;
 let playerRunTimer = 0, playerCelebrateTimer = 0, playerCelebrateDelayTimer = 0;
 const EZ = 5;
@@ -966,9 +966,16 @@ function renderMathVisual() {
     case 'goal-distance':
       tokens = ['BALL', `${data.distance} YDS`, 'GOAL'];
       break;
-    case 'base-ten-distance':
-      tokens = [`${data.tens} TENS`, `${data.ones} ONES`, `= ${data.distance}`];
+    case 'base-ten-distance': {
+      const tensUnit = data.tens === 1 ? 'TEN' : 'TENS';
+      const onesUnit = data.ones === 1 ? 'ONE' : 'ONES';
+      tokens = visual.result
+        ? [`${data.tens} ${tensUnit}`, `${data.ones} ${onesUnit}`, `= ${data.distance}`]
+        : data.targetPlace === 'tens'
+          ? [`${data.distance} YDS`, '? TENS']
+          : [`${data.distance} YDS`, '? ONES'];
       break;
+    }
     case 'drive-strip':
       tokens = ['DRIVE START', visual.result ? `${visual.result.value} YDS` : '? YDS', 'NOW'];
       break;
@@ -997,7 +1004,7 @@ function renderMathVisual() {
       break;
     }
     case 'drive-play-order':
-      tokens = [`DRIVE PLAY ${data.playNumber}`, visual.result ? visual.result.value : 'ORDINAL ?'];
+      tokens = [`DRIVE PLAY ${data.playNumber}`, visual.result ? visual.result.value : 'ORDER ?'];
       break;
     case 'base-ten-move': {
       const start = data.startDistance ?? 0;
@@ -1367,9 +1374,15 @@ function handleInvalidSnap(error, opponentSnapshot = null) {
   restoreCallAfterInvalid(opponentSnapshot);
 }
 
-function handleQuestionPreparationFailure(error, snap, question, opponentSnapshot = null) {
+function snapOpponentSnapshot(snap) {
+  return snap?.context?.possession === 'defense'
+    ? snap.context.privateOpponentSnapshot
+    : null;
+}
+
+function handleQuestionPreparationFailure(error, snap, question) {
   pendingStatsPlay = null;
-  const preservedSnapshot = opponentSnapshot || snap.context.privateOpponentSnapshot || null;
+  const preservedSnapshot = snapOpponentSnapshot(snap);
   reportQuestionDiagnostic('question-presentation-failure', {
     message: error?.message || 'The contextual question UI could not be prepared.',
     familyId: question?.familyId ?? null,
@@ -1387,11 +1400,38 @@ function handleQuestionPreparationFailure(error, snap, question, opponentSnapsho
   throw error;
 }
 
+function expectedRequestedGainForResolution(snap, policy) {
+  const originalRequestedGain = snap?.proposal?.requestedGain;
+  const possession = snap?.context?.possession;
+  if (!Number.isInteger(originalRequestedGain) || !['offense', 'defense'].includes(possession)) {
+    const error = new Error('Resolution policy requires a valid frozen snap.');
+    error.code = 'invalid-resolution-policy';
+    throw error;
+  }
+
+  if (policy === 'questionBypass') return originalRequestedGain;
+  if (policy === 'firstTryCorrect' || policy === 'retryCorrect') {
+    return possession === 'offense' ? originalRequestedGain : 0;
+  }
+  if (policy === 'secondMiss') {
+    return possession === 'offense' ? 0 : Math.min(snap.proposal.appliedGain, 3);
+  }
+
+  const error = new Error(`Unknown resolution policy: ${policy}`);
+  error.code = 'invalid-resolution-policy';
+  throw error;
+}
+
+function validateResolutionTransition(snap, policy, transition) {
+  return FOOTBALL_DOMAIN.validateTransition(snap, transition, {
+    expectedRequestedGain: expectedRequestedGainForResolution(snap, policy),
+  });
+}
+
 function makePendingResolution(policy, transition) {
   const snap = state.activeSnap;
   if (!snap) throw new Error('Cannot resolve a play without an active snap');
-  const allowReprojection = transition.requestedGain !== snap.proposal.requestedGain;
-  const validated = FOOTBALL_DOMAIN.validateTransition(snap, transition, { allowReprojection });
+  const validated = validateResolutionTransition(snap, policy, transition);
   if (!validated.ok) {
     const error = new Error('Resolution transition failed independent validation.');
     error.code = 'invalid-projection';
@@ -1413,7 +1453,7 @@ function bypassQuestionSubsystem(snap, error, feedbackCopy) {
     handleInvalidSnap(Object.assign(new Error('Question fallback rejected a contradictory football proposal.'), {
       code: 'invalid-projection',
       diagnostics: exact.diagnostics,
-    }), snap.context.privateOpponentSnapshot || state.opponentSelectionSnapshot || state.opponentSnapshot);
+    }), snapOpponentSnapshot(snap));
     return;
   }
   reportQuestionDiagnostic(error?.code || 'question-subsystem-failure', {
@@ -1518,7 +1558,7 @@ function selectDefenseCall(defenseCallKey) {
       `${read}: ${defenseCall.label} vs ${call.label}.`,
     );
   } catch (error) {
-    handleQuestionPreparationFailure(error, snap, question, snap.context.privateOpponentSnapshot);
+    handleQuestionPreparationFailure(error, snap, question);
   }
 }
 
@@ -1556,7 +1596,7 @@ function learningQuestionFromState() {
 
 function completeCorrectAnswer(btn, question) {
   const result = state.questionUi.attempt === 1 ? 'firstTryCorrect' : 'retryCorrect';
-  const transition = state.possession === 'offense'
+  const transition = state.activeSnap.context.possession === 'offense'
     ? state.activeSnap.proposal
     : FOOTBALL_DOMAIN.reprojectGain(state.activeSnap, 0);
   state.pendingResolution = makePendingResolution(result, transition);
@@ -1597,11 +1637,10 @@ function handleInstructionalMiss(btn, choice, question) {
   state.questionUi.support = 'worked';
   state.phase = 'explanation';
   state.questionUi.continueRequired = true;
-  const transition = state.possession === 'offense'
+  const transition = state.activeSnap.context.possession === 'offense'
     ? FOOTBALL_DOMAIN.reprojectGain(state.activeSnap, 0)
     : FOOTBALL_DOMAIN.reprojectGain(state.activeSnap, Math.min(state.activeSnap.proposal.appliedGain, 3));
   state.pendingResolution = makePendingResolution('secondMiss', transition);
-  recordQuestionResolution('secondMiss');
   disableAnswers();
   syncQuestionMirrors();
   syncUiState();
@@ -1759,19 +1798,25 @@ function commitPendingResolution() {
   const pending = state.pendingResolution;
   const snap = state.activeSnap;
   if (!pending || !snap || state.questionUi.outcomeCommitted) return false;
+  const opponentSnapshot = snapOpponentSnapshot(snap);
   if (pending.contextId !== snap.contextId || !liveStateMatchesSnap(snap)) {
     handleInvalidSnap(Object.assign(new Error('Live football state no longer matches the frozen snap.'), {
       code: 'invalid-context',
-    }), state.opponentSelectionSnapshot);
+    }), opponentSnapshot);
     return false;
   }
-  const allowReprojection = pending.transitionToCommit.requestedGain !== snap.proposal.requestedGain;
-  const validation = FOOTBALL_DOMAIN.validateTransition(snap, pending.transitionToCommit, { allowReprojection });
+  let validation;
+  try {
+    validation = validateResolutionTransition(snap, pending.policy, pending.transitionToCommit);
+  } catch (error) {
+    handleInvalidSnap(error, opponentSnapshot);
+    return false;
+  }
   if (!validation.ok) {
     handleInvalidSnap(Object.assign(new Error('The frozen resolution is not a valid football transition.'), {
       code: 'invalid-projection',
       diagnostics: validation.diagnostics,
-    }), state.opponentSelectionSnapshot);
+    }), opponentSnapshot);
     return false;
   }
 

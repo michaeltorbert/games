@@ -570,10 +570,13 @@
     try {
       const context = normalizeContext(contextFrom(source));
       const sourceIsSnap = isRecord(source) && isRecord(source.context) && isRecord(source.proposal);
-      const permitReprojection = isRecord(options) && options.allowReprojection === true;
-      const requestedGain = sourceIsSnap && !permitReprojection
-        ? source.proposal.requestedGain
-        : candidate && candidate.requestedGain;
+      const hasExpectedRequestedGain = isRecord(options)
+        && Object.prototype.hasOwnProperty.call(options, 'expectedRequestedGain');
+      const requestedGain = hasExpectedRequestedGain
+        ? options.expectedRequestedGain
+        : sourceIsSnap
+          ? source.proposal.requestedGain
+          : candidate && candidate.requestedGain;
       const expected = projectGain(context, requestedGain);
       return validationResult(expected, compareProjection(expected, candidate));
     } catch (error) {

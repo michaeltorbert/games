@@ -158,3 +158,22 @@ Original prompt: Fix the three validated post-review findings, add focused regre
 - Completed the browser-client smoke on a live offense question with linked snap/question IDs, truthful semantic state, and no browser-error artifact.
 - Passed the complete release gate: 26/26 Node checks, 168 Playwright tests passed, 150 intentional project skips, and 108/108 canonical screenshots across all six targets.
 - Visually inspected offense-question, defense-question, and defense-feedback screenshots on the primary iPad and both phone widths; controls and feedback remain readable and reachable.
+
+---
+
+Original prompt: Execute the agreed two-release Football plan from current live main: first fix the validated commit-integrity defects in v1.20.1, then add the approved adaptive refreshers and grounded question families in v1.21.0, using subagents and independent model review before each release.
+
+## Football v1.20.1 integrity patch
+
+- Fetched and verified live `origin/main` at Football v1.20.0, archived the older adaptive WIP on a local-only branch, and created `codex/football-v1201-integrity` directly from the live commit.
+- Replaced candidate-authorized transition reprojection with an explicit expected-gain domain contract and a frozen-snap policy table covering correct, retry, second-miss, and question-bypass outcomes on offense and defense.
+- Delayed second-miss learning and stats resolution until the canonical football transition commits successfully; rejected and duplicate Continue paths now leave mastery and rate denominators unchanged.
+- Restored late defensive failures only from the completed snap's private frozen opponent snapshot, never from the mutable UI mirror.
+- Triaged newly filed issues #74 and #75 into the patch: removed the pre-answer tens/ones decomposition leak, kept the requested place count hidden through initial and guided stages, fixed singular labels, and replaced child-facing implementation jargon with plain football language.
+- Added failing-first domain and production regressions for exact policy authorization, near-goal clipping, rejected/idempotent second misses, both late defensive rejection branches, answer-hidden initial/guided visuals, and plain-language copy.
+- Closed final independent-review copy findings with shared singular-unit grammar, explicit tens/ones-digit prompts, and regression tables for one-yard/one-space boundaries.
+- Passed the focused production integrity suite, including every policy mapping, unknown-policy fail-closed recovery, duplicate Continue idempotency, both defensive rollback branches, and the four answer-leak distances.
+- Isolated the first run's single iPad Pro particle-timing failure; the exact rerun passed, and the subsequent complete gate passed cleanly with 30/30 Node checks, 177 Playwright passes, 195 intentional project skips, and 108/108 canonical screenshots verified across all six targets.
+- Visually inspected primary-iPad offense/defense questions, the phone question layout, and the large-iPad final report; child-facing copy, answer controls, and above-the-fold layout remain readable without exposing a hidden answer.
+- Completed the prescribed browser-client smoke on a live offense question; `render_game_to_text()` reported a linked, uncommitted question state and no browser-error artifact was produced.
+- Opus review, GitHub publication, merge, and live deployment verification remain TODO.

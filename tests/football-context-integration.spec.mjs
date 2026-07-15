@@ -121,12 +121,20 @@ async function missTwice(page, contracts) {
   return answerChoice(page, wrongIds[1]);
 }
 
-async function continueTwiceSynchronously(page) {
+async function continueAndRetryCommitSynchronously(page) {
   return page.evaluate(() => {
+    let resultCount = 0;
+    const countResult = () => { resultCount++; };
+    window.addEventListener('football:result', countResult);
     const button = document.getElementById('question-continue');
     button.click();
-    button.click();
-    return window.__footballTest.activeContracts();
+    const duplicateCommit = commitPendingResolution();
+    window.removeEventListener('football:result', countResult);
+    return {
+      duplicateCommit,
+      resultCount,
+      contracts: window.__footballTest.activeContracts(),
+    };
   });
 }
 
@@ -234,6 +242,94 @@ test('approved past-100 team yards start visibly guided and commit the real tota
   expect(seeded.totalYards).toEqual({ player: 98, opponent: 71 });
 });
 
+test('pre-answer goal-distance place-value visuals hide the requested tens or ones count', async ({ page }, testInfo) => {
+  primaryOnly(testInfo);
+  await cleanBoot(page, 0x10075);
+
+  for (const distance of [11, 14, 20, 99]) {
+    for (const familyId of ['goal-distance-tens', 'goal-distance-ones']) {
+      const stages = await page.evaluate(({ id, requestedDistance }) => {
+      const yardLine = 100 - requestedDistance;
+      const yardsToGo = Math.min(10, requestedDistance);
+      const snap = FOOTBALL_DOMAIN.createSnap({
+        contextId: `answer-leak-${id}-${requestedDistance}`,
+        possession: 'offense',
+        direction: 1,
+        quarter: 2,
+        down: 2,
+        yardsToGo,
+        yardLine,
+        firstDownLine: yardLine + yardsToGo,
+        driveStart: Math.max(1, yardLine - 5),
+        scores: { player: 7, opponent: 7 },
+        totalYards: { player: 83, opponent: 71 },
+        plays: 4,
+        drivePlays: 2,
+        calls: { offense: 'shortRun', defense: null, matchup: null },
+        privateOpponentSnapshot: null,
+      }, { gain: Math.min(3, requestedDistance), callKey: 'shortRun' });
+      const built = FOOTBALL_CONTEXTUAL_QUESTIONS.build(snap, id, {
+        support: 'initial',
+        presentationRng: () => 0.5,
+      });
+      state.activeSnap = snap;
+      state.questionInstance = FOOTBALL_DOMAIN.deepFreeze(FOOTBALL_DOMAIN.clone({
+        ...built,
+        contextId: snap.contextId,
+        questionInstanceId: `answer-leak-${id}-${requestedDistance}`,
+      }));
+      state.questionUi = makeQuestionUiState();
+      state.questionUi.support = 'initial';
+      state.phase = 'question';
+      syncQuestionMirrors();
+      renderMathVisual();
+      const initial = {
+        text: document.getElementById('math-overlay').textContent,
+        ariaLabel: document.getElementById('math-overlay').getAttribute('aria-label'),
+      };
+      state.questionUi.support = 'guided';
+      syncQuestionMirrors();
+      renderMathVisual();
+      const guided = {
+        text: document.getElementById('math-overlay').textContent,
+        ariaLabel: document.getElementById('math-overlay').getAttribute('aria-label'),
+      };
+      state.questionUi.support = 'worked';
+      syncQuestionMirrors();
+      renderMathVisual();
+      return {
+        answer: built.answer.value,
+        choices: built.choices.map((choice) => choice.value),
+        distance: built.visuals.initial.data.distance,
+        initial,
+        guided,
+        workedText: document.getElementById('math-overlay').textContent,
+      };
+    }, { id: familyId, requestedDistance: distance });
+
+    const requestedLabel = familyId.endsWith('tens') ? 'TENS' : 'ONES';
+    expect(stages.distance).toBe(distance);
+    expect(stages.choices.every((choice) => Number.isInteger(choice) && choice >= 0 && choice <= 9)).toBe(true);
+    expect(stages.initial.text).toContain(`? ${requestedLabel}`);
+    const answerUnit = familyId.endsWith('tens')
+      ? stages.answer === 1 ? 'TEN' : 'TENS'
+      : stages.answer === 1 ? 'ONE' : 'ONES';
+    expect(stages.initial.text).not.toContain(`${stages.answer} ${answerUnit}`);
+    expect(stages.initial.text).not.toContain(`= ${distance}`);
+    expect(stages.initial.ariaLabel).not.toMatch(new RegExp(`\\b${stages.answer}\\s+${answerUnit}s?\\b`, 'i'));
+    expect(stages.guided.text).toContain(`? ${requestedLabel}`);
+    expect(stages.guided.text).not.toContain(`${stages.answer} ${answerUnit}`);
+    expect(stages.guided.text).not.toContain(`= ${distance}`);
+    expect(stages.guided.ariaLabel).not.toMatch(new RegExp(`\\b${stages.answer}\\s+${answerUnit}s?\\b`, 'i'));
+    const tens = Math.floor(distance / 10);
+    const ones = distance % 10;
+    expect(stages.workedText).toContain(`${tens} ${tens === 1 ? 'TEN' : 'TENS'}`);
+    expect(stages.workedText).toContain(`${ones} ${ones === 1 ? 'ONE' : 'ONES'}`);
+    expect(stages.workedText).toContain(`= ${distance}`);
+    }
+  }
+});
+
 test('a correct offense answer commits the frozen proposal exactly once', async ({ page }, testInfo) => {
   primaryOnly(testInfo);
   await cleanBoot(page, 0x10154);
@@ -306,7 +402,7 @@ test('a rejected late commit abandons its pending stats draft before the next ca
   expect(await page.evaluate(() => pendingStatsPlay)).toBeNull();
 });
 
-test('a second offense miss freezes zero gain until Continue and double Continue is idempotent', async ({ page }, testInfo) => {
+test('a second offense miss freezes zero gain until Continue and duplicate commit is idempotent', async ({ page }, testInfo) => {
   primaryOnly(testInfo);
   await cleanBoot(page, 0x20254);
   const seeded = await seedDrive(page, OFFENSE_SEED);
@@ -320,14 +416,226 @@ test('a second offense miss freezes zero gain until Continue and double Continue
   expect(explanation.pendingResolution).toBeTruthy();
   expect(explanation.activeSnap).toEqual(before.activeSnap);
   expect(explanation.statsSession.completedPlays).toHaveLength(0);
+  expect(explanation.learning.resolved).toBe(before.learning.resolved);
+  expect(explanation.questionUi.resolutionRecorded).toBe(false);
+  expect(explanation.render.gradedQuestions).toBe(seeded.gradedQuestions);
+  expect(await page.evaluate(() => pendingStatsPlay.resolution)).toBeNull();
 
-  const after = await continueTwiceSynchronously(page);
+  const duplicate = await continueAndRetryCommitSynchronously(page);
+  const after = duplicate.contracts;
+  expect(duplicate.duplicateCommit).toBe(false);
+  expect(duplicate.resultCount).toBe(1);
   expect(after.render.plays).toBe(seeded.plays + 1);
   expect(after.render.absoluteYard).toBe(seeded.absoluteYard);
   expect(after.render.totalYards).toEqual(seeded.totalYards);
   expect(after.statsSession.completedPlays).toHaveLength(1);
   expect(after.statsSession.completedPlays[0]).toMatchObject({ actualYards: 0 });
   expect(after.learning.resolved).toBe(before.learning.resolved + 1);
+  expect(after.render.gradedQuestions).toBe(seeded.gradedQuestions + 1);
+});
+
+test('a rejected second-miss Continue never records a learning or stats resolution', async ({ page }, testInfo) => {
+  primaryOnly(testInfo);
+  await cleanBoot(page, 0x21254);
+  const seeded = await seedDrive(page, OFFENSE_SEED);
+  await chooseCall(page, 'Short Pass');
+  const before = await activeContracts(page);
+  const explanation = await missTwice(page, before);
+
+  expect(explanation.learning.resolved).toBe(before.learning.resolved);
+  expect(await page.evaluate(() => pendingStatsPlay.resolution)).toBeNull();
+  await page.evaluate(() => { state.playerScore += 1; });
+  const duplicate = await continueAndRetryCommitSynchronously(page);
+  const committed = duplicate.contracts;
+
+  expect(duplicate.duplicateCommit).toBe(false);
+  expect(duplicate.resultCount).toBe(0);
+  expect(committed.render.mode).toBe('call');
+  expect(committed.render.plays).toBe(seeded.plays);
+  expect(committed.render.absoluteYard).toBe(seeded.absoluteYard);
+  expect(committed.render.gradedQuestions).toBe(seeded.gradedQuestions);
+  expect(committed.learning.resolved).toBe(before.learning.resolved);
+  expect(committed.learning.byConcept).toEqual(before.learning.byConcept);
+  expect(committed.statsSession.completedPlays).toHaveLength(0);
+  expect(await page.evaluate(() => pendingStatsPlay)).toBeNull();
+});
+
+test('commit-time policy enforcement rejects a candidate-selected gain for every resolution path', async ({ page }, testInfo) => {
+  primaryOnly(testInfo);
+  await cleanBoot(page, 0x22254);
+  const cases = [
+    { seed: OFFENSE_SEED, call: 'Short Run', policy: 'firstTryCorrect' },
+    { seed: OFFENSE_SEED, call: 'Short Run', policy: 'retryCorrect' },
+    { seed: OFFENSE_SEED, call: 'Short Run', policy: 'secondMiss' },
+    { seed: OFFENSE_SEED, call: 'Short Run', policy: 'questionBypass' },
+    { seed: DEFENSE_SEED, call: 'Run Defense', policy: 'firstTryCorrect' },
+    { seed: DEFENSE_SEED, call: 'Run Defense', policy: 'retryCorrect' },
+    { seed: DEFENSE_SEED, call: 'Run Defense', policy: 'secondMiss' },
+    { seed: DEFENSE_SEED, call: 'Run Defense', policy: 'questionBypass' },
+  ];
+
+  for (const scenario of cases) {
+    const seeded = await seedDrive(page, scenario.seed);
+    await chooseCall(page, scenario.call);
+    const before = await activeContracts(page);
+    const rejected = await page.evaluate((policy) => {
+      const snap = state.activeSnap;
+      const expectedGain = expectedRequestedGainForResolution(snap, policy);
+      const unauthorizedGain = expectedGain === 0 ? 1 : expectedGain - 1;
+      state.pendingResolution = FOOTBALL_DOMAIN.deepFreeze({
+        schemaVersion: 1,
+        policy,
+        contextId: snap.contextId,
+        questionInstanceId: state.questionInstance.questionInstanceId,
+        transitionToCommit: FOOTBALL_DOMAIN.reprojectGain(snap, unauthorizedGain),
+      });
+      return {
+        committed: commitPendingResolution(),
+        contracts: window.__footballTest.activeContracts(),
+      };
+    }, scenario.policy);
+
+    expect(rejected.committed, `${scenario.seed.possession}:${scenario.policy}`).toBe(false);
+    expect(rejected.contracts.render.mode).toBe('call');
+    expect(rejected.contracts.render.plays).toBe(seeded.plays);
+    expect(rejected.contracts.render.absoluteYard).toBe(seeded.absoluteYard);
+    expect(rejected.contracts.learning.resolved).toBe(before.learning.resolved);
+    expect(rejected.contracts.statsSession.completedPlays).toHaveLength(0);
+  }
+});
+
+test('every resolution policy authorizes only its exact frozen requested gain', async ({ page }, testInfo) => {
+  primaryOnly(testInfo);
+  await cleanBoot(page, 0x23254);
+  await seedDrive(page, DEFENSE_SEED);
+
+  const checks = await page.evaluate(() => {
+    const privateOpponentSnapshot = state.opponentSnapshot;
+    const base = {
+      contextId: 'policy-probe',
+      possession: 'offense',
+      direction: 1,
+      quarter: 2,
+      down: 2,
+      yardsToGo: 8,
+      yardLine: 30,
+      firstDownLine: 38,
+      driveStart: 20,
+      scores: { player: 7, opponent: 7 },
+      totalYards: { player: 83, opponent: 71 },
+      plays: 4,
+      drivePlays: 2,
+      calls: { offense: 'longRun', defense: null, matchup: null },
+      privateOpponentSnapshot: null,
+    };
+    const offenseSnap = FOOTBALL_DOMAIN.createSnap(base, { gain: 8, callKey: 'longRun' });
+    const defenseContext = {
+      ...base,
+      contextId: 'policy-probe-defense',
+      possession: 'defense',
+      direction: -1,
+      yardLine: 70,
+      firstDownLine: 62,
+      driveStart: 80,
+      calls: { offense: privateOpponentSnapshot.plannedCallKey, defense: 'run', matchup: 'matched' },
+      privateOpponentSnapshot,
+    };
+    const defenseSnap = FOOTBALL_DOMAIN.createSnap(defenseContext, {
+      gain: 8,
+      callKey: privateOpponentSnapshot.plannedCallKey,
+    });
+    const nearGoalSnap = FOOTBALL_DOMAIN.createSnap({
+      ...defenseContext,
+      contextId: 'policy-probe-near-goal',
+      yardLine: 2,
+      firstDownLine: 0,
+      yardsToGo: 2,
+      driveStart: 20,
+    }, { gain: 8, callKey: privateOpponentSnapshot.plannedCallKey });
+    const cases = [
+      [offenseSnap, 'firstTryCorrect', 8],
+      [offenseSnap, 'retryCorrect', 8],
+      [offenseSnap, 'secondMiss', 0],
+      [offenseSnap, 'questionBypass', 8],
+      [defenseSnap, 'firstTryCorrect', 0],
+      [defenseSnap, 'retryCorrect', 0],
+      [defenseSnap, 'secondMiss', 3],
+      [defenseSnap, 'questionBypass', 8],
+      [nearGoalSnap, 'secondMiss', 2],
+    ];
+
+    const previousSnap = state.activeSnap;
+    const creationChecks = cases.map(([snap, policy, expectedGain]) => {
+      const neighboringGain = expectedGain === 0 ? 1 : expectedGain - 1;
+      state.activeSnap = snap;
+      let exactPending = null;
+      let neighboringRejected = false;
+      try {
+        exactPending = makePendingResolution(
+          policy,
+          FOOTBALL_DOMAIN.reprojectGain(snap, expectedGain),
+        );
+      } catch (error) {}
+      try {
+        makePendingResolution(
+          policy,
+          FOOTBALL_DOMAIN.reprojectGain(snap, neighboringGain),
+        );
+      } catch (error) {
+        neighboringRejected = error.code === 'invalid-projection';
+      }
+      return {
+        policy,
+        possession: snap.context.possession,
+        expectedGain,
+        exactAccepted: exactPending?.transitionToCommit?.requestedGain === expectedGain,
+        neighboringRejected,
+      };
+    });
+    state.activeSnap = previousSnap;
+
+    return {
+      cases: cases.map(([snap, policy, expectedGain]) => {
+        const neighboringGain = expectedGain === 0 ? 1 : expectedGain - 1;
+        return {
+          policy,
+          possession: snap.context.possession,
+          expectedGain,
+          derivedGain: expectedRequestedGainForResolution(snap, policy),
+          exactAccepted: validateResolutionTransition(
+            snap,
+            policy,
+            FOOTBALL_DOMAIN.reprojectGain(snap, expectedGain),
+          ).ok,
+          neighboringRejected: !validateResolutionTransition(
+            snap,
+            policy,
+            FOOTBALL_DOMAIN.reprojectGain(snap, neighboringGain),
+          ).ok,
+        };
+      }),
+      creationChecks,
+      unknownPolicyRejected: (() => {
+        try {
+          expectedRequestedGainForResolution(offenseSnap, 'awaitingAnswer');
+          return false;
+        } catch (error) {
+          return error.code === 'invalid-resolution-policy';
+        }
+      })(),
+    };
+  });
+
+  for (const result of checks.cases) {
+    expect(result.derivedGain, `${result.possession}:${result.policy}`).toBe(result.expectedGain);
+    expect(result.exactAccepted, `${result.possession}:${result.policy}`).toBe(true);
+    expect(result.neighboringRejected, `${result.possession}:${result.policy}`).toBe(true);
+  }
+  for (const result of checks.creationChecks) {
+    expect(result.exactAccepted, `pending:${result.possession}:${result.policy}`).toBe(true);
+    expect(result.neighboringRejected, `pending:${result.possession}:${result.policy}`).toBe(true);
+  }
+  expect(checks.unknownPolicyRejected).toBe(true);
 });
 
 test('a correct defense answer commits a zero-yard stop', async ({ page }, testInfo) => {
@@ -350,6 +658,29 @@ test('a correct defense answer commits a zero-yard stop', async ({ page }, testI
   });
 });
 
+test('a retry-correct defense answer commits the policy-authorized zero-yard stop', async ({ page }, testInfo) => {
+  primaryOnly(testInfo);
+  await cleanBoot(page, 0x31354);
+  const seeded = await seedDrive(page, DEFENSE_SEED);
+  await chooseCall(page, 'Short Pass D');
+  const before = await activeContracts(page);
+  const wrongChoiceId = before.questionInstance.choices
+    .find(choice => choice.id !== before.questionInstance.correctChoiceId).id;
+
+  await answerChoice(page, wrongChoiceId);
+  const after = await answerChoice(page, before.questionInstance.correctChoiceId);
+
+  expect(after.render.plays).toBe(seeded.plays + 1);
+  expect(after.render.absoluteYard).toBe(seeded.absoluteYard);
+  expect(after.learning.resolved).toBe(before.learning.resolved + 1);
+  expect(after.statsSession.completedPlays).toHaveLength(1);
+  expect(after.statsSession.completedPlays[0]).toMatchObject({
+    resolution: 'retryCorrect',
+    actualYards: 0,
+    outcome: 'stop',
+  });
+});
+
 test('a second defense miss caps the frozen result at min(proposal, 3)', async ({ page }, testInfo) => {
   primaryOnly(testInfo);
   await cleanBoot(page, 0x40454);
@@ -363,7 +694,10 @@ test('a second defense miss caps the frozen result at min(proposal, 3)', async (
   expect(explanation.render.absoluteYard).toBe(seeded.absoluteYard);
   expect(explanation.pendingResolution).toBeTruthy();
 
-  const after = await continueTwiceSynchronously(page);
+  const duplicate = await continueAndRetryCommitSynchronously(page);
+  const after = duplicate.contracts;
+  expect(duplicate.duplicateCommit).toBe(false);
+  expect(duplicate.resultCount).toBe(1);
   const cappedGain = Math.min(proposal, 3);
   expect(after.render.plays).toBe(seeded.plays + 1);
   expect(after.render.absoluteYard).toBe(seeded.absoluteYard - cappedGain);
@@ -376,6 +710,141 @@ test('a second defense miss caps the frozen result at min(proposal, 3)', async (
     offeredYards: proposal,
     actualYards: cappedGain,
   });
+});
+
+test('late defensive rejection restores only the frozen snap-owned opponent plan', async ({ page }, testInfo) => {
+  primaryOnly(testInfo);
+  await cleanBoot(page, 0x41454);
+  const seeded = await seedDrive(page, DEFENSE_SEED);
+  await chooseCall(page, 'Deep Pass D');
+  const before = await activeContracts(page);
+  const explanation = await missTwice(page, before);
+  const frozenSnapshot = explanation.activeSnap.context.privateOpponentSnapshot;
+
+  const rejected = await page.evaluate(() => {
+    const snap = state.activeSnap;
+    const unauthorizedGain = Math.min(snap.proposal.appliedGain, 3) + 1;
+    state.opponentSelectionSnapshot = FOOTBALL_DOMAIN.deepFreeze({
+      ...FOOTBALL_DOMAIN.clone(snap.context.privateOpponentSnapshot),
+      plannedCallKey: snap.context.privateOpponentSnapshot.plannedCallKey === 'shortRun'
+        ? 'longPass'
+        : 'shortRun',
+    });
+    state.pendingResolution = FOOTBALL_DOMAIN.deepFreeze({
+      ...FOOTBALL_DOMAIN.clone(state.pendingResolution),
+      transitionToCommit: FOOTBALL_DOMAIN.reprojectGain(snap, unauthorizedGain),
+    });
+    document.getElementById('question-continue').click();
+    return window.__footballTest.activeContracts();
+  });
+
+  expect(rejected.render.mode).toBe('call');
+  expect(rejected.render.plays).toBe(seeded.plays);
+  expect(rejected.render.absoluteYard).toBe(seeded.absoluteYard);
+  expect(rejected.learning.resolved).toBe(before.learning.resolved);
+  expect(rejected.statsSession.completedPlays).toHaveLength(0);
+  expect(await page.evaluate(() => window.__footballTest.opponentSnapshot())).toEqual(frozenSnapshot);
+  expect(await page.evaluate(() => pendingStatsPlay)).toBeNull();
+});
+
+test('a valid defense question bypass commits the exact frozen opponent proposal', async ({ page }, testInfo) => {
+  primaryOnly(testInfo);
+  await cleanBoot(page, 0x43454);
+  const seeded = await seedDrive(page, DEFENSE_SEED);
+  const learningBefore = await page.evaluate(() => window.__footballTest.learningState());
+  await page.evaluate(() => window.__footballTest.setQuestionFault('empty-pool'));
+
+  await chooseCall(page, 'Medium Pass D');
+  const after = await activeContracts(page);
+  const [row] = after.statsSession.completedPlays;
+
+  expect(after.render.plays).toBe(seeded.plays + 1);
+  expect(row).toMatchObject({
+    instructionalStatus: 'bypassed',
+    resolution: null,
+    actualYards: row.offeredYards,
+  });
+  expect(after.render.absoluteYard).toBe(seeded.absoluteYard - row.offeredYards);
+  expect(after.render.totalYards).toEqual({
+    player: seeded.totalYards.player,
+    opponent: seeded.totalYards.opponent + row.offeredYards,
+  });
+  expect(after.learning).toEqual(learningBefore);
+});
+
+test('late defensive live-state mismatch also restores the frozen snap-owned opponent plan', async ({ page }, testInfo) => {
+  primaryOnly(testInfo);
+  await cleanBoot(page, 0x42454);
+  const seeded = await seedDrive(page, DEFENSE_SEED);
+  await chooseCall(page, 'Run Defense');
+  const before = await activeContracts(page);
+  const frozenSnapshot = before.activeSnap.context.privateOpponentSnapshot;
+
+  const rejected = await page.evaluate((correctChoiceId) => {
+    const snap = state.activeSnap;
+    state.opponentSelectionSnapshot = FOOTBALL_DOMAIN.deepFreeze({
+      ...FOOTBALL_DOMAIN.clone(snap.context.privateOpponentSnapshot),
+      plannedCallKey: snap.context.privateOpponentSnapshot.plannedCallKey === 'shortRun'
+        ? 'longPass'
+        : 'shortRun',
+    });
+    state.playerScore += 1;
+    return window.__footballTest.answerChoice(correctChoiceId);
+  }, before.questionInstance.correctChoiceId);
+
+  expect(rejected.render.mode).toBe('call');
+  expect(rejected.render.plays).toBe(seeded.plays);
+  expect(rejected.render.absoluteYard).toBe(seeded.absoluteYard);
+  expect(rejected.learning.resolved).toBe(before.learning.resolved);
+  expect(rejected.statsSession.completedPlays).toHaveLength(0);
+  expect(await page.evaluate(() => window.__footballTest.opponentSnapshot())).toEqual(frozenSnapshot);
+  expect(await page.evaluate(() => pendingStatsPlay)).toBeNull();
+});
+
+test('an unknown pending policy fails closed and restores the frozen defense plan', async ({ page }, testInfo) => {
+  primaryOnly(testInfo);
+  await cleanBoot(page, 0x44454);
+  const seeded = await seedDrive(page, DEFENSE_SEED);
+  await chooseCall(page, 'Run Defense');
+  const before = await activeContracts(page);
+  const frozenSnapshot = before.activeSnap.context.privateOpponentSnapshot;
+
+  const rejected = await page.evaluate(() => {
+    const snap = state.activeSnap;
+    let resultCount = 0;
+    const countResult = () => { resultCount++; };
+    window.addEventListener('football:result', countResult);
+    state.opponentSelectionSnapshot = FOOTBALL_DOMAIN.deepFreeze({
+      ...FOOTBALL_DOMAIN.clone(snap.context.privateOpponentSnapshot),
+      plannedCallKey: snap.context.privateOpponentSnapshot.plannedCallKey === 'shortRun'
+        ? 'longPass'
+        : 'shortRun',
+    });
+    state.pendingResolution = FOOTBALL_DOMAIN.deepFreeze({
+      schemaVersion: 1,
+      policy: 'awaitingAnswer',
+      contextId: snap.contextId,
+      questionInstanceId: state.questionInstance.questionInstanceId,
+      transitionToCommit: snap.proposal,
+    });
+    const committed = commitPendingResolution();
+    window.removeEventListener('football:result', countResult);
+    return {
+      committed,
+      resultCount,
+      contracts: window.__footballTest.activeContracts(),
+    };
+  });
+
+  expect(rejected.committed).toBe(false);
+  expect(rejected.resultCount).toBe(0);
+  expect(rejected.contracts.render.mode).toBe('call');
+  expect(rejected.contracts.render.plays).toBe(seeded.plays);
+  expect(rejected.contracts.render.absoluteYard).toBe(seeded.absoluteYard);
+  expect(rejected.contracts.learning.resolved).toBe(before.learning.resolved);
+  expect(rejected.contracts.statsSession.completedPlays).toHaveLength(0);
+  expect(await page.evaluate(() => window.__footballTest.opponentSnapshot())).toEqual(frozenSnapshot);
+  expect(await page.evaluate(() => pendingStatsPlay)).toBeNull();
 });
 
 for (const fault of ['empty-pool', 'build-throw', 'malformed']) {

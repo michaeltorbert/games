@@ -407,6 +407,161 @@ test('non-source-visible initial and guided models never contain a result slot',
   assert.ok(hiddenFamilies > 5);
 });
 
+test('goal-distance place-value questions use plain football copy and hide the requested digit count', () => {
+  const { domain, questions } = loadModules();
+  const snap = makeSnap(domain, {
+    yardLine: 86,
+    firstDownLine: 96,
+    yardsToGo: 10,
+    driveStart: 80,
+  }, 3);
+
+  for (const familyId of ['goal-distance-tens', 'goal-distance-ones']) {
+    const question = questions.build(snap, familyId);
+    assert.equal(question.answerExposure, 'modeled-with-result-hidden');
+    assert.equal(question.visuals.initial.revealsAnswer, false);
+    assert.equal(question.visuals.initial.result, null);
+    assert.equal(question.visuals.guided.revealsAnswer, false);
+    assert.equal(question.visuals.guided.result, null);
+    const requestedField = familyId.endsWith('tens') ? 'tens' : 'ones';
+    assert.equal(question.visuals.initial.data[requestedField], null);
+    assert.equal(question.visuals.guided.data[requestedField], null);
+    assert.equal(question.visuals.worked.data[requestedField], question.answer.value);
+    assert.doesNotMatch(question.prompt.text, /goal-distance (model|strip)/i);
+    assert.doesNotMatch(question.hint.text, /goal-distance (model|strip)/i);
+    assert.match(question.prompt.text, new RegExp(`What digit is in the ${familyId.endsWith('tens') ? 'tens' : 'ones'} place`, 'i'));
+    assert.doesNotMatch(question.prompt.text, /How many (?:tens|ones) are in/i);
+  }
+
+  const readQuestion = questions.build(snap, 'goal-distance-read');
+  const readCopy = [
+    readQuestion.prompt.text,
+    readQuestion.hint.text,
+    ...Object.values(readQuestion.visuals).map(visual => visual.ariaLabel),
+  ].join(' ');
+  assert.doesNotMatch(readCopy, /goal-distance (model|strip)/i);
+
+  const oneYardSnap = makeSnap(domain, {
+    yardLine: 99,
+    firstDownLine: 100,
+    yardsToGo: 1,
+    driveStart: 90,
+  }, 1);
+  const oneYardRead = questions.build(oneYardSnap, 'goal-distance-read');
+  assert.match(oneYardRead.visuals.initial.ariaLabel, /1 yard,/i);
+  assert.doesNotMatch(oneYardRead.visuals.initial.ariaLabel, /1 yards/i);
+  assert.doesNotMatch(oneYardRead.visuals.guided.ariaLabel, /both digits/i);
+});
+
+test('singular boundary states use child-facing yard and space grammar', () => {
+  const { domain, questions } = loadModules();
+  const oneYard = makeSnap(domain, {
+    yardLine: 30,
+    firstDownLine: 31,
+    yardsToGo: 1,
+    driveStart: 29,
+  }, 1);
+  const oneYardCopy = [
+    'yards-to-go-read',
+    'line-to-gain-exact',
+    'gain-vs-needed-comparison',
+    'drive-distance-scaffolded',
+    'down-read',
+  ].map((familyId) => {
+    const question = questions.build(oneYard, familyId);
+    return [
+      question.prompt.text,
+      question.hint.text,
+      question.workedExplanation.text,
+      ...Object.values(question.visuals).map((visual) => visual.ariaLabel),
+    ].join(' ');
+  }).join(' ');
+  assert.match(oneYardCopy, /1 yard is needed/i);
+  assert.match(oneYardCopy, /1 yard to go/i);
+
+  const oneYardMissingPart = questions.build(makeSnap(domain, {
+    yardLine: 30,
+    firstDownLine: 32,
+    yardsToGo: 2,
+    driveStart: 29,
+  }, 1), 'line-to-gain-missing-part');
+  assert.match(oneYardMissingPart.prompt.text, /gains 1 yard/i);
+  assert.match(oneYardMissingPart.visuals.initial.ariaLabel, /1 yard marked/i);
+
+  const oneYardTeamGain = questions.build(makeSnap(domain, {
+    totalYards: { player: 99, opponent: 71 },
+  }, 1), 'team-yards-past-100');
+  assert.match(oneYardTeamGain.prompt.text, /gains 1 yard/i);
+  assert.match(oneYardTeamGain.visuals.initial.ariaLabel, /with 1 yard possible/i);
+
+  const oneYardDrive = questions.build(oneYard, 'drive-distance-scaffolded');
+  assert.match(oneYardDrive.workedExplanation.text, /There is 1 space.*moved 1 yard/i);
+  assert.match(oneYardDrive.visuals.worked.ariaLabel, /1 yard apart/i);
+
+  const oneYardFromGoal = questions.build(makeSnap(domain, {
+    yardLine: 89,
+    firstDownLine: 94,
+    yardsToGo: 5,
+    driveStart: 80,
+  }, 10), 'goal-distance-minus-whole-tens');
+  assert.match(oneYardFromGoal.workedExplanation.text, /leave 1 yard to the end zone/i);
+  assert.match(oneYardFromGoal.visuals.worked.ariaLabel, /is 1 yard from the end zone/i);
+
+  const allCopy = [
+    oneYardCopy,
+    oneYardMissingPart.prompt.text,
+    oneYardMissingPart.visuals.initial.ariaLabel,
+    oneYardTeamGain.prompt.text,
+    oneYardTeamGain.visuals.initial.ariaLabel,
+    oneYardDrive.workedExplanation.text,
+    oneYardDrive.visuals.worked.ariaLabel,
+    oneYardFromGoal.workedExplanation.text,
+    oneYardFromGoal.visuals.worked.ariaLabel,
+  ].join(' ');
+  assert.doesNotMatch(allCopy, /\b1 (?:yards|spaces|yard spaces|single yards)\b|\b1 yard are\b|\bThere are 1\b/i);
+});
+
+test('child-facing contextual copy avoids implementation jargon', () => {
+  const { domain, questions } = loadModules();
+  const snap = makeSnap(domain, {
+    quarter: 3,
+    down: 4,
+    yardLine: 30,
+    firstDownLine: 35,
+    yardsToGo: 5,
+    driveStart: 20,
+    drivePlays: 2,
+    scores: { player: 3, opponent: 4 },
+  }, 10);
+  const familyIds = [
+    'yards-to-go-read',
+    'gain-vs-needed-comparison',
+    'goal-distance-read',
+    'goal-distance-tens',
+    'goal-distance-ones',
+    'drive-distance-scaffolded',
+    'committed-score-total',
+    'committed-score-difference',
+    'drive-play-ordinal',
+    'quarter-read',
+    'down-read',
+    'goal-distance-minus-whole-tens',
+    'drive-distance-plus-whole-tens',
+  ];
+  const jargon = /goal-distance (?:model|strip)|committed score|committed points|drive-start marker|current-ball marker|separate drive strip|ampersand|down-and-distance display|ordinal(?: quarter)? name|this exact play|proposed (?:gain|yard|play|move|addition)|committed drive|drive model/i;
+
+  for (const familyId of familyIds) {
+    const question = questions.build(snap, familyId);
+    const copy = [
+      question.prompt.text,
+      question.hint.text,
+      question.workedExplanation.text,
+      ...Object.values(question.visuals).map(visual => visual.ariaLabel),
+    ].join(' ');
+    assert.doesNotMatch(copy, jargon, familyId);
+  }
+});
+
 test('presentation RNG can only reorder stable choices', () => {
   const { domain, questions } = loadModules();
   const snap = makeSnap(domain, { driveStart: 27 }, 4);

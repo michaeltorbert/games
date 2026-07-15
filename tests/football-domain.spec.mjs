@@ -337,13 +337,38 @@ test('validates transitions by independent reprojection and rejects tampering', 
   );
 });
 
-test('a snap rejects a different gain unless reprojection is explicit', () => {
+test('a snap accepts an alternate gain only when the caller supplies that exact expectation', () => {
   const domain = loadDomain();
   const snap = domain.createSnap(context(), { gain: 8, callKey: 'longRun' });
   const capped = domain.reprojectGain(snap, 3);
+  const stopped = domain.reprojectGain(snap, 0);
+
   assert.equal(domain.validateTransition(snap, capped).ok, false);
-  assert.equal(domain.validateTransition(snap, capped, { allowReprojection: true }).ok, true);
+  assert.equal(domain.validateTransition(snap, capped, { expectedRequestedGain: 3 }).ok, true);
+  assert.equal(domain.validateTransition(snap, capped, { expectedRequestedGain: 2 }).ok, false);
+  assert.equal(domain.validateTransition(snap, stopped, { expectedRequestedGain: 0 }).ok, true);
+  assert.equal(domain.validateTransition(snap, capped, { allowReprojection: true }).ok, false);
   assert.equal(domain.validateTransition(snap.context, capped).ok, true);
+});
+
+test('near-goal validation distinguishes the authorized request before both gains clip', () => {
+  const domain = loadDomain();
+  const snap = domain.createSnap(defenseContext({
+    yardLine: 2,
+    firstDownLine: 0,
+    yardsToGo: 2,
+    driveStart: 20,
+  }), { gain: 8, callKey: 'shortPass' });
+  const authorized = domain.reprojectGain(snap, 2);
+  const neighboring = domain.reprojectGain(snap, 3);
+
+  assert.equal(snap.proposal.requestedGain, 8);
+  assert.equal(snap.proposal.appliedGain, 2);
+  assert.equal(authorized.appliedGain, 2);
+  assert.equal(neighboring.appliedGain, 2);
+  assert.equal(authorized.endYardLine, neighboring.endYardLine);
+  assert.equal(domain.validateTransition(snap, authorized, { expectedRequestedGain: 2 }).ok, true);
+  assert.equal(domain.validateTransition(snap, neighboring, { expectedRequestedGain: 2 }).ok, false);
 });
 
 test('returns structured diagnostics for malformed and contradictory contexts', () => {
