@@ -229,3 +229,21 @@ Original prompt: For football, find what to work on next, use concurrent issues 
 - Added deterministic play-family setbacks after the coached retry: stuffs, incompletions, sacks, and risky-call fumble/interception turnovers.
 - Added signed negative-yard projection with own-1 clipping, football-legal long distance-to-go contexts, signed history totals, and exact-once turnover possession handoff.
 - Added domain, question-pool, stats, and browser regressions covering both field directions, 2nd-and-13 continuation, negative cumulative totals, fourth-down precedence, and turnover idempotency.
+
+---
+
+Original prompt: Implement michaeltorbert/games issue #79 using Codex subagents, with Grok and Gemini/Antigravity participating in round-robin planning and code review; do not use Claude.
+
+## Football issue #79 natural down questions
+
+- Verified the live issue, current `origin/main`, and a clean checkout before creating `codex/issue-79-natural-down-questions`.
+- Confirmed the baseline contextual-question suite passes 18/18.
+- Started independent Codex code-archaeology, test-strategy, and child-facing pedagogy planning passes.
+- Reconciled two planning rounds across Codex, Grok 4.5, and Gemini 3.1 Pro High: replace `down-read`, retire `drive-play-ordinal`, keep `quarter-read` and `half-read`, and use the frozen proposal for both ordinary progression and non-tautological first-down resets.
+- Agreed that the new modeled visual shows the live down, distance, and proposed gain while keeping the next down hidden until worked support.
+- Replaced `down-read` with frozen-proposal `next-down`, retired `drive-play-ordinal`, marked the low-value ordinal conversion unscheduled, and bumped Football to v1.22.1.
+- Added forward/reverse progression, first-down reset, exclusion, grounding, copy, nonempty-pool, production commit, and six-device layout regressions.
+- Passed 44/44 focused domain/context contracts plus the primary production-path and six-device next-down browser checks; visually inspected the phone, tablet portrait, and primary landscape artifacts.
+- Completed the prescribed browser-client smoke on a live question with linked semantic state and no console/page-error artifact.
+- Passed the complete release gate: 44/44 Node contracts, 196 Playwright tests passed, 260 intentional project skips, and 108/108 canonical screenshots verified across all six required device projects.
+- Completed independent final-diff reviews with Grok 4.5 and Gemini 3.1 Pro High. Gemini's initial negative-gain concern was rejected as stale after validating that snap proposals are non-negative at both the domain and contextual-question boundaries; negative outcomes exist only in post-question reprojection. Both reviewers accepted that disposition and closed the round robin with consensus to accept the unchanged patch.

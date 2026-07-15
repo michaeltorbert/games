@@ -242,6 +242,107 @@ test('approved past-100 team yards start visibly guided and commit the real tota
   expect(seeded.totalYards).toEqual({ player: 98, opponent: 71 });
 });
 
+test('next-down asks about the frozen play situation and commits the projected down once', async ({ page }, testInfo) => {
+  primaryOnly(testInfo);
+  await cleanBoot(page, 0x790079);
+  const seeded = await seedDrive(page, {
+    ...OFFENSE_SEED,
+    down: 2,
+    yardsToGo: 7,
+    yardLine: 30,
+    firstDownLine: 37,
+  });
+
+  const schedulerDraw = await page.evaluate(() => {
+    const context = FOOTBALL_DOMAIN.normalizeContext({
+      contextId: 'next-down-probe',
+      possession: state.possession,
+      direction: state.direction,
+      quarter: state.quarter,
+      down: state.down,
+      yardsToGo: state.ytg,
+      yardLine: state.yd,
+      firstDownLine: state.fdYd,
+      driveStart: state.driveStart,
+      scores: { player: state.playerScore, opponent: state.opponentScore },
+      totalYards: { player: state.playerTotalYards, opponent: state.opponentTotalYards },
+      plays: state.plays,
+      drivePlays: state.drivePlays,
+      calls: { offense: 'shortRun', defense: null, matchup: null },
+    });
+    const snap = FOOTBALL_DOMAIN.createSnap(context, { gain: 2, callKey: 'shortRun', label: 'Short Run' });
+    const entries = FOOTBALL_CONTEXTUAL_QUESTIONS.inspect(snap, {
+      completedThroughPage: FOOTBALL_LEARNING.PROFILE.completedThroughPage,
+      includedThroughPage: FOOTBALL_LEARNING.PROFILE.includedThroughPage,
+      computationMax: FOOTBALL_LEARNING.PROFILE.computationMax,
+      displayMax: FOOTBALL_LEARNING.PROFILE.displayMax,
+    }).eligible;
+    const probeSession = FOOTBALL_LEARNING.createSession();
+    let draw = null;
+    for (let index = 0; index < 2000; index++) {
+      const candidate = (index + 0.5) / 2000;
+      if (FOOTBALL_LEARNING.weightedPick(entries, probeSession, () => candidate).familyId === 'next-down') {
+        draw = candidate;
+        break;
+      }
+    }
+    if (draw === null) throw new Error('Could not target next-down in the scheduler pool');
+    window.__footballTest.setRngStreams({
+      football: () => 0,
+      scheduler: () => draw,
+      presentation: () => 0.4,
+    });
+    return draw;
+  });
+  expect(schedulerDraw).not.toBeNull();
+
+  await chooseCall(page, 'Short Run');
+  const before = await activeContracts(page);
+  const question = before.questionInstance;
+  expect(question.familyId).toBe('next-down');
+  expect(question.concept).toBe('down-progression');
+  expect(question.answer.value).toBe('3rd');
+  expect(question.bindings.map((binding) => [binding.id, binding.source.path, binding.value])).toEqual([
+    ['currentDown', '/context/down', 2],
+    ['yardsToGo', '/context/yardsToGo', 7],
+    ['proposedGain', '/proposal/appliedGain', 2],
+    ['resultKind', '/proposal/resultKind', 'advance'],
+    ['nextDown', '/proposal/newDown', 3],
+  ]);
+  assertQuestionGrounding(before, await page.evaluate(() => FOOTBALL_CONTEXTUAL_QUESTIONS.RULES));
+  expect(question.visuals.initial.result).toBeNull();
+  expect(question.visuals.guided.result).toBeNull();
+  expect(question.visuals.worked.result.value).toBe('3rd');
+  expect(question.prompt.text).toMatch(/2nd\s*&\s*7/i);
+  expect(question.prompt.text).toMatch(/gains? 2 yards?/i);
+  expect(question.prompt.text).toMatch(/what down would come next/i);
+  expect(question.prompt.text).not.toMatch(/scoreboard (?:begins|starts) with|what down is it|ordinal|order number/i);
+  await expect(page.locator('#math-overlay')).toHaveAttribute('data-type', 'down-progression');
+  await expect(page.locator('#math-overlay')).toContainText('2ND & 7');
+  await expect(page.locator('#math-overlay')).toContainText('PLAY +2');
+  await expect(page.locator('#math-overlay')).toContainText('NEXT ?');
+  await expect(page.locator('#math-overlay')).not.toContainText('NEXT 3RD');
+
+  const correctChoice = question.choices.find((choice) => choice.id === question.correctChoiceId);
+  expect(correctChoice.value).toBe('3rd');
+  const after = await answerChoice(page, question.correctChoiceId);
+  expect(after.render.down).toBe(3);
+  expect(after.render.ytg).toBe(5);
+  expect(after.render.plays).toBe(seeded.plays + 1);
+  expect(after.learning.resolved).toBe(before.learning.resolved + 1);
+  expect(after.statsSession.completedPlays).toHaveLength(1);
+  expect(after.statsSession.completedPlays[0]).toMatchObject({
+    instructionalStatus: 'presented',
+    offeredYards: 2,
+    actualYards: 2,
+    links: {
+      contextId: before.activeSnap.contextId,
+      familyId: 'next-down',
+      questionInstanceId: question.questionInstanceId,
+    },
+  });
+});
+
 test('pre-answer goal-distance place-value visuals hide the requested tens or ones count', async ({ page }, testInfo) => {
   primaryOnly(testInfo);
   await cleanBoot(page, 0x10075);
