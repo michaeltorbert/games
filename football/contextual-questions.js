@@ -137,6 +137,22 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
     return `${value}${({ 1: 'st', 2: 'nd', 3: 'rd' })[value % 10] || 'th'}`;
   }
 
+  function countNoun(value, singular, plural = `${singular}s`) {
+    return `${value} ${value === 1 ? singular : plural}`;
+  }
+
+  function yards(value) {
+    return countNoun(value, 'yard');
+  }
+
+  function spaces(value) {
+    return countNoun(value, 'space');
+  }
+
+  function isOrAre(value) {
+    return value === 1 ? 'is' : 'are';
+  }
+
   function comparisonSymbol(left, right) {
     if (left < right) return '<';
     if (left > right) return '>';
@@ -334,14 +350,14 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
           operandIds: ['yardsToGo'],
           answer,
           prompt: `The scoreboard says ${ordinal(snap.context.down)} & ${answer}. How many yards are needed for a first down?`,
-          hint: 'Read the number after the ampersand on the down-and-distance display.',
-          explanation: `${ordinal(snap.context.down)} & ${answer} means ${answer} yard${answer === 1 ? '' : 's'} are needed.`,
+          hint: 'Read the number after the & sign on the scoreboard.',
+          explanation: `${ordinal(snap.context.down)} & ${answer} means ${yards(answer)} ${isOrAre(answer)} needed.`,
           choiceSpec: numericChoiceSpec(1, 10),
           visualType: 'down-distance',
           visualData: { down: snap.context.down, yardsToGo: answer },
-          initialAriaLabel: `${ordinal(snap.context.down)} down and ${answer} yards to go.`,
+          initialAriaLabel: `${ordinal(snap.context.down)} down and ${yards(answer)} to go.`,
           guidedAriaLabel: `Focus on the ${answer} in ${ordinal(snap.context.down)} and ${answer}; it tells the yards needed.`,
-          workedAriaLabel: `${ordinal(snap.context.down)} and ${answer} means the answer is ${answer} yards.`,
+          workedAriaLabel: `${ordinal(snap.context.down)} and ${answer} means the answer is ${yards(answer)}.`,
         }));
       },
     },
@@ -356,13 +372,13 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
         return eligible(makeSemantic({
           bindings: lineBindings(snap),
           operationType: 'missingPart', operandIds: ['yardsToGo', 'proposedGain'], answer,
-          prompt: `${needed} yards are needed. If this play gains ${gain}, how many more yards are still needed?`,
-          hint: `Start with ${needed} spaces and mark the ${gain} spaces the play could cover. Count the unmarked spaces.`,
+          prompt: `${yards(needed)} ${isOrAre(needed)} needed. If this play gains ${yards(gain)}, how many more yards are still needed?`,
+          hint: `Start with ${spaces(needed)} and mark the ${spaces(gain)} the play could cover. Count the unmarked spaces.`,
           explanation: `${needed} - ${gain} = ${answer}, so ${answer} yard${answer === 1 ? '' : 's'} would still be needed.`,
           choiceSpec: numericChoiceSpec(0, 10), visualType: 'parts',
           visualData: { total: needed, knownPart: gain, missingPart: null },
-          initialAriaLabel: `${needed} total yard spaces with ${gain} marked for the proposed gain; the remaining part is hidden.`,
-          guidedAriaLabel: `${needed} total spaces. ${gain} are filled. Count the empty spaces without naming the result yet.`,
+          initialAriaLabel: `${spaces(needed)} in all with ${yards(gain)} marked for this play; the remaining part is hidden.`,
+          guidedAriaLabel: `${spaces(needed)} in all. ${gain} ${isOrAre(gain)} filled. Count the empty spaces without naming the result yet.`,
           workedAriaLabel: `${needed} splits into ${gain} and ${answer}; the missing part is ${answer}.`,
         }));
       },
@@ -376,13 +392,13 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
         if (!inComputationBand(profile, needed, gain)) return { decline: decline('outside-computation-band', 'The exact relation must fit the completed computation band.') };
         return eligible(makeSemantic({
           bindings: lineBindings(snap), operationType: 'exactRemainder', operandIds: ['yardsToGo', 'proposedGain'], answer: 0,
-          prompt: `${needed} yards are needed. If this play gains exactly ${gain}, how many yards short would it be?`,
-          hint: 'Match each needed yard with one yard from the proposed gain.',
+          prompt: `${yards(needed)} ${isOrAre(needed)} needed. If this play gains exactly ${yards(gain)}, how many yards short would it be?`,
+          hint: 'Match each needed yard with one yard this play could gain.',
           explanation: `${needed} - ${gain} = 0. The play would reach the marker exactly.`,
           choiceSpec: numericChoiceSpec(0, 10), visualType: 'parts',
           visualData: { total: needed, knownPart: gain, missingPart: null },
-          initialAriaLabel: `${needed} needed spaces and ${gain} proposed-gain spaces line up; the remainder is hidden.`,
-          guidedAriaLabel: 'Pair every needed space with a proposed-gain space, then check whether any space is left.',
+          initialAriaLabel: `${spaces(needed)} needed and ${spaces(gain)} this play could gain line up; the remainder is hidden.`,
+          guidedAriaLabel: 'Pair every needed space with one space this play could gain, then check whether any space is left.',
           workedAriaLabel: `${needed} minus ${gain} is 0; no yard is left short.`,
         }));
       },
@@ -397,13 +413,13 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
         if (!inComputationBand(profile, gain, needed, answer)) return { decline: decline('outside-computation-band', 'Gain, need, and surplus must all fit within 10.') };
         return eligible(makeSemantic({
           bindings: lineBindings(snap), operationType: 'surplus', operandIds: ['proposedGain', 'yardsToGo'], answer,
-          prompt: `${needed} yards are needed. If this play gains ${gain}, how many yards past the marker would it go?`,
-          hint: `Use ${needed} of the ${gain} proposed yards to reach the marker. Count what remains.`,
+          prompt: `${yards(needed)} ${isOrAre(needed)} needed. If this play gains ${yards(gain)}, how many yards past the marker would it go?`,
+          hint: `Use ${needed} of the ${yards(gain)} to reach the marker. Count what remains.`,
           explanation: `${gain} - ${needed} = ${answer}, so the play would go ${answer} yard${answer === 1 ? '' : 's'} past the marker.`,
           choiceSpec: numericChoiceSpec(0, 10), visualType: 'marker-strip',
           visualData: { needed, proposedGain: gain, surplus: null },
-          initialAriaLabel: `${gain} proposed yard spaces with the marker after ${needed}; the distance past it is hidden.`,
-          guidedAriaLabel: `Count the proposed spaces after the marker at ${needed}, without naming the result yet.`,
+          initialAriaLabel: `${gain} possible yard spaces with the marker after ${needed}; the distance past it is hidden.`,
+          guidedAriaLabel: `Count the spaces after the marker at ${needed}, without naming the result yet.`,
           workedAriaLabel: `${gain} minus ${needed} is ${answer}; the surplus is ${answer}.`,
         }));
       },
@@ -459,12 +475,12 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
             contextBinding(snap, 'yardsToGo', '/context/yardsToGo'),
           ],
           operationType: 'compare', operandIds: ['proposedGain', 'yardsToGo'], answer,
-          prompt: `This exact play is set to gain ${gain} yards, and ${needed} yards are needed. Which symbol makes ${gain} ? ${needed} true?`,
+          prompt: `This play could gain ${yards(gain)}, and ${yards(needed)} ${isOrAre(needed)} needed. Which symbol makes ${gain} ? ${needed} true?`,
           hint: comparisonHint,
-          explanation: `${gain} ${answer} ${needed}. The proposed gain is ${gain === needed ? 'exactly the same as' : gain > needed ? 'greater than' : 'less than'} the yards needed.`,
+          explanation: `${gain} ${answer} ${needed}. The yards this play could gain are ${gain === needed ? 'exactly the same as' : gain > needed ? 'greater than' : 'less than'} the yards needed.`,
           choiceSpec: fixedChoiceSpec(['<', '=', '>']), visualType: 'comparison',
           visualData: { leftLabel: 'PLAY', leftValue: gain, rightLabel: 'NEED', rightValue: needed },
-          initialAriaLabel: `Compare the proposed gain of ${gain} yards with the ${needed} yards needed; the comparison symbol is hidden.`,
+          initialAriaLabel: `Compare the ${yards(gain)} this play could gain with the ${yards(needed)} needed; the comparison symbol is hidden.`,
           guidedAriaLabel: gain >= 10 || needed >= 10
             ? `Compare ${gain} and ${needed} by tens, then ones; the symbol remains hidden.`
             : `Compare ${gain} and ${needed}; the symbol remains hidden.`,
@@ -479,52 +495,52 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
         if (!inDisplayBand(profile, answer)) return { decline: decline('outside-display-band', 'Goal distance must fit the completed display band.') };
         return eligible(makeSemantic({
           bindings: goalBindings(snap), operationType: 'distance', operandIds: ['ballYardLine', 'goalLine'], answer,
-          prompt: 'Read the number on the goal-distance strip. How many yards is the ball from the end zone?',
-          hint: 'Read the full number shown across the separate goal-distance strip.',
-          explanation: `The strip from the ball to the goal line is ${answer} yard${answer === 1 ? '' : 's'} long.`,
+          prompt: 'Look at the number between BALL and GOAL. How many yards is the ball from the end zone?',
+          hint: 'Read the number between BALL and GOAL from left to right.',
+          explanation: `The ball is ${answer} yard${answer === 1 ? '' : 's'} from the goal line.`,
           choiceSpec: numericChoiceSpec(0, 100), visualType: 'goal-distance',
           visualData: { ballYardLine: snap.context.yardLine, goalLine: goalLine(snap), distance: answer },
-          initialAriaLabel: `Goal-distance strip labeled ${answer} yards from the ball to the end zone.`,
-          guidedAriaLabel: `Read both digits in ${answer} from left to right on the goal-distance strip.`,
-          workedAriaLabel: `The goal-distance strip reads ${answer} yards.`,
+          initialAriaLabel: `BALL, ${answer} yard${answer === 1 ? '' : 's'}, GOAL.`,
+          guidedAriaLabel: `Read the number ${answer} between BALL and GOAL.`,
+          workedAriaLabel: `The ball is ${answer} yard${answer === 1 ? '' : 's'} from the goal line.`,
         }));
       },
     },
     {
-      meta: makeMeta({ familyId: 'goal-distance-tens', skill: 'place-value', concept: 'place-value', purpose: 'completedPlaceValue', tier: 'two-digit-structure', weight: 2.4, operationType: 'tensOfDistance', answerExposure: 'source-visible', curriculumSource: 'workbook', introducedOnPage: 124 }),
+      meta: makeMeta({ familyId: 'goal-distance-tens', skill: 'place-value', concept: 'place-value', purpose: 'completedPlaceValue', tier: 'two-digit-structure', weight: 2.4, operationType: 'tensOfDistance', answerExposure: 'modeled-with-result-hidden', curriculumSource: 'workbook', introducedOnPage: 124 }),
       derive(snap, profile) {
         const distance = goalDistance(snap);
-        if (distance < 10 || !inDisplayBand(profile, distance)) return { decline: decline('not-two-digit-distance', 'Tens work needs a displayed goal distance from 10 through 100.') };
+        if (distance < 10 || distance > 99 || !inDisplayBand(profile, distance)) return { decline: decline('not-two-digit-distance', 'Tens work needs a two-digit goal distance from 10 through 99.') };
         const answer = Math.floor(distance / 10);
         return eligible(makeSemantic({
           bindings: goalBindings(snap), operationType: 'tensOfDistance', operandIds: ['ballYardLine', 'goalLine'], answer,
-          prompt: `The goal-distance model shows ${distance}. How many tens are in ${distance}?`,
+          prompt: `The ball is ${distance} yards from the end zone. What digit is in the tens place of ${distance}?`,
           hint: `Look at the tens place in ${distance}.`,
-          explanation: `${distance} has ${answer} ten${answer === 1 ? '' : 's'} and ${distance % 10} ones.`,
-          choiceSpec: numericChoiceSpec(0, 10), visualType: 'base-ten-distance',
-          visualData: { distance, tens: answer, ones: distance % 10 },
-          initialAriaLabel: `${distance} yards shown with base-ten groups; count the groups of ten.`,
-          guidedAriaLabel: `${distance} is grouped into tens and ones. Focus on the groups of ten.`,
-          workedAriaLabel: `${distance} has ${answer} tens and ${distance % 10} ones.`,
+          explanation: `${distance} has ${answer} ten${answer === 1 ? '' : 's'} and ${distance % 10} ${distance % 10 === 1 ? 'one' : 'ones'}.`,
+          choiceSpec: numericChoiceSpec(0, 9), visualType: 'base-ten-distance',
+          visualData: { distance, tens: answer, ones: distance % 10, targetPlace: 'tens' },
+          initialAriaLabel: `${distance} yards from the ball to the end zone; the tens digit is hidden.`,
+          guidedAriaLabel: `Look at the tens digit in ${distance}; the answer remains hidden.`,
+          workedAriaLabel: `${distance} has ${answer} ${answer === 1 ? 'ten' : 'tens'} and ${distance % 10} ${distance % 10 === 1 ? 'one' : 'ones'}.`,
         }));
       },
     },
     {
-      meta: makeMeta({ familyId: 'goal-distance-ones', skill: 'place-value', concept: 'place-value', purpose: 'completedPlaceValue', tier: 'two-digit-structure', weight: 2, operationType: 'onesOfDistance', answerExposure: 'source-visible', curriculumSource: 'workbook', introducedOnPage: 124 }),
+      meta: makeMeta({ familyId: 'goal-distance-ones', skill: 'place-value', concept: 'place-value', purpose: 'completedPlaceValue', tier: 'two-digit-structure', weight: 2, operationType: 'onesOfDistance', answerExposure: 'modeled-with-result-hidden', curriculumSource: 'workbook', introducedOnPage: 124 }),
       derive(snap, profile) {
         const distance = goalDistance(snap);
-        if (distance < 10 || !inDisplayBand(profile, distance)) return { decline: decline('not-two-digit-distance', 'Ones work needs a displayed goal distance from 10 through 100.') };
+        if (distance < 10 || distance > 99 || !inDisplayBand(profile, distance)) return { decline: decline('not-two-digit-distance', 'Ones work needs a two-digit goal distance from 10 through 99.') };
         const answer = distance % 10;
         return eligible(makeSemantic({
           bindings: goalBindings(snap), operationType: 'onesOfDistance', operandIds: ['ballYardLine', 'goalLine'], answer,
-          prompt: `The goal-distance model shows ${distance}. How many ones are in ${distance}?`,
+          prompt: `The ball is ${distance} yards from the end zone. What digit is in the ones place of ${distance}?`,
           hint: `Look at the ones place in ${distance}.`,
-          explanation: `${distance} has ${Math.floor(distance / 10)} tens and ${answer} ones.`,
-          choiceSpec: numericChoiceSpec(0, 10), visualType: 'base-ten-distance',
-          visualData: { distance, tens: Math.floor(distance / 10), ones: answer },
-          initialAriaLabel: `${distance} yards shown with base-ten groups; count the single ones.`,
-          guidedAriaLabel: `${distance} is grouped into tens and ones. Focus on the single ones.`,
-          workedAriaLabel: `${distance} has ${Math.floor(distance / 10)} tens and ${answer} ones.`,
+          explanation: `${distance} has ${Math.floor(distance / 10)} ${Math.floor(distance / 10) === 1 ? 'ten' : 'tens'} and ${answer} ${answer === 1 ? 'one' : 'ones'}.`,
+          choiceSpec: numericChoiceSpec(0, 9), visualType: 'base-ten-distance',
+          visualData: { distance, tens: Math.floor(distance / 10), ones: answer, targetPlace: 'ones' },
+          initialAriaLabel: `${distance} yards from the ball to the end zone; the ones digit is hidden.`,
+          guidedAriaLabel: `Look at the ones digit in ${distance}; the answer remains hidden.`,
+          workedAriaLabel: `${distance} has ${Math.floor(distance / 10)} ${Math.floor(distance / 10) === 1 ? 'ten' : 'tens'} and ${answer} ${answer === 1 ? 'one' : 'ones'}.`,
         }));
       },
     },
@@ -556,13 +572,13 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
             contextBinding(snap, 'proposedGain', '/proposal/appliedGain'),
           ],
           operationType: 'add', operandIds: ['teamTotalYards', 'proposedGain'], answer,
-          prompt: `${team} has ${current} total offensive yards. If this exact play gains ${gain}, what would the team total be?`,
+          prompt: `${team} has ${current} total offensive yards. If this play gains ${yards(gain)}, what would the team total be?`,
           hint: `Count forward ${gain} from ${current}, one yard at a time.`,
           explanation: `${current} + ${gain} = ${answer}, so ${team} would have ${answer} total offensive yards.`,
           choiceSpec: numericChoiceSpec(90, 120), visualType: 'hundreds-move',
           visualData: { team, startTotal: current, proposedGain: gain, resultTotal: null },
-          initialAriaLabel: `${team} has ${current} total offensive yards with ${gain} proposed yards; the new total is hidden.`,
-          guidedAriaLabel: `Count forward ${gain} single yards from ${current}; the final total remains hidden.`,
+          initialAriaLabel: `${team} has ${current} total offensive yards with ${yards(gain)} possible on this play; the new total is hidden.`,
+          guidedAriaLabel: `Count forward ${gain} from ${current}, one yard at a time; the final total remains hidden.`,
           workedAriaLabel: `${current} plus ${gain} is ${answer} total offensive yards for ${team}.`,
         }));
       },
@@ -575,14 +591,14 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
         return eligible(makeSemantic({
           bindings: [contextBinding(snap, 'driveStart', '/context/driveStart'), contextBinding(snap, 'ballYardLine', '/context/yardLine')],
           operationType: 'absoluteDifference', operandIds: ['driveStart', 'ballYardLine'], answer,
-          prompt: 'Count the spaces from the drive-start marker to the current-ball marker. How many yards has this drive moved so far?',
-          hint: 'Use the separate drive strip and count one space at a time from Start to Now.',
-          explanation: `There are ${answer} spaces from the drive start to the current ball, so the drive has moved ${answer} yards.`,
+          prompt: 'Count the spaces from START to NOW. How many yards has this drive moved so far?',
+          hint: 'Count one space at a time from START to NOW.',
+          explanation: `There ${isOrAre(answer)} ${spaces(answer)} from the drive start to the current ball, so the drive has moved ${yards(answer)}.`,
           choiceSpec: numericChoiceSpec(0, 10), visualType: 'drive-strip',
           visualData: { startYardLine: snap.context.driveStart, ballYardLine: snap.context.yardLine, distance: null },
-          initialAriaLabel: 'A separate drive strip marks Start and Now no more than ten spaces apart; the distance is hidden.',
+          initialAriaLabel: 'START and NOW are no more than ten spaces apart; the distance is hidden.',
           guidedAriaLabel: 'Count each space from the Start marker to the Now marker without announcing the total yet.',
-          workedAriaLabel: `Start and Now are ${answer} yard spaces apart.`,
+          workedAriaLabel: `Start and Now are ${yards(answer)} apart.`,
         }));
       },
     },
@@ -596,14 +612,14 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
         return eligible(makeSemantic({
           bindings: [contextBinding(snap, 'playerScore', '/context/scores/player'), contextBinding(snap, 'opponentScore', '/context/scores/opponent')],
           operationType: 'add', operandIds: ['playerScore', 'opponentScore'], answer,
-          prompt: `The committed score is Duke ${player}, UNC ${opponent}. How many points have both teams scored in all?`,
+          prompt: `The scoreboard says Duke ${player}, UNC ${opponent}. How many points have both teams scored in all?`,
           hint: `Join ${player} Duke counters and ${opponent} UNC counters.`,
-          explanation: `${player} + ${opponent} = ${answer} committed points in all.`,
+          explanation: `${player} + ${opponent} = ${answer} points in all.`,
           choiceSpec: numericChoiceSpec(0, 10), visualType: 'score-parts',
           visualData: { playerScore: player, opponentScore: opponent, total: null },
-          initialAriaLabel: `${player} committed Duke score counters and ${opponent} committed UNC score counters; the total is hidden.`,
+          initialAriaLabel: `${player} Duke score counters and ${opponent} UNC score counters; the total is hidden.`,
           guidedAriaLabel: `Join the group of ${player} and the group of ${opponent}, then count all counters without announcing the total yet.`,
-          workedAriaLabel: `${player} plus ${opponent} equals ${answer} committed points.`,
+          workedAriaLabel: `${player} plus ${opponent} equals ${answer} points.`,
         }));
       },
     },
@@ -617,14 +633,14 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
         return eligible(makeSemantic({
           bindings: [contextBinding(snap, 'playerScore', '/context/scores/player'), contextBinding(snap, 'opponentScore', '/context/scores/opponent')],
           operationType: 'absoluteDifference', operandIds: ['playerScore', 'opponentScore'], answer,
-          prompt: `The committed score is Duke ${player}, UNC ${opponent}. How many points apart are the teams?`,
+          prompt: `The scoreboard says Duke ${player}, UNC ${opponent}. How many points apart are the teams?`,
           hint: 'Pair one Duke point with one UNC point. Count the points without partners.',
-          explanation: `${Math.max(player, opponent)} - ${Math.min(player, opponent)} = ${answer}, so the committed scores are ${answer} point${answer === 1 ? '' : 's'} apart.`,
+          explanation: `${Math.max(player, opponent)} - ${Math.min(player, opponent)} = ${answer}, so the teams are ${answer} point${answer === 1 ? '' : 's'} apart.`,
           choiceSpec: numericChoiceSpec(0, 10), visualType: 'score-difference',
           visualData: { playerScore: player, opponentScore: opponent, difference: null },
-          initialAriaLabel: `${player} committed Duke counters and ${opponent} committed UNC counters are aligned; the difference is hidden.`,
-          guidedAriaLabel: 'Pair the two committed-score groups and count the unpaired counters without announcing the result yet.',
-          workedAriaLabel: `The committed scores differ by ${answer} point${answer === 1 ? '' : 's'}.`,
+          initialAriaLabel: `${player} Duke counters and ${opponent} UNC counters are lined up; the difference is hidden.`,
+          guidedAriaLabel: 'Pair the Duke and UNC groups and count the unpaired counters without announcing the result yet.',
+          workedAriaLabel: `The teams are ${answer} point${answer === 1 ? '' : 's'} apart.`,
         }));
       },
     },
@@ -648,13 +664,13 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
         return eligible(makeSemantic({
           bindings: [contextBinding(snap, 'completedDrivePlays', '/context/drivePlays')],
           operationType: 'nextOrdinal', operandIds: ['completedDrivePlays'], answer,
-          prompt: `This snap is play number ${playNumber} of the drive. Which ordinal name tells its place in the drive?`,
-          hint: `Say the ordinal for ${playNumber}: not how many plays there are, but where this play comes in order.`,
+          prompt: `This is play number ${playNumber} of the drive. Which order number shows where it comes?`,
+          hint: `Choose the order number for ${playNumber}, such as 1st, 2nd, or 3rd.`,
           explanation: `Play number ${playNumber} is the ${answer} play of the drive.`,
           choiceSpec: fixedChoiceSpec(ordinalChoices(playNumber)), visualType: 'drive-play-order',
           visualData: { completedDrivePlays: snap.context.drivePlays, playNumber },
-          initialAriaLabel: `The current snap is play number ${playNumber} of the drive; its ordinal name is hidden.`,
-          guidedAriaLabel: `Translate play number ${playNumber} into its ordinal place without revealing the answer.`,
+          initialAriaLabel: `This is play number ${playNumber} of the drive; its order number is hidden.`,
+          guidedAriaLabel: `Change play number ${playNumber} into its order number without revealing the answer.`,
           workedAriaLabel: `Play number ${playNumber} is the ${answer} play of the drive.`,
         }));
       },
@@ -666,12 +682,12 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
         return eligible(makeSemantic({
           bindings: [contextBinding(snap, 'quarter', '/context/quarter')], operationType: 'ordinal', operandIds: ['quarter'], answer,
           prompt: `The scoreboard shows Q${snap.context.quarter}. Which quarter is the game in?`,
-          hint: 'Match the Q number to its ordinal name.',
+          hint: 'Match the Q number to an order number such as 1st, 2nd, 3rd, or 4th.',
           explanation: `Q${snap.context.quarter} means the ${answer} quarter.`,
           choiceSpec: fixedChoiceSpec(['1st', '2nd', '3rd', '4th']), visualType: 'scoreboard-read',
           visualData: { label: `Q${snap.context.quarter}` },
           initialAriaLabel: `Scoreboard quarter display Q${snap.context.quarter}.`,
-          guidedAriaLabel: `Read Q${snap.context.quarter} as an ordinal quarter name.`,
+          guidedAriaLabel: `Match Q${snap.context.quarter} to its order number.`,
           workedAriaLabel: `Q${snap.context.quarter} is the ${answer} quarter.`,
         }));
       },
@@ -682,13 +698,13 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
         const answer = ordinal(snap.context.down);
         return eligible(makeSemantic({
           bindings: [contextBinding(snap, 'down', '/context/down')], operationType: 'ordinal', operandIds: ['down'], answer,
-          prompt: `The down-and-distance display begins with ${answer}. What down is it?`,
-          hint: 'Read the ordinal before the ampersand.',
+          prompt: `The scoreboard begins with ${answer}. What down is it?`,
+          hint: 'Read the order number before the & sign.',
           explanation: `The display begins with ${answer}, so it is ${answer} down.`,
           choiceSpec: fixedChoiceSpec(['1st', '2nd', '3rd', '4th']), visualType: 'down-distance',
           visualData: { down: snap.context.down, yardsToGo: snap.context.yardsToGo },
-          initialAriaLabel: `${answer} down and ${snap.context.yardsToGo} yards to go.`,
-          guidedAriaLabel: `Focus on the first part, ${answer}, in the down-and-distance display.`,
+          initialAriaLabel: `${answer} down and ${yards(snap.context.yardsToGo)} to go.`,
+          guidedAriaLabel: `Focus on the first part, ${answer}, on the scoreboard.`,
           workedAriaLabel: `The current down is ${answer}.`,
         }));
       },
@@ -706,14 +722,14 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
         return eligible(makeSemantic({
           bindings: [...goalBindings(snap), contextBinding(snap, 'proposedGain', '/proposal/appliedGain')],
           operationType: 'goalDistanceAfterGain', operandIds: ['ballYardLine', 'goalLine', 'proposedGain'], answer,
-          prompt: `The ball is ${before} yards from the end zone. If this play gains ${gain}, how far from the end zone would it be?`,
+          prompt: `The ball is ${yards(before)} from the end zone. If this play gains ${yards(gain)}, how far from the end zone would it be?`,
           hint: `Move back ${gain / 10} full group${gain === 10 ? '' : 's'} of ten from ${before}. The ones digit stays the same.`,
-          explanation: `${before} - ${gain} = ${answer}. The proposed play would leave ${answer} yards to the end zone.`,
+          explanation: `${before} - ${gain} = ${answer}. This play would leave ${yards(answer)} to the end zone.`,
           choiceSpec: numericChoiceSpec(0, 100), visualType: 'base-ten-move',
           visualData: { startDistance: before, wholeTensMoved: gain / 10, direction: -1, resultDistance: null },
-          initialAriaLabel: `${before} shown in base-ten groups with a proposed move of ${gain} yards; the new distance is hidden.`,
+          initialAriaLabel: `The ball is ${yards(before)} from the end zone, and this play could gain ${yards(gain)}; the new distance is hidden.`,
           guidedAriaLabel: `Remove ${gain / 10} group${gain === 10 ? '' : 's'} of ten and keep the ones unchanged, without announcing the result yet.`,
-          workedAriaLabel: `${before} minus ${gain} is ${answer} yards from the end zone.`,
+          workedAriaLabel: `${before} minus ${gain} is ${yards(answer)} from the end zone.`,
         }));
       },
     },
@@ -732,14 +748,14 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
             contextBinding(snap, 'proposedGain', '/proposal/appliedGain'),
           ],
           operationType: 'driveDistancePlusGain', operandIds: ['driveStart', 'ballYardLine', 'proposedGain'], answer,
-          prompt: `This drive has moved ${current} yards. If this play gains ${gain}, how many yards would the drive have moved in all?`,
+          prompt: `This drive has moved ${yards(current)}. If this play gains ${yards(gain)}, how many yards would the drive have moved in all?`,
           hint: `Add ${gain / 10} full group${gain === 10 ? '' : 's'} of ten to ${current}.`,
-          explanation: `${current} + ${gain} = ${answer}. The drive would have moved ${answer} yards in all.`,
+          explanation: `${current} + ${gain} = ${answer}. The drive would have moved ${yards(answer)} in all.`,
           choiceSpec: numericChoiceSpec(0, 100), visualType: 'base-ten-move',
           visualData: { startDistance: current, wholeTensMoved: gain / 10, direction: 1, resultDistance: null },
-          initialAriaLabel: `${current} yards of committed drive movement with a proposed addition of ${gain}; the new total is hidden.`,
-          guidedAriaLabel: `Add ${gain / 10} group${gain === 10 ? '' : 's'} of ten to the drive model without announcing the total yet.`,
-          workedAriaLabel: `${current} plus ${gain} is ${answer} yards of drive movement.`,
+          initialAriaLabel: `The drive has moved ${yards(current)}, and this play could add ${yards(gain)}; the new total is hidden.`,
+          guidedAriaLabel: `Add ${gain / 10} group${gain === 10 ? '' : 's'} of ten to the drive total without announcing the result yet.`,
+          workedAriaLabel: `${current} plus ${gain} is ${yards(answer)} of drive movement.`,
         }));
       },
     },
@@ -864,12 +880,17 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
     const visibleAtSource = meta.answerExposure === 'source-visible';
     const stage = (name) => {
       const revealsAnswer = name === 'worked' || visibleAtSource;
+      const data = clone(semantic.visualData);
+      if (!revealsAnswer && semantic.visualType === 'base-ten-distance') {
+        if (data.targetPlace === 'tens') data.tens = null;
+        if (data.targetPlace === 'ones') data.ones = null;
+      }
       return {
         stage: name,
         type: semantic.visualType,
         bindingIds,
         answerId,
-        data: clone(semantic.visualData),
+        data,
         result: revealsAnswer ? { answerId, value: clone(semantic.answer) } : null,
         revealsAnswer,
         ariaLabel: semantic.visualAriaLabels[name],

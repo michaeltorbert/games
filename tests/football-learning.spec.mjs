@@ -276,7 +276,7 @@ test('a question that starts guided stays answer-hidden until the second miss', 
   await expect(page.locator(`[data-choice-id="${question.correctChoiceId}"]`)).toBeEnabled();
 });
 
-test('second defensive miss records learning before Continue and commits one frozen capped transition idempotently', async ({ page }, testInfo) => {
+test('second defensive miss records learning only after Continue commits one frozen capped transition', async ({ page }, testInfo) => {
   primaryOnly(testInfo);
   await page.goto('/football/?boot=defense-call');
   await page.evaluate(() => window.__footballTest.setRootSeed(0xdefe115e));
@@ -300,9 +300,13 @@ test('second defensive miss records learning before Continue and commits one fro
   expect(explanation.outcomeCommitted).toBe(false);
   expect(explanation.plays).toBe(before.plays);
   expect(explanation.absoluteYard).toBe(before.absoluteYard);
-  expect(explanation.learning.resolved).toBe(1);
+  expect(explanation.learning.resolved).toBe(0);
+  expect(explanation.gradedQuestions).toBe(before.gradedQuestions);
   expect(explanationContracts.questionUi.support).toBe('worked');
+  expect(explanationContracts.questionUi.resolutionRecorded).toBe(false);
   expect(explanationContracts.pendingResolution.transitionToCommit.appliedGain).toBe(expectedGain);
+  expect(await page.evaluate(() => pendingStatsPlay.resolution)).toBeNull();
+  expect(explanationContracts.statsSession.completedPlays).toHaveLength(0);
   await expect(page.locator('#question-continue')).toBeVisible();
   await expect(page.locator('#question-continue')).toBeFocused();
 
@@ -313,6 +317,7 @@ test('second defensive miss records learning before Continue and commits one fro
   expect(committed.plays).toBe(before.plays + 1);
   expect(Math.abs(committed.absoluteYard - before.absoluteYard)).toBe(expectedGain);
   expect(committed.learning.resolved).toBe(1);
+  expect(committed.gradedQuestions).toBe(before.gradedQuestions + 1);
 
   await page.evaluate(() => document.getElementById('question-continue').click());
   const afterDoubleContinue = await rendered(page);
