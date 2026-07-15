@@ -238,7 +238,7 @@ test('bypassed plays persist football results exactly once without learning or m
   expect(errors).toEqual([]);
 });
 
-test('schema-v1 history migrates in place without losing valid rows, aggregates, or mastery', async ({ page }, testInfo) => {
+test('schema-v1 history normalizes without a read write and persists on the next real play', async ({ page }, testInfo) => {
   primaryOnly(testInfo);
   await page.addInitScript(() => {
     const context = {
@@ -253,7 +253,7 @@ test('schema-v1 history migrates in place without losing valid rows, aggregates,
       plays: 8,
       drivePlays: 3,
     };
-    localStorage.setItem('footballMathStats:v1', JSON.stringify({
+    const raw = JSON.stringify({
       schemaVersion: 1,
       aggregates: {
         completedPlays: 1,
@@ -296,16 +296,38 @@ test('schema-v1 history migrates in place without losing valid rows, aggregates,
       mastery: {
         'line-to-gain': { resolved: 1, firstTryCorrect: 0, retryCorrect: 1, secondMiss: 0 },
       },
-    }));
+    });
+    localStorage.setItem('footballMathStats:v1', raw);
+    window.__legacyStatsRaw = raw;
   });
   await page.goto('/football/');
 
-  const result = await page.evaluate(() => ({
-    history: FOOTBALL_STATS.history(),
-    raw: JSON.parse(localStorage.getItem(FOOTBALL_STATS.STORAGE_KEY)),
-  }));
+  const result = await page.evaluate(() => {
+    const history = FOOTBALL_STATS.history();
+    const rawBeforeWrite = localStorage.getItem(FOOTBALL_STATS.STORAGE_KEY);
+    const preSnap = history.recentPlays[0].postPlay;
+    const session = FOOTBALL_STATS.createSession();
+    const pending = FOOTBALL_STATS.beginBypassedPlay(session, {
+      preSnap,
+      calls: { offense: 'shortRun' },
+      offeredYards: 2,
+      links: { familyId: null, contextId: 'context-next', questionInstanceId: null },
+    });
+    FOOTBALL_STATS.completeBypassedPlay(session, pending, {
+      actualYards: 2,
+      outcome: 'gain',
+      postPlay: { ...preSnap, yardLine: preSnap.yardLine + 2, plays: preSnap.plays + 1 },
+    });
+    return {
+      history,
+      seededRaw: window.__legacyStatsRaw,
+      rawBeforeWrite,
+      rawAfterWrite: JSON.parse(localStorage.getItem(FOOTBALL_STATS.STORAGE_KEY)),
+    };
+  });
 
-  expect(result.raw).toEqual(result.history);
+  expect(result.rawBeforeWrite).toBe(result.seededRaw);
+  expect(JSON.parse(result.rawBeforeWrite).schemaVersion).toBe(1);
   expect(result.history.schemaVersion).toBe(2);
   expect(result.history.aggregates).toMatchObject({
     completedPlays: 1,
@@ -326,6 +348,87 @@ test('schema-v1 history migrates in place without losing valid rows, aggregates,
     links: { familyId: 'legacy-family', contextId: null, questionInstanceId: null },
     resolution: 'retryCorrect',
   });
+  expect(result.rawAfterWrite.schemaVersion).toBe(2);
+  expect(result.rawAfterWrite.recentPlays).toHaveLength(2);
+  expect(result.rawAfterWrite.recentPlays[1]).toMatchObject({
+    instructionalStatus: 'bypassed',
+    links: { familyId: null, contextId: 'context-next', questionInstanceId: null },
+  });
+});
+
+test('learning snapshots select the newest valid graded evidence without mutating stored history', async ({ page }, testInfo) => {
+  primaryOnly(testInfo);
+  await page.addInitScript(() => {
+    const context = {
+      quarter: 2, possession: 'offense', down: 2, yardsToGo: 6,
+      yardLine: 34, firstDownLine: 40, direction: 1,
+      score: { player: 14, opponent: 10 }, plays: 7, drivePlays: 2,
+    };
+    const question = (concept, grading = 'gate') => ({
+      id: `family-${concept}-${grading}`, skill: 'difference', concept,
+      purpose: 'weakSpot', grading, tier: 'within-10',
+    });
+    const row = (id, concept, resolution, completedAt, grading = 'gate') => ({
+      id, gameId: 'game-history', sequence: Number(id.replace(/\D/g, '')) || 1,
+      ...(completedAt === undefined ? {} : { completedAt }),
+      instructionalStatus: 'presented',
+      preSnap: context, calls: { offense: 'shortRun' }, offeredYards: 4,
+      question: question(concept, grading), attempts: [], resolution,
+      actualYards: 4, outcome: 'gain', postPlay: { ...context, yardLine: 38, plays: 8 },
+    });
+    const recentPlays = [
+      row('row-1', 'line-to-gain', 'firstTryCorrect', '2026-06-01T12:00:00.000Z'),
+      row('row-2', 'field-distance', 'secondMiss', '2026-06-02T12:00:00.000Z'),
+      row('row-3', 'line-to-gain', 'retryCorrect', '2026-07-05T12:00:00.000Z'),
+      row('row-4', 'line-to-gain', 'secondMiss', 'not-a-date'),
+      row('row-5', 'line-to-gain', 'retryCorrect', undefined),
+      row('row-6', 'line-to-gain', 'secondMiss', '2026-07-12T12:00:00.000Z', 'noStakes'),
+      {
+        id: 'row-7', gameId: 'game-history', sequence: 7,
+        completedAt: '2026-07-13T12:00:00.000Z', instructionalStatus: 'bypassed',
+        preSnap: context, calls: { offense: 'shortRun' }, offeredYards: 4,
+        actualYards: 4, outcome: 'gain', postPlay: { ...context, yardLine: 38, plays: 8 },
+      },
+    ];
+    const raw = JSON.stringify({
+      schemaVersion: 2,
+      aggregates: {},
+      recentPlays,
+      mastery: {
+        'line-to-gain': { resolved: 5, firstTryCorrect: 4, retryCorrect: 1, secondMiss: 0 },
+        'field-distance': { resolved: 1, firstTryCorrect: 0, retryCorrect: 0, secondMiss: 1 },
+      },
+    });
+    localStorage.setItem('footballMathStats:v1', raw);
+    window.__learningStatsRaw = raw;
+  });
+  await page.goto('/football/');
+
+  const result = await page.evaluate(() => {
+    const first = FOOTBALL_STATS.learningSnapshot();
+    first.mastery['line-to-gain'].firstTryCorrect = 999;
+    first.lastResolvedByConcept['line-to-gain'].resolution = 'secondMiss';
+    const second = FOOTBALL_STATS.learningSnapshot();
+    const history = FOOTBALL_STATS.history();
+    return {
+      seededRaw: window.__learningStatsRaw,
+      rawAfterReads: localStorage.getItem(FOOTBALL_STATS.STORAGE_KEY),
+      second,
+      malformedDate: history.recentPlays.find(row => row.id === 'row-4').completedAt,
+      missingDate: history.recentPlays.find(row => row.id === 'row-5').completedAt,
+    };
+  });
+
+  expect(result.rawAfterReads).toBe(result.seededRaw);
+  expect(result.second.mastery['line-to-gain']).toEqual({
+    resolved: 5, firstTryCorrect: 4, retryCorrect: 1, secondMiss: 0,
+  });
+  expect(result.second.lastResolvedByConcept).toEqual({
+    'field-distance': { completedAt: '2026-06-02T12:00:00.000Z', resolution: 'secondMiss' },
+    'line-to-gain': { completedAt: '2026-07-05T12:00:00.000Z', resolution: 'retryCorrect' },
+  });
+  expect(result.malformedDate).toBe('not-a-date');
+  expect(result.missingDate).toBeNull();
 });
 
 test('history remains capped, completion is deduplicated, and stats IDs consume no Math.random', async ({ page }, testInfo) => {

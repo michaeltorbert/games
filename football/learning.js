@@ -11,6 +11,12 @@ const FOOTBALL_LEARNING = (() => {
     displayMax: 120,
     recencyWindow: 3,
     recencyMultiplier: 0.18,
+    masteryMinResolved: 4,
+    masteryMinFirstTryRate: 0.8,
+    masteryMaxSecondMissRate: 0.1,
+    freshMasteryMultiplier: 0.25,
+    masteryRestoreDays: 30,
+    recentSupportMultiplier: 1.25,
     maxEvents: 160,
     purposeWeights: Object.freeze({
       weakSpot: 0.38,
@@ -32,12 +38,26 @@ const FOOTBALL_LEARNING = (() => {
     }));
   }
 
-  function createSession(historicalMastery = {}) {
+  function normalizeLastResolvedSnapshot(value) {
+    const input = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+    return Object.fromEntries(Object.entries(input).flatMap(([concept, raw]) => {
+      const evidence = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+      const resolvedAtMs = Date.parse(evidence.completedAt);
+      if (!Number.isFinite(resolvedAtMs)
+        || !['firstTryCorrect', 'retryCorrect', 'secondMiss'].includes(evidence.resolution)) return [];
+      return [[concept, { resolvedAtMs, resolution: evidence.resolution }]];
+    }));
+  }
+
+  function createSession(historicalMastery = {}, historicalLastResolved = {}, nowMs = Date.now()) {
     return {
       recentFamilyIds: [],
       bySkill: {},
       byConcept: {},
+      latestResolvedByConcept: {},
       historicalMastery: normalizeMasterySnapshot(historicalMastery),
+      historicalLastResolved: normalizeLastResolvedSnapshot(historicalLastResolved),
+      nowMs: Number.isFinite(Number(nowMs)) ? Number(nowMs) : Date.now(),
       presented: 0,
       resolved: 0,
       nextSequence: 1,
@@ -131,6 +151,7 @@ const FOOTBALL_LEARNING = (() => {
       const mastery = conceptState(session, question.concept || question.skill);
       mastery.resolved++;
       mastery[result] = (mastery[result] || 0) + 1;
+      session.latestResolvedByConcept[question.concept || question.skill] = { resolution: result };
     }
     addEvent(session, 'resolved', {
       ...questionIdentity(question),
@@ -146,8 +167,13 @@ const FOOTBALL_LEARNING = (() => {
 
   function needMultiplier(session, entry) {
     if (entry.grading === 'noStakes') return 1;
+    const concept = entry.concept || entry.skill;
+    const latest = session.latestResolvedByConcept[concept];
+    if (latest?.resolution === 'firstTryCorrect') return 1;
     const stats = session.bySkill[entry.skill];
-    if (!stats) return 1.15;
+    if (!stats) {
+      return Object.prototype.hasOwnProperty.call(session.historicalMastery, concept) ? 1 : 1.15;
+    }
     const attempts = stats.firstTryCorrect + stats.retryCorrect + stats.secondMiss;
     if (!attempts) return 1.15;
     const supported = stats.retryCorrect + stats.secondMiss;
@@ -160,10 +186,40 @@ const FOOTBALL_LEARNING = (() => {
 
   function historicalNeedMultiplier(session, entry) {
     if (entry.grading === 'noStakes') return 1;
-    const stats = session.historicalMastery[entry.concept || entry.skill];
+    const concept = entry.concept || entry.skill;
+    const current = session.latestResolvedByConcept[concept];
+    const stats = session.historicalMastery[concept];
+    const mastered = Boolean(stats)
+      && stats.resolved >= PROFILE.masteryMinResolved
+      && stats.firstTryCorrect / stats.resolved >= PROFILE.masteryMinFirstTryRate
+      && stats.secondMiss / stats.resolved <= PROFILE.masteryMaxSecondMissRate;
+
+    if (current?.resolution === 'retryCorrect' || current?.resolution === 'secondMiss') {
+      return PROFILE.recentSupportMultiplier;
+    }
+    if (current?.resolution === 'firstTryCorrect') {
+      return mastered ? PROFILE.freshMasteryMultiplier : 1;
+    }
+
+    const latest = session.historicalLastResolved[concept];
+    if (latest?.resolution === 'retryCorrect' || latest?.resolution === 'secondMiss') {
+      return PROFILE.recentSupportMultiplier;
+    }
+    if (mastered) {
+      if (latest?.resolution !== 'firstTryCorrect') return 1;
+      const restoreMs = PROFILE.masteryRestoreDays * 24 * 60 * 60 * 1000;
+      const ageMs = Math.min(restoreMs, Math.max(0, session.nowMs - latest.resolvedAtMs));
+      return PROFILE.freshMasteryMultiplier
+        + ((1 - PROFILE.freshMasteryMultiplier) * ageMs / restoreMs);
+    }
     if (!stats || stats.resolved < 3) return 1;
     const supported = stats.retryCorrect + stats.secondMiss;
     return Math.min(1.25, Math.max(1, 1 + 0.25 * (supported / stats.resolved)));
+  }
+
+  function adaptiveNeedMultiplier(session, entry) {
+    if (entry.grading === 'noStakes') return 1;
+    return needMultiplier(session, entry) * historicalNeedMultiplier(session, entry);
   }
 
   function purposeWeight(entry) {
@@ -181,7 +237,7 @@ const FOOTBALL_LEARNING = (() => {
       weight: Math.max(
         0.0001,
         purposeWeight(entry) * ((entry.weight || 1) / purposeTotals[entry.purpose])
-          * needMultiplier(session, entry) * historicalNeedMultiplier(session, entry)
+          * adaptiveNeedMultiplier(session, entry)
           * (recent.has(entry.familyId || entry.id) ? PROFILE.recencyMultiplier : 1)
       ),
     }));
@@ -222,6 +278,7 @@ const FOOTBALL_LEARNING = (() => {
   return Object.freeze({
     PROFILE,
     createSession,
+    adaptiveNeedMultiplier,
     weightedPick,
     supportFor,
     nextSupport,

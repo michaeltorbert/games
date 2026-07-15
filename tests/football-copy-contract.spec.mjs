@@ -40,10 +40,19 @@ test('copy tables cover their exact runtime key domains', async ({ page }) => {
 
 test('football runtime assets share one release version', async ({ page }) => {
   await page.goto('/football/');
-  const versions = await page.evaluate(() => {
+  const versions = await page.evaluate(async () => {
     const queryVersion = value => new URL(value, location.href).searchParams.get('v');
+    const registrySource = await fetch('../games.js').then(response => response.text());
+    const registryMatch = registrySource.match(/id:\s*'football'[\s\S]*?version:\s*'([^']+)'/);
+    const manifest = await fetch('../version.json').then(response => response.json());
     return {
       game: GAME_VERSION,
+      manifest: manifest.football,
+      registry: registryMatch?.[1] || null,
+      appleIcon: queryVersion(document.querySelector('link[rel="apple-touch-icon"]').href),
+      favicon: queryVersion(document.querySelector('link[rel="icon"]').href),
+      fonts: queryVersion(document.querySelector('link[href*="shared/fonts.css"]').href),
+      reset: queryVersion(document.querySelector('link[href*="shared/reset.css"]').href),
       css: queryVersion(document.querySelector('link[href*="football.css"]').href),
       copy: queryVersion(document.querySelector('script[src*="copy.js"]').src),
       learning: queryVersion(document.querySelector('script[src*="learning.js"]').src),
@@ -52,6 +61,7 @@ test('football runtime assets share one release version', async ({ page }) => {
       domain: queryVersion(document.querySelector('script[src*="football-domain.js"]').src),
       contextual: queryVersion(document.querySelector('script[src*="contextual-questions.js"]').src),
       js: queryVersion(document.querySelector('script[src*="football.js"]').src),
+      updater: queryVersion(document.querySelector('script[src*="shared/updater.js"]').src),
     };
   });
   expect(new Set(Object.values(versions)).size).toBe(1);

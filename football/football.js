@@ -1,4 +1,4 @@
-const GAME_VERSION = '1.20.1';
+const GAME_VERSION = '1.21.0';
 let prevPlayerScore = -1, prevOpponentScore = -1;
 let playerRunTimer = 0, playerCelebrateTimer = 0, playerCelebrateDelayTimer = 0;
 const EZ = 5;
@@ -171,7 +171,8 @@ function installRngStreams(rootSeed) {
 }
 
 function createLearningSession() {
-  return FOOTBALL_LEARNING.createSession(FOOTBALL_STATS.masterySnapshot());
+  const history = FOOTBALL_STATS.learningSnapshot();
+  return FOOTBALL_LEARNING.createSession(history.mastery, history.lastResolvedByConcept);
 }
 
 let learningSession = null;
@@ -976,6 +977,15 @@ function renderMathVisual() {
           : [`${data.distance} YDS`, '? ONES'];
       break;
     }
+    case 'base-ten-score': {
+      const tensUnit = data.tens === 1 ? 'TEN' : 'TENS';
+      const onesUnit = data.ones === 1 ? 'ONE' : 'ONES';
+      const teamLabel = String(data.team || 'TEAM').toUpperCase();
+      tokens = visual.result
+        ? [`${data.tens} ${tensUnit}`, `${data.ones} ${onesUnit}`, `= ${teamLabel} ${data.score}`]
+        : [`${teamLabel} ${data.score}`, data.targetPlace === 'tens' ? '? TENS' : '? ONES'];
+      break;
+    }
     case 'drive-strip':
       tokens = ['DRIVE START', visual.result ? `${visual.result.value} YDS` : '? YDS', 'NOW'];
       break;
@@ -987,6 +997,9 @@ function renderMathVisual() {
       break;
     case 'scoreboard-read':
       tokens = [data.label || 'SCOREBOARD'];
+      break;
+    case 'quarter-half':
+      tokens = [`Q${data.quarter}`, visual.result ? String(visual.result.value).toUpperCase() : 'HALF ?'];
       break;
     case 'comparison': {
       const relation = visual.result?.value;
