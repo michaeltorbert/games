@@ -66,7 +66,9 @@ const FOOTBALL_STATS = (() => {
     const learning = isRecord(input.learning) ? input.learning : {};
     return {
       completedPlays: safeInteger(input.completedPlays),
-      actualYards: Math.max(0, safeNumber(input.actualYards)),
+      // Net outcome yards are signed even though today's live play domain only
+      // proposes non-negative gains. Preserve future sacks/losses faithfully.
+      actualYards: safeNumber(input.actualYards),
       byPossession: {
         offense: safeInteger(possession.offense),
         defense: safeInteger(possession.defense),
@@ -110,6 +112,9 @@ const FOOTBALL_STATS = (() => {
   function normalizeCalls(value) {
     const calls = isRecord(value) ? value : {};
     return {
+      // `offense` is the call made by the team with possession. On player-
+      // defense rows it intentionally equals `opponent`, the compatibility
+      // alias retained for player-perspective history consumers.
       offense: safeString(calls.offense),
       defense: safeString(calls.defense),
       opponent: safeString(calls.opponent),
@@ -196,7 +201,9 @@ const FOOTBALL_STATS = (() => {
       question,
       attempts,
       resolution,
-      actualYards: Math.max(0, safeNumber(value.actualYards)),
+      // Unlike offered yards, actual outcome yards are signed history. Current
+      // gameplay still rejects negative proposals in football-domain.js.
+      actualYards: safeNumber(value.actualYards),
       outcome,
       postPlay: normalizeContext(value.postPlay),
     };

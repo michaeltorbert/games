@@ -208,3 +208,18 @@ Original prompt: Continue the agreed two-release plan from freshly deployed v1.2
 - Passed the final clean release gate: 32/32 Node contracts, 180 Playwright passes, 210 intentional cross-project skips, and 108/108 canonical screenshots verified across all six device targets.
 - Visually inspected coherent v1.21 teen-score and Q3-half questions on the primary iPad layout plus representative phone explanation and ordinary-question frames; the source facts, hidden answers, four touch targets, and Continue action remain readable and reachable.
 - Completed the prescribed browser-client smoke on a live offense question; `render_game_to_text()` reported one linked, uncommitted, answer-hidden question and produced no console/page-error artifact.
+
+---
+
+Original prompt: For football, find what to work on next, use concurrent issues where safe, and orchestrate independent multi-model planning, implementation, and review rounds through consensus.
+
+## Football v1.21.1 issue #72 hardening
+
+- Verified live `origin/main`, the open Football backlog, and the absence of an active PR before selecting work.
+- Selected issue #72 as the next coherent patch. Deferred the subjective field-image issue because it needs a separate visual direction and approval path rather than sharing this correctness release.
+- Reconciled independent Opus 4.8, Grok 4.5, GPT-5.6 Sol Ultra, Claude, and Fable 5 planning passes around five narrow contracts: distinct Coach Report concepts, documented call semantics, safe missing-snapshot recovery, signed historical actual yards, and explicit compact-overlay coverage.
+- Bumped Football to v1.21.1 and added the production fixes, contract documentation, focused regressions, and the `1180x740` compatibility artifact. Implementation and review verification are in progress.
+- Passed all 32 domain/property checks and 37 focused primary-iPad browser contracts. Visually inspected the compact final-overlay artifact with the longest fallback copy, then completed the prescribed live browser-client question smoke with truthful linked state and no console/page-error artifact.
+- Passed the complete release gate: 32/32 Node contracts, 184 Playwright tests passed, 230 intentional project skips, and 108/108 canonical screenshots verified across all six targets. Visually inspected every device's final overlay plus the compact compatibility artifact; Coach Report rows and replay controls remain readable and fully in frame.
+- Closed the Sol Ultra/Opus implementation loop with Opus approval, then completed the broader Grok 4.5, Gemini 3.1 Pro High, fresh Sol Ultra, and fresh Opus 4.8 review round with unanimous satisfaction. Explicitly rejected two behavior-neutral observations (a defensive Coach Report fallback and an ignored `return false`) as no-value churn; the finite-number concern was stale because `safeNumber` already requires `Number.isFinite`.
+- Completed a fresh repository-aware Fable 5 audit after expanding its read budget; it inspected the relevant Football state machine, domain, persistence, privacy, UI, tests, and release surfaces and found no actionable or user-call issue. Four new reviewers—Opus 4.8, GPT-5.6 Sol Ultra, Gemini 3.1 Pro High, and Grok 4.5—then reviewed Fable's findings and unanimously accepted them with no action, closing final consensus without another implementation cycle.

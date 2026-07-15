@@ -118,6 +118,14 @@ tests/artifacts/release-matrix/<project>/<NN-state>.png
 
 Playwright-owned temporary output is isolated under `tests/artifacts/playwright/`, so a later focused Playwright invocation cannot erase the canonical matrix. The pre-test step intentionally replaces the previous canonical matrix before a complete release run.
 
+The final overlay also has a focused compatibility check at `1180x740`, just
+inside the existing `max-height: 760px` compact rule and outside the six-device
+release matrix. The Coach Report spec verifies that the card and replay CTA fit
+the viewport, the CTA remains at least `44x44`, and the page has no horizontal
+overflow. Its attached `compact-final-overlay.png` stays under Playwright's
+temporary artifact tree and is intentionally not part of the canonical
+108-image gate.
+
 ### Quick measurement snippet
 
 For a fast pass in DevTools on `/football/?boot=offense-call`, run:
