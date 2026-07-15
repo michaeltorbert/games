@@ -1018,6 +1018,60 @@ test('invalid projection commits nothing and reopens the same defense call with 
   });
 });
 
+test('a missing defense snapshot rebuilds the visible read and absorbs the first tap', async ({ page }, testInfo) => {
+  primaryOnly(testInfo);
+  await cleanBoot(page, 0x62554);
+  const seeded = await seedDrive(page, DEFENSE_SEED);
+  const before = await activeContracts(page);
+  await page.evaluate(() => {
+    window.__diagnostics = [];
+    window.__results = [];
+    window.__learningEvents = [];
+    window.__missingSnapshotOriginal = state.opponentSnapshot;
+    window.addEventListener('football:diagnostic', event => window.__diagnostics.push(event.detail));
+    window.addEventListener('football:result', event => window.__results.push(event.detail));
+    window.addEventListener('football:learning', event => window.__learningEvents.push(event.detail));
+    state.opponentSnapshot = null;
+  });
+
+  await chooseCall(page, 'Run Defense');
+  const recovered = await page.evaluate(() => ({
+    contracts: window.__footballTest.activeContracts(),
+    snapshot: window.__footballTest.opponentSnapshot(),
+    newReference: state.opponentSnapshot !== window.__missingSnapshotOriginal,
+    diagnostics: window.__diagnostics,
+    results: window.__results,
+    learningEvents: window.__learningEvents,
+  }));
+
+  expect(recovered.contracts.render.mode).toBe('call');
+  expect(recovered.contracts.render.possession).toBe('defense');
+  expect(recovered.contracts.render.plays).toBe(seeded.plays);
+  expect(recovered.contracts.render.absoluteYard).toBe(seeded.absoluteYard);
+  expect(recovered.contracts.render.totalYards).toEqual(seeded.totalYards);
+  expect(recovered.contracts.activeSnap).toBeNull();
+  expect(recovered.contracts.questionInstance).toBeNull();
+  expect(recovered.contracts.pendingResolution).toBeNull();
+  expect(recovered.contracts.statsSession).toEqual(before.statsSession);
+  expect(recovered.contracts.learning).toEqual(before.learning);
+  expect(recovered.snapshot).toBeTruthy();
+  expect(recovered.newReference).toBe(true);
+  expect(recovered.contracts.render.opponentSnapshot).toBeTruthy();
+  expect(recovered.contracts.render.defenseRead).toMatch(/^Pre-snap read:/);
+  expect(recovered.contracts.render.defenseRead).not.toContain('plannedCallKey');
+  expect(recovered.diagnostics).toEqual([
+    expect.objectContaining({ schemaVersion: 1, code: 'missing-opponent-snapshot' }),
+  ]);
+  expect(recovered.results).toEqual([]);
+  expect(recovered.learningEvents).toEqual([]);
+
+  await chooseCall(page, 'Run Defense');
+  const afterSecondTap = await activeContracts(page);
+  expect(afterSecondTap.render.mode).toBe('question');
+  expect(afterSecondTap.activeSnap.context.privateOpponentSnapshot).toEqual(recovered.snapshot);
+  expect(afterSecondTap.statsSession.completedPlays).toHaveLength(0);
+});
+
 test('late question preparation failure rolls back and never masquerades as a bypass', async ({ page }, testInfo) => {
   primaryOnly(testInfo);
   await cleanBoot(page, 0x62654);
@@ -1100,6 +1154,12 @@ test('a frozen defense snap owns the exact pre-snap plan without leaking it to p
     stats: window.__footballTest.statsSession(),
     events: window.__publicEvents,
   }));
+  expect(publicPayload.stats.completedPlays[0].calls).toEqual({
+    offense: before.activeSnap.context.calls.offense,
+    defense: before.activeSnap.context.calls.defense,
+    opponent: before.activeSnap.context.privateOpponentSnapshot.plannedCallKey,
+    matchup: before.activeSnap.context.calls.matchup,
+  });
   const serialized = JSON.stringify(publicPayload);
   expect(serialized).not.toContain('privateOpponentSnapshot');
   expect(serialized).not.toContain('plannedCallKey');

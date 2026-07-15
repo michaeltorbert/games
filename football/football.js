@@ -1,4 +1,4 @@
-const GAME_VERSION = '1.21.0';
+const GAME_VERSION = '1.21.1';
 let prevPlayerScore = -1, prevOpponentScore = -1;
 let playerRunTimer = 0, playerCelebrateTimer = 0, playerCelebrateDelayTimer = 0;
 const EZ = 5;
@@ -209,7 +209,7 @@ function dispatchFootballEvent(type, detail) {
   }));
 }
 
-function reportQuestionDiagnostic(code, details = {}) {
+function reportFootballDiagnostic(code, details = {}) {
   const diagnostic = {
     schemaVersion: 1,
     code,
@@ -218,7 +218,7 @@ function reportQuestionDiagnostic(code, details = {}) {
     contextId: details.contextId ?? null,
     questionInstanceId: details.questionInstanceId ?? null,
   };
-  console.warn(`[football:${code}]`, details.message || 'Contextual question subsystem fallback');
+  console.warn(`[football:${code}]`, details.message || 'Football recovery diagnostic');
   dispatchFootballEvent('football:diagnostic', diagnostic);
   return diagnostic;
 }
@@ -551,6 +551,8 @@ function statsContextFromSnap(snap) {
 function statsCallsFromSnap(snap) {
   const calls = snap.context.calls;
   return {
+    // `offense` always means the team with the ball. During player defense it
+    // intentionally matches the backward-compatible `opponent` alias below.
     offense: calls.offense,
     defense: calls.defense,
     opponent: snap.context.possession === 'defense' ? calls.offense : null,
@@ -1377,7 +1379,7 @@ function restoreCallAfterInvalid(opponentSnapshot = null) {
 
 function handleInvalidSnap(error, opponentSnapshot = null) {
   pendingStatsPlay = null;
-  reportQuestionDiagnostic(error?.code || 'invalid-context', {
+  reportFootballDiagnostic(error?.code || 'invalid-context', {
     message: error?.message || 'The football context or projection was invalid.',
     diagnostics: error?.diagnostics || null,
     familyId: error?.familyId ?? null,
@@ -1396,7 +1398,7 @@ function snapOpponentSnapshot(snap) {
 function handleQuestionPreparationFailure(error, snap, question) {
   pendingStatsPlay = null;
   const preservedSnapshot = snapOpponentSnapshot(snap);
-  reportQuestionDiagnostic('question-presentation-failure', {
+  reportFootballDiagnostic('question-presentation-failure', {
     message: error?.message || 'The contextual question UI could not be prepared.',
     familyId: question?.familyId ?? null,
     contextId: snap?.contextId ?? null,
@@ -1469,7 +1471,7 @@ function bypassQuestionSubsystem(snap, error, feedbackCopy) {
     }), snapOpponentSnapshot(snap));
     return;
   }
-  reportQuestionDiagnostic(error?.code || 'question-subsystem-failure', {
+  reportFootballDiagnostic(error?.code || 'question-subsystem-failure', {
     message: error?.message || 'The contextual question could not be built.',
     familyId: error?.familyId ?? null,
     contextId: error?.contextId ?? snap.contextId,
@@ -1533,7 +1535,16 @@ function defenseMatches(defenseCallKey, opponentCallKey) {
 function selectDefenseCall(defenseCallKey) {
   if (state.phase !== 'call' || state.possession !== 'defense') return;
   const selection = state.opponentSnapshot;
-  if (!selection) return;
+  if (!selection) {
+    reportFootballDiagnostic('missing-opponent-snapshot', {
+      message: 'The defensive call phase was missing its frozen opponent plan.',
+    });
+    // Do not judge this click against a plan the player never saw. Rebuild a
+    // truthful public read, stay in the call phase, and require a fresh tap.
+    showCallPrompt();
+    setFeedback('The offense reset its look. Check the new read, then call the coverage again.', 'info');
+    return false;
+  }
   const opponentCallKey = selection.plannedCallKey;
   const matched = defenseMatches(defenseCallKey, opponentCallKey);
   const defenseCall = DEFENSE_CALLS[defenseCallKey];
@@ -2317,21 +2328,36 @@ function buildCoachReport() {
 
   const score = (item) => (item.firstTryCorrect + 0.75 * item.retryCorrect) / item.resolved;
   const supportNeed = (item) => (item.retryCorrect + item.secondMiss) / item.resolved;
+  const stableConceptOrder = (a, b) =>
+    a.label.localeCompare(b.label) || a.concept.localeCompare(b.concept);
   const strongest = concepts
     .filter((item) => item.firstTryCorrect + item.retryCorrect > 0)
-    .sort((a, b) => score(b) - score(a) || b.resolved - a.resolved || a.label.localeCompare(b.label))[0];
-  const practice = concepts
+    .sort((a, b) => score(b) - score(a) || b.resolved - a.resolved || stableConceptOrder(a, b))[0];
+  const practiceCandidates = concepts
     .filter((item) => item.retryCorrect + item.secondMiss > 0)
-    .sort((a, b) => supportNeed(b) - supportNeed(a) || b.secondMiss - a.secondMiss || a.label.localeCompare(b.label))[0];
+    .sort((a, b) => supportNeed(b) - supportNeed(a) || b.secondMiss - a.secondMiss || stableConceptOrder(a, b));
+  const practice = practiceCandidates.find((item) => item.concept !== strongest?.concept) || null;
   const rows = [];
+
+  if (concepts.length === 1 && strongest && practiceCandidates[0]?.concept === strongest.concept) {
+    return [
+      { label: 'Building today', value: strongest.label },
+      { label: 'Coach says', value: 'Great job using support and trying again' },
+    ];
+  }
 
   if (strongest) rows.push({ label: 'Strong today', value: strongest.label });
   if (practice) {
     rows.push({ label: 'Practice next', value: practice.label });
   } else if (strongest) {
     const challenge = [...concepts]
-      .sort((a, b) => a.resolved - b.resolved || a.label.localeCompare(b.label))[0];
-    rows.push({ label: 'Next challenge', value: challenge.label });
+      .filter((item) => item.concept !== strongest.concept)
+      .sort((a, b) => a.resolved - b.resolved || stableConceptOrder(a, b))[0];
+    rows.push(challenge
+      ? { label: 'Next challenge', value: challenge.label }
+      : { label: 'Coach says', value: 'Keep building on that great work' });
+  } else if (practiceCandidates[0]) {
+    rows.push({ label: 'Practice next', value: practiceCandidates[0].label });
   }
   if (!strongest) rows.push({ label: 'Keep going', value: 'Every try builds your skill' });
   return rows.slice(0, 2);

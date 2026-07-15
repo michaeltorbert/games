@@ -80,3 +80,14 @@ repository-level `AGENTS.md`.
 - Preserve opponent privacy. Before a defensive selection, UI and general game
   state may expose only the visible opponent look/tendency; the planned call is
   restricted to the private frozen snapshot and narrow test seams.
+
+## Play-History Semantics
+
+- `calls.offense` is the call made by the team with possession. During player
+  defense, it is therefore the opponent's offensive call and intentionally
+  matches the backward-compatible `calls.opponent` alias. `calls.defense` is
+  the player's coverage choice.
+- `offeredYards` remains non-negative. `actualYards` is signed net yardage from
+  the team-with-possession perspective so future sacks or losses retain their
+  persisted meaning. The live domain continues to reject negative proposed
+  gains until negative-play gameplay is implemented intentionally.

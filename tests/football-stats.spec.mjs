@@ -162,7 +162,7 @@ test('bypassed plays persist football results exactly once without learning or m
     const session = FOOTBALL_STATS.createSession();
     const pending = FOOTBALL_STATS.beginBypassedPlay(session, {
       preSnap: context(0, 17),
-      calls: { defense: 'deepPass', opponent: 'longPass', matchup: 'mismatch' },
+      calls: { offense: 'longPass', defense: 'deepPass', opponent: 'longPass', matchup: 'mismatch' },
       offeredYards: 17,
       links: { contextId: 'context-9' },
       question: {
@@ -354,6 +354,115 @@ test('schema-v1 history normalizes without a read write and persists on the next
     instructionalStatus: 'bypassed',
     links: { familyId: null, contextId: 'context-next', questionInstanceId: null },
   });
+});
+
+test('history preserves finite signed actual yards while offered gains stay non-negative', async ({ page }, testInfo) => {
+  primaryOnly(testInfo);
+  await page.addInitScript(() => {
+    const context = {
+      quarter: 2,
+      possession: 'defense',
+      down: 2,
+      yardsToGo: 8,
+      yardLine: 70,
+      firstDownLine: 62,
+      direction: -1,
+      score: { player: 7, opponent: 7 },
+      totalYards: { player: 40, opponent: 45 },
+      plays: 5,
+      drivePlays: 2,
+    };
+    localStorage.setItem('footballMathStats:v1', JSON.stringify({
+      schemaVersion: 2,
+      aggregates: {
+        completedPlays: 2,
+        actualYards: -7,
+        byPossession: { offense: 0, defense: 2 },
+        byOutcome: { noGain: 2 },
+        learning: {},
+      },
+      recentPlays: [
+        {
+          id: 'signed-row',
+          gameId: 'signed-game',
+          sequence: 1,
+          completedAt: '2026-07-14T12:00:00.000Z',
+          instructionalStatus: 'bypassed',
+          preSnap: context,
+          calls: { offense: 'shortRun', defense: 'runDefense', opponent: 'shortRun', matchup: 'matched' },
+          offeredYards: 4,
+          actualYards: -7,
+          outcome: 'noGain',
+          postPlay: context,
+        },
+        {
+          id: 'malformed-row',
+          gameId: 'signed-game',
+          sequence: 2,
+          completedAt: '2026-07-14T12:01:00.000Z',
+          instructionalStatus: 'bypassed',
+          preSnap: context,
+          calls: { offense: 'shortRun', defense: 'runDefense', opponent: 'shortRun', matchup: 'matched' },
+          offeredYards: -4,
+          actualYards: 'not-a-number',
+          outcome: 'noGain',
+          postPlay: context,
+        },
+      ],
+      mastery: {},
+    }));
+  });
+  await page.goto('/football/');
+
+  const result = await page.evaluate(() => {
+    const before = FOOTBALL_STATS.history();
+    const preSnap = before.recentPlays[0].postPlay;
+    const session = FOOTBALL_STATS.createSession();
+    const pending = FOOTBALL_STATS.beginBypassedPlay(session, {
+      preSnap,
+      calls: { offense: 'mediumPass' },
+      offeredYards: 5,
+      links: { contextId: 'signed-next' },
+    });
+    FOOTBALL_STATS.completeBypassedPlay(session, pending, {
+      actualYards: -5,
+      outcome: 'noGain',
+      postPlay: { ...preSnap, yardLine: preSnap.yardLine + 5, plays: preSnap.plays + 1 },
+    });
+    let negativeGainError = null;
+    try {
+      FOOTBALL_DOMAIN.projectGain({
+        contextId: 'negative-domain-probe',
+        possession: 'offense',
+        direction: 1,
+        quarter: 1,
+        down: 1,
+        yardsToGo: 10,
+        yardLine: 20,
+        firstDownLine: 30,
+        driveStart: 20,
+        scores: { player: 0, opponent: 0 },
+        totalYards: { player: 0, opponent: 0 },
+        plays: 0,
+        drivePlays: 0,
+        calls: { offense: 'shortRun', defense: null, matchup: null },
+      }, -1);
+    } catch (error) {
+      negativeGainError = error.code;
+    }
+    return { before, after: FOOTBALL_STATS.history(), negativeGainError };
+  });
+
+  expect(result.before.schemaVersion).toBe(2);
+  expect(result.before.aggregates.actualYards).toBe(-7);
+  expect(result.before.recentPlays[0].actualYards).toBe(-7);
+  expect(result.before.recentPlays[0].offeredYards).toBe(4);
+  expect(result.before.recentPlays[1].actualYards).toBe(0);
+  expect(result.before.recentPlays[1].offeredYards).toBe(0);
+  expect(result.after.schemaVersion).toBe(2);
+  expect(result.after.aggregates.actualYards).toBe(-12);
+  expect(result.after.recentPlays.at(-1).actualYards).toBe(-5);
+  expect(result.negativeGainError).toBe('INVALID_GAIN');
 });
 
 test('learning snapshots select the newest valid graded evidence without mutating stored history', async ({ page }, testInfo) => {
