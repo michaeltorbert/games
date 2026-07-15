@@ -97,6 +97,9 @@ function recompute(question) {
     case 'distance': return Math.abs(operands[0] - operands[1]);
     case 'tensOfDistance': return Math.floor(Math.abs(operands[0] - operands[1]) / 10);
     case 'onesOfDistance': return Math.abs(operands[0] - operands[1]) % 10;
+    case 'tensOfScore': return Math.floor(operands[0] / 10);
+    case 'onesOfScore': return operands[0] % 10;
+    case 'halfFromQuarter': return operands[0] <= 2 ? '1st half' : '2nd half';
     case 'absoluteDifference': return Math.abs(operands[0] - operands[1]);
     case 'add': return operands[0] + operands[1];
     case 'compare': return operands[0] < operands[1] ? '<' : operands[0] > operands[1] ? '>' : '=';
@@ -283,7 +286,7 @@ test('goal distance, drive movement, place value, whole tens, committed scores, 
   const required = [
     'goal-distance-read', 'goal-distance-tens', 'goal-distance-ones',
     'drive-distance-scaffolded', 'committed-score-total', 'committed-score-difference',
-    'quarter-read', 'down-read', 'goal-distance-minus-whole-tens',
+    'quarter-read', 'half-read', 'down-read', 'goal-distance-minus-whole-tens',
     'drive-distance-plus-whole-tens',
   ];
   for (const snap of [forward, reverse]) {
@@ -291,6 +294,111 @@ test('goal distance, drive movement, place value, whole tens, committed scores, 
     for (const familyId of required) {
       assert.ok(ids.includes(familyId), `${snap.context.possession}:${familyId}`);
       verifyGrounding(questions, snap, questions.build(snap, familyId));
+    }
+  }
+});
+
+test('half and teen-score families use only the frozen quarter and real committed scoreboard values', () => {
+  const { domain, questions } = loadModules();
+  const ordinarySnaps = [1, 2, 3, 4].map((quarter) => makeSnap(domain, { quarter }, 4));
+  const quarterCandidate = questions.inspect(ordinarySnaps[0]).eligible
+    .find((candidate) => candidate.familyId === 'quarter-read');
+  assert.ok(quarterCandidate);
+
+  for (const [index, snap] of ordinarySnaps.entries()) {
+    const quarter = index + 1;
+    const candidate = questions.inspect(snap).eligible.find((entry) => entry.familyId === 'half-read');
+    assert.ok(candidate, `half-read should be available during an ordinary Q${quarter} snap`);
+    assert.ok(candidate.weight < quarterCandidate.weight);
+    const question = questions.build(snap, 'half-read');
+    assert.equal(question.answer.value, quarter <= 2 ? '1st half' : '2nd half');
+    assert.equal(question.choices.length, 4);
+    assert.ok(question.choices.filter((choice) => choice.id !== question.correctChoiceId).length >= 2);
+    assert.deepEqual(plain(question.bindings), [{
+      id: 'quarter', source: { kind: 'context', path: '/context/quarter' }, value: quarter,
+    }]);
+    verifyGrounding(questions, snap, question);
+  }
+
+  for (const score of [10, 14, 19]) {
+    const snap = makeSnap(domain, { scores: { player: score, opponent: 7 } }, 4);
+    for (const familyId of ['committed-score-tens', 'committed-score-ones']) {
+      const question = questions.build(snap, familyId);
+      const targetPlace = familyId.endsWith('tens') ? 'tens' : 'ones';
+      assert.equal(question.bindings[0].source.path, '/context/scores/player');
+      assert.equal(question.bindings[0].value, score);
+      assert.equal(question.answer.value, targetPlace === 'tens' ? Math.floor(score / 10) : score % 10);
+      assert.equal(question.visuals.initial.data.score, score);
+      assert.equal(question.visuals.initial.data[targetPlace], null);
+      assert.equal(question.visuals.guided.data[targetPlace], null);
+      assert.equal(question.visuals.worked.data[targetPlace], question.answer.value);
+      assert.doesNotMatch([
+        question.prompt.text,
+        question.hint.text,
+        question.workedExplanation.text,
+      ].join(' '), /7\s*\+\s*7|two touchdowns/i);
+      verifyGrounding(questions, snap, question);
+    }
+  }
+
+  const playerPreferred = makeSnap(domain, { scores: { player: 14, opponent: 19 } }, 4);
+  assert.equal(
+    questions.build(playerPreferred, 'committed-score-ones').bindings[0].source.path,
+    '/context/scores/player',
+  );
+  const opponentFallback = makeSnap(domain, {
+    possession: 'defense', direction: -1, yardLine: 70, firstDownLine: 60,
+    driveStart: 80, scores: { player: 7, opponent: 14 },
+  }, 4);
+  const fallback = questions.build(opponentFallback, 'committed-score-ones');
+  assert.equal(fallback.bindings[0].source.path, '/context/scores/opponent');
+  assert.equal(fallback.visuals.initial.data.team, 'UNC');
+  const fallbackTens = questions.build(opponentFallback, 'committed-score-tens');
+  assert.equal(fallbackTens.bindings[0].source.path, '/context/scores/opponent');
+  assert.equal(fallbackTens.answer.value, 1);
+  assert.equal(fallbackTens.visuals.initial.data.team, 'UNC');
+
+  for (const scores of [{ player: 9, opponent: 7 }, { player: 20, opponent: 21 }]) {
+    const snap = makeSnap(domain, { scores }, 4);
+    const inspection = questions.inspect(snap);
+    for (const familyId of ['committed-score-tens', 'committed-score-ones']) {
+      assert.equal(inspection.eligible.some((entry) => entry.familyId === familyId), false);
+      assert.equal(
+        inspection.declined.find((entry) => entry.familyId === familyId)?.reason.code,
+        'no-committed-teen-score',
+      );
+    }
+  }
+
+  const touchdownWithFourteen = makeSnap(domain, {
+    yardLine: 95, firstDownLine: 100, yardsToGo: 5, driveStart: 90,
+    scores: { player: 14, opponent: 7 },
+  }, 20);
+  const touchdownQuestion = questions.build(touchdownWithFourteen, 'committed-score-ones');
+  assert.equal(touchdownQuestion.bindings[0].value, 14);
+  assert.equal(touchdownQuestion.answer.value, 4);
+  assert.doesNotMatch(touchdownQuestion.prompt.text, /21|7\s*\+\s*7/i);
+});
+
+test('whole-ten movement families accept exact 10 and 20 yard moves but never by-five moves', () => {
+  const { domain, questions } = loadModules();
+  for (const direction of [1, -1]) {
+    const base = direction === 1
+      ? { possession: 'offense', direction: 1, yardLine: 30, firstDownLine: 35, yardsToGo: 5, driveStart: 20 }
+      : { possession: 'defense', direction: -1, yardLine: 70, firstDownLine: 65, yardsToGo: 5, driveStart: 80 };
+    for (const gain of [10, 20]) {
+      const snap = makeSnap(domain, base, gain);
+      const ids = questions.inspect(snap).eligible.map((entry) => entry.familyId);
+      for (const familyId of ['goal-distance-minus-whole-tens', 'drive-distance-plus-whole-tens']) {
+        assert.ok(ids.includes(familyId), `${familyId} should accept ${gain} yards in direction ${direction}`);
+        verifyGrounding(questions, snap, questions.build(snap, familyId));
+      }
+    }
+    for (const gain of [5, 15, 25]) {
+      const snap = makeSnap(domain, base, gain);
+      const ids = questions.inspect(snap).eligible.map((entry) => entry.familyId);
+      assert.equal(ids.includes('goal-distance-minus-whole-tens'), false);
+      assert.equal(ids.includes('drive-distance-plus-whole-tens'), false);
     }
   }
 });
@@ -375,6 +483,8 @@ test('high committed-score relations and ungrounded clock or calendar work stay 
   const eligibleIds = inspection.eligible.map((candidate) => candidate.familyId);
   assert.equal(eligibleIds.includes('committed-score-total'), false);
   assert.equal(eligibleIds.includes('committed-score-difference'), false);
+  assert.equal(eligibleIds.includes('committed-score-tens'), true);
+  assert.equal(eligibleIds.includes('committed-score-ones'), true);
   for (const forbidden of ['compare-two-digit-preview', 'hundred-chart-small-move', 'add-within-10', 'clock-read', 'am-pm', 'calendar-read', 'sack-loss']) {
     assert.equal(eligibleIds.includes(forbidden), false);
     assert.throws(() => questions.build(snap, forbidden), (error) => error.code === 'unknown-family');
@@ -571,6 +681,7 @@ test('child-facing contextual copy avoids implementation jargon', () => {
     'drive-distance-scaffolded',
     'committed-score-total',
     'committed-score-difference',
+    'half-read',
     'drive-play-ordinal',
     'quarter-read',
     'down-read',
@@ -581,6 +692,21 @@ test('child-facing contextual copy avoids implementation jargon', () => {
 
   for (const familyId of familyIds) {
     const question = questions.build(snap, familyId);
+    const copy = [
+      question.prompt.text,
+      question.hint.text,
+      question.workedExplanation.text,
+      ...Object.values(question.visuals).map(visual => visual.ariaLabel),
+    ].join(' ');
+    assert.doesNotMatch(copy, jargon, familyId);
+  }
+
+  const teenSnap = makeSnap(domain, {
+    quarter: 3,
+    scores: { player: 14, opponent: 7 },
+  }, 4);
+  for (const familyId of ['committed-score-tens', 'committed-score-ones']) {
+    const question = questions.build(teenSnap, familyId);
     const copy = [
       question.prompt.text,
       question.hint.text,

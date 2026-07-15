@@ -330,6 +330,61 @@ test('pre-answer goal-distance place-value visuals hide the requested tens or on
   }
 });
 
+test('teen-score visuals use the real scoreboard 14 while hiding its requested place until worked', async ({ page }, testInfo) => {
+  primaryOnly(testInfo);
+  await cleanBoot(page, 0x12114);
+
+  for (const familyId of ['committed-score-tens', 'committed-score-ones']) {
+    const stages = await page.evaluate((id) => {
+      const snap = FOOTBALL_DOMAIN.createSnap({
+        contextId: `teen-score-${id}`,
+        possession: 'offense', direction: 1, quarter: 3, down: 2,
+        yardsToGo: 6, yardLine: 34, firstDownLine: 40, driveStart: 27,
+        scores: { player: 14, opponent: 7 },
+        totalYards: { player: 83, opponent: 71 },
+        plays: 4, drivePlays: 2,
+        calls: { offense: 'shortRun', defense: null, matchup: null },
+        privateOpponentSnapshot: null,
+      }, { gain: 4, callKey: 'shortRun' });
+      const built = FOOTBALL_CONTEXTUAL_QUESTIONS.build(snap, id, {
+        support: 'initial', presentationRng: () => 0.5,
+      });
+      state.activeSnap = snap;
+      state.questionInstance = FOOTBALL_DOMAIN.deepFreeze(FOOTBALL_DOMAIN.clone({
+        ...built, contextId: snap.contextId, questionInstanceId: `teen-score-${id}`,
+      }));
+      state.questionUi = makeQuestionUiState();
+      state.phase = 'question';
+      const render = (support) => {
+        state.questionUi.support = support;
+        syncQuestionMirrors();
+        renderMathVisual();
+        return {
+          text: document.getElementById('math-overlay').textContent,
+          ariaLabel: document.getElementById('math-overlay').getAttribute('aria-label'),
+        };
+      };
+      return { answer: built.answer.value, initial: render('initial'), guided: render('guided'), worked: render('worked') };
+    }, familyId);
+
+    const requested = familyId.endsWith('tens') ? 'TENS' : 'ONES';
+    expect(stages.initial.text).toContain('DUKE 14');
+    expect(stages.initial.text).toContain(`? ${requested}`);
+    expect(stages.initial.text).not.toContain('1 TEN');
+    expect(stages.initial.text).not.toContain('4 ONES');
+    expect(stages.initial.text).not.toContain('= DUKE 14');
+    expect(stages.guided.text).toContain('DUKE 14');
+    expect(stages.guided.text).toContain(`? ${requested}`);
+    expect(stages.guided.text).not.toContain('1 TEN');
+    expect(stages.guided.text).not.toContain('4 ONES');
+    expect(stages.initial.ariaLabel).not.toMatch(/1 ten|4 ones/i);
+    expect(stages.guided.ariaLabel).not.toMatch(/1 ten|4 ones/i);
+    expect(stages.worked.text).toContain('1 TEN');
+    expect(stages.worked.text).toContain('4 ONES');
+    expect(stages.worked.text).toContain('= DUKE 14');
+  }
+});
+
 test('a correct offense answer commits the frozen proposal exactly once', async ({ page }, testInfo) => {
   primaryOnly(testInfo);
   await cleanBoot(page, 0x10154);

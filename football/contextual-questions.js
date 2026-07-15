@@ -18,6 +18,9 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
     'distance',
     'tensOfDistance',
     'onesOfDistance',
+    'tensOfScore',
+    'onesOfScore',
+    'halfFromQuarter',
     'absoluteDifference',
     'add',
     'goalDistanceAfterGain',
@@ -176,6 +179,39 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
     return snap.context.possession === 'offense'
       ? contextBinding(snap, 'teamTotalYards', '/context/totalYards/player')
       : contextBinding(snap, 'teamTotalYards', '/context/totalYards/opponent');
+  }
+
+  function committedTeenScoreTarget(snap) {
+    const candidates = [
+      { team: 'Duke', score: snap.context.scores.player, path: '/context/scores/player' },
+      { team: 'UNC', score: snap.context.scores.opponent, path: '/context/scores/opponent' },
+    ];
+    return candidates.find(({ score }) => Number.isInteger(score) && score >= 10 && score <= 19) || null;
+  }
+
+  function teenScorePlaceValue(snap, targetPlace) {
+    const target = committedTeenScoreTarget(snap);
+    if (!target) {
+      return { decline: decline('no-committed-teen-score', 'Neither committed scoreboard score is between 10 and 19.') };
+    }
+    const tens = Math.floor(target.score / 10);
+    const ones = target.score % 10;
+    const answer = targetPlace === 'tens' ? tens : ones;
+    return eligible(makeSemantic({
+      bindings: [contextBinding(snap, 'committedScore', target.path)],
+      operationType: targetPlace === 'tens' ? 'tensOfScore' : 'onesOfScore',
+      operandIds: ['committedScore'],
+      answer,
+      prompt: `${target.team} has ${target.score} points on the scoreboard. What digit is in the ${targetPlace} place of ${target.score}?`,
+      hint: `Look at the ${targetPlace} place in ${target.team}'s score, ${target.score}.`,
+      explanation: `${target.score} has ${tens} ${tens === 1 ? 'ten' : 'tens'} and ${ones} ${ones === 1 ? 'one' : 'ones'}.`,
+      choiceSpec: numericChoiceSpec(0, 9),
+      visualType: 'base-ten-score',
+      visualData: { team: target.team, score: target.score, tens, ones, targetPlace },
+      initialAriaLabel: `${target.team} score ${target.score}; the ${targetPlace} digit is hidden.`,
+      guidedAriaLabel: `Look at the ${targetPlace} place in ${target.team} score ${target.score}; the answer remains hidden.`,
+      workedAriaLabel: `${target.score} has ${tens} ${tens === 1 ? 'ten' : 'tens'} and ${ones} ${ones === 1 ? 'one' : 'ones'}.`,
+    }));
   }
 
   function goalRuleId(direction) {
@@ -645,6 +681,18 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
       },
     },
     {
+      meta: makeMeta({ familyId: 'committed-score-tens', skill: 'teen-place-value', concept: 'teen-place-value', purpose: 'completedPlaceValue', tier: 'two-digit-structure', weight: 0.8, operationType: 'tensOfScore', answerExposure: 'modeled-with-result-hidden', curriculumSource: 'workbook', introducedOnPage: 124 }),
+      derive(snap) {
+        return teenScorePlaceValue(snap, 'tens');
+      },
+    },
+    {
+      meta: makeMeta({ familyId: 'committed-score-ones', skill: 'teen-place-value', concept: 'teen-place-value', purpose: 'completedPlaceValue', tier: 'two-digit-structure', weight: 1.4, operationType: 'onesOfScore', answerExposure: 'modeled-with-result-hidden', curriculumSource: 'workbook', introducedOnPage: 124 }),
+      derive(snap) {
+        return teenScorePlaceValue(snap, 'ones');
+      },
+    },
+    {
       meta: makeMeta({
         familyId: 'drive-play-ordinal',
         skill: 'ordinal-numbers',
@@ -689,6 +737,25 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
           initialAriaLabel: `Scoreboard quarter display Q${snap.context.quarter}.`,
           guidedAriaLabel: `Match Q${snap.context.quarter} to its order number.`,
           workedAriaLabel: `Q${snap.context.quarter} is the ${answer} quarter.`,
+        }));
+      },
+    },
+    {
+      meta: makeMeta({ familyId: 'half-read', skill: 'quarter-half-structure', concept: 'quarter-half-structure', purpose: 'coreReview', tier: 'football-context', weight: 0.4, operationType: 'halfFromQuarter', answerExposure: 'modeled-with-result-hidden', curriculumSource: 'football-only' }),
+      derive(snap) {
+        const quarter = snap.context.quarter;
+        const answer = quarter <= 2 ? '1st half' : '2nd half';
+        return eligible(makeSemantic({
+          bindings: [contextBinding(snap, 'quarter', '/context/quarter')],
+          operationType: 'halfFromQuarter', operandIds: ['quarter'], answer,
+          prompt: `The scoreboard shows Q${quarter}. What part of the game is it?`,
+          hint: 'Q1 and Q2 make the 1st half. Q3 and Q4 make the 2nd half.',
+          explanation: `Q1 and Q2 make the 1st half. Q3 and Q4 make the 2nd half. Q${quarter} is in the ${answer}.`,
+          choiceSpec: fixedChoiceSpec(['1st half', 'Halftime', '2nd half', 'Final']), visualType: 'quarter-half',
+          visualData: { quarter },
+          initialAriaLabel: `Scoreboard quarter Q${quarter}; the matching half is hidden.`,
+          guidedAriaLabel: `Group Q1 and Q2 together, then Q3 and Q4 together; the half for Q${quarter} remains hidden.`,
+          workedAriaLabel: `Q${quarter} is in the ${answer}.`,
         }));
       },
     },
@@ -881,7 +948,7 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
     const stage = (name) => {
       const revealsAnswer = name === 'worked' || visibleAtSource;
       const data = clone(semantic.visualData);
-      if (!revealsAnswer && semantic.visualType === 'base-ten-distance') {
+      if (!revealsAnswer && ['base-ten-distance', 'base-ten-score'].includes(semantic.visualType)) {
         if (data.targetPlace === 'tens') data.tens = null;
         if (data.targetPlace === 'ones') data.ones = null;
       }

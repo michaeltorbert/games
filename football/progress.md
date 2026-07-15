@@ -179,3 +179,32 @@ Original prompt: Execute the agreed two-release Football plan from current live 
 - Published Codex-authored draft PR #76 through `codex-bot-mt[bot]`; Opus 4.8's full-diff pass confirmed the commit/rollback/answer-withholding invariants and identified one theoretical 100-yard place-value boundary.
 - Made the two-digit family contract explicitly 10 through 99 and added a maximum-legal-distance plus malformed-100-yard regression; focused unit and browser checks pass.
 - Follow-up Opus review, merge, and live deployment verification remain TODO.
+
+### v1.20.1 release closure
+
+- Opus 4.8 independently approved the exact final patch through `claude-bot-mt[bot]` after the 100-yard place-value boundary was made explicitly ineligible.
+- Squash-merged PR #76 through `codex-bot-mt[bot]` as main commit `76fca1920a01a57b23b60c69e12273b1b4feb185`.
+- Verified the exact merged commit's successful Pages deployment and uncached live Football v1.20.1 assets; issues #74 and #75 closed with the merge while the broader tracking issue #72 remains open.
+
+---
+
+Original prompt: Continue the agreed two-release plan from freshly deployed v1.20.1, implementing adaptive mastered refreshers and the approved football-native quarter/half, teen-score, and whole-ten practice with Codex as author, subagent review, Opus as the main reviewer, and one minimal Fable final pass.
+
+## Football v1.21 adaptive refreshers
+
+- Created `codex/football-v121-adaptive-refreshers` directly from deployed main commit `76fca192` and kept the archived pre-v1.20 attempt local-only as design evidence rather than copying obsolete code.
+- Added failing-first persistence contracts: historical missing or malformed timestamps are no longer converted to the current time, schema-1 reads no longer write, and normalized schema-2 data persists only with the next real completed play.
+- Added a read-only learning snapshot that returns per-concept mastery and the newest valid graded resolution while skipping bypassed, no-stakes, and invalid-date evidence.
+- Added per-concept mastery thresholds (four resolutions, at least 80 percent first-try, at most 10 percent second-miss), a nonzero 0.25 fresh refresher multiplier, linear 30-day restoration, and a 1.25 rebound after supported work.
+- Tracked the latest current-session resolution separately so struggle raises practice immediately but a later first-try success can refresh the same mastered concept instead of leaving the struggle boost sticky.
+- Added a low-weight `half-read` question to the ordinary per-snap pool for all four quarters; it uses only the frozen quarter and is not restricted to period breaks.
+- Added graded tens/ones questions for actual committed scoreboard values from 10 through 19, including 14, with the requested decomposition hidden until worked support and no invented touchdown arithmetic.
+- Kept the existing exact whole-ten movement families and added bidirectional regressions proving 10/20-yard moves qualify while 5/15/25-yard moves do not; no by-5 family was added.
+- Kept defense, four-quarter game length, page-145 completion, page-179 question ceiling, and the v2/localStorage key contract unchanged.
+- Bumped Football and all 13 cache-busting/version surfaces to v1.21.0.
+- The first full matrix exposed a cross-feature contract: binary half choices made a distinct second miss impossible after the first wrong choice was disabled. Replaced them with four truthful game-stage choices and added the minimum-two-wrong-choice regression; all six device projects now exercise the second-miss path.
+- Independent Codex implementation and test-gap reviewers found no blockers. Adopted their useful hardening for mastered-family scheduler reachability, exact below-threshold multipliers, both teen-score place families on a reverse/defensive snap, and every release-version/cache surface.
+- The first full run's particle and mocked-clock failures passed exact isolated reruns and were confirmed as timing-only. A later matrix run caught the real binary-choice issue above.
+- Passed the final clean release gate: 32/32 Node contracts, 180 Playwright passes, 210 intentional cross-project skips, and 108/108 canonical screenshots verified across all six device targets.
+- Visually inspected coherent v1.21 teen-score and Q3-half questions on the primary iPad layout plus representative phone explanation and ordinary-question frames; the source facts, hidden answers, four touch targets, and Continue action remain readable and reachable.
+- Completed the prescribed browser-client smoke on a live offense question; `render_game_to_text()` reported one linked, uncommitted, answer-hidden question and produced no console/page-error artifact.

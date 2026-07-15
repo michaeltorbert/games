@@ -185,7 +185,9 @@ const FOOTBALL_STATS = (() => {
       id: safeString(value.id, makeId('play')),
       gameId: safeString(value.gameId, 'unknown-game'),
       sequence: Math.max(1, safeInteger(value.sequence, 1)),
-      completedAt: safeString(value.completedAt, new Date().toISOString()),
+      // Preserve historical uncertainty. A missing or malformed timestamp must
+      // never be made to look freshly practiced merely because it was read.
+      completedAt: safeString(value.completedAt),
       instructionalStatus,
       links: normalizeLinks(value, value.question),
       preSnap: normalizeContext(value.preSnap),
@@ -245,7 +247,6 @@ const FOOTBALL_STATS = (() => {
     const supportedSchema = isRecord(parsed)
       && (parsed.schemaVersion === SCHEMA_VERSION || parsed.schemaVersion === LEGACY_SCHEMA_VERSION);
     storeCache = supportedSchema ? normalizeStore(parsed) : emptyStore();
-    if (supportedSchema && parsed.schemaVersion === LEGACY_SCHEMA_VERSION) saveStore(storeCache);
     return storeCache;
   }
 
@@ -406,6 +407,27 @@ const FOOTBALL_STATS = (() => {
     return JSON.parse(JSON.stringify(value));
   }
 
+  function learningSnapshot() {
+    const store = loadStore();
+    const lastResolvedByConcept = Object.create(null);
+    for (let index = store.recentPlays.length - 1; index >= 0; index--) {
+      const row = store.recentPlays[index];
+      if (row.instructionalStatus !== 'presented'
+        || !row.question
+        || row.question.grading === 'noStakes'
+        || !RESOLUTIONS.includes(row.resolution)
+        || !row.question.concept
+        || row.question.concept === 'unknown'
+        || Object.prototype.hasOwnProperty.call(lastResolvedByConcept, row.question.concept)
+        || !Number.isFinite(Date.parse(row.completedAt))) continue;
+      lastResolvedByConcept[row.question.concept] = {
+        completedAt: row.completedAt,
+        resolution: row.resolution,
+      };
+    }
+    return snapshot({ mastery: store.mastery, lastResolvedByConcept });
+  }
+
   return Object.freeze({
     STORAGE_KEY,
     SCHEMA_VERSION,
@@ -420,6 +442,7 @@ const FOOTBALL_STATS = (() => {
     completeBypassedPlay,
     history: () => snapshot(loadStore()),
     masterySnapshot: () => snapshot(loadStore().mastery),
+    learningSnapshot,
     sessionSnapshot: session => snapshot(session),
   });
 })();

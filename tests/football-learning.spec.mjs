@@ -99,6 +99,12 @@ test('runtime keeps factual page-145 completion with a separate page-179 questio
   expect(result.profile.recencyWindow).toBe(3);
   expect(result.profile.recencyMultiplier).toBeGreaterThan(0);
   expect(result.profile.recencyMultiplier).toBeLessThan(1);
+  expect(result.profile.masteryMinResolved).toBe(4);
+  expect(result.profile.masteryMinFirstTryRate).toBe(0.8);
+  expect(result.profile.masteryMaxSecondMissRate).toBe(0.1);
+  expect(result.profile.freshMasteryMultiplier).toBe(0.25);
+  expect(result.profile.masteryRestoreDays).toBe(30);
+  expect(result.profile.recentSupportMultiplier).toBe(1.25);
   expect(result.profile.purposeWeights).toEqual({
     weakSpot: 0.38,
     coreReview: 0.32,
@@ -109,6 +115,102 @@ test('runtime keeps factual page-145 completion with a separate page-179 questio
   expect(result.counts['recent-family']).toBeGreaterThan(0);
   expect(result.counts['fresh-family']).toBeGreaterThan(result.counts['recent-family']);
   expect(result.onlyRecent).toBe('recent-family');
+});
+
+test('mastered concepts age back into refreshers while the latest supported result takes priority', async ({ page }, testInfo) => {
+  primaryOnly(testInfo);
+  await page.goto('/football/?boot=offense-call');
+
+  const result = await page.evaluate(() => {
+    const DAY_MS = 24 * 60 * 60 * 1000;
+    const nowMs = Date.parse('2026-07-14T12:00:00.000Z');
+    const entry = {
+      id: 'adaptive-family', familyId: 'adaptive-family', skill: 'difference',
+      concept: 'adaptive-concept', purpose: 'weakSpot', grading: 'gate', weight: 1,
+    };
+    const question = { ...entry, contextId: 1, questionInstanceId: 1 };
+    const mastery = (firstTryCorrect, retryCorrect = 0, secondMiss = 0) => ({
+      'adaptive-concept': { firstTryCorrect, retryCorrect, secondMiss },
+    });
+    const latest = (resolution, ageDays) => ({
+      'adaptive-concept': {
+        completedAt: new Date(nowMs - (ageDays * DAY_MS)).toISOString(),
+        resolution,
+      },
+    });
+    const multiplier = (historicalMastery, historicalLatest, ageNow = nowMs) => {
+      const session = FOOTBALL_LEARNING.createSession(historicalMastery, historicalLatest, ageNow);
+      return FOOTBALL_LEARNING.adaptiveNeedMultiplier(session, entry);
+    };
+
+    const mastered = mastery(4);
+    const boundaryMastered = mastery(8, 1, 1);
+    const supportedSession = FOOTBALL_LEARNING.createSession(mastered, latest('firstTryCorrect', 0), nowMs);
+    FOOTBALL_LEARNING.recordResolved(supportedSession, question, 'retryCorrect', { support: 'guided' });
+    const afterSupport = FOOTBALL_LEARNING.adaptiveNeedMultiplier(supportedSession, entry);
+    FOOTBALL_LEARNING.recordResolved(supportedSession, question, 'firstTryCorrect', { support: 'none' });
+    const afterLaterFirstTry = FOOTBALL_LEARNING.adaptiveNeedMultiplier(supportedSession, entry);
+
+    const noStakesEntry = { ...entry, grading: 'noStakes' };
+    const noStakesSession = FOOTBALL_LEARNING.createSession(mastered, latest('firstTryCorrect', 0), nowMs);
+    const reachableSession = FOOTBALL_LEARNING.createSession(mastered, latest('firstTryCorrect', 0), nowMs);
+    reachableSession.recentFamilyIds.push(entry.familyId);
+    const reachableEntries = [entry, {
+      ...entry, id: 'fresh-other-family', familyId: 'fresh-other-family', concept: 'fresh-other-concept',
+    }];
+    const reachableCounts = { 'adaptive-family': 0, 'fresh-other-family': 0 };
+    for (let index = 0; index < 2000; index++) {
+      const selected = FOOTBALL_LEARNING.weightedPick(
+        reachableEntries,
+        reachableSession,
+        () => (index + 0.5) / 2000,
+      );
+      reachableCounts[selected.familyId]++;
+    }
+
+    return {
+      minimumFresh: multiplier(mastered, latest('firstTryCorrect', 0)),
+      exactRateFresh: multiplier(boundaryMastered, latest('firstTryCorrect', 0)),
+      fifteenDays: multiplier(mastered, latest('firstTryCorrect', 15)),
+      thirtyDays: multiplier(mastered, latest('firstTryCorrect', 30)),
+      olderThanWindow: multiplier(mastered, latest('firstTryCorrect', 45)),
+      futureTimestamp: multiplier(mastered, latest('firstTryCorrect', -2)),
+      tooFewResults: multiplier(mastery(3), latest('firstTryCorrect', 0)),
+      belowFirstTryRate: multiplier(mastery(7, 2, 1), latest('firstTryCorrect', 0)),
+      aboveSecondMissRate: multiplier(mastery(8, 0, 2), latest('firstTryCorrect', 0)),
+      latestRetry: multiplier(mastered, latest('retryCorrect', 1)),
+      latestSecondMiss: multiplier(mastered, latest('secondMiss', 1)),
+      missingLatest: multiplier(mastered, {}),
+      invalidLatest: multiplier(mastered, {
+        'adaptive-concept': { completedAt: 'not-a-date', resolution: 'firstTryCorrect' },
+      }),
+      afterSupport,
+      afterLaterFirstTry,
+      noStakes: FOOTBALL_LEARNING.adaptiveNeedMultiplier(noStakesSession, noStakesEntry),
+      sessionLatest: supportedSession.latestResolvedByConcept,
+      reachableCounts,
+    };
+  });
+
+  expect(result.minimumFresh).toBeCloseTo(0.25, 8);
+  expect(result.exactRateFresh).toBeCloseTo(0.25, 8);
+  expect(result.fifteenDays).toBeCloseTo(0.625, 8);
+  expect(result.thirtyDays).toBeCloseTo(1, 8);
+  expect(result.olderThanWindow).toBeCloseTo(1, 8);
+  expect(result.futureTimestamp).toBeCloseTo(0.25, 8);
+  expect(result.tooFewResults).toBeCloseTo(1, 8);
+  expect(result.belowFirstTryRate).toBeCloseTo(1.075, 8);
+  expect(result.aboveSecondMissRate).toBeCloseTo(1.05, 8);
+  expect(result.latestRetry).toBeCloseTo(1.25, 8);
+  expect(result.latestSecondMiss).toBeCloseTo(1.25, 8);
+  expect(result.missingLatest).toBeCloseTo(1, 8);
+  expect(result.invalidLatest).toBeCloseTo(1, 8);
+  expect(result.afterSupport).toBeCloseTo(2.125, 8);
+  expect(result.afterLaterFirstTry).toBeCloseTo(0.25, 8);
+  expect(result.noStakes).toBe(1);
+  expect(result.sessionLatest).toEqual({ 'adaptive-concept': { resolution: 'firstTryCorrect' } });
+  expect(result.reachableCounts['adaptive-family']).toBeGreaterThan(0);
+  expect(result.reachableCounts['fresh-other-family']).toBeGreaterThan(result.reachableCounts['adaptive-family']);
 });
 
 test('adaptation and schema-v2 learning events retain grounded question identity', async ({ page }, testInfo) => {
@@ -157,8 +259,8 @@ test('adaptation and schema-v2 learning events retain grounded question identity
     });
     return {
       session,
-      atThree: FOOTBALL_LEARNING.weightedPick(entries, session, () => 0.55).familyId,
-      beforeThree: FOOTBALL_LEARNING.weightedPick(entries, beforeThreshold, () => 0.55).familyId,
+      atThree: FOOTBALL_LEARNING.weightedPick(entries, session, () => 0.51).familyId,
+      beforeThree: FOOTBALL_LEARNING.weightedPick(entries, beforeThreshold, () => 0.51).familyId,
       supportAfterPractice: FOOTBALL_LEARNING.supportFor({
         bySkill: { difference: { firstTryCorrect: 0, retryCorrect: 1, secondMiss: 1 } },
       }, 'difference', 'initial'),
