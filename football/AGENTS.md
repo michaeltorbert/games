@@ -88,6 +88,12 @@ repository-level `AGENTS.md`.
   matches the backward-compatible `calls.opponent` alias. `calls.defense` is
   the player's coverage choice.
 - `offeredYards` remains non-negative. `actualYards` is signed net yardage from
-  the team-with-possession perspective so future sacks or losses retain their
-  persisted meaning. The live domain continues to reject negative proposed
-  gains until negative-play gameplay is implemented intentionally.
+  the team-with-possession perspective; sacks and losses are negative for that
+  offense in either possession mode. Negative resolutions clip at the offense's
+  own 1-yard line, and `driveTotal` is signed in the offense's direction.
+- Every graded snap keeps the same coached retry and worked explanation. A
+  second offensive miss resolves deterministically by frozen call family:
+  short run -1 (stuff), short pass 0 (incompletion), medium pass -3 (sack),
+  long run -2 plus fumble, and long pass 0 plus interception. Only the two long
+  calls can turn the ball over. A second defensive miss remains a bounded
+  opponent gain and never manufactures an opponent turnover.

@@ -223,3 +223,9 @@ Original prompt: For football, find what to work on next, use concurrent issues 
 - Passed the complete release gate: 32/32 Node contracts, 184 Playwright tests passed, 230 intentional project skips, and 108/108 canonical screenshots verified across all six targets. Visually inspected every device's final overlay plus the compact compatibility artifact; Coach Report rows and replay controls remain readable and fully in frame.
 - Closed the Sol Ultra/Opus implementation loop with Opus approval, then completed the broader Grok 4.5, Gemini 3.1 Pro High, fresh Sol Ultra, and fresh Opus 4.8 review round with unanimous satisfaction. Explicitly rejected two behavior-neutral observations (a defensive Coach Report fallback and an ignored `return false`) as no-value churn; the finite-number concern was stale because `safeNumber` already requires `Number.isFinite`.
 - Completed a fresh repository-aware Fable 5 audit after expanding its read budget; it inspected the relevant Football state machine, domain, persistence, privacy, UI, tests, and release surfaces and found no actionable or user-call issue. Four new reviewers—Opus 4.8, GPT-5.6 Sol Ultra, Gemini 3.1 Pro High, and Grok 4.5—then reviewed Fable's findings and unanimously accepted them with no action, closing final consensus without another implementation cycle.
+
+## Football v1.22.0 issue #26 negative-play outcomes
+
+- Added deterministic play-family setbacks after the coached retry: stuffs, incompletions, sacks, and risky-call fumble/interception turnovers.
+- Added signed negative-yard projection with own-1 clipping, football-legal long distance-to-go contexts, signed history totals, and exact-once turnover possession handoff.
+- Added domain, question-pool, stats, and browser regressions covering both field directions, 2nd-and-13 continuation, negative cumulative totals, fourth-down precedence, and turnover idempotency.

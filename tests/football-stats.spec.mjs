@@ -368,7 +368,7 @@ test('history preserves finite signed actual yards while offered gains stay non-
       firstDownLine: 62,
       direction: -1,
       score: { player: 7, opponent: 7 },
-      totalYards: { player: 40, opponent: 45 },
+      totalYards: { player: -4, opponent: -9 },
       plays: 5,
       drivePlays: 2,
     };
@@ -431,7 +431,7 @@ test('history preserves finite signed actual yards while offered gains stay non-
     });
     let negativeGainError = null;
     try {
-      FOOTBALL_DOMAIN.projectGain({
+      FOOTBALL_DOMAIN.createSnap({
         contextId: 'negative-domain-probe',
         possession: 'offense',
         direction: 1,
@@ -446,7 +446,7 @@ test('history preserves finite signed actual yards while offered gains stay non-
         plays: 0,
         drivePlays: 0,
         calls: { offense: 'shortRun', defense: null, matchup: null },
-      }, -1);
+      }, { gain: -1, callKey: 'shortRun' });
     } catch (error) {
       negativeGainError = error.code;
     }
@@ -455,14 +455,23 @@ test('history preserves finite signed actual yards while offered gains stay non-
 
   expect(result.before.schemaVersion).toBe(2);
   expect(result.before.aggregates.actualYards).toBe(-7);
+  expect(result.before.aggregates.byOutcome).toEqual(expect.objectContaining({
+    turnover: 0,
+    loss: 0,
+    noGain: 2,
+  }));
   expect(result.before.recentPlays[0].actualYards).toBe(-7);
+  expect(result.before.recentPlays[0].preSnap.totalYards).toEqual({ player: -4, opponent: -9 });
+  expect(result.before.recentPlays[0].postPlay.totalYards).toEqual({ player: -4, opponent: -9 });
   expect(result.before.recentPlays[0].offeredYards).toBe(4);
   expect(result.before.recentPlays[1].actualYards).toBe(0);
   expect(result.before.recentPlays[1].offeredYards).toBe(0);
   expect(result.after.schemaVersion).toBe(2);
   expect(result.after.aggregates.actualYards).toBe(-12);
   expect(result.after.recentPlays.at(-1).actualYards).toBe(-5);
-  expect(result.negativeGainError).toBe('INVALID_GAIN');
+  expect(result.after.recentPlays.at(-1).preSnap.totalYards).toEqual({ player: -4, opponent: -9 });
+  expect(result.after.recentPlays.at(-1).postPlay.totalYards).toEqual({ player: -4, opponent: -9 });
+  expect(result.negativeGainError).toBe('INVALID_PROPOSAL');
 });
 
 test('learning snapshots select the newest valid graded evidence without mutating stored history', async ({ page }, testInfo) => {

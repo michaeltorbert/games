@@ -240,15 +240,17 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
     if (![1, -1].includes(c.direction)) return decline('invalid-direction', 'Direction must be 1 or -1.');
     if (!Number.isInteger(c.quarter) || c.quarter < 1 || c.quarter > 4) return decline('invalid-quarter', 'Quarter must be 1 through 4.');
     if (!Number.isInteger(c.down) || c.down < 1 || c.down > 4) return decline('invalid-down', 'Down must be 1 through 4.');
-    if (!Number.isInteger(c.yardsToGo) || c.yardsToGo < 1 || c.yardsToGo > 10) return decline('invalid-yards-to-go', 'Yards to go must be 1 through 10.');
+    if (!Number.isInteger(c.yardsToGo) || c.yardsToGo < 1 || c.yardsToGo > 99) return decline('invalid-yards-to-go', 'Yards to go must be 1 through 99.');
     if (!Number.isInteger(c.yardLine) || c.yardLine < 1 || c.yardLine > 99) return decline('invalid-yard-line', 'Yard line must be 1 through 99.');
     if (!Number.isInteger(c.firstDownLine) || c.firstDownLine < 0 || c.firstDownLine > 100) return decline('invalid-first-down-line', 'First-down line must be 0 through 100.');
     if (!Number.isInteger(c.driveStart) || c.driveStart < 0 || c.driveStart > 100) return decline('invalid-drive-start', 'Drive start must be 0 through 100.');
     if (!isRecord(c.scores) || !Number.isInteger(c.scores.player) || c.scores.player < 0 || !Number.isInteger(c.scores.opponent) || c.scores.opponent < 0) {
       return decline('invalid-scores', 'Committed scores must be nonnegative integers.');
     }
-    if (!isRecord(c.totalYards) || !Number.isInteger(c.totalYards.player) || c.totalYards.player < 0 || !Number.isInteger(c.totalYards.opponent) || c.totalYards.opponent < 0) {
-      return decline('invalid-total-yards', 'Committed team yard totals must be nonnegative integers.');
+    if (!isRecord(c.totalYards)
+      || !Number.isSafeInteger(c.totalYards.player)
+      || !Number.isSafeInteger(c.totalYards.opponent)) {
+      return decline('invalid-total-yards', 'Committed team yard totals must be signed safe integers.');
     }
     if (!Number.isInteger(p.appliedGain) || p.appliedGain < 0) return decline('invalid-gain', 'Applied gain must be a nonnegative integer.');
     if (!Number.isInteger(p.startYardLine) || p.startYardLine !== c.yardLine) return decline('invalid-proposal-start', 'Proposal must start at the contextual yard line.');
@@ -380,6 +382,7 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
       meta: makeMeta({ familyId: 'yards-to-go-read', skill: 'football-number-sense', concept: 'line-to-gain', purpose: 'coreReview', tier: 'within-10', weight: 4, operationType: 'read', answerExposure: 'source-visible', curriculumSource: 'football-only' }),
       derive(snap) {
         const answer = snap.context.yardsToGo;
+        if (answer > 10) return { decline: decline('outside-read-band', 'This read family is limited to yards-to-go values through 10.') };
         return eligible(makeSemantic({
           bindings: [contextBinding(snap, 'yardsToGo', '/context/yardsToGo')],
           operationType: 'read',

@@ -1,4 +1,4 @@
-const GAME_VERSION = '1.21.1';
+const GAME_VERSION = '1.22.0';
 let prevPlayerScore = -1, prevOpponentScore = -1;
 let playerRunTimer = 0, playerCelebrateTimer = 0, playerCelebrateDelayTimer = 0;
 const EZ = 5;
@@ -75,6 +75,19 @@ const OFFENSE_CALLS = {
     gRange: [12, 25],
   },
 };
+
+const SECOND_MISS_OUTCOMES = Object.freeze({
+  shortRun: Object.freeze({ requestedGain: -1, resultKind: null, resultReason: 'stuff' }),
+  shortPass: Object.freeze({ requestedGain: 0, resultKind: null, resultReason: 'incompletion' }),
+  mediumPass: Object.freeze({ requestedGain: -3, resultKind: null, resultReason: 'sack' }),
+  longRun: Object.freeze({ requestedGain: -2, resultKind: 'turnover', resultReason: 'fumble' }),
+  longPass: Object.freeze({ requestedGain: 0, resultKind: 'turnover', resultReason: 'interception' }),
+});
+
+if (Object.keys(OFFENSE_CALLS).length !== Object.keys(SECOND_MISS_OUTCOMES).length
+  || Object.keys(OFFENSE_CALLS).some(key => !SECOND_MISS_OUTCOMES[key])) {
+  throw new Error('Every offense call must declare one deterministic second-miss outcome.');
+}
 
 const DEFENSE_CALLS = {
   run: {
@@ -818,6 +831,7 @@ function legacyPlayFromTransition(snap, transition = snap.proposal, question = n
     gotFirstDown: transition.resultKind === 'firstDown',
     isTurnoverOnDowns: transition.resultKind === 'turnoverOnDowns',
     resultKind: transition.resultKind,
+    resultReason: transition.resultReason,
     learningTier: question?.tier || null,
   });
 }
@@ -1428,18 +1442,32 @@ function expectedRequestedGainForResolution(snap, policy) {
   if (policy === 'firstTryCorrect' || policy === 'retryCorrect') {
     return possession === 'offense' ? originalRequestedGain : 0;
   }
-  if (policy === 'secondMiss') {
-    return possession === 'offense' ? 0 : Math.min(snap.proposal.appliedGain, 3);
-  }
+  if (policy === 'secondMiss') return secondMissOutcomeForSnap(snap).requestedGain;
 
   const error = new Error(`Unknown resolution policy: ${policy}`);
   error.code = 'invalid-resolution-policy';
   throw error;
 }
 
+function secondMissOutcomeForSnap(snap) {
+  if (snap?.context?.possession === 'defense') {
+    return { requestedGain: Math.min(snap.proposal.appliedGain, 3), resultKind: null, resultReason: null };
+  }
+  const outcome = SECOND_MISS_OUTCOMES[snap?.call?.key];
+  if (!outcome) {
+    const error = new Error('Second-miss outcome requires a known frozen call family.');
+    error.code = 'invalid-resolution-policy';
+    throw error;
+  }
+  return outcome;
+}
+
 function validateResolutionTransition(snap, policy, transition) {
+  const outcome = policy === 'secondMiss' ? secondMissOutcomeForSnap(snap) : null;
   return FOOTBALL_DOMAIN.validateTransition(snap, transition, {
     expectedRequestedGain: expectedRequestedGainForResolution(snap, policy),
+    expectedResultKind: outcome?.resultKind || undefined,
+    expectedResultReason: outcome?.resultReason || undefined,
   });
 }
 
@@ -1640,6 +1668,22 @@ function completeCorrectAnswer(btn, question) {
 }
 
 function handleInstructionalMiss(btn, choice, question) {
+  let secondMissPending = null;
+  if (state.questionUi.attempt !== 1) {
+    const missOutcome = secondMissOutcomeForSnap(state.activeSnap);
+    const transition = FOOTBALL_DOMAIN.reprojectGain(state.activeSnap, missOutcome.requestedGain,
+      missOutcome.resultReason ? {
+        resultKind: missOutcome.resultKind || undefined,
+        resultReason: missOutcome.resultReason,
+      } : null);
+    secondMissPending = makePendingResolution('secondMiss', transition);
+  }
+  if (state.questionUi.attempt !== 1 && !secondMissPending) {
+    const error = new Error('A terminal instructional miss requires one validated pending resolution.');
+    error.code = 'missing-second-miss-resolution';
+    throw error;
+  }
+
   btn.classList.add('wrong');
   btn.disabled = true;
   state.questionUi.missedChoiceIds.push(choice.id);
@@ -1661,10 +1705,7 @@ function handleInstructionalMiss(btn, choice, question) {
   state.questionUi.support = 'worked';
   state.phase = 'explanation';
   state.questionUi.continueRequired = true;
-  const transition = state.activeSnap.context.possession === 'offense'
-    ? FOOTBALL_DOMAIN.reprojectGain(state.activeSnap, 0)
-    : FOOTBALL_DOMAIN.reprojectGain(state.activeSnap, Math.min(state.activeSnap.proposal.appliedGain, 3));
-  state.pendingResolution = makePendingResolution('secondMiss', transition);
+  state.pendingResolution = secondMissPending;
   disableAnswers();
   syncQuestionMirrors();
   syncUiState();
@@ -1696,10 +1737,15 @@ function continueAfterExplanation() {
   syncUiState();
 
   if (state.possession === 'offense') {
-    const msg = outcomeMessage(PLAY_OUTCOME_COPY.offenseMiss, state.callKey);
+    const reason = state.pendingResolution.transitionToCommit.resultReason;
+    const msg = PLAY_OUTCOME_COPY.secondMiss[reason];
     state.outcomeMessage = msg;
     applyDeskHeader('resultOffense');
-    setFeedback(`${msg} No gain, then the next down.`, 'negative');
+    const yards = state.pendingResolution.transitionToCommit.appliedGain;
+    const suffix = state.pendingResolution.transitionToCommit.resultKind === 'turnover'
+      ? ' Turnover.'
+      : yards < 0 ? ` Loss of ${yds(Math.abs(yards))}.` : ' No gain.';
+    setFeedback(`${msg}${suffix}`, 'negative');
   } else {
     const cappedGain = state.pendingResolution.transitionToCommit.appliedGain;
     const msg = outcomeMessage(PLAY_OUTCOME_COPY.defenseGain, state.opponentCallKey);
@@ -1748,21 +1794,26 @@ function outcomeForTransition(transition, policy) {
   if (transition.resultKind === 'touchdown') return 'touchdown';
   if (transition.resultKind === 'firstDown') return 'firstDown';
   if (transition.resultKind === 'turnoverOnDowns') return 'turnoverOnDowns';
+  if (transition.resultKind === 'turnover') return 'turnover';
   if (state.possession === 'defense' && transition.appliedGain === 0 && policy !== 'questionBypass') return 'stop';
-  return transition.appliedGain > 0 ? 'gain' : 'noGain';
+  return transition.appliedGain > 0 ? 'gain' : transition.appliedGain < 0 ? 'loss' : 'noGain';
 }
 
 function finishCommittedTransition(transition, policy, outcome) {
   const gain = transition.appliedGain;
   const offense = state.possession === 'offense';
 
-  if (offense && gain > 0) {
+  if (outcome === 'turnover') {
+    showFieldFloat(transition.resultReason === 'fumble' ? 'FUMBLE!' : 'INTERCEPTED!', 'negative');
+  } else if (offense && gain > 0) {
     startPlayerRun(transition.resultKind === 'touchdown' || transition.resultKind === 'firstDown' || gain >= 8);
   } else if (!offense && gain === 0) {
     showFieldFloat('STOPPED', 'negative');
     flashDefenseStop();
   } else if (gain > 0) {
     showFieldFloat(`+${gain} YDS`);
+  } else if (gain < 0) {
+    showFieldFloat(`${gain} YDS`, 'negative');
   } else {
     showFieldFloat('NO GAIN', 'negative');
   }
@@ -1791,6 +1842,15 @@ function finishCommittedTransition(transition, policy, outcome) {
     advTimer = setTimeout(() => finishPossession(
       offense ? 'Turnover on downs. Time to play defense!' : `${state.outcomeMessage || 'Your defense held!'} Turnover on downs!`
     ), offense ? 1400 : 1500);
+    return;
+  }
+
+  if (outcome === 'turnover') {
+    finalizeStatsPlay(gain, outcome);
+    setFeedback(state.outcomeMessage || 'Turnover.', offense ? 'negative' : 'positive');
+    advTimer = setTimeout(() => finishPossession(
+      offense ? `${state.outcomeMessage || 'Turnover.'} Time to play defense!` : 'Takeaway! Time to play offense!'
+    ), 1500);
     return;
   }
 

@@ -64,7 +64,7 @@ test('exports one frozen plain-global API in a Node/vm realm', () => {
   assert.ok(domain);
   assert.equal(Object.isFrozen(domain), true);
   assert.deepEqual(plain(domain.RESULT_KINDS), [
-    'touchdown', 'firstDown', 'turnoverOnDowns', 'advance',
+    'touchdown', 'firstDown', 'turnoverOnDowns', 'turnover', 'advance',
   ]);
   for (const method of [
     'clone', 'deepFreeze', 'normalizeContext', 'validateContext', 'projectGain',
@@ -184,6 +184,7 @@ test('projects gains in both canonical directions', () => {
     oldFirstDownLine: 40,
     newFirstDownLine: 40,
     resultKind: 'advance',
+    resultReason: null,
     crossedMidfield: false,
     driveTotal: 16,
     distanceToGoalBefore: 70,
@@ -204,6 +205,7 @@ test('projects gains in both canonical directions', () => {
     oldFirstDownLine: 60,
     newFirstDownLine: 60,
     resultKind: 'advance',
+    resultReason: null,
     crossedMidfield: false,
     driveTotal: 11,
     distanceToGoalBefore: 70,
@@ -379,12 +381,12 @@ test('returns structured diagnostics for malformed and contradictory contexts', 
     [context({ direction: -1 }), '/direction'],
     [context({ quarter: 5 }), '/quarter'],
     [context({ down: 0 }), '/down'],
-    [context({ yardsToGo: 11, firstDownLine: 41 }), '/yardsToGo'],
+    [context({ yardsToGo: 100, firstDownLine: 100 }), '/yardsToGo'],
     [context({ yardLine: 0, firstDownLine: 10 }), '/yardLine'],
     [context({ firstDownLine: 41 }), '/firstDownLine'],
-    [context({ driveStart: 31 }), '/driveStart'],
+    [context({ driveStart: 101 }), '/driveStart'],
     [context({ scores: { player: -1, opponent: 6 } }), '/scores/player'],
-    [context({ totalYards: { player: -1, opponent: 71 } }), '/totalYards/player'],
+    [context({ totalYards: { player: 1.5, opponent: 71 } }), '/totalYards/player'],
     [context({ calls: { offense: '', defense: null, matchup: null } }), '/calls/offense'],
     [context({ calls: { offense: 'run', defense: 'zone', matchup: 'tie' } }), '/calls/matchup'],
   ];
@@ -399,9 +401,9 @@ test('returns structured diagnostics for malformed and contradictory contexts', 
   }
 });
 
-test('rejects fractional, negative, and oversized gains with structured errors', () => {
+test('rejects fractional and oversized net yards with structured errors', () => {
   const domain = loadDomain();
-  for (const gain of [-1, 1.5, 101, NaN, '3']) {
+  for (const gain of [-101, 1.5, 101, NaN, '3']) {
     assert.throws(
       () => domain.projectGain(context(), gain),
       (error) => error.name === 'FootballDomainError'
@@ -409,6 +411,83 @@ test('rejects fractional, negative, and oversized gains with structured errors',
         && error.diagnostics[0].path === '/requestedGain',
       String(gain),
     );
+  }
+});
+
+test('negative outcomes clip at the offense own 1 and keep directional drive totals signed', () => {
+  const domain = loadDomain();
+  const forward = domain.projectGain(context({ yardLine: 2, driveStart: 20, firstDownLine: 12 }), -7, { resultReason: 'sack' });
+  const reverse = domain.projectGain(defenseContext({ yardLine: 98, driveStart: 80, firstDownLine: 88 }), -7, { resultReason: 'sack' });
+  assert.deepEqual([forward.appliedGain, forward.endYardLine, forward.driveTotal], [-1, 1, -19]);
+  assert.deepEqual([reverse.appliedGain, reverse.endYardLine, reverse.driveTotal], [-1, 99, -19]);
+});
+
+test('fumbles are independently validated as generic turnovers', () => {
+  const domain = loadDomain();
+  const snap = domain.createSnap(context(), { gain: 8, callKey: 'longRun' });
+  const turnover = domain.reprojectGain(snap, -2, { resultKind: 'turnover', resultReason: 'fumble' });
+  assert.equal(turnover.resultKind, 'turnover');
+  assert.equal(turnover.resultReason, 'fumble');
+  assert.equal(domain.validateTransition(snap, turnover, {
+    expectedRequestedGain: -2, expectedResultKind: 'turnover', expectedResultReason: 'fumble',
+  }).ok, true);
+  assert.equal(domain.validateTransition(snap, turnover, {
+    expectedRequestedGain: -2, expectedResultKind: 'turnover', expectedResultReason: 'interception',
+  }).ok, false);
+});
+
+test('own-1 clipping normalizes negative zero and works identically in both directions', () => {
+  const domain = loadDomain();
+  const forward = domain.projectGain(context({ yardLine: 1, firstDownLine: 11 }), -3, { resultReason: 'sack' });
+  const reverse = domain.projectGain(defenseContext({ yardLine: 99, firstDownLine: 89 }), -3, { resultReason: 'sack' });
+  for (const transition of [forward, reverse]) {
+    assert.equal(transition.appliedGain, 0);
+    assert.equal(Object.is(transition.appliedGain, -0), false);
+    assert.equal(transition.requestedGain, -3);
+  }
+  assert.equal(forward.endYardLine, 1);
+  assert.equal(reverse.endYardLine, 99);
+});
+
+test('zero-distance drive totals normalize negative zero in the reverse direction', () => {
+  const domain = loadDomain();
+  const transition = domain.projectGain(defenseContext({ driveStart: 70 }), 0);
+  assert.equal(transition.driveTotal, 0);
+  assert.equal(Object.is(transition.driveTotal, -0), false);
+});
+
+test('a fourth-down safe loss stays turnover on downs while a forced disaster is a turnover', () => {
+  const domain = loadDomain();
+  const snap = domain.createSnap(context({ down: 4 }), { gain: 8, callKey: 'mediumPass' });
+  const safeLoss = domain.reprojectGain(snap, -3, { resultReason: 'sack' });
+  const disaster = domain.reprojectGain(snap, -2, { resultKind: 'turnover', resultReason: 'fumble' });
+  assert.equal(safeLoss.resultKind, 'turnoverOnDowns');
+  assert.equal(safeLoss.resultReason, 'sack');
+  assert.equal(disaster.resultKind, 'turnover');
+  assert.equal(disaster.resultReason, 'fumble');
+});
+
+test('losses produce valid next-snap long-distance contexts in both directions', () => {
+  const domain = loadDomain();
+  for (const source of [
+    context({ down: 1, yardsToGo: 10, yardLine: 30, firstDownLine: 40 }),
+    defenseContext({ down: 1, yardsToGo: 10, yardLine: 70, firstDownLine: 60 }),
+  ]) {
+    const loss = domain.projectGain(source, -3, { resultReason: 'sack' });
+    assert.equal(loss.newDown, 2);
+    assert.equal(loss.newYardsToGo, 13);
+    const next = domain.validateContext({
+      ...source,
+      down: loss.newDown,
+      yardsToGo: loss.newYardsToGo,
+      yardLine: loss.endYardLine,
+      firstDownLine: loss.newFirstDownLine,
+      totalYards: {
+        player: source.totalYards.player + (source.possession === 'offense' ? loss.appliedGain : 0),
+        opponent: source.totalYards.opponent + (source.possession === 'defense' ? loss.appliedGain : 0),
+      },
+    });
+    assert.equal(next.ok, true);
   }
 });
 
