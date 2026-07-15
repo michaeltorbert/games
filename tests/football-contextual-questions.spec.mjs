@@ -1000,3 +1000,72 @@ test('malformed or contradictory snaps fail closed with deterministic diagnostic
     assert.throws(() => questions.build(snap, 'yards-to-go-read'));
   }
 });
+
+test('selected-call affinity is possession-scoped, immutable, and independent of private opponent data', () => {
+  const { domain, questions } = loadModules();
+  const offense = makeSnap(domain, {
+    possession: 'offense',
+    calls: { offense: 'shortRun', defense: null, matchup: null },
+  }, 4);
+  const offenseSelection = questions.selectionFor(offense, 'line-to-gain-missing-part');
+  assert.deepEqual(plain(offenseSelection), {
+    strategy: 'selected-call-affinity-v1',
+    role: 'offense',
+    selectedCallId: 'offense:shortRun',
+    multiplier: 1.75,
+  });
+  assert.equal(deepFrozen(offenseSelection), true);
+
+  const defenseContext = {
+    possession: 'defense',
+    direction: -1,
+    calls: { offense: 'longPass', defense: 'run', matchup: 'mismatch' },
+  };
+  const firstDefense = makeSnap(domain, {
+    ...defenseContext,
+    privateOpponentSnapshot: { plannedCallKey: 'longPass', secret: 'first' },
+  }, 4);
+  const secondDefense = makeSnap(domain, {
+    ...defenseContext,
+    calls: { offense: 'shortPass', defense: 'run', matchup: 'matched' },
+    privateOpponentSnapshot: { plannedCallKey: 'shortPass', secret: 'second' },
+  }, 4);
+  assert.deepEqual(
+    plain(questions.selectionFor(firstDefense, 'line-to-gain-missing-part')),
+    plain(questions.selectionFor(secondDefense, 'line-to-gain-missing-part')),
+  );
+  assert.equal(questions.selectionFor(firstDefense, 'goal-distance-tens').multiplier, 1);
+
+  const unknown = makeSnap(domain, {
+    calls: { offense: 'unknown-call', defense: null, matchup: null },
+  }, 4);
+  assert.deepEqual(plain(questions.selectionFor(unknown, 'line-to-gain-missing-part')), {
+    strategy: 'selected-call-affinity-v1',
+    role: 'offense',
+    selectedCallId: null,
+    multiplier: 1,
+  });
+});
+
+test('call affinity annotates but never filters the truthful eligible pool', () => {
+  const { domain, questions } = loadModules();
+  const shortRun = makeSnap(domain, {
+    calls: { offense: 'shortRun', defense: null, matchup: null },
+  }, 4);
+  const unknown = makeSnap(domain, {
+    calls: { offense: 'unknown-call', defense: null, matchup: null },
+  }, 4);
+  const boosted = questions.inspect(shortRun);
+  const neutral = questions.inspect(unknown);
+  assert.deepEqual(
+    boosted.eligible.map((entry) => entry.familyId),
+    neutral.eligible.map((entry) => entry.familyId),
+  );
+  assert.deepEqual(plain(boosted.declined), plain(neutral.declined));
+
+  const candidate = boosted.eligible.find((entry) => entry.familyId === 'line-to-gain-missing-part');
+  const question = questions.build(shortRun, candidate.familyId);
+  assert.deepEqual(plain(question.selection), plain(questions.selectionFor(shortRun, candidate.familyId)));
+  assert.equal(question.selection.multiplier, 1.75);
+  assert.equal(deepFrozen(question.selection), true);
+});

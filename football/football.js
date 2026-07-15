@@ -1,4 +1,4 @@
-const GAME_VERSION = '1.22.1';
+const GAME_VERSION = '1.23.0';
 let prevPlayerScore = -1, prevOpponentScore = -1;
 let playerRunTimer = 0, playerCelebrateTimer = 0, playerCelebrateDelayTimer = 0;
 const EZ = 5;
@@ -769,7 +769,10 @@ function validateQuestionInstance(snap, question) {
 function pickQuestion(snap) {
   const profile = contextualQuestionProfile();
   const inspected = FOOTBALL_CONTEXTUAL_QUESTIONS.inspect(snap, profile);
-  const eligible = questionFaultMode === 'empty-pool' ? [] : inspected.eligible;
+  const eligible = questionFaultMode === 'empty-pool' ? [] : inspected.eligible.map((entry) => {
+    const selection = FOOTBALL_CONTEXTUAL_QUESTIONS.selectionFor(snap, entry.familyId);
+    return { ...entry, selectionMultiplier: selection.multiplier };
+  });
   if (!eligible.length) {
     const error = new Error('No truthful contextual question family is eligible for this valid snap.');
     error.code = 'empty-pool';
@@ -2686,6 +2689,12 @@ window.__footballTest = {
   resetRng() { installRngStreams(0x54c0de); },
   resetLearning() { learningSession = createLearningSession(); },
   learningProfile() { return FOOTBALL_LEARNING.snapshot(FOOTBALL_LEARNING.PROFILE); },
+  callKeys() {
+    return FOOTBALL_DOMAIN.deepFreeze({
+      offense: Object.keys(OFFENSE_CALLS),
+      defense: Object.keys(DEFENSE_CALLS),
+    });
+  },
   learningState() { return FOOTBALL_LEARNING.snapshot(learningSession); },
   coachReport() { return FOOTBALL_LEARNING.snapshot(buildCoachReport()); },
   statsHistory() { return FOOTBALL_STATS.history(); },

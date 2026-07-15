@@ -111,6 +111,12 @@ const FOOTBALL_LEARNING = (() => {
     return bindings ? { bindings: copy(bindings) } : {};
   }
 
+  function questionSelection(question) {
+    const selection = question.selection;
+    if (!selection || typeof selection !== 'object') return {};
+    return { selection: copy(selection) };
+  }
+
   function recordPresented(session, question, context = {}) {
     session.presented++;
     skillState(session, question.skill).presented++;
@@ -125,6 +131,7 @@ const FOOTBALL_LEARNING = (() => {
       grading: question.grading,
       support: question.math?.support || 'none',
       ...questionEvidence(question),
+      ...questionSelection(question),
     });
   }
 
@@ -140,6 +147,7 @@ const FOOTBALL_LEARNING = (() => {
       correct: Boolean(context.correct),
       support: context.support || 'none',
       ...questionEvidence(question),
+      ...questionSelection(question),
     });
   }
 
@@ -162,6 +170,7 @@ const FOOTBALL_LEARNING = (() => {
       result,
       support: context.support || 'none',
       ...questionEvidence(question),
+      ...questionSelection(question),
     });
   }
 
@@ -232,15 +241,22 @@ const FOOTBALL_LEARNING = (() => {
       totals[entry.purpose] = (totals[entry.purpose] || 0) + (entry.weight || 1);
       return totals;
     }, {});
-    const weighted = entries.map((entry) => ({
-      entry,
-      weight: Math.max(
-        0.0001,
-        purposeWeight(entry) * ((entry.weight || 1) / purposeTotals[entry.purpose])
-          * adaptiveNeedMultiplier(session, entry)
-          * (recent.has(entry.familyId || entry.id) ? PROFILE.recencyMultiplier : 1)
-      ),
-    }));
+    const weighted = entries.map((entry) => {
+      const multiplier = entry.selectionMultiplier === undefined ? 1 : entry.selectionMultiplier;
+      if (!Number.isFinite(multiplier) || multiplier <= 0 || multiplier > 2) {
+        throw new TypeError('selectionMultiplier must be a finite number greater than 0 and at most 2');
+      }
+      const normalized = purposeWeight(entry) * ((entry.weight || 1) / purposeTotals[entry.purpose]);
+      return {
+        entry,
+        weight: Math.max(
+          0.0001,
+          (multiplier === 1 ? normalized : normalized * multiplier)
+            * adaptiveNeedMultiplier(session, entry)
+            * (recent.has(entry.familyId || entry.id) ? PROFILE.recencyMultiplier : 1)
+        ),
+      };
+    });
     const total = weighted.reduce((sum, item) => sum + item.weight, 0);
     let draw = rng() * total;
     for (const item of weighted) {

@@ -117,6 +117,193 @@ test('runtime keeps factual page-145 completion with a separate page-179 questio
   expect(result.onlyRecent).toBe('recent-family');
 });
 
+test('selected-call affinity boosts after purpose normalization while preserving neutral selection and one RNG draw', async ({ page }, testInfo) => {
+  primaryOnly(testInfo);
+  await page.goto('/football/?boot=offense-call');
+
+  const result = await page.evaluate(() => {
+    const entries = [
+      { id: 'first', familyId: 'first', skill: 'a', concept: 'a', purpose: 'coreReview', grading: 'gate', weight: 1 },
+      { id: 'second', familyId: 'second', skill: 'b', concept: 'b', purpose: 'coreReview', grading: 'gate', weight: 1 },
+    ];
+    const session = FOOTBALL_LEARNING.createSession();
+    let neutralDraws = 0;
+    const neutral = FOOTBALL_LEARNING.weightedPick(entries, session, () => {
+      neutralDraws++;
+      return 0.55;
+    }).familyId;
+    let explicitNeutralDraws = 0;
+    const explicitNeutral = FOOTBALL_LEARNING.weightedPick(
+      entries.map((entry) => ({ ...entry, selectionMultiplier: 1 })),
+      FOOTBALL_LEARNING.createSession(),
+      () => {
+        explicitNeutralDraws++;
+        return 0.55;
+      },
+    ).familyId;
+    let boostedDraws = 0;
+    const boosted = FOOTBALL_LEARNING.weightedPick(
+      [{ ...entries[0], selectionMultiplier: 1.75 }, entries[1]],
+      FOOTBALL_LEARNING.createSession(),
+      () => {
+        boostedDraws++;
+        return 0.55;
+      },
+    ).familyId;
+    const invalid = [0, -1, 2.01, Number.NaN, Number.POSITIVE_INFINITY].map((selectionMultiplier) => {
+      try {
+        FOOTBALL_LEARNING.weightedPick([{ ...entries[0], selectionMultiplier }], FOOTBALL_LEARNING.createSession(), () => 0.5);
+        return false;
+      } catch (error) {
+        return error instanceof TypeError;
+      }
+    });
+    const callKeys = window.__footballTest.callKeys();
+    const affinityKeys = Object.keys(FOOTBALL_CONTEXTUAL_QUESTIONS.CALL_AFFINITIES);
+    return {
+      neutral, explicitNeutral, boosted, neutralDraws, explicitNeutralDraws, boostedDraws, invalid,
+      multiplier: FOOTBALL_CONTEXTUAL_QUESTIONS.CALL_AFFINITY_MULTIPLIER,
+      callKeys,
+      affinityKeys,
+    };
+  });
+
+  expect(result).toMatchObject({
+    neutral: 'second',
+    explicitNeutral: 'second',
+    boosted: 'first',
+    neutralDraws: 1,
+    explicitNeutralDraws: 1,
+    boostedDraws: 1,
+    invalid: [true, true, true, true, true],
+    multiplier: 1.75,
+  });
+  expect(result.affinityKeys.sort()).toEqual([
+    ...result.callKeys.offense.map((key) => `offense:${key}`),
+    ...result.callKeys.defense.map((key) => `defense:${key}`),
+  ].sort());
+});
+
+test('defensive learning telemetry records only the player-selected scoped call', async ({ page }, testInfo) => {
+  primaryOnly(testInfo);
+  await page.goto('/football/?boot=offense-call');
+
+  const result = await page.evaluate(() => {
+    const variants = [
+      { offense: 'longPass', defense: 'run', matchup: 'mismatch', privateOpponentSnapshot: { plannedCallKey: 'longPass', secret: 'alpha' } },
+      { offense: 'shortRun', defense: 'run', matchup: 'matched', privateOpponentSnapshot: { plannedCallKey: 'shortRun', secret: 'beta' } },
+    ];
+    return variants.map((variant, index) => {
+      const snap = {
+        context: {
+          possession: 'defense',
+          calls: { offense: variant.offense, defense: variant.defense, matchup: variant.matchup },
+          privateOpponentSnapshot: variant.privateOpponentSnapshot,
+        },
+      };
+      const selection = FOOTBALL_CONTEXTUAL_QUESTIONS.selectionFor(snap, 'line-to-gain-missing-part');
+      const session = FOOTBALL_LEARNING.createSession();
+      FOOTBALL_LEARNING.recordPresented(session, {
+        familyId: 'line-to-gain-missing-part',
+        contextId: `context-${index}`,
+        questionInstanceId: `question-${index}`,
+        skill: 'missing-part',
+        concept: 'line-to-gain',
+        purpose: 'weakSpot',
+        grading: 'gate',
+        selection,
+      });
+      return session.events[0];
+    });
+  });
+
+  for (const event of result) {
+    expect(event.selection).toEqual({
+      strategy: 'selected-call-affinity-v1',
+      role: 'defense',
+      selectedCallId: 'defense:run',
+      multiplier: 1.75,
+    });
+    expect(event).not.toHaveProperty('calls');
+    expect(event).not.toHaveProperty('privateOpponentSnapshot');
+  }
+  expect(result[0].selection).toEqual(result[1].selection);
+});
+
+test('standard offense and defense calls materially reduce generic game-state scheduling', async ({ page }, testInfo) => {
+  primaryOnly(testInfo);
+  await page.goto('/football/?boot=offense-call');
+
+  const result = await page.evaluate(() => {
+    const opponentSnapshot = {
+      profileKey: 'test',
+      look: { key: 'balanced', label: 'Balanced set', alignment: 'Singleback', leanKeys: ['balanced'] },
+      lean: { key: 'balanced', label: 'Run or pass', runWeight: 0.5, passWeight: 0.5 },
+      weights: { shortRun: 0.2, shortPass: 0.2, longRun: 0.2, mediumPass: 0.2, longPass: 0.2 },
+      plannedCallKey: 'longPass',
+      tendency: { profileKey: 'test' },
+    };
+    const makeSnap = (possession) => {
+      const direction = possession === 'offense' ? 1 : -1;
+      const yardLine = possession === 'offense' ? 30 : 70;
+      const callKey = possession === 'offense' ? 'shortRun' : 'longPass';
+      return FOOTBALL_DOMAIN.createSnap({
+        contextId: `distribution-${possession}`,
+        possession,
+        direction,
+        quarter: 2,
+        down: 2,
+        yardsToGo: 7,
+        yardLine,
+        firstDownLine: yardLine + (direction * 7),
+        driveStart: possession === 'offense' ? 20 : 80,
+        scores: { player: 7, opponent: 0 },
+        totalYards: { player: 20, opponent: 20 },
+        plays: 4,
+        drivePlays: 1,
+        calls: possession === 'offense'
+          ? { offense: 'shortRun', defense: null, matchup: null }
+          : { offense: 'longPass', defense: 'run', matchup: 'mismatch' },
+        privateOpponentSnapshot: possession === 'defense' ? opponentSnapshot : null,
+      }, { gain: 4, callKey, label: callKey });
+    };
+    const genericShare = (entries) => {
+      const samples = 10000;
+      const session = FOOTBALL_LEARNING.createSession();
+      let generic = 0;
+      for (let index = 0; index < samples; index++) {
+        const selected = FOOTBALL_LEARNING.weightedPick(entries, session, () => (index + 0.5) / samples);
+        if (selected.familyId === 'quarter-read' || selected.familyId === 'half-read') generic++;
+      }
+      return generic / samples;
+    };
+    return ['offense', 'defense'].map((possession) => {
+      const snap = makeSnap(possession);
+      const neutral = FOOTBALL_CONTEXTUAL_QUESTIONS.inspect(snap).eligible;
+      const affinity = neutral.map((entry) => ({
+        ...entry,
+        selectionMultiplier: FOOTBALL_CONTEXTUAL_QUESTIONS.selectionFor(snap, entry.familyId).multiplier,
+      }));
+      const neutralShare = genericShare(neutral);
+      const affinityShare = genericShare(affinity);
+      return {
+        possession,
+        neutralShare,
+        affinityShare,
+        relativeReduction: (neutralShare - affinityShare) / neutralShare,
+      };
+    });
+  });
+
+  for (const distribution of result) {
+    expect(distribution.neutralShare).toBeGreaterThan(0);
+    expect(distribution.affinityShare).toBeGreaterThan(0);
+    // A 20% floor is material while leaving headroom below the measured ~24%
+    // so harmless rounding or future truthful-pool additions do not make this brittle.
+    expect(distribution.relativeReduction).toBeGreaterThanOrEqual(0.20);
+  }
+});
+
 test('mastered concepts age back into refreshers while the latest supported result takes priority', async ({ page }, testInfo) => {
   primaryOnly(testInfo);
   await page.goto('/football/?boot=offense-call');
@@ -339,6 +526,8 @@ test('first miss keeps one frozen question and retry correct commits the full pr
   expect(events.every((event) => event.familyId === question.familyId)).toBe(true);
   expect(events.every((event) => event.contextId === question.contextId)).toBe(true);
   expect(events.every((event) => event.questionInstanceId === question.questionInstanceId)).toBe(true);
+  expect(events.every((event) => JSON.stringify(event.selection) === JSON.stringify(question.selection))).toBe(true);
+  expect(events.every((event) => !JSON.stringify(event).includes('privateOpponentSnapshot'))).toBe(true);
   expect(events[1].selectedChoiceId).toBe(wrongId);
   expect(events[2].selectedChoiceId).toBe(question.correctChoiceId);
   expect(events[3].result).toBe('retryCorrect');
