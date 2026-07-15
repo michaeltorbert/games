@@ -247,3 +247,17 @@ Original prompt: Implement michaeltorbert/games issue #79 using Codex subagents,
 - Completed the prescribed browser-client smoke on a live question with linked semantic state and no console/page-error artifact.
 - Passed the complete release gate: 44/44 Node contracts, 196 Playwright tests passed, 260 intentional project skips, and 108/108 canonical screenshots verified across all six required device projects.
 - Completed independent final-diff reviews with Grok 4.5 and Gemini 3.1 Pro High. Gemini's initial negative-gain concern was rejected as stale after validating that snap proposals are non-negative at both the domain and contextual-question boundaries; negative outcomes exist only in post-question reprojection. Both reviewers accepted that disposition and closed the round robin with consensus to accept the unchanged patch.
+
+---
+
+Original prompt: Implement Football issue #25 with multi-model planning, implementation, review, release, and cleanup.
+
+## Football v1.23.0 selected-call question affinity
+
+- Added possession-scoped question-family affinity keyed to the player's selected offensive play or defensive coverage, never the private opponent plan.
+- Kept truthful contextual eligibility, curriculum bounds, adaptive need, mastery, recency, and independent RNG streams authoritative; affinity only applies a bounded positive scheduling preference.
+- Added immutable, privacy-safe selection provenance and deterministic coverage for call-registry completeness, neutral behavior, defensive privacy, and scheduler draw counts.
+- Measured representative standard-drive pools at 3.12% generic quarter/half scheduling without affinity and 2.37% with affinity, a 24.04% relative reduction while both families remain reachable.
+- Passed the complete release gate: 46/46 Node checks, 199 Playwright tests passed, 275 intentional project skips, and 108/108 canonical screenshots verified across all six device projects.
+- Completed Sol Ultra implementation and review loops plus independent Opus, Grok, and Gemini review with no unresolved findings. The single prepared Fable audit reached inference but exhausted its hard 12-turn cap without producing findings and was not retried.
+- Bumped Football and all release/cache surfaces to v1.23.0.
