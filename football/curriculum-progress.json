@@ -65,7 +65,9 @@
         "pages": "155-156",
         "skills": [
           "ordinal numbers"
-        ]
+        ],
+        "scheduledInLiveSnaps": false,
+        "reason": "Converting an already-visible play number to an ordinal did not add useful live-snap reasoning"
       },
       {
         "pages": "157-160",

@@ -103,27 +103,30 @@ test('long distance and signed team totals retain a nonempty buildable question 
   }
 });
 
-test('every reachable long-distance state retains a nonempty fully buildable pool in both directions', () => {
+test('every reachable long-distance state, including fourth down, retains a nonempty fully buildable pool in both directions', () => {
   const { domain, questions } = loadModules();
   for (const direction of [1, -1]) {
-    for (let yardsToGo = 11; yardsToGo <= 19; yardsToGo++) {
-      const possession = direction === 1 ? 'offense' : 'defense';
-      const yardLine = direction === 1 ? 30 : 70;
-      const snap = makeSnap(domain, {
-        possession,
-        direction,
-        yardLine,
-        yardsToGo,
-        firstDownLine: yardLine + (direction * yardsToGo),
-        totalYards: direction === 1 ? { player: -9, opponent: 4 } : { player: 4, opponent: -9 },
-      }, 4);
-      const inspection = questions.inspect(snap, questions.DEFAULT_PROFILE);
-      assert.ok(inspection.eligible.length > 0, `${direction}:${yardsToGo}`);
-      for (const candidate of inspection.eligible) {
-        assert.doesNotThrow(() => questions.build(snap, candidate.familyId, {
-          ...questions.DEFAULT_PROFILE,
-          presentationRng: () => 0.5,
-        }), `${direction}:${yardsToGo}:${candidate.familyId}`);
+    for (const down of [2, 4]) {
+      for (let yardsToGo = 11; yardsToGo <= 19; yardsToGo++) {
+        const possession = direction === 1 ? 'offense' : 'defense';
+        const yardLine = direction === 1 ? 30 : 70;
+        const snap = makeSnap(domain, {
+          possession,
+          direction,
+          down,
+          yardLine,
+          yardsToGo,
+          firstDownLine: yardLine + (direction * yardsToGo),
+          totalYards: direction === 1 ? { player: -9, opponent: 4 } : { player: 4, opponent: -9 },
+        }, 4);
+        const inspection = questions.inspect(snap, questions.DEFAULT_PROFILE);
+        assert.ok(inspection.eligible.length > 0, `${direction}:${down}:${yardsToGo}`);
+        for (const candidate of inspection.eligible) {
+          assert.doesNotThrow(() => questions.build(snap, candidate.familyId, {
+            ...questions.DEFAULT_PROFILE,
+            presentationRng: () => 0.5,
+          }), `${direction}:${down}:${yardsToGo}:${candidate.familyId}`);
+        }
       }
     }
   }
@@ -135,11 +138,6 @@ function recompute(question) {
   switch (question.operation.type) {
     case 'read': return operands[0];
     case 'ordinal': return ({ 1: '1st', 2: '2nd', 3: '3rd', 4: '4th' })[operands[0]];
-    case 'nextOrdinal': {
-      const value = operands[0] + 1;
-      const suffix = value === 1 ? 'st' : value === 2 ? 'nd' : value === 3 ? 'rd' : 'th';
-      return `${value}${suffix}`;
-    }
     case 'missingPart':
     case 'exactRemainder':
     case 'factFamilyMissingPart': return operands[0] - operands[1];
@@ -237,6 +235,7 @@ test('exports one deeply frozen plain-global API with a closed contract', () => 
   assert.equal(typeof questions.inspect, 'function');
   assert.equal(typeof questions.build, 'function');
   assert.ok(questions.OPERATION_TYPES.length > 0);
+  assert.equal(questions.OPERATION_TYPES.includes('nextOrdinal'), false);
   assert.ok(questions.ANSWER_EXPOSURE_POLICIES.includes('hidden-until-worked'));
   assert.deepEqual(plain(questions.CURRICULUM_SOURCES), ['workbook', 'football-only']);
 });
@@ -322,7 +321,7 @@ test('short, exact, surplus, fact-family, fourth-down, and touchdown facts use t
   }
 });
 
-test('goal distance, drive movement, place value, whole tens, committed scores, quarter, and down stay contextual', () => {
+test('goal distance, drive movement, place value, whole tens, committed scores, quarter, and half stay contextual', () => {
   const { domain, questions } = loadModules();
   const forward = makeSnap(domain, {
     quarter: 3, down: 4, yardLine: 30, firstDownLine: 35, yardsToGo: 5,
@@ -336,7 +335,7 @@ test('goal distance, drive movement, place value, whole tens, committed scores, 
   const required = [
     'goal-distance-read', 'goal-distance-tens', 'goal-distance-ones',
     'drive-distance-scaffolded', 'committed-score-total', 'committed-score-difference',
-    'quarter-read', 'half-read', 'down-read', 'goal-distance-minus-whole-tens',
+    'quarter-read', 'half-read', 'goal-distance-minus-whole-tens',
     'drive-distance-plus-whole-tens',
   ];
   for (const snap of [forward, reverse]) {
@@ -345,6 +344,184 @@ test('goal distance, drive movement, place value, whole tens, committed scores, 
       assert.ok(ids.includes(familyId), `${snap.context.possession}:${familyId}`);
       verifyGrounding(questions, snap, questions.build(snap, familyId));
     }
+  }
+});
+
+test('next-down is grounded in the frozen proposal and hides the projected result until worked support', () => {
+  const { domain, questions } = loadModules();
+  const snap = makeSnap(domain, {
+    down: 2,
+    yardsToGo: 8,
+    firstDownLine: 38,
+  }, 3);
+  assert.equal(snap.proposal.resultKind, 'advance');
+  assert.equal(snap.proposal.newDown, 3);
+
+  const candidate = questions.inspect(snap).eligible.find((entry) => entry.familyId === 'next-down');
+  assert.ok(candidate);
+  assert.deepEqual(plain(candidate), {
+    id: 'next-down',
+    familyId: 'next-down',
+    skill: 'football-number-sense',
+    concept: 'down-progression',
+    purpose: 'coreReview',
+    grading: 'gate',
+    tier: 'football-context',
+    curriculumSource: 'football-only',
+    introducedOnPage: null,
+    weight: 1.1,
+    operationType: 'ordinal',
+    answerExposure: 'modeled-with-result-hidden',
+  });
+
+  const question = questions.build(snap, 'next-down', {
+    support: 'initial',
+    presentationRng: () => 0.5,
+  });
+  assert.deepEqual(plain(question.bindings), [
+    { id: 'currentDown', source: { kind: 'context', path: '/context/down' }, value: 2 },
+    { id: 'yardsToGo', source: { kind: 'context', path: '/context/yardsToGo' }, value: 8 },
+    { id: 'proposedGain', source: { kind: 'context', path: '/proposal/appliedGain' }, value: 3 },
+    { id: 'resultKind', source: { kind: 'context', path: '/proposal/resultKind' }, value: 'advance' },
+    { id: 'nextDown', source: { kind: 'context', path: '/proposal/newDown' }, value: 3 },
+  ]);
+  assert.deepEqual(plain(question.operation), {
+    type: 'ordinal',
+    operandIds: ['nextDown'],
+    outputId: 'next-down--answer',
+  });
+  assert.deepEqual(plain(question.grounding), {
+    bindingIds: ['currentDown', 'yardsToGo', 'proposedGain', 'resultKind', 'nextDown'],
+    answerId: 'next-down--answer',
+  });
+  assert.equal(question.answer.value, '3rd');
+  assert.deepEqual(
+    [...question.choices].map((choice) => choice.value).sort(),
+    ['1st', '2nd', '3rd', '4th'],
+  );
+  for (const stage of ['initial', 'guided', 'worked']) {
+    assert.equal(question.visuals[stage].type, 'down-progression');
+    assert.deepEqual(plain(question.visuals[stage].data), {
+      currentDown: 2,
+      yardsToGo: 8,
+      proposedGain: 3,
+    });
+  }
+  for (const stage of ['initial', 'guided']) {
+    assert.equal(question.visuals[stage].revealsAnswer, false);
+    assert.equal(question.visuals[stage].result, null);
+  }
+  assert.equal(question.visuals.worked.revealsAnswer, true);
+  assert.deepEqual(plain(question.visuals.worked.result), {
+    answerId: 'next-down--answer',
+    value: '3rd',
+  });
+  const copy = [
+    question.prompt.text,
+    question.hint.text,
+    question.workedExplanation.text,
+    ...Object.values(question.visuals).map((visual) => visual.ariaLabel),
+  ].join(' ');
+  assert.doesNotMatch(copy, /scoreboard begins|ordinal|order number|before the (?:&|and) sign/i);
+  verifyGrounding(questions, snap, question);
+});
+
+test('next-down covers advances in both directions and first-down resets after 2nd, 3rd, and 4th down', () => {
+  const { domain, questions } = loadModules();
+  const cases = [
+    {
+      label: 'forward 2nd-down advance',
+      snap: makeSnap(domain, { down: 2, yardsToGo: 8, firstDownLine: 38 }, 3),
+      resultKind: 'advance',
+      answer: '3rd',
+    },
+    {
+      label: 'reverse 3rd-down advance',
+      snap: makeSnap(domain, {
+        possession: 'defense', direction: -1, down: 3,
+        yardLine: 70, yardsToGo: 8, firstDownLine: 62, driveStart: 80,
+      }, 3),
+      resultKind: 'advance',
+      answer: '4th',
+    },
+    ...[2, 3, 4].map((down) => ({
+      label: `${down} down first-down reset`,
+      snap: makeSnap(domain, { down, yardsToGo: 7, firstDownLine: 37 }, 7),
+      resultKind: 'firstDown',
+      answer: '1st',
+    })),
+  ];
+
+  for (const { label, snap, resultKind, answer } of cases) {
+    assert.equal(snap.proposal.resultKind, resultKind, label);
+    const candidate = questions.inspect(snap).eligible.find((entry) => entry.familyId === 'next-down');
+    assert.ok(candidate, label);
+    const question = questions.build(snap, 'next-down');
+    assert.equal(question.answer.value, answer, label);
+    assert.equal(bindingValues(question).nextDown, snap.proposal.newDown, label);
+    verifyGrounding(questions, snap, question);
+  }
+});
+
+test('next-down excludes unchanged 1st-down resets, touchdowns, and fourth-down failures', () => {
+  const { domain, questions } = loadModules();
+  const cases = [
+    {
+      label: '1st-down conversion stays 1st',
+      snap: makeSnap(domain, { down: 1, yardsToGo: 5, firstDownLine: 35 }, 5),
+      resultKind: 'firstDown',
+      reason: 'next-down-unchanged',
+    },
+    {
+      label: 'touchdown has no next down',
+      snap: makeSnap(domain, {
+        down: 2, yardLine: 95, yardsToGo: 5, firstDownLine: 100, driveStart: 90,
+      }, 10),
+      resultKind: 'touchdown',
+      reason: 'no-next-down',
+    },
+    {
+      label: 'failed fourth down changes possession',
+      snap: makeSnap(domain, { down: 4, yardsToGo: 6, firstDownLine: 36 }, 3),
+      resultKind: 'turnoverOnDowns',
+      reason: 'no-next-down',
+    },
+  ];
+
+  for (const { label, snap, resultKind, reason } of cases) {
+    assert.equal(snap.proposal.resultKind, resultKind, label);
+    const inspection = questions.inspect(snap);
+    assert.equal(inspection.eligible.some((entry) => entry.familyId === 'next-down'), false, label);
+    assert.equal(
+      inspection.declined.find((entry) => entry.familyId === 'next-down')?.reason.code,
+      reason,
+      label,
+    );
+    assert.throws(
+      () => questions.build(snap, 'next-down'),
+      (error) => error.code === 'family-not-eligible' && error.message.includes(reason),
+      label,
+    );
+  }
+});
+
+test('tautological ordinal families are retired while quarter and half families remain scheduled', () => {
+  const { domain, questions } = loadModules();
+  const snap = makeSnap(domain, { quarter: 3, down: 2, yardsToGo: 8, firstDownLine: 38 }, 3);
+  const inspection = questions.inspect(snap);
+  const scheduled = [...inspection.eligible, ...inspection.declined].map((entry) => entry.familyId);
+  assert.equal(scheduled.includes('down-read'), false);
+  assert.equal(scheduled.includes('drive-play-ordinal'), false);
+  assert.equal(inspection.eligible.some((entry) => entry.familyId === 'quarter-read'), true);
+  assert.equal(inspection.eligible.some((entry) => entry.familyId === 'half-read'), true);
+  assert.equal(questions.build(snap, 'quarter-read').answer.value, '3rd');
+  assert.equal(questions.build(snap, 'half-read').answer.value, '2nd half');
+  for (const familyId of ['down-read', 'drive-play-ordinal']) {
+    assert.throws(
+      () => questions.build(snap, familyId),
+      (error) => error.code === 'unknown-family',
+      familyId,
+    );
   }
 });
 
@@ -467,7 +644,7 @@ test('live comparison and approved later pages stay source-accurate and snap-gro
   }, 2);
 
   const cases = [
-    [comparison, ['gain-vs-needed-comparison', 'drive-play-ordinal']],
+    [comparison, ['gain-vs-needed-comparison']],
     [past100, ['team-yards-past-100']],
     [reversePast100, ['team-yards-past-100']],
   ];
@@ -502,13 +679,6 @@ test('live comparison and approved later pages stay source-accurate and snap-gro
     (error) => error.code === 'family-not-eligible' && /outside-comparison-source-band/.test(error.message),
   );
 
-  for (const [drivePlays, expected] of [[4, '5th'], [10, '11th'], [15, '16th']]) {
-    const snap = makeSnap(domain, { drivePlays }, 4);
-    const question = questions.build(snap, 'drive-play-ordinal', { support: 'guided' });
-    assert.equal(question.answer.value, expected);
-    verifyGrounding(questions, snap, question);
-  }
-
   const narrowProfile = {
     completedThroughPage: 145,
     includedThroughPage: 145,
@@ -535,7 +705,17 @@ test('high committed-score relations and ungrounded clock or calendar work stay 
   assert.equal(eligibleIds.includes('committed-score-difference'), false);
   assert.equal(eligibleIds.includes('committed-score-tens'), true);
   assert.equal(eligibleIds.includes('committed-score-ones'), true);
-  for (const forbidden of ['compare-two-digit-preview', 'hundred-chart-small-move', 'add-within-10', 'clock-read', 'am-pm', 'calendar-read', 'sack-loss']) {
+  for (const forbidden of [
+    'compare-two-digit-preview',
+    'hundred-chart-small-move',
+    'add-within-10',
+    'clock-read',
+    'am-pm',
+    'calendar-read',
+    'sack-loss',
+    'down-read',
+    'drive-play-ordinal',
+  ]) {
     assert.equal(eligibleIds.includes(forbidden), false);
     assert.throws(() => questions.build(snap, forbidden), (error) => error.code === 'unknown-family');
   }
@@ -655,7 +835,7 @@ test('singular boundary states use child-facing yard and space grammar', () => {
     'line-to-gain-exact',
     'gain-vs-needed-comparison',
     'drive-distance-scaffolded',
-    'down-read',
+    'next-down',
   ].map((familyId) => {
     const question = questions.build(oneYard, familyId);
     return [
@@ -732,9 +912,8 @@ test('child-facing contextual copy avoids implementation jargon', () => {
     'committed-score-total',
     'committed-score-difference',
     'half-read',
-    'drive-play-ordinal',
     'quarter-read',
-    'down-read',
+    'next-down',
     'goal-distance-minus-whole-tens',
     'drive-distance-plus-whole-tens',
   ];

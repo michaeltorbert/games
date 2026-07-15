@@ -1,4 +1,4 @@
-const GAME_VERSION = '1.22.0';
+const GAME_VERSION = '1.22.1';
 let prevPlayerScore = -1, prevOpponentScore = -1;
 let playerRunTimer = 0, playerCelebrateTimer = 0, playerCelebrateDelayTimer = 0;
 const EZ = 5;
@@ -1032,8 +1032,12 @@ function renderMathVisual() {
       }
       break;
     }
-    case 'drive-play-order':
-      tokens = [`DRIVE PLAY ${data.playNumber}`, visual.result ? visual.result.value : 'ORDER ?'];
+    case 'down-progression':
+      tokens = [
+        `CURRENT ${String(DOWN_NAMES[data.currentDown] || data.currentDown).toUpperCase()} & ${data.yardsToGo}`,
+        `PLAY +${data.proposedGain}`,
+        visual.result ? `NEXT ${visual.result.value}` : 'NEXT ?',
+      ];
       break;
     case 'base-ten-move': {
       const start = data.startDistance ?? 0;

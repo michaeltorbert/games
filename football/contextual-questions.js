@@ -27,7 +27,6 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
     'driveDistancePlusGain',
     'ruleValue',
     'compare',
-    'nextOrdinal',
   ]);
 
   const ANSWER_EXPOSURE_POLICIES = Object.freeze([
@@ -160,13 +159,6 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
     if (left < right) return '<';
     if (left > right) return '>';
     return '=';
-  }
-
-  function ordinalChoices(value) {
-    const numbers = [value, value - 1, value + 1, value - 2, value + 2, 1, 16]
-      .filter((candidate, index, all) => candidate >= 1 && candidate <= 16 && all.indexOf(candidate) === index)
-      .slice(0, 4);
-    return numbers.map(ordinal);
   }
 
   function teamTotalYards(snap) {
@@ -696,37 +688,6 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
       },
     },
     {
-      meta: makeMeta({
-        familyId: 'drive-play-ordinal',
-        skill: 'ordinal-numbers',
-        concept: 'drive-play-order',
-        purpose: 'approvedExtension',
-        tier: 'football-context',
-        weight: 1.2,
-        operationType: 'nextOrdinal',
-        answerExposure: 'modeled-with-result-hidden',
-        curriculumSource: 'workbook',
-        introducedOnPage: 155,
-      }),
-      derive(snap) {
-        const playNumber = snap.context.drivePlays + 1;
-        if (playNumber < 1 || playNumber > 16) return { decline: decline('drive-play-outside-ordinal-band', 'The current drive play must be first through sixteenth.') };
-        const answer = ordinal(playNumber);
-        return eligible(makeSemantic({
-          bindings: [contextBinding(snap, 'completedDrivePlays', '/context/drivePlays')],
-          operationType: 'nextOrdinal', operandIds: ['completedDrivePlays'], answer,
-          prompt: `This is play number ${playNumber} of the drive. Which order number shows where it comes?`,
-          hint: `Choose the order number for ${playNumber}, such as 1st, 2nd, or 3rd.`,
-          explanation: `Play number ${playNumber} is the ${answer} play of the drive.`,
-          choiceSpec: fixedChoiceSpec(ordinalChoices(playNumber)), visualType: 'drive-play-order',
-          visualData: { completedDrivePlays: snap.context.drivePlays, playNumber },
-          initialAriaLabel: `This is play number ${playNumber} of the drive; its order number is hidden.`,
-          guidedAriaLabel: `Change play number ${playNumber} into its order number without revealing the answer.`,
-          workedAriaLabel: `Play number ${playNumber} is the ${answer} play of the drive.`,
-        }));
-      },
-    },
-    {
       meta: makeMeta({ familyId: 'quarter-read', skill: 'football-number-sense', concept: 'quarter-read', purpose: 'coreReview', tier: 'football-context', weight: 0.8, operationType: 'ordinal', answerExposure: 'source-visible', curriculumSource: 'football-only' }),
       derive(snap) {
         const answer = ordinal(snap.context.quarter);
@@ -763,19 +724,48 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
       },
     },
     {
-      meta: makeMeta({ familyId: 'down-read', skill: 'football-number-sense', concept: 'down-read', purpose: 'coreReview', tier: 'football-context', weight: 1.1, operationType: 'ordinal', answerExposure: 'source-visible', curriculumSource: 'football-only' }),
+      meta: makeMeta({ familyId: 'next-down', skill: 'football-number-sense', concept: 'down-progression', purpose: 'coreReview', tier: 'football-context', weight: 1.1, operationType: 'ordinal', answerExposure: 'modeled-with-result-hidden', curriculumSource: 'football-only' }),
       derive(snap) {
-        const answer = ordinal(snap.context.down);
+        const currentDown = snap.context.down;
+        const yardsToGo = snap.context.yardsToGo;
+        const proposedGain = snap.proposal.appliedGain;
+        const resultKind = snap.proposal.resultKind;
+        const nextDown = snap.proposal.newDown;
+        if (!['advance', 'firstDown'].includes(resultKind)) {
+          return { decline: decline('no-next-down', 'Touchdowns and turnovers on downs do not continue to another down for the same possession.') };
+        }
+        if (!Number.isInteger(nextDown) || nextDown < 1 || nextDown > 4) {
+          return { decline: decline('invalid-next-down', 'The projected next down must be first through fourth.') };
+        }
+        if (nextDown === currentDown) {
+          return { decline: decline('next-down-unchanged', 'The projected play does not change the visible down.') };
+        }
+
+        const answer = ordinal(nextDown);
+        const madeFirstDown = resultKind === 'firstDown';
+        const hint = madeFirstDown
+          ? `The play gains ${yards(proposedGain)}, enough to reach the ${yards(yardsToGo)} needed. A new set of downs starts.`
+          : `The play gains ${yards(proposedGain)}, which is short of the ${yards(yardsToGo)} needed. Move to the down after ${ordinal(currentDown)}.`;
+        const explanation = madeFirstDown
+          ? `The play gains ${yards(proposedGain)}, enough for the ${yards(yardsToGo)} needed. A new set starts at ${answer} down.`
+          : `The play gains ${yards(proposedGain)}, short of the ${yards(yardsToGo)} needed. After ${ordinal(currentDown)} down comes ${answer} down.`;
         return eligible(makeSemantic({
-          bindings: [contextBinding(snap, 'down', '/context/down')], operationType: 'ordinal', operandIds: ['down'], answer,
-          prompt: `The scoreboard begins with ${answer}. What down is it?`,
-          hint: 'Read the order number before the & sign.',
-          explanation: `The display begins with ${answer}, so it is ${answer} down.`,
-          choiceSpec: fixedChoiceSpec(['1st', '2nd', '3rd', '4th']), visualType: 'down-distance',
-          visualData: { down: snap.context.down, yardsToGo: snap.context.yardsToGo },
-          initialAriaLabel: `${answer} down and ${yards(snap.context.yardsToGo)} to go.`,
-          guidedAriaLabel: `Focus on the first part, ${answer}, on the scoreboard.`,
-          workedAriaLabel: `The current down is ${answer}.`,
+          bindings: [
+            contextBinding(snap, 'currentDown', '/context/down'),
+            contextBinding(snap, 'yardsToGo', '/context/yardsToGo'),
+            contextBinding(snap, 'proposedGain', '/proposal/appliedGain'),
+            contextBinding(snap, 'resultKind', '/proposal/resultKind'),
+            contextBinding(snap, 'nextDown', '/proposal/newDown'),
+          ],
+          operationType: 'ordinal', operandIds: ['nextDown'], answer,
+          prompt: `On ${ordinal(currentDown)} & ${yardsToGo}, if this play gains ${yards(proposedGain)}, what down would come next?`,
+          hint,
+          explanation,
+          choiceSpec: fixedChoiceSpec(['1st', '2nd', '3rd', '4th']), visualType: 'down-progression',
+          visualData: { currentDown, yardsToGo, proposedGain },
+          initialAriaLabel: `${ordinal(currentDown)} down and ${yards(yardsToGo)} to go; the play gains ${yards(proposedGain)}; the next down is hidden.`,
+          guidedAriaLabel: `${ordinal(currentDown)} down and ${yards(yardsToGo)} to go; compare the ${yards(proposedGain)} gained with the distance needed; the next down remains hidden.`,
+          workedAriaLabel: `${ordinal(currentDown)} down and ${yards(yardsToGo)} to go; after a gain of ${yards(proposedGain)}, the next down is ${answer}.`,
         }));
       },
     },
