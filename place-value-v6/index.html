@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>James's Place Value Practice</title>
+<style>
+:root{--ink:#23241f;--muted:#686960;--line:#d7d1c4;--page:#f3efe5;--green:#365f4b;--bad:#8b4037;--cream:#fff8e4;--hint:#fbf3dc}
+*{box-sizing:border-box}
+body{margin:0;background:var(--page);color:var(--ink);font-family:ui-rounded,"Avenir Next",system-ui,-apple-system,sans-serif}
+button,input{font:inherit}
+.app{max-width:720px;margin:auto;padding:10px}
+.top{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.top h1{font-size:clamp(1.15rem,4.8vw,1.85rem);margin:4px 0}
+.count{font-weight:850;color:var(--muted);white-space:nowrap}
+.bar{height:8px;background:#ddd8cd;border-radius:99px;overflow:hidden;margin:8px 0 14px}.bar i{display:block;height:100%;background:var(--green);width:0}
+.card{background:#fff;border:1px solid var(--line);border-radius:20px;padding:16px;box-shadow:0 10px 28px #0000000d}
+.tag{text-align:center;color:var(--green);letter-spacing:.16em;font-weight:900;font-size:.78rem;margin:0 0 5px}
+h2{text-align:center;margin:0;font-size:clamp(1.45rem,5.8vw,2.05rem);line-height:1.1}
+.sub{text-align:center;color:var(--muted);margin:7px 0 13px}
+.sheet{border:1px solid var(--line);border-radius:17px;padding:14px 10px;background:linear-gradient(#ece8de 1px,transparent 1px),linear-gradient(90deg,#ece8de 1px,transparent 1px),#fffefb;background-size:22px 22px}
+.heads{display:grid;grid-template-columns:1.35fr .8fr 1fr;gap:6px;text-align:center;color:var(--muted);font-weight:900;font-size:.82rem;max-width:620px;margin:0 auto 8px}
+.blocks.guided{display:grid;grid-template-columns:1.35fr .8fr 1fr;gap:6px;min-height:145px;align-items:center;max-width:620px;margin:auto}
+.place{display:flex;justify-content:center;align-items:center;align-content:center;gap:4px;flex-wrap:wrap;min-width:0}
+.place.h.multi{display:grid;grid-template-columns:repeat(2,max-content);gap:4px}
+.place.t{flex-wrap:nowrap;gap:3px}
+.place.o{display:grid;grid-template-columns:repeat(3,18px);gap:4px}
+.free-wrap{display:flex;justify-content:center;align-items:center;gap:12px;min-height:155px;max-width:620px;margin:auto;flex-wrap:wrap}
+.free-group{display:flex;justify-content:center;align-items:center;gap:4px;flex-wrap:wrap}
+.free-h.multi{display:grid;grid-template-columns:repeat(2,max-content);gap:4px}
+.free-t{flex-wrap:nowrap;gap:3px}
+.free-o{display:grid;grid-template-columns:repeat(3,19px);gap:4px}
+.flat{width:94px;height:94px}.rod{width:13px;height:94px}.cube{width:19px;height:19px}
+.place.h.multi .flat,.free-h.multi .flat{width:62px;height:62px}
+.place.h.multi+.t .rod,.free-h.multi~.free-t .rod{height:82px}
+.rule{height:1px;background:var(--line);margin:12px 0}
+.label{text-align:center;color:var(--muted);font-weight:850;margin-bottom:7px}
+.answer{display:flex;gap:9px;max-width:480px;margin:auto}
+.answer input{width:100%;height:67px;border:3px solid #99998f;border-radius:17px;text-align:center;font-size:2.3rem;font-weight:900;outline:none;background:#fff}
+.answer input:focus{border-color:var(--green);box-shadow:0 0 0 4px #365f4b22}
+.answer button,.next,.again{border:0;border-radius:15px;background:var(--green);color:#fff;font-size:1.15rem;font-weight:900;min-height:60px;padding:0 24px}
+.choices{display:grid;gap:9px;max-width:520px;margin:auto}
+.choice{min-height:58px;border:2px solid #a7a59c;border-radius:14px;background:#fff;color:var(--ink);padding:10px 14px;text-align:left;font-size:1.12rem;font-weight:850}
+.choice:focus{outline:4px solid #365f4b22;border-color:var(--green)}
+.choice.wrong{border-color:var(--bad);color:var(--bad);background:#fff7f5}
+.choice.correct{border-color:var(--green);color:var(--green);background:#f3faf6}
+.feedback{min-height:50px;text-align:center;padding:11px 3px 0;font-weight:850;color:var(--bad)}.feedback.good{color:var(--green)}
+.hint{display:none;text-align:center;background:var(--hint);border-radius:13px;padding:11px;line-height:1.45;font-weight:800}.hint.show{display:block}
+.next{display:none;margin:8px auto 0}.next.show{display:block}
+.summary{display:none;text-align:center}.summary.show{display:block}
+.mode-hidden{display:none!important}
+@media(max-width:520px){.card{padding:14px 9px}.sheet{padding:12px 6px}.answer{flex-direction:column}.flat{width:88px;height:88px}.rod{height:88px}.blocks.guided{min-height:135px}.free-wrap{min-height:145px;gap:9px}.place.h.multi .flat,.free-h.multi .flat{width:58px;height:58px}.place.o{grid-template-columns:repeat(3,17px)}.cube{width:18px;height:18px}}
+</style>
+</head>
+<body>
+<main class="app">
+  <div class="top"><h1>Hundreds, Tens, and Ones</h1><span class="count" id="count">1 of 10</span></div>
+  <div class="bar"><i id="bar"></i></div>
+  <section class="card" id="practice">
+    <p class="tag" id="tag">BLOCKS TO NUMBER</p>
+    <h2 id="prompt">What number do the blocks show?</h2>
+    <p class="sub" id="sub">Count the flats, rods, and cubes.</p>
+    <div class="sheet">
+      <div id="guidedView">
+        <div class="heads"><span>hundreds</span><span>tens</span><span>ones</span></div>
+        <div class="blocks guided"><div class="place h" id="h"></div><div class="place t" id="t"></div><div class="place o" id="o"></div></div>
+      </div>
+      <div class="free-wrap mode-hidden" id="freeView"></div>
+      <div class="rule"></div>
+      <div id="numericArea">
+        <div class="label">Write the number</div>
+        <div class="answer"><input id="answer" inputmode="numeric" maxlength="3" autocomplete="off" aria-label="Your answer"><button id="check">Check</button></div>
+      </div>
+      <div class="choices mode-hidden" id="choices" aria-label="Answer choices"></div>
+      <div class="feedback" id="feedback" aria-live="polite"></div>
+      <div class="hint" id="hint"></div>
+      <button class="next" id="next">Next</button>
+    </div>
+  </section>
+  <section class="card summary" id="summary"><h2>Session complete</h2><p id="score"></p><p id="need"></p><button class="again" id="again">Practice again</button></section>
+</main>
+<script>
+'use strict';
+const $=s=>document.querySelector(s);
+const plan=[
+  {skill:'all',hundreds:[1],mode:'guided'},
+  {skill:'zeroTens',hundreds:[1],mode:'plain'},
+  {skill:'zeroOnes',hundreds:[1],mode:'words'},
+  {skill:'all',hundreds:[1],mode:'plain'},
+  {skill:'multiAll',hundreds:[2,3],mode:'guided'},
+  {skill:'multiZeroTens',hundreds:[2,3,4],mode:'words'},
+  {skill:'multiZeroOnes',hundreds:[2,3,4],mode:'plain'},
+  {skill:'exactMulti',hundreds:[2,3,4],mode:'guided'},
+  {skill:'multiMixed',hundreds:[2,3,4],mode:'words'},
+  {skill:'mixed',hundreds:[1,2,3,4],mode:'plain'}
+];
+let index=0,q,tries=0,first=0,helped=0,recent=[],miss={};
+function S(tag,a={}){const e=document.createElementNS('http://www.w3.org/2000/svg',tag);for(const[k,v]of Object.entries(a))e.setAttribute(k,v);return e}
+function flat(){const s=S('svg',{viewBox:'0 0 104 104',class:'flat','aria-hidden':'true'});s.append(S('rect',{x:2,y:2,width:100,height:100,fill:'#fff8e4',stroke:'#292a27','stroke-width':3}));for(let i=1;i<10;i++){let p=2+i*10;s.append(S('line',{x1:2,y1:p,x2:102,y2:p,stroke:'#686964','stroke-width':.8}));s.append(S('line',{x1:p,y1:2,x2:p,y2:102,stroke:'#686964','stroke-width':.8}))}return s}
+function rod(){const s=S('svg',{viewBox:'0 0 16 104',class:'rod','aria-hidden':'true'});s.append(S('rect',{x:1,y:2,width:14,height:100,fill:'#fff8e4',stroke:'#292a27','stroke-width':2}));for(let i=1;i<10;i++){let p=2+i*10;s.append(S('line',{x1:1,y1:p,x2:15,y2:p,stroke:'#686964','stroke-width':.8}))}return s}
+function cube(){const s=S('svg',{viewBox:'0 0 18 18',class:'cube','aria-hidden':'true'});s.append(S('rect',{x:1.5,y:1.5,width:15,height:15,fill:'#fff8e4',stroke:'#292a27','stroke-width':2}));return s}
+function rnd(a,b){return a+Math.floor(Math.random()*(b-a+1))}
+function pick(a){return a[Math.floor(Math.random()*a.length)]}
+function categoryForMixed(){const r=Math.random();return r<.25?'zeroTens':r<.5?'zeroOnes':r<.65?'exact':'all'}
+function make(spec){let h=pick(spec.hundreds),t=0,o=0,kind=spec.skill;
+  if(kind==='multiMixed'||kind==='mixed')kind=categoryForMixed();
+  if(kind==='all'||kind==='multiAll'){t=rnd(1,5);o=rnd(1,9)}
+  else if(kind==='zeroTens'||kind==='multiZeroTens'){t=0;o=rnd(1,9)}
+  else if(kind==='zeroOnes'||kind==='multiZeroOnes'){t=rnd(1,6);o=0}
+  else if(kind==='exact'||kind==='exactMulti'){t=0;o=0}
+  let value=h*100+t*10+o,guard=0;
+  while(recent.includes(value)&&guard++<40){o=o?o%9+1:o;t=t?t%6+1:t;value=h*100+t*10+o}
+  recent.push(value);if(recent.length>9)recent.shift();
+  return{h,t,o,value,mode:spec.mode,skill:spec.skill,kind}
+}
+function draw(el,n,maker){el.innerHTML='';for(let i=0;i<n;i++)el.append(maker())}
+function renderGuided(){draw($('#h'),q.h,flat);draw($('#t'),q.t,rod);draw($('#o'),q.o,cube);$('#h').classList.toggle('multi',q.h>1)}
+function group(cls,n,maker,multi=false){if(!n)return null;const d=document.createElement('div');d.className=`free-group ${cls}${multi?' multi':''}`;for(let i=0;i<n;i++)d.append(maker());return d}
+function renderFree(){const v=$('#freeView');v.innerHTML='';const groups=[group('free-h',q.h,flat,q.h>1),group('free-t',q.t,rod),group('free-o',q.o,cube)];groups.filter(Boolean).forEach(g=>v.append(g))}
+const ones=['zero','one','two','three','four','five','six','seven','eight','nine','ten','eleven','twelve','thirteen','fourteen','fifteen','sixteen','seventeen','eighteen','nineteen'];
+const tensWords=['','','twenty','thirty','forty','fifty','sixty','seventy','eighty','ninety'];
+function numberWords(n){if(n<20)return ones[n];if(n<100){const t=Math.floor(n/10),o=n%10;return tensWords[t]+(o?'-'+ones[o]:'')}const h=Math.floor(n/100),r=n%100;return ones[h]+' hundred'+(r?' '+numberWords(r):'')}
+function distractors(){const vals=new Set([q.value]);const c=[];function add(n){if(n>=100&&n<=999&&!vals.has(n)){vals.add(n);c.push(n)}}
+  add(q.h*100+q.o*10+q.t);
+  add(q.h*100+q.t*10+(q.o===9?8:q.o+1));
+  add(q.h*100+((q.t+1)%10)*10+q.o);
+  add((q.h===4?3:q.h+1)*100+q.t*10+q.o);
+  add(q.h*100+q.o);
+  add(q.h*100+q.t*10);
+  for(let n=101;c.length<2&&n<999;n+=rnd(7,23))add(n);
+  return c.slice(0,2)
+}
+function shuffle(a){for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]]}return a}
+function renderChoices(){const c=$('#choices');c.innerHTML='';const vals=shuffle([q.value,...distractors()]);vals.forEach(v=>{const b=document.createElement('button');b.className='choice';b.textContent=numberWords(v);b.dataset.value=v;b.onclick=()=>checkChoice(b);c.append(b)})}
+function setMode(){const guided=q.mode==='guided';const words=q.mode==='words';$('#guidedView').classList.toggle('mode-hidden',!guided);$('#freeView').classList.toggle('mode-hidden',guided);$('#numericArea').classList.toggle('mode-hidden',words);$('#choices').classList.toggle('mode-hidden',!words);
+  if(guided){$('#tag').textContent='PLACE-VALUE PRACTICE';$('#prompt').textContent='What number do the blocks show?';$('#sub').textContent='Count each place.'}
+  else if(words){$('#tag').textContent='NUMBER WORDS';$('#prompt').textContent='Which number is written correctly?';$('#sub').textContent='Tap the words that name the blocks.'}
+  else{$('#tag').textContent='BLOCKS TO NUMBER';$('#prompt').textContent='What number do the blocks show?';$('#sub').textContent='Look at all the blocks together.'}
+}
+function render(){q=make(plan[index]);tries=0;setMode();renderGuided();renderFree();if(q.mode==='words')renderChoices();$('#answer').value='';$('#answer').disabled=false;$('#check').disabled=false;$('#feedback').textContent='';$('#feedback').className='feedback';$('#hint').className='hint';$('#next').className='next';$('#count').textContent=`${index+1} of ${plan.length}`;$('#bar').style.width=`${index/plan.length*100}%`;if(q.mode!=='words')requestAnimationFrame(()=>$('#answer').focus())}
+function wordsCount(n,w){return`${n} ${w}${n===1?'':'s'}`}
+function correctMessage(){return`Correct. ${wordsCount(q.h,'hundred')}, ${wordsCount(q.t,'ten')}, and ${wordsCount(q.o,'one')} make ${q.value}.`}
+function markCorrect(){tries===1?first++:helped++;$('#feedback').className='feedback good';$('#feedback').textContent=correctMessage();$('#answer').disabled=true;$('#check').disabled=true;document.querySelectorAll('.choice').forEach(b=>b.disabled=true);$('#next').className='next show'}
+function wrongHelp(){miss[q.skill]=(miss[q.skill]||0)+1;if(tries===1){$('#feedback').textContent=q.mode==='words'?'Count the flats, rods, and cubes, then read the choices again.':'Look again. Count the flats, then the rods, then the cubes.';return}$('#hint').className='hint show';$('#hint').innerHTML=`${q.h} ${q.h===1?'hundred':'hundreds'} = ${q.h*100}<br>${q.t} ${q.t===1?'ten':'tens'} = ${q.t*10}<br>${q.o} ${q.o===1?'one':'ones'} = ${q.o}<br><strong>${q.h*100} + ${q.t*10} + ${q.o} = ?</strong>`;$('#feedback').textContent='Use the place values below, then try again.'}
+function check(){const raw=$('#answer').value.trim();if(!/^\d{1,3}$/.test(raw)){show('Enter a whole number.');return}tries++;if(+raw===q.value){markCorrect();return}wrongHelp();$('#answer').select()}
+function checkChoice(button){if(button.disabled)return;tries++;if(+button.dataset.value===q.value){button.classList.add('correct');markCorrect();return}button.classList.add('wrong');button.disabled=true;wrongHelp()}
+function show(x){$('#feedback').textContent=x;$('#answer').select()}
+function next(){if(++index===plan.length)return finish();render()}
+function finish(){$('#practice').style.display='none';$('#summary').className='card summary show';$('#count').textContent='Finished';$('#bar').style.width='100%';$('#score').textContent=`${first} correct on the first try; ${helped} correct after help.`;const k=Object.entries(miss).sort((a,b)=>b[1]-a[1])[0];const names={all:'one hundred with tens and ones',zeroTens:'numbers with zero tens',zeroOnes:'numbers with zero ones',multiAll:'multiple hundreds with tens and ones',multiZeroTens:'multiple hundreds with zero tens',multiZeroOnes:'multiple hundreds with zero ones',exactMulti:'exact hundreds',multiMixed:'mixed multiple-hundreds numbers',mixed:'mixed place-value numbers'};$('#need').textContent=k&&k[1]?`Most practice needed: ${names[k[0]]}.`:'No repeated difficulty appeared.';try{const data=JSON.parse(localStorage.getItem('jamesPlaceValueV6')||'{"sessions":0}');data.sessions=(data.sessions||0)+1;data.last={first,helped,miss,date:new Date().toISOString()};localStorage.setItem('jamesPlaceValueV6',JSON.stringify(data))}catch{}}
+function restart(){index=first=helped=0;recent=[];miss={};$('#summary').className='card summary';$('#practice').style.display='block';render()}
+function runSelfTests(){const tests=[];function t(name,ok){tests.push({name,pass:!!ok})}t('number words 101',numberWords(101)==='one hundred one');t('number words 240',numberWords(240)==='two hundred forty');t('number words 999',numberWords(999)==='nine hundred ninety-nine');t('plan has multiple hundreds',plan.some(p=>p.hundreds.some(h=>h>1)));t('plan has guided mode',plan.some(p=>p.mode==='guided'));t('plan has plain mode',plan.some(p=>p.mode==='plain'));t('plan has word choices',plan.some(p=>p.mode==='words'));for(let i=0;i<100;i++){const x=make(plan[i%plan.length]);t('generated range '+i,x.value>=100&&x.value<=499&&x.value===x.h*100+x.t*10+x.o)}console.table(tests);return tests.every(x=>x.pass)}
+window.runSelfTests=runSelfTests;
+$('#check').onclick=check;$('#next').onclick=next;$('#again').onclick=restart;$('#answer').oninput=e=>e.target.value=e.target.value.replace(/\D/g,'').slice(0,3);$('#answer').onkeydown=e=>{if(e.key==='Enter')$('#next').classList.contains('show')?next():check()};render();
+</script>
+</body>
+</html>
