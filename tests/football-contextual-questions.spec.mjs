@@ -3,11 +3,13 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import vm from 'node:vm';
 
+const opponentSource = await readFile(new URL('../football/opponent.js', import.meta.url), 'utf8');
 const domainSource = await readFile(new URL('../football/football-domain.js', import.meta.url), 'utf8');
 const questionsSource = await readFile(new URL('../football/contextual-questions.js', import.meta.url), 'utf8');
 
 function loadModules() {
   const context = vm.createContext({});
+  vm.runInContext(opponentSource, context, { filename: 'opponent.js' });
   vm.runInContext(domainSource, context, { filename: 'football-domain.js' });
   vm.runInContext(questionsSource, context, { filename: 'contextual-questions.js' });
   return {
@@ -26,6 +28,19 @@ function deepFrozen(value, seen = new Set()) {
   return Object.isFrozen(value) && Object.values(value).every((child) => deepFrozen(child, seen));
 }
 
+function matchDescriptor(opponentId = 'unc', opponentName = 'UNC') {
+  return {
+    schemaVersion: 1,
+    player: { id: 'duke', displayName: 'Duke', shortName: 'DUKE', endZoneName: 'DUKE' },
+    opponent: {
+      id: opponentId,
+      displayName: opponentName,
+      shortName: opponentName,
+      endZoneName: opponentName,
+    },
+  };
+}
+
 function context(overrides = {}) {
   const direction = overrides.direction ?? (overrides.possession === 'defense' ? -1 : 1);
   const possession = overrides.possession ?? (direction === -1 ? 'defense' : 'offense');
@@ -37,8 +52,10 @@ function context(overrides = {}) {
     defense: possession === 'defense' ? 'run' : null,
     matchup: possession === 'defense' ? 'matched' : null,
   };
+  const match = overrides.match ?? matchDescriptor();
   return {
     contextId: overrides.contextId ?? 41,
+    match,
     possession,
     direction,
     quarter: overrides.quarter ?? 2,
@@ -53,12 +70,13 @@ function context(overrides = {}) {
     drivePlays: overrides.drivePlays ?? 2,
     calls,
     privateOpponentSnapshot: overrides.privateOpponentSnapshot ?? (possession === 'defense' ? {
-      profileKey: 'test',
+      opponentId: match.opponent.id,
+      profileKey: 'balanced',
       look: { key: 'balanced', label: 'Balanced set', alignment: 'Singleback', leanKeys: ['balanced'] },
       lean: { key: 'balanced', label: 'Run or pass', runWeight: 0.5, passWeight: 0.5 },
       weights: { shortRun: 0.2, shortPass: 0.2, longRun: 0.2, mediumPass: 0.2, longPass: 0.2 },
       plannedCallKey: calls.offense,
-      tendency: { profileKey: 'test' },
+      tendency: { profileKey: 'balanced' },
     } : null),
   };
 }
@@ -607,6 +625,53 @@ test('half and teen-score families use only the frozen quarter and real committe
   assert.doesNotMatch(touchdownQuestion.prompt.text, /21|7\s*\+\s*7/i);
 });
 
+test('every team-labelled question path derives names only from the public match descriptor', () => {
+  const { domain, questions } = loadModules();
+  const customMatch = {
+    schemaVersion: 1,
+    player: { id: 'duke', displayName: 'Blue Devils', shortName: 'BLUE DEVILS', endZoneName: 'DUKE' },
+    opponent: { id: 'wake-forest', displayName: 'Wake Forest', shortName: 'WAKE FOREST', endZoneName: 'WAKE' },
+  };
+  const scoreSnap = makeSnap(domain, {
+    match: customMatch,
+    scores: { player: 3, opponent: 4 },
+  }, 4);
+  const total = questions.build(scoreSnap, 'committed-score-total');
+  const difference = questions.build(scoreSnap, 'committed-score-difference');
+  const teenSnap = makeSnap(domain, {
+    match: customMatch,
+    scores: { player: 7, opponent: 14 },
+  }, 4);
+  const teen = questions.build(teenSnap, 'committed-score-ones');
+  const opponentYardsSnap = makeSnap(domain, {
+    match: customMatch,
+    possession: 'defense', direction: -1, yardLine: 70, firstDownLine: 60,
+    driveStart: 80, totalYards: { player: 83, opponent: 99 },
+    privateOpponentSnapshot: {
+      opponentId: 'wake-forest',
+      profileKey: 'quickPass',
+      plannedCallKey: 'shortPass',
+    },
+  }, 2);
+  const opponentYards = questions.build(opponentYardsSnap, 'team-yards-past-100');
+
+  const publicCopy = JSON.stringify({ total, difference, teen, opponentYards });
+  assert.match(publicCopy, /Blue Devils/);
+  assert.match(publicCopy, /WAKE FOREST/);
+  assert.doesNotMatch(publicCopy, /\bUNC\b|\bDuke\b/);
+  assert.equal(teen.bindings[0].source.path, '/context/scores/opponent');
+  assert.deepEqual(plain(total.bindings.map(binding => binding.source.path)), [
+    '/context/scores/player', '/context/scores/opponent',
+  ]);
+  assert.deepEqual(plain(difference.bindings.map(binding => binding.source.path)), [
+    '/context/scores/player', '/context/scores/opponent',
+  ]);
+  assert.equal(teen.visuals.initial.data.team, 'WAKE FOREST');
+  assert.equal(teen.visuals.initial.data.teamRole, 'opponent');
+  assert.equal(opponentYards.visuals.initial.data.team, 'WAKE FOREST');
+  assert.equal(opponentYards.visuals.initial.data.teamRole, 'opponent');
+});
+
 test('whole-ten movement families accept exact 10 and 20 yard moves but never by-five moves', () => {
   const { domain, questions } = loadModules();
   for (const direction of [1, -1]) {
@@ -1023,12 +1088,16 @@ test('selected-call affinity is possession-scoped, immutable, and independent of
   };
   const firstDefense = makeSnap(domain, {
     ...defenseContext,
-    privateOpponentSnapshot: { plannedCallKey: 'longPass', secret: 'first' },
+    privateOpponentSnapshot: {
+      opponentId: 'unc', profileKey: 'balanced', plannedCallKey: 'longPass', secret: 'first',
+    },
   }, 4);
   const secondDefense = makeSnap(domain, {
     ...defenseContext,
     calls: { offense: 'shortPass', defense: 'run', matchup: 'matched' },
-    privateOpponentSnapshot: { plannedCallKey: 'shortPass', secret: 'second' },
+    privateOpponentSnapshot: {
+      opponentId: 'unc', profileKey: 'balanced', plannedCallKey: 'shortPass', secret: 'second',
+    },
   }, 4);
   assert.deepEqual(
     plain(questions.selectionFor(firstDefense, 'line-to-gain-missing-part')),

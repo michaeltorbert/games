@@ -433,6 +433,7 @@ test('history preserves finite signed actual yards while offered gains stay non-
     try {
       FOOTBALL_DOMAIN.createSnap({
         contextId: 'negative-domain-probe',
+        match: state.match,
         possession: 'offense',
         direction: 1,
         quarter: 1,

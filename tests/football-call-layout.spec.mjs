@@ -70,6 +70,7 @@ async function showNextDownQuestion(page) {
     });
     const context = FOOTBALL_DOMAIN.normalizeContext({
       contextId: 'next-down-layout-probe',
+      match: state.match,
       possession: state.possession,
       direction: state.direction,
       quarter: state.quarter,

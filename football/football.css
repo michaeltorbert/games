@@ -7,8 +7,12 @@
   --panel-ink: #09142c;
   --duke: #003087;
   --duke-dark: #001a55;
-  --unc: #7bafd4;
-  --unc-dark: #4e7ba2;
+  --opponent-accent: #7bafd4;
+  --opponent-accent-dark: #4e7ba2;
+  --opponent-accent-ink: #0c2950;
+  --opponent-accent-soft: #d9efff;
+  --opponent-scorebug-top: #83b6d8;
+  --opponent-scorebug-bottom: #547fa5;
   --gold: #ffd337;
   --gold-soft: #ffe7a8;
   --white: #f4f8ff;
@@ -205,8 +209,8 @@ body::after {
   background: linear-gradient(180deg, rgba(0, 48, 135, 1), rgba(0, 26, 84, 1));
 }
 
-.sb-unc {
-  background: linear-gradient(180deg, rgba(131, 182, 216, 1), rgba(84, 127, 165, 1));
+.sb-opponent {
+  background: linear-gradient(180deg, var(--opponent-scorebug-top), var(--opponent-scorebug-bottom));
 }
 
 .sb-name {
@@ -436,7 +440,7 @@ body::after {
   border-radius: 30px;
   border: 6px solid rgba(246, 255, 246, 0.95);
   background:
-    linear-gradient(90deg, #003087 0 5%, transparent 5% 95%, #7bafd4 95% 100%),
+    linear-gradient(90deg, #003087 0 5%, transparent 5% 95%, var(--opponent-accent) 95% 100%),
     repeating-linear-gradient(90deg, #37aa49 0 8%, #2e8f3c 8% 16%),
     linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(0, 0, 0, 0.12));
   box-shadow:
@@ -534,7 +538,7 @@ body::after {
   transform: translate(50%, -50%) rotate(90deg);
   font-size: 18px;
   letter-spacing: 2px;
-  color: #0c2950 !important;
+  color: var(--opponent-accent-ink) !important;
 }
 
 /* Broadcast sound toggle — overlays the field so it stays reachable on every
@@ -704,6 +708,16 @@ body::after {
   font-size: 30px;
   line-height: 1;
   text-align: center;
+}
+
+.math-context-token[data-team="player"] {
+  background: var(--duke);
+  color: #fff;
+}
+
+.math-context-token[data-team="opponent"] {
+  background: var(--opponent-accent);
+  color: var(--opponent-accent-ink);
 }
 
 .math-context-link {
@@ -1934,7 +1948,7 @@ body::after {
 #ov-td[data-side="defense"] .ov-broadcast-badge {
   background: linear-gradient(180deg, #ff4d3d, #a8120d);
   color: #fff;
-  box-shadow: 0 0 0 1.5px rgba(123, 175, 212, 0.55), 0 8px 18px rgba(170, 17, 29, 0.3);
+  box-shadow: 0 0 0 1.5px var(--opponent-accent), 0 8px 18px rgba(170, 17, 29, 0.3);
 }
 
 #ov-end.ov-loss .overlay-card::after {
@@ -2012,6 +2026,149 @@ body::after {
 .ov-btn:hover,
 .ov-btn:focus-visible {
   transform: translateY(-1px);
+}
+
+/* Start overlay: native radios keep their browser keyboard and screen-reader
+   behavior while each full label remains a large touch target. */
+#ov-start .overlay-card {
+  justify-content: center;
+  min-height: min(82vh, 680px);
+}
+
+#ov-start .ov-title {
+  max-width: 12ch;
+  font-size: clamp(72px, 7.4vw, 126px);
+}
+
+#ov-start .ov-sub {
+  max-width: 38ch;
+}
+
+.rival-picker {
+  width: 100%;
+  margin: 22px 0 0;
+  padding: 0;
+  border: 0;
+}
+
+.rival-picker legend {
+  margin-bottom: 10px;
+  color: var(--muted-soft);
+  font-family: 'Barlow Condensed', 'Nunito', sans-serif;
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.rival-options {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.rival-option {
+  position: relative;
+  min-width: 0;
+  min-height: 104px;
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.06);
+  cursor: pointer;
+}
+
+.rival-option:has(input:checked) {
+  border-width: 3px;
+  border-color: var(--opponent-accent-soft);
+  background: rgba(255, 255, 255, 0.14);
+  box-shadow: inset 7px 0 0 var(--opponent-accent);
+}
+
+.rival-option:focus-within {
+  outline: 3px solid #fff;
+  outline-offset: 3px;
+}
+
+.rival-option input {
+  width: 24px;
+  height: 24px;
+  margin: 0;
+  accent-color: var(--opponent-accent);
+}
+
+.rival-option-copy {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 3px 8px;
+}
+
+.rival-option-name {
+  overflow-wrap: anywhere;
+  color: #fff;
+  font-family: 'Barlow Condensed', 'Nunito', sans-serif;
+  font-size: 24px;
+  font-weight: 800;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.rival-option-style {
+  grid-column: 1 / -1;
+  color: #cdd8ea;
+  font-family: 'Barlow Condensed', 'Nunito', sans-serif;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.08;
+}
+
+.rival-selected {
+  display: none;
+  align-self: start;
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: #fff;
+  color: #07152f;
+  font-family: 'Barlow Condensed', 'Nunito', sans-serif;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.rival-option input:checked ~ .rival-option-copy .rival-selected {
+  display: inline-flex;
+}
+
+.rival-preview {
+  width: fit-content;
+  max-width: 100%;
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin-top: 13px;
+  padding-left: 12px;
+  border-left: 5px solid var(--opponent-accent);
+  font-family: 'Barlow Condensed', 'Nunito', sans-serif;
+}
+
+.rival-preview-matchup {
+  color: #fff;
+  font-size: 20px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+}
+
+.rival-preview-style {
+  color: var(--opponent-accent-soft);
+  font-size: 17px;
+  font-weight: 700;
 }
 
 .ov-btn:focus-visible {
@@ -2425,6 +2582,10 @@ body::after {
     padding: 10px 10px 14px;
   }
 
+  .rival-options {
+    grid-template-columns: 1fr;
+  }
+
   #status-ribbon {
     min-width: min(92%, 720px);
     padding: 6px 14px;
@@ -2779,7 +2940,7 @@ body::after {
   #status {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     grid-template-areas:
-      "duke unc"
+      "duke opponent"
       "quarter down"
       "ball poss";
     gap: 5px;
@@ -2788,7 +2949,7 @@ body::after {
   }
 
   .sb-duke { grid-area: duke; }
-  .sb-unc { grid-area: unc; }
+  .sb-opponent { grid-area: opponent; }
   #status > :nth-child(4) { grid-area: quarter; }
   #status > :nth-child(5) { grid-area: down; }
   #status > :nth-child(6) { grid-area: ball; }
@@ -3022,6 +3183,80 @@ body::after {
     border-radius: 20px;
   }
 
+  #ov-start .overlay-card {
+    min-height: 0;
+    max-height: calc(100vh - 28px);
+    justify-content: center;
+    padding: 22px 18px 20px 42px;
+  }
+
+  #ov-start .ov-title {
+    margin-top: 10px;
+    font-size: clamp(48px, 14vw, 66px);
+  }
+
+  #ov-start .ov-sub {
+    margin-top: 7px;
+    font-size: 17px;
+  }
+
+  .rival-picker {
+    margin-top: 12px;
+  }
+
+  .rival-picker legend {
+    margin-bottom: 6px;
+    font-size: 13px;
+  }
+
+  .rival-options {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+
+  .rival-option {
+    min-height: 58px;
+    grid-template-columns: 24px minmax(0, 1fr);
+    gap: 9px;
+    padding: 7px 10px;
+    border-radius: 13px;
+  }
+
+  .rival-option input {
+    width: 22px;
+    height: 22px;
+  }
+
+  .rival-option-name {
+    font-size: 19px;
+  }
+
+  .rival-option-style {
+    font-size: 12px;
+  }
+
+  .rival-preview {
+    gap: 2px 8px;
+    margin-top: 8px;
+    padding-left: 8px;
+    border-left-width: 4px;
+  }
+
+  .rival-preview-matchup {
+    font-size: 15px;
+  }
+
+  .rival-preview-style {
+    font-size: 13px;
+  }
+
+  #ov-start .ov-btn {
+    min-height: 44px;
+    margin-top: 10px;
+    padding: 11px 22px 9px;
+    font-size: 25px;
+  }
+
   .overlay-card::after {
     width: 20px;
   }
@@ -3204,6 +3439,23 @@ body::after {
 
   .ov-btn {
     font-size: 24px;
+  }
+
+  #ov-start .overlay-card {
+    padding-top: 17px;
+    padding-bottom: 16px;
+  }
+
+  #ov-start .ov-broadcast-badge {
+    padding: 5px 10px;
+  }
+
+  #ov-start .ov-title {
+    font-size: clamp(44px, 13vw, 56px);
+  }
+
+  .rival-option {
+    min-height: 54px;
   }
 
   .ov-final-score {

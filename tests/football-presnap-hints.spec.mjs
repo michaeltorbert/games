@@ -82,7 +82,9 @@ test('defense sees one truthful snap read and the coverage click never rerolls t
     matchup: 'matched',
   });
   expect(afterPick.contracts.render.opponentSnapshot).toBeNull();
-  expect(afterPick.contracts.render.opponentTendency.weights).toEqual(before.expectedWeights);
+  expect(afterPick.contracts.activeSnap.context.privateOpponentSnapshot.weights).toEqual(before.expectedWeights);
+  expect(afterPick.contracts.render.opponentTendency).not.toHaveProperty('weights');
+  expect(afterPick.contracts.render.opponentTendency).not.toHaveProperty('plannedCallKey');
   expect(afterPick.contracts.render.defenseRead).toBeNull();
   expect(afterPick.readHidden).toBe(true);
 

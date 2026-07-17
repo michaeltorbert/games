@@ -29,6 +29,8 @@ const labels = [
   '13-halftime',
   '14-final',
   '15-reduced-motion',
+  '16-wake-forest-start',
+  '17-wake-forest-read',
 ];
 
 const matrixDir = path.join(process.cwd(), 'tests', 'artifacts', 'release-matrix');

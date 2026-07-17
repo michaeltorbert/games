@@ -261,3 +261,23 @@ Original prompt: Implement Football issue #25 with multi-model planning, impleme
 - Passed the complete release gate: 46/46 Node checks, 199 Playwright tests passed, 275 intentional project skips, and 108/108 canonical screenshots verified across all six device projects.
 - Completed Sol Ultra implementation and review loops plus independent Opus, Grok, and Gemini review with no unresolved findings. The single prepared Fable audit reached inference but exhausted its hard 12-turn cap without producing findings and was not retried.
 - Bumped Football and all release/cache surfaces to v1.23.0.
+
+---
+
+Original prompt: Implement the next Football issue with GPT-5.6 Sol Ultra writing, Opus 4.8 reviewing, Grok and Gemini/Antigravity in the planning and broad-review round robins, and one quota-guarded Fable 5 planning pass for the other agents to consider.
+
+## Football v1.24.0 issue #31 rival teams
+
+- Verified live issue #31, `origin/main` at `a5797b0`, bot attribution, and the existing opponent/privacy architecture before creating `codex/issue-31-rival-teams`.
+- Passed the focused baseline opponent-tendency and pre-snap privacy suite: 8/8 checks on the primary iPad target.
+- Ran independent planning passes with Opus 4.8, Grok 4.5, Gemini 3.1 Pro High, and GPT-5.6 Sol Ultra. The one explicitly approved Fable 5 planning call reached inference but exhausted its hard 12-turn cap without findings; it was not retried and no Fable position was inferred.
+- Reconciled and unanimously approved one implementation contract across all four normal lanes: three selectable opponents total (UNC balanced/default, NC State power run, Wake Forest quick/spread pass), a frozen identity catalog separate from behavior profiles, and a public match descriptor carried through the authoritative snap lifecycle.
+- Locked the privacy and determinism rules: rival selection consumes no gameplay RNG; every defensive plan is sampled once; the private opponent ID/profile/call must match the frozen public match context; public state exposes only identity plus qualitative look/lean; learning and stats schemas remain unchanged.
+- Visual thesis: one stable Duke broadcast with each visiting rival expressed through a concise name, scouting style, and controlled away-color accent rather than a full reskin. The start interaction previews a rival, Start commits it for the match, and Play Again returns to the picker with the last rival selected.
+- Planned verification covers frozen registry/profile invariants, default UNC/RNG compatibility, full match and recovery lifetime, cross-rival domain rejection, every dynamic label/question/ARIA surface, accessible 44px picker controls, all six device targets, non-default rival screenshots, the focused suite, and the complete release gate.
+- Corrected the release-blocking iPad portrait Wake Forest wrap with a tablet-portrait-only one-column picker; both required iPad portrait screenshots keep the selected name and Start CTA cleanly above the fold.
+- Added a rendered-line regression at Wake selection and passed the focused picker plus full matrix path on all six release projects (12/12), followed by a browser-client start-state smoke with no browser errors.
+- Completed the Sol Ultra/Opus implementation loop, including focus-trap, rival-query fallback, contrast, and public-profile privacy corrections. Public match/read/render projections now expose no opponent profile key, while private opponent ID/profile/planned-call mismatches still fail closed.
+- Passed the final complete release gate: 48/48 Node contracts, 217 Playwright checks passed, 305 intentional cross-project skips, and 120/120 canonical screenshots verified across all six required device projects. One unrelated fixed-timer particle check missed once under the parallel load, then passed 10/10 in isolation and the unchanged complete gate passed on rerun.
+- Visually inspected the Wake Forest start and defensive-read artifacts across the release matrix, including both corrected iPad portrait layouts; names, selected state, touch targets, and Start CTA remain readable and fully in frame.
+- Closed the final review round with Grok 4.5, Gemini 3.1 Pro High, and GPT-5.6 Sol Ultra approval. The Opus 4.8 lane's only requested change claimed `render_game_to_text()` was undefined; this was rejected as wrong because `football.js` explicitly exports it and the full browser matrix invokes it successfully. No valid P0-P2 or durable follow-up remains.
