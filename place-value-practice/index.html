@@ -1,0 +1,3554 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f7f5ef">
+  <title>Place by Place — Place-Value Practice</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --paper: #f9f8f3;
+      --paper-deep: #f2f0e9;
+      --canvas: #e9e7df;
+      --surface: #ffffff;
+      --surface-blue: #eef3f6;
+      --ink: #292d30;
+      --ink-soft: #5e666b;
+      --line: #d8d5cc;
+      --line-strong: #bbb8af;
+      --blue: #557b98;
+      --blue-dark: #3d617d;
+      --blue-soft: #dbe6ed;
+      --success: #42705b;
+      --danger: #9a554d;
+      --focus: #1d5f8b;
+      --shadow: 0 18px 48px rgb(41 45 48 / 0.11);
+      --radius-large: 26px;
+      --radius-medium: 18px;
+      --radius-small: 12px;
+      --tap: 44px;
+    }
+
+    *,
+    *::before,
+    *::after {
+      box-sizing: border-box;
+    }
+
+    html {
+      min-width: 320px;
+      background: var(--canvas);
+      scroll-behavior: smooth;
+    }
+
+    body {
+      min-height: 100vh;
+      min-height: 100dvh;
+      margin: 0;
+      background: var(--canvas);
+      color: var(--ink);
+      font-family: ui-rounded, "SF Pro Rounded", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+      font-size: 16px;
+      line-height: 1.5;
+      text-rendering: optimizeLegibility;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    button,
+    input,
+    select {
+      font: inherit;
+    }
+
+    button,
+    select,
+    summary,
+    input[type="checkbox"],
+    input[type="radio"] {
+      cursor: pointer;
+    }
+
+    button {
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    button:focus-visible,
+    input:focus-visible,
+    select:focus-visible,
+    summary:focus-visible {
+      outline: 3px solid var(--focus);
+      outline-offset: 3px;
+    }
+
+    [hidden] {
+      display: none !important;
+    }
+
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
+
+    .skip-link {
+      position: fixed;
+      z-index: 20;
+      top: 10px;
+      left: 10px;
+      min-height: var(--tap);
+      padding: 10px 16px;
+      border-radius: 10px;
+      background: var(--ink);
+      color: #ffffff;
+      font-weight: 750;
+      text-decoration: none;
+      transform: translateY(-140%);
+    }
+
+    .skip-link:focus {
+      transform: translateY(0);
+    }
+
+    .app-shell {
+      min-height: 100vh;
+      min-height: 100dvh;
+      background: var(--paper);
+    }
+
+    .app-header {
+      display: grid;
+      grid-template-columns: minmax(170px, 1fr) minmax(230px, 390px) var(--tap);
+      align-items: center;
+      gap: clamp(16px, 3vw, 34px);
+      min-height: 92px;
+      padding: 18px clamp(18px, 4vw, 42px);
+      border-bottom: 1px solid var(--line);
+      background: var(--paper);
+    }
+
+    .title-lockup {
+      min-width: 0;
+    }
+
+    .eyebrow {
+      display: block;
+      margin-bottom: 1px;
+      color: var(--blue-dark);
+      font-size: 0.72rem;
+      font-weight: 800;
+      letter-spacing: 0.12em;
+      line-height: 1.3;
+      text-transform: uppercase;
+    }
+
+    h1,
+    h2,
+    h3,
+    p {
+      margin-top: 0;
+    }
+
+    h1 {
+      margin-bottom: 0;
+      font-size: clamp(1.35rem, 2.4vw, 1.85rem);
+      line-height: 1.12;
+      letter-spacing: -0.025em;
+    }
+
+    .session-status {
+      min-width: 0;
+    }
+
+    .status-line {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 7px;
+      color: var(--ink-soft);
+      font-size: 0.86rem;
+      font-weight: 700;
+    }
+
+    .stage-label {
+      display: inline-flex;
+      align-items: center;
+      min-width: 0;
+      color: var(--ink);
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      margin-right: 8px;
+      border-radius: 50%;
+      background: var(--blue);
+      box-shadow: 0 0 0 4px var(--blue-soft);
+      flex: 0 0 auto;
+    }
+
+    progress {
+      display: block;
+      width: 100%;
+      height: 9px;
+      overflow: hidden;
+      border: 0;
+      border-radius: 999px;
+      background: #deddd6;
+      color: var(--blue);
+    }
+
+    progress::-webkit-progress-bar {
+      border-radius: 999px;
+      background: #deddd6;
+    }
+
+    progress::-webkit-progress-value {
+      border-radius: 999px;
+      background: var(--blue);
+    }
+
+    progress::-moz-progress-bar {
+      border-radius: 999px;
+      background: var(--blue);
+    }
+
+    .icon-button {
+      display: inline-grid;
+      width: var(--tap);
+      height: var(--tap);
+      min-width: var(--tap);
+      min-height: var(--tap);
+      place-items: center;
+      padding: 0;
+      border: 1px solid var(--line-strong);
+      border-radius: 50%;
+      background: var(--surface);
+      color: var(--ink-soft);
+      transition: border-color 160ms ease, background-color 160ms ease, color 160ms ease, transform 160ms ease;
+    }
+
+    .icon-button svg {
+      width: 21px;
+      height: 21px;
+    }
+
+    .icon-button:hover {
+      border-color: var(--blue);
+      background: var(--surface-blue);
+      color: var(--blue-dark);
+    }
+
+    .icon-button:active {
+      transform: scale(0.96);
+    }
+
+    main {
+      width: min(100%, 980px);
+      margin: 0 auto;
+      padding: clamp(24px, 4vw, 46px) clamp(16px, 4vw, 42px) 30px;
+    }
+
+    .workspace {
+      width: 100%;
+    }
+
+    .problem-header {
+      max-width: 680px;
+      margin: 0 auto clamp(20px, 3vw, 28px);
+      text-align: center;
+    }
+
+    .problem-count,
+    .summary-kicker {
+      margin-bottom: 7px;
+      color: var(--blue-dark);
+      font-size: 0.75rem;
+      font-weight: 800;
+      letter-spacing: 0.11em;
+      text-transform: uppercase;
+    }
+
+    .problem-header h2,
+    .summary-header h2 {
+      margin-bottom: 8px;
+      font-size: clamp(1.65rem, 4vw, 2.45rem);
+      line-height: 1.16;
+      letter-spacing: -0.035em;
+    }
+
+    .problem-header p,
+    .summary-header p:last-child {
+      margin-bottom: 0;
+      color: var(--ink-soft);
+      font-size: clamp(0.98rem, 2vw, 1.08rem);
+    }
+
+    .block-board {
+      margin: 0 0 clamp(22px, 4vw, 32px);
+      padding: clamp(14px, 2.5vw, 22px);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-large);
+      background: var(--paper-deep);
+    }
+
+    .block-groups {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: clamp(8px, 2vw, 16px);
+    }
+
+    .place-group {
+      min-width: 0;
+      padding: clamp(10px, 2vw, 16px);
+      border: 1px solid #dedbd2;
+      border-radius: var(--radius-medium);
+      background: rgb(255 255 255 / 0.82);
+    }
+
+    .place-group__heading {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 12px;
+      color: var(--ink-soft);
+      font-size: clamp(0.72rem, 1.8vw, 0.86rem);
+      font-weight: 760;
+      letter-spacing: 0.02em;
+    }
+
+    .place-group__heading strong {
+      display: inline-grid;
+      min-width: 28px;
+      height: 28px;
+      place-items: center;
+      border-radius: 999px;
+      background: var(--blue-soft);
+      color: var(--blue-dark);
+      font-size: 0.9rem;
+    }
+
+    .place-visual {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 126px;
+    }
+
+    .hundreds-visual {
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .hundred-flat {
+      display: grid;
+      width: clamp(32px, 5vw, 54px);
+      aspect-ratio: 1;
+      grid-template-columns: repeat(10, minmax(0, 1fr));
+      grid-template-rows: repeat(10, minmax(0, 1fr));
+      overflow: hidden;
+      border: 2px solid #6f91aa;
+      border-radius: 5px;
+      background: #d9e5ec;
+      box-shadow: 0 1px 2px rgb(61 97 125 / 0.12);
+    }
+
+    .hundred-flat > span {
+      min-width: 0;
+      min-height: 0;
+      border-right: 0.5px solid rgb(85 123 152 / 0.42);
+      border-bottom: 0.5px solid rgb(85 123 152 / 0.42);
+    }
+
+    .hundred-flat > span:nth-child(10n) {
+      border-right: 0;
+    }
+
+    .hundred-flat > span:nth-last-child(-n + 10) {
+      border-bottom: 0;
+    }
+
+    .tens-visual {
+      align-items: flex-end;
+      gap: clamp(6px, 1.2vw, 10px);
+      flex-wrap: wrap;
+    }
+
+    .ten-rod {
+      display: grid;
+      grid-template-rows: repeat(10, 1fr);
+      width: clamp(17px, 2.4vw, 22px);
+      height: 112px;
+      overflow: hidden;
+      border: 2px solid #6f91aa;
+      border-radius: 5px;
+      background: #d9e5ec;
+    }
+
+    .ten-rod span:not(:last-child) {
+      border-bottom: 1px solid rgb(85 123 152 / 0.45);
+    }
+
+    .ones-visual {
+      display: grid;
+      grid-template-columns: repeat(3, clamp(22px, 3.2vw, 28px));
+      align-content: center;
+      gap: clamp(6px, 1vw, 9px);
+    }
+
+    .one-cube {
+      aspect-ratio: 1;
+      border: 2px solid #6f91aa;
+      border-radius: 6px;
+      background: #d9e5ec;
+      box-shadow: inset 0 0 0 3px rgb(255 255 255 / 0.34);
+    }
+
+    .no-blocks {
+      grid-column: 1 / -1;
+      margin: 14px auto;
+      padding: 14px 20px;
+      border: 1px dashed var(--line-strong);
+      border-radius: var(--radius-small);
+      color: var(--ink-soft);
+      font-weight: 760;
+      text-align: center;
+    }
+
+    .numeral-board {
+      display: grid;
+      min-height: 190px;
+      place-items: center;
+    }
+
+    .numeral-display {
+      color: var(--ink);
+      font-size: clamp(4.5rem, 16vw, 8.5rem);
+      font-weight: 850;
+      letter-spacing: 0.04em;
+      line-height: 1;
+    }
+
+    .place-group.is-emphasized {
+      border-color: var(--blue);
+      box-shadow: inset 0 0 0 2px var(--blue-soft);
+    }
+
+    .place-group.is-correct {
+      animation: correct-sweep 560ms ease both;
+    }
+
+    .place-group {
+      animation: group-enter 280ms ease both;
+    }
+
+    .place-group:nth-child(2) {
+      animation-delay: 45ms;
+    }
+
+    .place-group:nth-child(3) {
+      animation-delay: 90ms;
+    }
+
+    @keyframes group-enter {
+      from {
+        opacity: 0;
+        transform: translateY(6px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    @keyframes correct-sweep {
+      0%, 100% {
+        background: rgb(255 255 255 / 0.82);
+      }
+      45% {
+        background: #e4f0e9;
+      }
+    }
+
+    .answer-stack {
+      width: min(100%, 690px);
+      margin: 0 auto;
+    }
+
+    .answer-panel,
+    .answer-panel fieldset {
+      margin: 0;
+      padding: 0;
+      border: 0;
+    }
+
+    .answer-legend {
+      width: 100%;
+      margin-bottom: 10px;
+      color: var(--ink);
+      font-size: 1rem;
+      font-weight: 800;
+      text-align: left;
+    }
+
+    .answer-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 10px;
+      align-items: stretch;
+    }
+
+    .input-wrap {
+      min-width: 0;
+    }
+
+    .input-label {
+      display: block;
+      margin-bottom: 7px;
+      color: var(--ink-soft);
+      font-size: 0.82rem;
+      font-weight: 760;
+    }
+
+    .number-input,
+    .place-input,
+    select {
+      width: 100%;
+      min-height: 52px;
+      border: 1.5px solid var(--line-strong);
+      border-radius: var(--radius-small);
+      background: var(--surface);
+      color: var(--ink);
+    }
+
+    .number-input {
+      padding: 7px 16px;
+      font-size: 1.5rem;
+      font-weight: 780;
+      letter-spacing: 0.04em;
+    }
+
+    .number-input::placeholder,
+    .place-input::placeholder {
+      color: #9a9d9f;
+      opacity: 1;
+    }
+
+    .number-input:hover,
+    .place-input:hover,
+    select:hover {
+      border-color: #8a969d;
+    }
+
+    .number-input:user-invalid,
+    .place-input:user-invalid {
+      border-color: var(--danger);
+      background: #fff8f7;
+    }
+
+    .field-help {
+      margin: 6px 0 0;
+      color: var(--ink-soft);
+      font-size: 0.78rem;
+    }
+
+    .button {
+      display: inline-flex;
+      min-height: 48px;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 10px 20px;
+      border: 1px solid transparent;
+      border-radius: var(--radius-small);
+      font-weight: 800;
+      line-height: 1.2;
+      text-decoration: none;
+      transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease, transform 160ms ease;
+    }
+
+    .button:active {
+      transform: translateY(1px);
+    }
+
+    .button--primary {
+      align-self: end;
+      background: var(--blue);
+      color: #ffffff;
+    }
+
+    .button--primary:hover {
+      background: var(--blue-dark);
+    }
+
+    .button--quiet {
+      border-color: var(--line-strong);
+      background: transparent;
+      color: var(--ink);
+    }
+
+    .button--quiet:hover {
+      border-color: var(--blue);
+      background: var(--surface-blue);
+    }
+
+    .button--danger {
+      border-color: #d5aaa5;
+      background: #fff7f6;
+      color: #84443e;
+    }
+
+    .button--danger:hover {
+      border-color: var(--danger);
+      background: #f9e8e6;
+    }
+
+    .place-fields {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .place-field {
+      display: block;
+      min-width: 0;
+    }
+
+    .place-field span {
+      display: block;
+      margin-bottom: 6px;
+      color: var(--ink-soft);
+      font-size: 0.8rem;
+      font-weight: 760;
+      text-align: center;
+    }
+
+    .place-input {
+      padding: 7px;
+      font-size: 1.4rem;
+      font-weight: 800;
+      text-align: center;
+    }
+
+    .place-form-actions {
+      display: flex;
+      justify-content: flex-end;
+      margin-top: 12px;
+    }
+
+    .feedback {
+      display: flex;
+      min-height: 48px;
+      align-items: center;
+      gap: 10px;
+      margin: 14px 0 0;
+      padding: 10px 14px;
+      border-left: 4px solid var(--blue);
+      border-radius: 4px var(--radius-small) var(--radius-small) 4px;
+      background: var(--surface-blue);
+      color: var(--ink-soft);
+      font-size: 0.9rem;
+    }
+
+    .feedback::before {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background: var(--blue);
+      content: "";
+      flex: 0 0 auto;
+    }
+
+    .feedback[data-state="correct"] {
+      border-left-color: var(--success);
+      background: #edf4f0;
+      color: #355d4a;
+    }
+
+    .feedback[data-state="correct"]::before {
+      background: var(--success);
+    }
+
+    .feedback[data-state="error"] {
+      border-left-color: var(--danger);
+      background: #fff3f1;
+      color: #804740;
+    }
+
+    .feedback[data-state="error"]::before {
+      background: var(--danger);
+    }
+
+    .hint {
+      width: min(100%, 690px);
+      margin: clamp(18px, 3vw, 26px) auto 0;
+      border-top: 1px solid var(--line);
+      border-bottom: 1px solid var(--line);
+    }
+
+    .hint summary,
+    .parent-details summary,
+    .help-details summary,
+    .reset-panel summary {
+      list-style: none;
+    }
+
+    .hint summary::-webkit-details-marker,
+    .parent-details summary::-webkit-details-marker,
+    .help-details summary::-webkit-details-marker,
+    .reset-panel summary::-webkit-details-marker {
+      display: none;
+    }
+
+    .hint summary {
+      display: flex;
+      min-height: 52px;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 10px 2px;
+      color: var(--blue-dark);
+      font-weight: 800;
+    }
+
+    .hint h3 {
+      margin: 0;
+      padding: 13px 2px 7px;
+      color: var(--blue-dark);
+      font-size: 1rem;
+    }
+
+    .hint summary::after,
+    .parent-details summary::after,
+    .help-details summary::after,
+    .reset-panel summary::after {
+      display: inline-grid;
+      width: 28px;
+      height: 28px;
+      place-items: center;
+      border: 1px solid var(--line-strong);
+      border-radius: 50%;
+      color: var(--ink-soft);
+      content: "+";
+      font-size: 1.15rem;
+      font-weight: 500;
+      line-height: 1;
+      flex: 0 0 auto;
+    }
+
+    .hint[open] summary::after,
+    .parent-details[open] summary::after,
+    .help-details[open] summary::after,
+    .reset-panel[open] summary::after {
+      content: "−";
+    }
+
+    .hint__body {
+      padding: 0 2px 16px;
+      color: var(--ink-soft);
+    }
+
+    .hint__body p {
+      margin-bottom: 10px;
+    }
+
+    .hint-steps {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .hint-steps li {
+      padding: 10px;
+      border-radius: 10px;
+      background: var(--paper-deep);
+      color: var(--ink);
+      font-size: 0.86rem;
+      text-align: center;
+    }
+
+    .workspace-actions {
+      display: flex;
+      width: min(100%, 690px);
+      justify-content: space-between;
+      gap: 12px;
+      margin: clamp(20px, 4vw, 30px) auto 0;
+    }
+
+    .workspace-actions #next-button {
+      min-width: 180px;
+      margin-left: auto;
+    }
+
+    .place-field.is-emphasized span {
+      color: var(--blue-dark);
+      text-decoration: underline;
+      text-decoration-thickness: 2px;
+      text-underline-offset: 4px;
+    }
+
+    .check-row + .check-row {
+      margin-top: 8px;
+    }
+
+    .next-icon {
+      width: 18px;
+      height: 18px;
+    }
+
+    .app-footer {
+      display: flex;
+      width: min(100%, 980px);
+      justify-content: space-between;
+      gap: 16px;
+      margin: 0 auto;
+      padding: 8px clamp(16px, 4vw, 42px) 24px;
+      color: #747a7d;
+      font-size: 0.76rem;
+    }
+
+    .app-footer p {
+      margin-bottom: 0;
+    }
+
+    .summary-screen {
+      width: min(100%, 780px);
+      margin: 0 auto;
+    }
+
+    .summary-header {
+      margin-bottom: 28px;
+      text-align: center;
+    }
+
+    .summary-stats {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      margin: 0 0 24px;
+      border-top: 1px solid var(--line);
+      border-bottom: 1px solid var(--line);
+    }
+
+    .summary-stats div {
+      padding: 18px 12px;
+      text-align: center;
+    }
+
+    .summary-stats div + div {
+      border-left: 1px solid var(--line);
+    }
+
+    .summary-stats dt {
+      color: var(--ink-soft);
+      font-size: 0.78rem;
+      font-weight: 760;
+    }
+
+    .summary-stats dd {
+      margin: 2px 0 0;
+      color: var(--blue-dark);
+      font-size: clamp(1.45rem, 4vw, 2rem);
+      font-weight: 850;
+    }
+
+    .parent-details {
+      border-top: 1px solid var(--line);
+      border-bottom: 1px solid var(--line);
+    }
+
+    .parent-details summary,
+    .help-details summary,
+    .reset-panel summary {
+      display: flex;
+      min-height: 52px;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      padding: 10px 0;
+      font-weight: 800;
+    }
+
+    .parent-details__body {
+      padding: 0 0 18px;
+      color: var(--ink-soft);
+    }
+
+    .parent-details__body > p {
+      margin-bottom: 14px;
+    }
+
+    .detail-table {
+      width: 100%;
+      border-collapse: collapse;
+      color: var(--ink);
+      font-size: 0.88rem;
+    }
+
+    .detail-table th,
+    .detail-table td {
+      padding: 10px 8px;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+    }
+
+    .detail-table th:last-child,
+    .detail-table td:last-child {
+      text-align: right;
+    }
+
+    .summary-actions {
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+      margin-top: 24px;
+    }
+
+    dialog {
+      width: min(calc(100% - 28px), 660px);
+      max-height: min(860px, calc(100dvh - 28px));
+      padding: 0;
+      overflow: hidden;
+      border: 1px solid var(--line-strong);
+      border-radius: 24px;
+      background: var(--paper);
+      color: var(--ink);
+      box-shadow: 0 24px 80px rgb(29 34 37 / 0.26);
+    }
+
+    dialog::backdrop {
+      background: rgb(35 39 42 / 0.44);
+      backdrop-filter: blur(2px);
+    }
+
+    .settings-form {
+      display: flex;
+      max-height: min(860px, calc(100dvh - 28px));
+      flex-direction: column;
+    }
+
+    .dialog-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 18px;
+      padding: 20px 22px 16px;
+      border-bottom: 1px solid var(--line);
+      background: var(--paper);
+    }
+
+    .dialog-header h2 {
+      margin-bottom: 2px;
+      font-size: 1.45rem;
+      letter-spacing: -0.02em;
+    }
+
+    .dialog-header p {
+      margin-bottom: 0;
+      color: var(--ink-soft);
+      font-size: 0.85rem;
+    }
+
+    .settings-body {
+      overflow-y: auto;
+      padding: 20px 22px 24px;
+      overscroll-behavior: contain;
+    }
+
+    .setting-group {
+      min-width: 0;
+      margin: 0;
+      padding: 0 0 22px;
+      border: 0;
+    }
+
+    .setting-group + .setting-group,
+    .setting-group + .help-details,
+    .help-details + .reset-panel {
+      padding-top: 20px;
+      border-top: 1px solid var(--line);
+    }
+
+    .setting-group legend {
+      width: 100%;
+      margin-bottom: 4px;
+      padding: 0;
+      font-size: 1rem;
+      font-weight: 850;
+    }
+
+    .setting-note {
+      margin-bottom: 12px;
+      color: var(--ink-soft);
+      font-size: 0.82rem;
+    }
+
+    .choice-list {
+      display: grid;
+      gap: 8px;
+    }
+
+    .choice-row,
+    .check-row {
+      display: flex;
+      min-height: 52px;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-small);
+      background: var(--surface);
+    }
+
+    .choice-row:has(input:checked),
+    .check-row:has(input:checked) {
+      border-color: #8ca7ba;
+      background: var(--surface-blue);
+    }
+
+    .choice-row input,
+    .check-row input {
+      width: 20px;
+      height: 20px;
+      margin: 0;
+      accent-color: var(--blue);
+      flex: 0 0 auto;
+    }
+
+    .choice-copy {
+      display: block;
+      min-width: 0;
+      flex: 1;
+    }
+
+    .choice-copy strong,
+    .choice-copy small {
+      display: block;
+    }
+
+    .choice-copy strong {
+      font-size: 0.92rem;
+    }
+
+    .choice-copy small {
+      margin-top: 1px;
+      color: var(--ink-soft);
+      font-size: 0.76rem;
+    }
+
+    .stage-select-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(130px, 180px);
+      gap: 10px;
+      align-items: center;
+    }
+
+    .stage-select-row .choice-row {
+      height: 100%;
+    }
+
+    select {
+      padding: 8px 34px 8px 12px;
+      font-weight: 700;
+    }
+
+    .radio-grid {
+      display: grid;
+      gap: 8px;
+    }
+
+    .radio-grid--three {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .radio-grid--five {
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+    }
+
+    .radio-tile {
+      position: relative;
+      display: grid;
+      min-height: 48px;
+      place-items: center;
+      padding: 8px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--surface);
+      color: var(--ink-soft);
+      font-size: 0.84rem;
+      font-weight: 800;
+      text-align: center;
+    }
+
+    .radio-tile:has(input:checked) {
+      border-color: var(--blue);
+      background: var(--blue-soft);
+      color: var(--blue-dark);
+    }
+
+    .radio-tile:has(input:focus-visible) {
+      outline: 3px solid var(--focus);
+      outline-offset: 3px;
+    }
+
+    .radio-tile input {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      opacity: 0;
+    }
+
+    .help-details {
+      padding-bottom: 20px;
+    }
+
+    .help-details__body {
+      padding: 0 0 2px;
+      color: var(--ink-soft);
+      font-size: 0.86rem;
+    }
+
+    .stage-guide {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 6px 14px;
+      margin: 12px 0 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .stage-guide li {
+      display: flex;
+      gap: 8px;
+      padding: 6px 0;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .stage-guide strong {
+      min-width: 20px;
+      color: var(--blue-dark);
+    }
+
+    .reset-panel {
+      color: var(--danger);
+    }
+
+    .reset-panel__body {
+      padding-bottom: 2px;
+      color: var(--ink-soft);
+      font-size: 0.84rem;
+    }
+
+    .confirm-check {
+      display: flex;
+      min-height: var(--tap);
+      align-items: center;
+      gap: 9px;
+      margin: 10px 0;
+      color: var(--ink);
+      font-weight: 700;
+    }
+
+    .confirm-check input {
+      width: 20px;
+      height: 20px;
+      margin: 0;
+      accent-color: var(--danger);
+    }
+
+    .dialog-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+      padding: 14px 22px;
+      border-top: 1px solid var(--line);
+      background: var(--paper);
+    }
+
+    @media (min-width: 900px) {
+      .app-shell {
+        width: min(calc(100% - 32px), 1180px);
+        min-height: calc(100dvh - 32px);
+        margin: 16px auto;
+        overflow: hidden;
+        border: 1px solid #d4d1c8;
+        border-radius: 28px;
+        box-shadow: var(--shadow);
+      }
+    }
+
+    @media (max-width: 720px) {
+      .app-header {
+        grid-template-columns: minmax(0, 1fr) var(--tap);
+        gap: 12px 16px;
+        min-height: 0;
+        padding: 14px 16px 13px;
+      }
+
+      .session-status {
+        grid-column: 1 / -1;
+        grid-row: 2;
+      }
+
+      .icon-button {
+        grid-column: 2;
+        grid-row: 1;
+      }
+
+      main {
+        padding-top: 24px;
+      }
+
+      .block-board {
+        padding: 10px;
+        border-radius: 20px;
+      }
+
+      .block-groups {
+        gap: 7px;
+      }
+
+      .place-group {
+        padding: 9px 7px;
+        border-radius: 13px;
+      }
+
+      .place-group__heading {
+        align-items: flex-start;
+        flex-direction: column;
+        gap: 4px;
+        margin-bottom: 8px;
+      }
+
+      .place-group__heading strong {
+        min-width: 24px;
+        height: 24px;
+        font-size: 0.78rem;
+      }
+
+      .place-visual {
+        min-height: 98px;
+      }
+
+      .hundred-flat {
+        width: clamp(28px, 8vw, 38px);
+      }
+
+      .ten-rod {
+        width: clamp(10px, 3vw, 15px);
+        height: 90px;
+      }
+
+      .ones-visual {
+        grid-template-columns: repeat(3, clamp(18px, 5.5vw, 24px));
+      }
+
+      .answer-row {
+        grid-template-columns: 1fr;
+      }
+
+      .button--primary {
+        width: 100%;
+      }
+
+      .hint-steps {
+        grid-template-columns: 1fr;
+      }
+
+      .hint-steps li {
+        text-align: left;
+      }
+
+      .app-footer {
+        padding-top: 2px;
+      }
+
+      .radio-grid--five {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+    }
+
+    @media (max-width: 440px) {
+      .eyebrow {
+        font-size: 0.65rem;
+      }
+
+      h1 {
+        font-size: 1.28rem;
+      }
+
+      .status-line {
+        font-size: 0.78rem;
+      }
+
+      main {
+        padding-right: 12px;
+        padding-left: 12px;
+      }
+
+      .problem-header h2 {
+        font-size: 1.55rem;
+      }
+
+      .place-group__heading {
+        font-size: 0.66rem;
+      }
+
+      .hundred-flat {
+        width: clamp(26px, 7.5vw, 32px);
+        border-width: 1.5px;
+      }
+
+      .tens-visual {
+        gap: 4px;
+      }
+
+      .ten-rod {
+        width: 9px;
+      }
+
+      .ones-visual {
+        grid-template-columns: repeat(3, 20px);
+        gap: 5px;
+      }
+
+      .workspace-actions,
+      .summary-actions {
+        flex-direction: column-reverse;
+      }
+
+      .workspace-actions .button,
+      .summary-actions .button {
+        width: 100%;
+      }
+
+      .app-footer {
+        align-items: flex-start;
+        flex-direction: column;
+        gap: 2px;
+      }
+
+      .stage-select-row {
+        grid-template-columns: 1fr;
+      }
+
+      .radio-grid--three,
+      .radio-grid--five {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .stage-guide {
+        grid-template-columns: 1fr;
+      }
+
+      .dialog-header,
+      .settings-body,
+      .dialog-actions {
+        padding-right: 16px;
+        padding-left: 16px;
+      }
+
+      .dialog-actions .button {
+        flex: 1;
+        padding-right: 12px;
+        padding-left: 12px;
+      }
+    }
+
+    @media (min-width: 700px) and (max-height: 850px) and (orientation: landscape) {
+      .app-header {
+        min-height: 76px;
+        padding-top: 12px;
+        padding-bottom: 12px;
+      }
+
+      main {
+        padding-top: 22px;
+        padding-bottom: 20px;
+      }
+
+      .problem-header {
+        margin-bottom: 16px;
+      }
+
+      .problem-header h2 {
+        font-size: 1.8rem;
+      }
+
+      .block-board {
+        margin-bottom: 18px;
+        padding-top: 12px;
+        padding-bottom: 12px;
+      }
+
+      .place-visual {
+        min-height: 108px;
+      }
+
+      .hint {
+        margin-top: 16px;
+      }
+
+      .hint__body {
+        padding-bottom: 12px;
+      }
+
+      .workspace-actions {
+        margin-top: 16px;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      html {
+        scroll-behavior: auto;
+      }
+
+      *,
+      *::before,
+      *::after {
+        scroll-behavior: auto !important;
+        transition-duration: 0.01ms !important;
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="app-header">
+      <div class="title-lockup">
+        <span class="eyebrow">Place-value practice</span>
+        <h1>Place by Place</h1>
+      </div>
+
+      <div class="session-status" id="session-status" aria-label="Session progress: question 1 of 10">
+        <div class="status-line">
+          <span class="stage-label"><span class="status-dot" aria-hidden="true"></span><span id="stage-status">Stage 2 · 101–109</span></span>
+          <span id="session-count">1 of 10</span>
+        </div>
+        <progress id="session-progress" value="0" max="10">0 of 10</progress>
+      </div>
+
+      <button class="icon-button" id="settings-button" type="button" aria-label="Open settings" aria-haspopup="dialog" aria-controls="settings-dialog" title="Settings">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="12" cy="12" r="3"></circle>
+          <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-1.9 1.9-.06-.06a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1 1.55V20h-2.7v-.09a1.7 1.7 0 0 0-1.05-1.55 1.7 1.7 0 0 0-1.88.34l-.06.06-1.9-1.9.06-.06A1.7 1.7 0 0 0 7.6 15a1.7 1.7 0 0 0-1.55-1H6v-2.7h.09a1.7 1.7 0 0 0 1.55-1.05 1.7 1.7 0 0 0-.34-1.88l-.06-.06 1.9-1.9.06.06a1.7 1.7 0 0 0 1.88.34 1.7 1.7 0 0 0 1-1.55V5h2.7v.09a1.7 1.7 0 0 0 1.05 1.55 1.7 1.7 0 0 0 1.88-.34l.06-.06 1.9 1.9-.06.06a1.7 1.7 0 0 0-.34 1.88 1.7 1.7 0 0 0 1.55 1h.09v2.7h-.09A1.7 1.7 0 0 0 19.4 15Z"></path>
+        </svg>
+      </button>
+    </header>
+
+    <main id="practice">
+      <section class="workspace" id="practice-workspace" aria-labelledby="problem-title">
+        <header class="problem-header">
+          <p class="problem-count" id="problem-count">Question 1</p>
+          <h2 id="problem-title">What number do these blocks show?</h2>
+          <p id="problem-instruction">Count each place from left to right.</p>
+        </header>
+
+        <figure class="block-board" id="question-board" aria-labelledby="blocks-caption">
+          <figcaption class="sr-only" id="blocks-caption"></figcaption>
+          <div class="block-groups" id="block-groups"></div>
+        </figure>
+
+        <div class="answer-stack">
+          <form class="answer-panel" id="blocks-to-number-form" novalidate>
+            <fieldset>
+              <legend class="answer-legend">Write the whole number</legend>
+              <div class="answer-row">
+                <div class="input-wrap">
+                  <label class="input-label" for="number-answer">Your answer</label>
+                  <input class="number-input" id="number-answer" name="number-answer" type="text" inputmode="numeric" autocomplete="off" pattern="[0-9]{1,3}" maxlength="3" placeholder="0–999" aria-describedby="number-help answer-feedback" required>
+                  <p class="field-help" id="number-help">Use digits only, with no extra zero at the front.</p>
+                </div>
+                <button class="button button--primary" id="check-number-button" type="submit">Check answer</button>
+              </div>
+            </fieldset>
+          </form>
+
+          <form class="answer-panel" id="number-to-places-form" novalidate hidden>
+            <fieldset>
+              <legend class="answer-legend" id="places-prompt">Show 236 in each place</legend>
+              <p class="field-help" id="places-help">Write one digit in each box.</p>
+              <div class="place-fields" role="group" aria-labelledby="places-prompt" aria-describedby="places-help answer-feedback">
+                <label class="place-field" for="hundreds-answer">
+                  <span>Hundreds</span>
+                  <input class="place-input" id="hundreds-answer" name="hundreds" type="text" inputmode="numeric" autocomplete="off" pattern="[0-9]" maxlength="1" required>
+                </label>
+                <label class="place-field" for="tens-answer">
+                  <span>Tens</span>
+                  <input class="place-input" id="tens-answer" name="tens" type="text" inputmode="numeric" autocomplete="off" pattern="[0-9]" maxlength="1" required>
+                </label>
+                <label class="place-field" for="ones-answer">
+                  <span>Ones</span>
+                  <input class="place-input" id="ones-answer" name="ones" type="text" inputmode="numeric" autocomplete="off" pattern="[0-9]" maxlength="1" required>
+                </label>
+              </div>
+              <div class="place-form-actions">
+                <button class="button button--primary" id="check-places-button" type="submit">Check answer</button>
+              </div>
+            </fieldset>
+          </form>
+
+          <p class="feedback" id="answer-feedback" role="status" aria-live="polite" aria-atomic="true">Ready when you are. Take your time.</p>
+        </div>
+
+        <section class="hint" id="hint-panel" aria-labelledby="hint-title" hidden>
+          <h3 id="hint-title">A little help</h3>
+          <div class="hint__body" id="hint-body"></div>
+        </section>
+
+        <footer class="workspace-actions">
+          <button class="button button--primary" id="next-button" type="button" hidden>
+            Next
+            <svg class="next-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M4 10h11"></path>
+              <path d="m11 6 4 4-4 4"></path>
+            </svg>
+          </button>
+        </footer>
+      </section>
+
+      <section class="summary-screen" id="session-summary" aria-labelledby="summary-title" hidden>
+        <header class="summary-header">
+          <p class="summary-kicker">Session complete</p>
+          <h2 id="summary-title">You kept every place in order.</h2>
+          <p id="summary-message">That was careful, steady practice.</p>
+        </header>
+
+        <dl class="summary-stats">
+          <div>
+            <dt>First try</dt>
+            <dd id="summary-first-try">0</dd>
+          </div>
+          <div>
+            <dt>After help</dt>
+            <dd id="summary-after-help">0</dd>
+          </div>
+          <div>
+            <dt>Full explanation</dt>
+            <dd id="summary-revealed">0</dd>
+          </div>
+        </dl>
+
+        <details class="parent-details" open>
+          <summary>Details for parents and teachers</summary>
+          <div class="parent-details__body">
+            <p id="summary-skill-note">Results stay on this device.</p>
+            <table class="detail-table">
+              <caption class="sr-only">Results by skill</caption>
+              <thead>
+                <tr>
+                  <th scope="col">Skill</th>
+                  <th scope="col">Questions</th>
+                  <th scope="col">First try</th>
+                </tr>
+              </thead>
+              <tbody id="category-results"></tbody>
+            </table>
+          </div>
+        </details>
+
+        <div class="summary-actions">
+          <button class="button button--quiet" id="summary-settings-button" type="button">Change settings</button>
+          <button class="button button--primary" id="practice-again-button" type="button">Practice again</button>
+        </div>
+      </section>
+    </main>
+
+    <footer class="app-footer">
+      <p>Practice stays on this device.</p>
+      <p>Version 1.0.0</p>
+    </footer>
+  </div>
+
+  <dialog id="settings-dialog" aria-labelledby="settings-title" aria-describedby="settings-description">
+    <form class="settings-form" id="settings-form" method="dialog">
+      <header class="dialog-header">
+        <div>
+          <h2 id="settings-title">Practice settings</h2>
+          <p id="settings-description">Choose what feels right today.</p>
+        </div>
+        <button class="icon-button" type="submit" value="cancel" aria-label="Close settings" title="Close settings">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+            <path d="M6 6l12 12M18 6 6 18"></path>
+          </svg>
+        </button>
+      </header>
+
+      <div class="settings-body">
+        <fieldset class="setting-group">
+          <legend>Practice plan</legend>
+          <p class="setting-note">Adaptive practice changes gently as answers become easier.</p>
+          <div class="choice-list">
+            <label class="choice-row">
+              <input type="radio" name="stage-mode" value="adaptive" checked>
+              <span class="choice-copy">
+                <strong>Adaptive Practice</strong>
+                <small>Start at a comfortable level and adjust automatically.</small>
+              </span>
+            </label>
+            <div class="stage-select-row">
+              <label class="choice-row">
+                <input type="radio" name="stage-mode" value="chosen">
+                <span class="choice-copy">
+                  <strong>Choose a stage</strong>
+                  <small>Stay with one skill.</small>
+                </span>
+              </label>
+              <label>
+                <span class="sr-only">Selected stage</span>
+                <select name="stage">
+                  <option value="1">Stage 1 · Individual block values</option>
+                  <option value="2" selected>Stage 2 · 101–109</option>
+                  <option value="3">Stage 3 · Tens in 110–190</option>
+                  <option value="4">Stage 4 · All places 111–199</option>
+                  <option value="5">Stage 5 · Special zeros</option>
+                  <option value="6">Stage 6 · Numbers 200–999</option>
+                  <option value="7">Stage 7 · Mixed 0–999</option>
+                </select>
+              </label>
+            </div>
+          </div>
+        </fieldset>
+
+        <fieldset class="setting-group">
+          <legend>Question format</legend>
+          <p class="setting-note">Switch between pictures and place-value digits.</p>
+          <div class="radio-grid radio-grid--three">
+            <label class="radio-tile">
+              <input type="radio" name="question-type" value="blocks-to-number" checked>
+              <span>Blocks to Number</span>
+            </label>
+            <label class="radio-tile">
+              <input type="radio" name="question-type" value="number-to-places">
+              <span>Number to Place Values</span>
+            </label>
+            <label class="radio-tile">
+              <input type="radio" name="question-type" value="mixed">
+              <span>Mixed</span>
+            </label>
+          </div>
+        </fieldset>
+
+        <fieldset class="setting-group">
+          <legend>Session length</legend>
+          <p class="setting-note">A short session is still useful practice.</p>
+          <div class="radio-grid radio-grid--five">
+            <label class="radio-tile">
+              <input type="radio" name="session-length" value="5">
+              <span>5</span>
+            </label>
+            <label class="radio-tile">
+              <input type="radio" name="session-length" value="10" checked>
+              <span>10</span>
+            </label>
+            <label class="radio-tile">
+              <input type="radio" name="session-length" value="15">
+              <span>15</span>
+            </label>
+            <label class="radio-tile">
+              <input type="radio" name="session-length" value="20">
+              <span>20</span>
+            </label>
+            <label class="radio-tile">
+              <input type="radio" name="session-length" value="endless">
+              <span>Endless</span>
+            </label>
+          </div>
+        </fieldset>
+
+        <fieldset class="setting-group">
+          <legend>Learning supports</legend>
+          <p class="setting-note">Keep extra reading support visible while practicing.</p>
+          <label class="check-row">
+            <input type="checkbox" name="show-place-labels" checked>
+            <span class="choice-copy">
+              <strong>Show place labels</strong>
+              <small>Display Hundreds, Tens, and Ones above each group.</small>
+            </span>
+          </label>
+          <label class="check-row">
+            <input type="checkbox" name="show-expanded-help" checked>
+            <span class="choice-copy">
+              <strong>Show expanded-form help</strong>
+              <small>After two tries, show what each place is worth.</small>
+            </span>
+          </label>
+        </fieldset>
+
+        <details class="help-details" open>
+          <summary>How the stages work</summary>
+          <div class="help-details__body">
+            <p>Stages add one idea at a time. Adaptive mode can move forward or revisit a skill without taking away progress.</p>
+            <ol class="stage-guide">
+              <li><strong>1</strong><span>Learn one flat, rod, or cube</span></li>
+              <li><strong>2</strong><span>Read 101–109</span></li>
+              <li><strong>3</strong><span>Read tens in 110–190</span></li>
+              <li><strong>4</strong><span>Use all places in 111–199</span></li>
+              <li><strong>5</strong><span>Practice special zeros</span></li>
+              <li><strong>6</strong><span>Read numbers from 200–999</span></li>
+              <li><strong>7</strong><span>Mix everything from 0–999</span></li>
+            </ol>
+          </div>
+        </details>
+
+        <details class="reset-panel">
+          <summary>Reset practice progress</summary>
+          <div class="reset-panel__body">
+            <p>This clears the saved stage and session history on this device. It cannot be undone.</p>
+            <label class="confirm-check">
+              <input type="checkbox" name="confirm-reset">
+              <span>I understand that saved progress will be cleared.</span>
+            </label>
+            <button class="button button--danger" id="reset-progress-button" type="button">Reset all progress</button>
+          </div>
+        </details>
+      </div>
+
+      <footer class="dialog-actions">
+        <button class="button button--quiet" type="submit" value="cancel">Cancel</button>
+        <button class="button button--primary" type="submit" value="save">Save &amp; Done</button>
+      </footer>
+    </form>
+  </dialog>
+
+  <script>
+    "use strict";
+
+    (() => {
+      const GAME_VERSION = "1.0.0";
+      const SCHEMA_VERSION = 1;
+      const STORAGE_KEY = "place-value-practice:progress:v1";
+      const MAX_QUEUE = 6;
+      const MAX_RECENT = 10;
+      const REVIEW_KINDS = ["ordinary", "retention", "category", "exact"];
+      const PHASES = ["asking", "hint-labels", "hint-expanded", "reveal-retype", "correct-await-next"];
+      const OUTCOMES = ["firstTry", "afterHelp", "revealed"];
+      const CATEGORY_ORDER = [
+        "individualBlockValue",
+        "bothZeroTensAndOnes",
+        "zeroTens",
+        "zeroOnes",
+        "multipleHundreds",
+        "allThreeNonzero"
+      ];
+      const CATEGORY_LABELS = {
+        zeroTens: "numbers with zero tens",
+        zeroOnes: "numbers with zero ones",
+        bothZeroTensAndOnes: "exact hundreds",
+        allThreeNonzero: "all three places",
+        multipleHundreds: "multiple hundreds",
+        individualBlockValue: "individual block values"
+      };
+      const STAGE_LABELS = {
+        1: "Individual block values",
+        2: "101–109",
+        3: "Tens in 110–190",
+        4: "All places 111–199",
+        5: "Special zeros",
+        6: "Numbers 200–999",
+        7: "Mixed 0–999"
+      };
+      const DEFAULT_SETTINGS = Object.freeze({
+        plan: "adaptive",
+        chosenStage: 2,
+        format: "blocks-to-number",
+        sessionLength: 10,
+        showPlaceLabels: true,
+        showExpandedHelp: true
+      });
+
+      let state;
+      let memoryRaw = null;
+      let storageOperational = true;
+      let seededRandom = null;
+      let seededValue = null;
+      let testClock = 0;
+      let lastDialogOpener = null;
+      const submitGuard = { locked: false };
+      const stageDomainCache = new Map();
+
+      function clone(value) {
+        return JSON.parse(JSON.stringify(value));
+      }
+
+      function isObject(value) {
+        return value !== null && typeof value === "object" && !Array.isArray(value);
+      }
+
+      function integerIn(value, minimum, maximum, fallback) {
+        return Number.isInteger(value) && value >= minimum && value <= maximum ? value : fallback;
+      }
+
+      function nonnegative(value, fallback = 0) {
+        return Number.isInteger(value) && value >= 0 ? value : fallback;
+      }
+
+      function currentRandom() {
+        return seededRandom ? seededRandom() : Math.random();
+      }
+
+      function mulberry32(seed) {
+        let value = seed >>> 0;
+        return function random() {
+          value += 0x6d2b79f5;
+          let result = value;
+          result = Math.imul(result ^ (result >>> 15), result | 1);
+          result ^= result + Math.imul(result ^ (result >>> 7), result | 61);
+          return ((result ^ (result >>> 14)) >>> 0) / 4294967296;
+        };
+      }
+
+      function randomInt(minimum, maximum, rng = currentRandom) {
+        return minimum + Math.floor(rng() * (maximum - minimum + 1));
+      }
+
+      function weightedChoice(entries, rng = currentRandom) {
+        const total = entries.reduce((sum, entry) => sum + entry.weight, 0);
+        let point = rng() * total;
+        for (const entry of entries) {
+          point -= entry.weight;
+          if (point < 0) return entry.value;
+        }
+        return entries[entries.length - 1].value;
+      }
+
+      function decompose(value) {
+        return {
+          hundreds: Math.floor(value / 100),
+          tens: Math.floor((value % 100) / 10),
+          ones: value % 10
+        };
+      }
+
+      function categoriesFor(value, stage) {
+        if (stage === 1) return ["individualBlockValue"];
+        const { hundreds: h, tens: t, ones: o } = decompose(value);
+        const matches = {
+          individualBlockValue: false,
+          bothZeroTensAndOnes: h > 0 && t === 0 && o === 0,
+          zeroTens: h > 0 && t === 0,
+          zeroOnes: (h > 0 || t > 0) && o === 0,
+          multipleHundreds: h >= 2,
+          allThreeNonzero: h > 0 && t > 0 && o > 0
+        };
+        return CATEGORY_ORDER.filter((category) => matches[category]);
+      }
+
+      function makeQuestion({ id, value, stage, format, isDedicatedZero = false, reviewKind = "ordinary" }) {
+        const safeValue = integerIn(value, 0, 999, 0);
+        const safeStage = integerIn(stage, 1, 7, 2);
+        const digits = decompose(safeValue);
+        return {
+          id: String(id),
+          value: safeValue,
+          hundreds: digits.hundreds,
+          tens: digits.tens,
+          ones: digits.ones,
+          stage: safeStage,
+          format: format === "number-to-places" ? "number-to-places" : "blocks-to-number",
+          categories: categoriesFor(safeValue, safeStage),
+          isDedicatedZero: Boolean(isDedicatedZero && safeStage === 7 && safeValue === 0),
+          reviewKind: REVIEW_KINDS.includes(reviewKind) ? reviewKind : "ordinary"
+        };
+      }
+
+      function blankCategoryStats() {
+        return Object.fromEntries(CATEGORY_ORDER.map((category) => [category, {
+          completed: 0,
+          firstTry: 0,
+          afterHelp: 0,
+          revealed: 0,
+          rolling: []
+        }]));
+      }
+
+      function normalizeSettings(candidate) {
+        const source = isObject(candidate) ? candidate : {};
+        const lengthValues = [5, 10, 15, 20, "endless"];
+        return {
+          plan: source.plan === "chosen" ? "chosen" : "adaptive",
+          chosenStage: integerIn(source.chosenStage, 1, 7, DEFAULT_SETTINGS.chosenStage),
+          format: ["blocks-to-number", "number-to-places", "mixed"].includes(source.format)
+            ? source.format
+            : DEFAULT_SETTINGS.format,
+          sessionLength: lengthValues.includes(source.sessionLength) ? source.sessionLength : DEFAULT_SETTINGS.sessionLength,
+          showPlaceLabels: typeof source.showPlaceLabels === "boolean" ? source.showPlaceLabels : DEFAULT_SETTINGS.showPlaceLabels,
+          showExpandedHelp: typeof source.showExpandedHelp === "boolean" ? source.showExpandedHelp : DEFAULT_SETTINGS.showExpandedHelp
+        };
+      }
+
+      function makeSession(settings, now = Date.now()) {
+        return {
+          id: `session-${now}`,
+          target: settings.sessionLength === "endless" ? null : settings.sessionLength,
+          completed: 0,
+          firstTry: 0,
+          afterHelp: 0,
+          revealed: 0,
+          startedAt: now,
+          recorded: false
+        };
+      }
+
+      function makeAttempt() {
+        return {
+          phase: "asking",
+          misses: 0,
+          completed: false,
+          outcome: null,
+          draft: { number: "", hundreds: "", tens: "", ones: "" },
+          feedback: "Ready when you are. Take your time.",
+          feedbackState: "neutral"
+        };
+      }
+
+      function createDefaultState(now = Date.now()) {
+        const settings = clone(DEFAULT_SETTINGS);
+        return {
+          schemaVersion: SCHEMA_VERSION,
+          gameVersion: GAME_VERSION,
+          stage: 2,
+          stageMastery: { 1: true, 2: false, 3: false, 4: false, 5: false, 6: false, 7: false },
+          aggregate: { attempted: 0, firstTry: 0, afterHelp: 0, revealed: 0 },
+          categoryStats: blankCategoryStats(),
+          reviewQueues: { exact: [], category: [] },
+          recentValues: [],
+          streaks: { current: 0, best: 0 },
+          completedSessions: [],
+          completedQuestionIds: [],
+          settings,
+          pendingSettings: null,
+          pendingFreshSession: false,
+          session: makeSession(settings, now),
+          activeQuestion: null,
+          activeAttempt: null,
+          activePresentation: null,
+          activeTicket: null,
+          pendingAttempt: null,
+          adaptiveWindow: [],
+          stage7NonzeroStreak: 0,
+          questionSerial: 0,
+          screen: "practice"
+        };
+      }
+
+      function normalizeCategoryStats(candidate) {
+        const result = blankCategoryStats();
+        if (!isObject(candidate)) return result;
+        for (const category of CATEGORY_ORDER) {
+          const source = isObject(candidate[category]) ? candidate[category] : {};
+          result[category] = {
+            completed: nonnegative(source.completed),
+            firstTry: nonnegative(source.firstTry),
+            afterHelp: nonnegative(source.afterHelp),
+            revealed: nonnegative(source.revealed),
+            rolling: Array.isArray(source.rolling)
+              ? source.rolling.filter((entry) => OUTCOMES.includes(entry)).slice(-20)
+              : []
+          };
+        }
+        return result;
+      }
+
+      function normalizeTicket(ticket, kind, fallbackIndex) {
+        if (!isObject(ticket)) return null;
+        const dueAt = nonnegative(ticket.dueAt, 0);
+        const id = typeof ticket.id === "string" && ticket.id ? ticket.id : `${kind}-${fallbackIndex}`;
+        if (kind === "exact") {
+          if (!Number.isInteger(ticket.value) || ticket.value < 0 || ticket.value > 999) return null;
+          return {
+            id,
+            value: ticket.value,
+            stage: integerIn(ticket.stage, 1, 7, ticket.value === 0 ? 7 : 2),
+            dueAt,
+            postponements: nonnegative(ticket.postponements)
+          };
+        }
+        if (!CATEGORY_ORDER.includes(ticket.category)) return null;
+        return {
+          id,
+          category: ticket.category,
+          missedValue: integerIn(ticket.missedValue, 0, 999, 0),
+          dueAt,
+          postponements: nonnegative(ticket.postponements)
+        };
+      }
+
+      function normalizeQueue(candidate, kind) {
+        if (!Array.isArray(candidate)) return [];
+        const seen = new Set();
+        const result = [];
+        candidate.forEach((ticket, index) => {
+          const normalized = normalizeTicket(ticket, kind, index);
+          if (!normalized) return;
+          const key = kind === "exact" ? normalized.value : normalized.category;
+          if (seen.has(key) || result.length >= MAX_QUEUE) return;
+          seen.add(key);
+          result.push(normalized);
+        });
+        return result;
+      }
+
+      function normalizeQuestion(candidate) {
+        if (!isObject(candidate) || typeof candidate.id !== "string") return null;
+        if (!Number.isInteger(candidate.value) || candidate.value < 0 || candidate.value > 999) return null;
+        const stage = integerIn(candidate.stage, 1, 7, 0);
+        if (!stage) return null;
+        if (!["blocks-to-number", "number-to-places"].includes(candidate.format)) return null;
+        if (candidate.value === 0 && stage !== 7) return null;
+        return makeQuestion({
+          id: candidate.id,
+          value: candidate.value,
+          stage,
+          format: candidate.format,
+          isDedicatedZero: candidate.isDedicatedZero,
+          reviewKind: candidate.reviewKind
+        });
+      }
+
+      function normalizeAttempt(candidate) {
+        if (!isObject(candidate)) return makeAttempt();
+        const attempt = makeAttempt();
+        attempt.phase = PHASES.includes(candidate.phase) ? candidate.phase : "asking";
+        attempt.misses = nonnegative(candidate.misses);
+        attempt.completed = Boolean(candidate.completed);
+        attempt.outcome = OUTCOMES.includes(candidate.outcome) ? candidate.outcome : null;
+        const draft = isObject(candidate.draft) ? candidate.draft : {};
+        attempt.draft = {
+          number: typeof draft.number === "string" ? draft.number.slice(0, 16) : "",
+          hundreds: typeof draft.hundreds === "string" ? draft.hundreds.slice(0, 4) : "",
+          tens: typeof draft.tens === "string" ? draft.tens.slice(0, 4) : "",
+          ones: typeof draft.ones === "string" ? draft.ones.slice(0, 4) : ""
+        };
+        attempt.feedback = typeof candidate.feedback === "string" ? candidate.feedback.slice(0, 500) : attempt.feedback;
+        attempt.feedbackState = ["neutral", "error", "correct"].includes(candidate.feedbackState)
+          ? candidate.feedbackState
+          : "neutral";
+        if (attempt.completed && !attempt.outcome) attempt.completed = false;
+        if (attempt.completed) attempt.phase = "correct-await-next";
+        return attempt;
+      }
+
+      function normalizeSession(candidate, settings) {
+        if (!isObject(candidate)) return makeSession(settings);
+        const allowedTargets = [5, 10, 15, 20];
+        const target = candidate.target === null
+          ? null
+          : (allowedTargets.includes(candidate.target)
+              ? candidate.target
+              : (settings.sessionLength === "endless" ? null : settings.sessionLength));
+        const completed = Math.min(nonnegative(candidate.completed), target === null ? Number.MAX_SAFE_INTEGER : target);
+        const firstTry = Math.min(nonnegative(candidate.firstTry), completed);
+        const afterHelp = Math.min(nonnegative(candidate.afterHelp), completed - firstTry);
+        const revealed = Math.min(nonnegative(candidate.revealed), completed - firstTry - afterHelp);
+        return {
+          id: typeof candidate.id === "string" ? candidate.id : `session-${Date.now()}`,
+          target,
+          completed,
+          firstTry,
+          afterHelp,
+          revealed,
+          startedAt: Number.isFinite(candidate.startedAt) ? candidate.startedAt : Date.now(),
+          recorded: Boolean(candidate.recorded)
+        };
+      }
+
+      function normalizeState(candidate) {
+        const defaults = createDefaultState();
+        if (!isObject(candidate) || candidate.schemaVersion !== SCHEMA_VERSION) return defaults;
+        const normalized = defaults;
+        normalized.stage = integerIn(candidate.stage, 1, 7, 2);
+        if (isObject(candidate.stageMastery)) {
+          for (let stage = 1; stage <= 7; stage += 1) {
+            normalized.stageMastery[stage] = stage === 1 || Boolean(candidate.stageMastery[stage]);
+          }
+        }
+        const aggregate = isObject(candidate.aggregate) ? candidate.aggregate : {};
+        normalized.aggregate = {
+          attempted: nonnegative(aggregate.attempted),
+          firstTry: nonnegative(aggregate.firstTry),
+          afterHelp: nonnegative(aggregate.afterHelp),
+          revealed: nonnegative(aggregate.revealed)
+        };
+        normalized.categoryStats = normalizeCategoryStats(candidate.categoryStats);
+        const queues = isObject(candidate.reviewQueues) ? candidate.reviewQueues : {};
+        normalized.reviewQueues = {
+          exact: normalizeQueue(queues.exact, "exact"),
+          category: normalizeQueue(queues.category, "category")
+        };
+        normalized.recentValues = Array.isArray(candidate.recentValues)
+          ? candidate.recentValues.filter((value) => Number.isInteger(value) && value >= 0 && value <= 999).slice(-MAX_RECENT)
+          : [];
+        const streaks = isObject(candidate.streaks) ? candidate.streaks : {};
+        normalized.streaks = { current: nonnegative(streaks.current), best: nonnegative(streaks.best) };
+        normalized.completedSessions = Array.isArray(candidate.completedSessions)
+          ? candidate.completedSessions.filter((session) => isObject(session)
+              && typeof session.id === "string"
+              && [5, 10, 15, 20].includes(session.target)
+              && Number.isInteger(session.completed)
+              && session.completed === session.target).slice(-20)
+          : [];
+        normalized.completedQuestionIds = Array.isArray(candidate.completedQuestionIds)
+          ? candidate.completedQuestionIds.filter((id) => typeof id === "string").slice(-100)
+          : [];
+        normalized.settings = normalizeSettings(candidate.settings);
+        normalized.pendingSettings = candidate.pendingSettings ? normalizeSettings(candidate.pendingSettings) : null;
+        normalized.pendingFreshSession = Boolean(candidate.pendingFreshSession);
+        normalized.session = normalizeSession(candidate.session, normalized.settings);
+        normalized.activeQuestion = normalizeQuestion(candidate.activeQuestion);
+        normalized.activeAttempt = normalized.activeQuestion ? normalizeAttempt(candidate.activeAttempt) : null;
+        normalized.activePresentation = isObject(candidate.activePresentation) ? {
+          showPlaceLabels: typeof candidate.activePresentation.showPlaceLabels === "boolean"
+            ? candidate.activePresentation.showPlaceLabels
+            : normalized.settings.showPlaceLabels,
+          showExpandedHelp: typeof candidate.activePresentation.showExpandedHelp === "boolean"
+            ? candidate.activePresentation.showExpandedHelp
+            : normalized.settings.showExpandedHelp
+        } : null;
+        normalized.activeTicket = isObject(candidate.activeTicket) && ["exact", "category"].includes(candidate.activeTicket.kind)
+          ? { kind: candidate.activeTicket.kind, id: String(candidate.activeTicket.id) }
+          : null;
+        if (normalized.activeTicket) {
+          const queue = normalized.reviewQueues[normalized.activeTicket.kind];
+          const matchesQuestion = normalized.activeQuestion
+            && normalized.activeQuestion.reviewKind === normalized.activeTicket.kind;
+          if (!matchesQuestion || !queue.some((ticket) => ticket.id === normalized.activeTicket.id)) {
+            normalized.activeTicket = null;
+          }
+        }
+        normalized.pendingAttempt = isObject(candidate.pendingAttempt) ? clone(candidate.pendingAttempt) : null;
+        normalized.adaptiveWindow = Array.isArray(candidate.adaptiveWindow)
+          ? candidate.adaptiveWindow.filter((bit) => typeof bit === "boolean").slice(-8)
+          : [];
+        normalized.stage7NonzeroStreak = nonnegative(candidate.stage7NonzeroStreak);
+        normalized.questionSerial = nonnegative(candidate.questionSerial);
+        normalized.screen = candidate.screen === "summary" ? "summary" : "practice";
+        return normalized;
+      }
+
+      function storageGet(storage) {
+        try {
+          return { ok: true, value: storage.getItem(STORAGE_KEY) };
+        } catch (error) {
+          return { ok: false, value: null, error: String(error) };
+        }
+      }
+
+      function storageSet(storage, raw) {
+        try {
+          storage.setItem(STORAGE_KEY, raw);
+          return true;
+        } catch (error) {
+          return false;
+        }
+      }
+
+      function storageRemove(storage) {
+        try {
+          storage.removeItem(STORAGE_KEY);
+          return true;
+        } catch (error) {
+          return false;
+        }
+      }
+
+      function loadState() {
+        let raw = memoryRaw;
+        try {
+          raw = window.localStorage.getItem(STORAGE_KEY);
+          storageOperational = true;
+        } catch (error) {
+          storageOperational = false;
+        }
+        memoryRaw = raw;
+        if (!raw) return createDefaultState();
+        try {
+          return normalizeState(JSON.parse(raw));
+        } catch (error) {
+          return createDefaultState();
+        }
+      }
+
+      function saveState() {
+        let raw;
+        try {
+          raw = JSON.stringify(state);
+        } catch (error) {
+          return false;
+        }
+        memoryRaw = raw;
+        try {
+          window.localStorage.setItem(STORAGE_KEY, raw);
+          storageOperational = true;
+          return true;
+        } catch (error) {
+          storageOperational = false;
+          return false;
+        }
+      }
+
+      function removeSavedState() {
+        memoryRaw = null;
+        try {
+          window.localStorage.removeItem(STORAGE_KEY);
+          storageOperational = true;
+          return true;
+        } catch (error) {
+          storageOperational = false;
+          return false;
+        }
+      }
+
+      function stageDomain(stage, includeZero = true) {
+        const key = `${stage}:${includeZero}`;
+        if (stageDomainCache.has(key)) return stageDomainCache.get(key);
+        const values = [];
+        if (stage === 1) {
+          values.push(1, 10, 100);
+        } else if (stage === 2) {
+          for (let ones = 1; ones <= 9; ones += 1) values.push(100 + ones);
+        } else if (stage === 3) {
+          for (let tens = 1; tens <= 9; tens += 1) values.push(100 + tens * 10);
+        } else if (stage === 4) {
+          for (let tens = 1; tens <= 9; tens += 1) {
+            for (let ones = 1; ones <= 9; ones += 1) values.push(100 + tens * 10 + ones);
+          }
+        } else if (stage === 5) {
+          for (let hundreds = 1; hundreds <= 9; hundreds += 1) {
+            for (let tens = 0; tens <= 9; tens += 1) {
+              for (let ones = 0; ones <= 9; ones += 1) {
+                if (tens === 0 || ones === 0) values.push(hundreds * 100 + tens * 10 + ones);
+              }
+            }
+          }
+        } else if (stage === 6) {
+          for (let value = 200; value <= 999; value += 1) values.push(value);
+        } else if (stage === 7) {
+          for (let value = includeZero ? 0 : 1; value <= 999; value += 1) values.push(value);
+        }
+        stageDomainCache.set(key, values);
+        return values;
+      }
+
+      function generateStageValue(stage, rng = currentRandom) {
+        if (stage === 1) return [1, 10, 100][randomInt(0, 2, rng)];
+        if (stage === 2) return 100 + randomInt(1, 9, rng);
+        if (stage === 3) return 100 + randomInt(1, 9, rng) * 10;
+        if (stage === 4) return 100 + randomInt(1, 9, rng) * 10 + randomInt(1, 9, rng);
+
+        const buckets = stage === 5
+          ? [
+              { value: "zero-tens", weight: 30 },
+              { value: "zero-ones", weight: 25 },
+              { value: "both-zero", weight: 10 }
+            ]
+          : [
+              { value: "zero-tens", weight: 30 },
+              { value: "zero-ones", weight: 25 },
+              { value: "both-zero", weight: 10 },
+              { value: "all-nonzero", weight: 35 }
+            ];
+        const bucket = weightedChoice(buckets, rng);
+        let hundreds;
+        if (stage === 5) hundreds = randomInt(1, 9, rng);
+        else if (stage === 6) hundreds = randomInt(2, 9, rng);
+        else hundreds = bucket === "both-zero" ? randomInt(1, 9, rng) : randomInt(0, 9, rng);
+
+        if (bucket === "zero-tens") return hundreds * 100 + randomInt(1, 9, rng);
+        if (bucket === "zero-ones") return hundreds * 100 + randomInt(1, 9, rng) * 10;
+        if (bucket === "both-zero") return hundreds * 100;
+        return hundreds * 100 + randomInt(1, 9, rng) * 10 + randomInt(1, 9, rng);
+      }
+
+      function leastRecentChoice(candidates, recent, rng = currentRandom) {
+        if (!candidates.length) return null;
+        let oldestIndex = Infinity;
+        let oldest = [];
+        for (const candidate of candidates) {
+          const value = isObject(candidate) ? candidate.value : candidate;
+          const index = recent.lastIndexOf(value);
+          if (index < oldestIndex) {
+            oldestIndex = index;
+            oldest = [candidate];
+          } else if (index === oldestIndex) {
+            oldest.push(candidate);
+          }
+        }
+        return oldest[randomInt(0, oldest.length - 1, rng)];
+      }
+
+      function chooseSpacedValue(stage, recent, rng = currentRandom) {
+        for (let search = 0; search < 64; search += 1) {
+          const candidate = generateStageValue(stage, rng);
+          if (candidate !== 0 && !recent.includes(candidate)) return candidate;
+        }
+        const domain = stageDomain(stage, false);
+        const unblocked = domain.filter((value) => !recent.includes(value));
+        if (unblocked.length) return unblocked[randomInt(0, unblocked.length - 1, rng)];
+        return leastRecentChoice(domain, recent, rng);
+      }
+
+      function currentCurriculumStage(model) {
+        return model.settings.plan === "chosen" ? model.settings.chosenStage : model.stage;
+      }
+
+      function chooseFormat(settings, rng = currentRandom) {
+        if (settings.format === "mixed") return rng() < 0.5 ? "blocks-to-number" : "number-to-places";
+        return settings.format;
+      }
+
+      function dueTicket(queue, completed) {
+        return queue
+          .filter((ticket) => ticket.dueAt <= completed)
+          .sort((left, right) => left.dueAt - right.dueAt)[0] || null;
+      }
+
+      function categoryCandidates(category, unlockedStage) {
+        const byValue = new Map();
+        for (let stage = 1; stage <= unlockedStage; stage += 1) {
+          for (const value of stageDomain(stage, true)) {
+            if (!categoriesFor(value, stage).includes(category)) continue;
+            if (!byValue.has(value)) byValue.set(value, { value, stage });
+          }
+        }
+        return [...byValue.values()];
+      }
+
+      function chooseCategoryCandidate(ticket, unlockedStage, recent, rng = currentRandom) {
+        const eligible = categoryCandidates(ticket.category, unlockedStage)
+          .filter((candidate) => candidate.value !== ticket.missedValue);
+        if (!eligible.length) return null;
+        const unblocked = eligible.filter((candidate) => !recent.includes(candidate.value));
+        if (unblocked.length) return unblocked[randomInt(0, unblocked.length - 1, rng)];
+        return leastRecentChoice(eligible, recent, rng);
+      }
+
+      function chooseCategoryCandidateAtStage(ticket, stage, recent, rng = currentRandom) {
+        const eligible = categoryCandidates(ticket.category, stage)
+          .filter((candidate) => candidate.stage === stage && candidate.value !== ticket.missedValue);
+        if (!eligible.length) return null;
+        const unblocked = eligible.filter((candidate) => !recent.includes(candidate.value));
+        if (unblocked.length) return unblocked[randomInt(0, unblocked.length - 1, rng)];
+        return leastRecentChoice(eligible, recent, rng);
+      }
+
+      function nextQuestionId(model) {
+        model.questionSerial += 1;
+        return `pv-${String(model.questionSerial).padStart(6, "0")}`;
+      }
+
+      function rememberShownValue(model, value) {
+        model.recentValues.push(value);
+        model.recentValues = model.recentValues.slice(-MAX_RECENT);
+      }
+
+      function createSelectedQuestion(model, selection, rng = currentRandom) {
+        const question = makeQuestion({
+          id: nextQuestionId(model),
+          value: selection.value,
+          stage: selection.stage,
+          format: chooseFormat(model.settings, rng),
+          isDedicatedZero: selection.value === 0 && selection.stage === 7,
+          reviewKind: selection.reviewKind
+        });
+        rememberShownValue(model, question.value);
+        if (question.reviewKind === "ordinary" && question.stage === 7) {
+          model.stage7NonzeroStreak = question.value === 0 ? 0 : model.stage7NonzeroStreak + 1;
+        }
+        return question;
+      }
+
+      function chooseQuestion(model, rng = currentRandom) {
+        const completed = model.aggregate.attempted;
+        const unlockedStage = currentCurriculumStage(model);
+        const chosenMode = model.settings.plan === "chosen";
+        const exact = dueTicket(model.reviewQueues.exact.filter((ticket) => !chosenMode || ticket.stage === unlockedStage), completed);
+        if (exact) {
+          model.activeTicket = { kind: "exact", id: exact.id };
+          return createSelectedQuestion(model, {
+            value: exact.value,
+            stage: exact.stage,
+            reviewKind: "exact"
+          }, rng);
+        }
+
+        const category = dueTicket(model.reviewQueues.category, completed);
+        if (category) {
+          const candidate = chosenMode
+            ? chooseCategoryCandidateAtStage(category, unlockedStage, model.recentValues, rng)
+            : chooseCategoryCandidate(category, unlockedStage, model.recentValues, rng);
+          if (candidate) {
+            model.activeTicket = { kind: "category", id: category.id };
+            return createSelectedQuestion(model, {
+              value: candidate.value,
+              stage: candidate.stage,
+              reviewKind: "category"
+            }, rng);
+          }
+          category.postponements += 1;
+          if (category.postponements >= 3) {
+            model.reviewQueues.category = model.reviewQueues.category.filter((ticket) => ticket.id !== category.id);
+          } else {
+            category.dueAt = completed + 2;
+          }
+        }
+
+        model.activeTicket = null;
+        const masteredBelow = [];
+        for (let stage = 1; stage < unlockedStage; stage += 1) {
+          if (model.stageMastery[stage]) masteredBelow.push(stage);
+        }
+        if (!chosenMode && masteredBelow.length && rng() < 0.2) {
+          const stage = masteredBelow[randomInt(0, masteredBelow.length - 1, rng)];
+          return createSelectedQuestion(model, {
+            value: chooseSpacedValue(stage, model.recentValues, rng),
+            stage,
+            reviewKind: "retention"
+          }, rng);
+        }
+
+        let value;
+        if (unlockedStage === 7) {
+          const zeroDue = model.stage7NonzeroStreak >= 25;
+          const zeroChosen = zeroDue || (rng() < 0.03 && !model.recentValues.includes(0));
+          value = zeroChosen ? 0 : chooseSpacedValue(7, model.recentValues, rng);
+        } else {
+          value = chooseSpacedValue(unlockedStage, model.recentValues, rng);
+        }
+        return createSelectedQuestion(model, { value, stage: unlockedStage, reviewKind: "ordinary" }, rng);
+      }
+
+      function lowestRateCategory(model, categories) {
+        let selected = categories[0];
+        let selectedRate = Infinity;
+        for (const category of CATEGORY_ORDER) {
+          if (!categories.includes(category)) continue;
+          const stats = model.categoryStats[category];
+          const rate = stats.completed ? stats.firstTry / stats.completed : 0;
+          if (rate < selectedRate) {
+            selected = category;
+            selectedRate = rate;
+          }
+        }
+        return selected;
+      }
+
+      function enqueueOrdinaryReviews(model, question, rng = currentRandom) {
+        const completed = model.aggregate.attempted;
+        // Due offsets are lifetime-completion based and intentionally not clamped to the
+        // finite-session boundary, so unfinished tickets persist across sessions.
+        const due = (minimum, maximum) => completed + randomInt(minimum, maximum, rng);
+        if (question.categories.length) {
+          const category = lowestRateCategory(model, question.categories);
+          const existingCategory = model.reviewQueues.category.find((ticket) => ticket.category === category);
+          if (existingCategory) {
+            existingCategory.dueAt = Math.min(existingCategory.dueAt, due(3, 6));
+            existingCategory.missedValue = question.value;
+          } else if (model.reviewQueues.category.length < MAX_QUEUE) {
+            model.reviewQueues.category.push({
+              id: `category-${question.id}-${category}`,
+              category,
+              missedValue: question.value,
+              dueAt: due(3, 6),
+              postponements: 0
+            });
+          }
+        }
+
+        const existingExact = model.reviewQueues.exact.find((ticket) => ticket.value === question.value);
+        if (existingExact) {
+          existingExact.dueAt = Math.min(existingExact.dueAt, due(7, 12));
+        } else if (model.reviewQueues.exact.length < MAX_QUEUE) {
+          model.reviewQueues.exact.push({
+            id: `exact-${question.id}-${question.value}`,
+            value: question.value,
+            stage: question.stage,
+            dueAt: due(7, 12),
+            postponements: 0
+          });
+        }
+      }
+
+      function resolveReviewTicket(model, question, outcome, rng = currentRandom) {
+        if (!model.activeTicket || model.activeTicket.kind !== question.reviewKind) return;
+        const queue = model.reviewQueues[model.activeTicket.kind];
+        const ticket = queue.find((entry) => entry.id === model.activeTicket.id);
+        if (!ticket) return;
+        if (outcome === "firstTry") {
+          model.reviewQueues[model.activeTicket.kind] = queue.filter((entry) => entry.id !== ticket.id);
+        } else {
+          ticket.postponements = 0;
+          ticket.dueAt = model.aggregate.attempted + (question.reviewKind === "exact"
+            ? randomInt(7, 12, rng)
+            : randomInt(3, 6, rng));
+        }
+      }
+
+      function applyAdaptiveObservation(model, question, outcome) {
+        if (model.settings.plan !== "adaptive") return false;
+        if (question.reviewKind !== "ordinary" || question.stage !== model.stage) return false;
+        model.adaptiveWindow.push(outcome === "firstTry");
+        model.adaptiveWindow = model.adaptiveWindow.slice(-8);
+        if (model.adaptiveWindow.length < 8) return false;
+        const successes = model.adaptiveWindow.filter(Boolean).length;
+        const oldStage = model.stage;
+        if (successes >= 7 && model.stage < 7) {
+          model.stageMastery[model.stage] = true;
+          model.stage += 1;
+        } else if (successes <= 5 && model.stage > 1) {
+          model.stage -= 1;
+        }
+        if (model.stage !== oldStage) {
+          model.adaptiveWindow = [];
+          return true;
+        }
+        return false;
+      }
+
+      const dom = {
+        practice: document.getElementById("practice"),
+        workspace: document.getElementById("practice-workspace"),
+        summary: document.getElementById("session-summary"),
+        stageStatus: document.getElementById("stage-status"),
+        sessionStatus: document.getElementById("session-status"),
+        sessionCount: document.getElementById("session-count"),
+        sessionProgress: document.getElementById("session-progress"),
+        problemCount: document.getElementById("problem-count"),
+        problemTitle: document.getElementById("problem-title"),
+        problemInstruction: document.getElementById("problem-instruction"),
+        questionBoard: document.getElementById("question-board"),
+        blockGroups: document.getElementById("block-groups"),
+        blocksCaption: document.getElementById("blocks-caption"),
+        numberForm: document.getElementById("blocks-to-number-form"),
+        placesForm: document.getElementById("number-to-places-form"),
+        numberAnswer: document.getElementById("number-answer"),
+        hundredsAnswer: document.getElementById("hundreds-answer"),
+        tensAnswer: document.getElementById("tens-answer"),
+        onesAnswer: document.getElementById("ones-answer"),
+        checkNumber: document.getElementById("check-number-button"),
+        checkPlaces: document.getElementById("check-places-button"),
+        placesPrompt: document.getElementById("places-prompt"),
+        feedback: document.getElementById("answer-feedback"),
+        hintPanel: document.getElementById("hint-panel"),
+        hintTitle: document.getElementById("hint-title"),
+        hintBody: document.getElementById("hint-body"),
+        next: document.getElementById("next-button"),
+        settingsButton: document.getElementById("settings-button"),
+        settingsDialog: document.getElementById("settings-dialog"),
+        settingsForm: document.getElementById("settings-form"),
+        resetProgress: document.getElementById("reset-progress-button"),
+        summarySettings: document.getElementById("summary-settings-button"),
+        practiceAgain: document.getElementById("practice-again-button"),
+        summaryFirstTry: document.getElementById("summary-first-try"),
+        summaryAfterHelp: document.getElementById("summary-after-help"),
+        summaryRevealed: document.getElementById("summary-revealed"),
+        summarySkillNote: document.getElementById("summary-skill-note"),
+        categoryResults: document.getElementById("category-results")
+      };
+
+      function unitPhrase(count, singular, plural = `${singular}s`) {
+        return `${count} ${count === 1 ? singular : plural}`;
+      }
+
+      function placeExplanation(question, includeTotal = true) {
+        const parts = [
+          `${unitPhrase(question.hundreds, "hundred")} = ${question.hundreds * 100}`,
+          `${unitPhrase(question.tens, "ten")} = ${question.tens * 10}`,
+          `${unitPhrase(question.ones, "one")} = ${question.ones}`
+        ];
+        return includeTotal ? `${parts.join(", and ")}. Together they make ${question.value}.` : parts.join("; ");
+      }
+
+      function expandedExpression(question, revealTotal = false) {
+        const expression = `${question.hundreds * 100} + ${question.tens * 10} + ${question.ones}`;
+        return `${expression} = ${revealTotal ? question.value : "?"}`;
+      }
+
+      function clearElement(element) {
+        while (element.firstChild) element.removeChild(element.firstChild);
+      }
+
+      function setFieldInvalid(inputs, invalid) {
+        inputs.forEach((input) => input.setAttribute("aria-invalid", invalid ? "true" : "false"));
+      }
+
+      function makeBlock(kind, index) {
+        const block = document.createElement("div");
+        // role="img" exposes each top-level flat/rod/cube as one repeated accessible unit
+        // (via its aria-label) while its decorative cell/segment descendants stay hidden.
+        block.setAttribute("role", "img");
+        if (kind === "hundreds") {
+          block.className = "hundred-flat";
+          block.setAttribute("aria-label", "one hundred block");
+          for (let cell = 0; cell < 100; cell += 1) {
+            const segment = document.createElement("span");
+            segment.setAttribute("aria-hidden", "true");
+            block.appendChild(segment);
+          }
+        } else if (kind === "tens") {
+          block.className = "ten-rod";
+          block.setAttribute("aria-label", "one ten rod");
+          for (let segmentIndex = 0; segmentIndex < 10; segmentIndex += 1) {
+            const segment = document.createElement("span");
+            segment.setAttribute("aria-hidden", "true");
+            block.appendChild(segment);
+          }
+        } else {
+          block.className = "one-cube";
+          block.setAttribute("aria-label", "one unit cube");
+        }
+        block.dataset.blockIndex = String(index);
+        return block;
+      }
+
+      function renderBlocks(question, emphasize, showCounts) {
+        clearElement(dom.blockGroups);
+        dom.blockGroups.className = "block-groups";
+        if (question.isDedicatedZero) {
+          const empty = document.createElement("div");
+          empty.className = "no-blocks";
+          empty.textContent = "No blocks";
+          dom.blockGroups.appendChild(empty);
+          dom.blocksCaption.textContent = "There are no base-ten blocks in the workspace.";
+          return;
+        }
+        const places = [
+          { key: "hundreds", label: "Hundreds", count: question.hundreds },
+          { key: "tens", label: "Tens", count: question.tens },
+          { key: "ones", label: "Ones", count: question.ones }
+        ];
+        for (const place of places) {
+          const group = document.createElement("section");
+          group.className = `place-group${emphasize ? " is-emphasized" : ""}`;
+          group.dataset.place = place.key;
+          const heading = document.createElement("div");
+          heading.className = "place-group__heading";
+          const label = document.createElement("span");
+          label.textContent = state.activePresentation.showPlaceLabels ? place.label : "Place";
+          heading.appendChild(label);
+          // Numeric count badges only appear once numbers are disclosed (second wrong onward
+          // and on the correct state); the first wrong answer emphasizes labels only.
+          if (showCounts) {
+            const count = document.createElement("strong");
+            count.textContent = String(place.count);
+            count.setAttribute("aria-label", `${place.count} ${place.label.toLowerCase()}`);
+            heading.appendChild(count);
+          }
+          const visual = document.createElement("div");
+          visual.className = `place-visual ${place.key}-visual`;
+          visual.setAttribute("role", "group");
+          visual.setAttribute("aria-label", showCounts ? `${place.count} ${place.label.toLowerCase()}` : `${place.label} blocks`);
+          for (let index = 0; index < place.count; index += 1) visual.appendChild(makeBlock(place.key, index));
+          group.append(heading, visual);
+          dom.blockGroups.appendChild(group);
+        }
+        dom.blocksCaption.textContent = showCounts
+          ? `${question.hundreds} hundreds, ${question.tens} tens, and ${question.ones} ones.`
+          : "Base-ten blocks are grouped into hundreds, tens, and ones. Count the top-level blocks in each group.";
+      }
+
+      function renderNumeral(question) {
+        clearElement(dom.blockGroups);
+        dom.blockGroups.className = "numeral-board";
+        const numeral = document.createElement("div");
+        numeral.className = "numeral-display";
+        numeral.textContent = String(question.value);
+        numeral.setAttribute("aria-label", `Number ${question.value}`);
+        dom.blockGroups.appendChild(numeral);
+        dom.blocksCaption.textContent = `The number shown is ${question.value}. Write its hundreds, tens, and ones digits.`;
+      }
+
+      function renderHint(question, attempt) {
+        const show = attempt.phase !== "asking" && attempt.phase !== "correct-await-next";
+        dom.hintPanel.hidden = !show;
+        clearElement(dom.hintBody);
+        if (!show) return;
+        const intro = document.createElement("p");
+        const list = document.createElement("ul");
+        list.className = "hint-steps";
+        if (attempt.phase === "hint-labels") {
+          dom.hintTitle.textContent = "Look at each place";
+          intro.textContent = question.format === "blocks-to-number"
+            ? "Count the hundred blocks, then the ten rods, then the one cubes."
+            : "Read one digit at a time: hundreds, tens, then ones.";
+          ["Hundreds first", "Tens next", "Ones last"].forEach((text) => {
+            const item = document.createElement("li");
+            item.textContent = text;
+            list.appendChild(item);
+          });
+        } else if (attempt.phase === "hint-expanded") {
+          dom.hintTitle.textContent = "What is each place worth?";
+          intro.textContent = state.activePresentation.showExpandedHelp
+            ? "Put the three place values together."
+            : "Check each place once more before you answer.";
+          const entries = state.activePresentation.showExpandedHelp
+            ? [`${question.hundreds} hundreds = ${question.hundreds * 100}`, `${question.tens} tens = ${question.tens * 10}`, `${question.ones} ones = ${question.ones}`]
+            : ["Hundreds", "Tens", "Ones"];
+          entries.forEach((text) => {
+            const item = document.createElement("li");
+            item.textContent = text;
+            list.appendChild(item);
+          });
+          if (state.activePresentation.showExpandedHelp) {
+            const expression = document.createElement("p");
+            expression.textContent = expandedExpression(question, false);
+            dom.hintBody.append(intro, list, expression);
+            return;
+          }
+        } else {
+          dom.hintTitle.textContent = "Now type the shown answer";
+          intro.textContent = question.format === "blocks-to-number"
+            ? `${placeExplanation(question, true)} Type ${question.value} to finish this question.`
+            : `The digits are ${question.hundreds} hundreds, ${question.tens} tens, and ${question.ones} ones. Type those digits to finish.`;
+          const values = question.format === "blocks-to-number"
+            ? [expandedExpression(question, true)]
+            : [`Hundreds: ${question.hundreds}`, `Tens: ${question.tens}`, `Ones: ${question.ones}`];
+          values.forEach((text) => {
+            const item = document.createElement("li");
+            item.textContent = text;
+            list.appendChild(item);
+          });
+        }
+        dom.hintBody.append(intro, list);
+      }
+
+      function renderHeader() {
+        const question = state.activeQuestion;
+        const stage = question ? question.stage : currentCurriculumStage(state);
+        dom.stageStatus.textContent = `Stage ${stage} · ${STAGE_LABELS[stage]}`;
+        const target = state.session.target;
+        const current = Math.min(state.session.completed + (state.activeAttempt && state.activeAttempt.completed ? 0 : 1), target || state.session.completed + 1);
+        dom.sessionCount.textContent = target ? `${current} of ${target}` : `Question ${state.session.completed + 1}`;
+        dom.sessionStatus.setAttribute("aria-label", target
+          ? `Session progress: question ${current} of ${target}`
+          : `Endless practice: question ${state.session.completed + 1}`);
+        dom.sessionProgress.hidden = target === null;
+        if (target !== null) {
+          dom.sessionProgress.max = target;
+          dom.sessionProgress.value = state.session.completed;
+          dom.sessionProgress.textContent = `${state.session.completed} of ${target}`;
+        }
+      }
+
+      function renderQuestion() {
+        const question = state.activeQuestion;
+        const attempt = state.activeAttempt;
+        if (!question || !attempt) return;
+        dom.problemCount.textContent = `Question ${state.session.completed + (attempt.completed ? 0 : 1)}`;
+        const blocksMode = question.format === "blocks-to-number";
+        dom.problemTitle.textContent = blocksMode
+          ? (question.stage === 1 ? "What is this block worth?" : "What number do these blocks show?")
+          : `Show ${question.value} in each place`;
+        dom.problemInstruction.textContent = blocksMode
+          ? "Count each place from left to right."
+          : "Write one digit for hundreds, tens, and ones—even when a digit is zero.";
+        dom.placesPrompt.textContent = `Show ${question.value} in each place`;
+        // A miss emphasizes the place labels; numeric count badges/caption only surface at the
+        // second wrong hint and remain for reveal/correct.
+        const emphasize = attempt.phase !== "asking";
+        const showCounts = attempt.completed
+          || attempt.phase === "hint-expanded"
+          || attempt.phase === "reveal-retype";
+        if (blocksMode) renderBlocks(question, emphasize, showCounts);
+        else renderNumeral(question);
+        dom.numberForm.hidden = !blocksMode;
+        dom.placesForm.hidden = blocksMode;
+        // Number-to-Places: visibly emphasize the three field labels after the first miss.
+        const emphasizeFields = !blocksMode && attempt.misses > 0;
+        dom.placesForm.querySelectorAll(".place-field").forEach((field) => {
+          field.classList.toggle("is-emphasized", emphasizeFields);
+        });
+        dom.numberAnswer.value = attempt.draft.number;
+        dom.hundredsAnswer.value = attempt.draft.hundreds;
+        dom.tensAnswer.value = attempt.draft.tens;
+        dom.onesAnswer.value = attempt.draft.ones;
+        dom.feedback.textContent = attempt.feedback;
+        dom.feedback.dataset.state = attempt.feedbackState;
+        // Reflect validation/answer errors on the relevant inputs; correct/new questions clear it.
+        const invalid = attempt.feedbackState === "error";
+        if (blocksMode) {
+          setFieldInvalid([dom.numberAnswer], invalid);
+          setFieldInvalid([dom.hundredsAnswer, dom.tensAnswer, dom.onesAnswer], false);
+        } else {
+          setFieldInvalid([dom.hundredsAnswer, dom.tensAnswer, dom.onesAnswer], invalid);
+          setFieldInvalid([dom.numberAnswer], false);
+        }
+        const locked = attempt.completed || submitGuard.locked;
+        [dom.numberAnswer, dom.hundredsAnswer, dom.tensAnswer, dom.onesAnswer].forEach((input) => { input.disabled = attempt.completed; });
+        dom.checkNumber.disabled = locked;
+        dom.checkPlaces.disabled = locked;
+        dom.next.hidden = !attempt.completed;
+        renderHint(question, attempt);
+        if (attempt.completed && blocksMode) {
+          dom.blockGroups.querySelectorAll(".place-group").forEach((group) => group.classList.add("is-correct"));
+        }
+      }
+
+      function secureSkillSummary() {
+        const secure = [];
+        const practice = [];
+        for (const category of CATEGORY_ORDER) {
+          const stats = state.categoryStats[category];
+          if (stats.completed < 3) continue;
+          const rate = stats.firstTry / stats.completed;
+          if (stats.completed >= 5 && rate >= 0.85) secure.push(CATEGORY_LABELS[category]);
+          else if (rate < 0.7) practice.push(CATEGORY_LABELS[category]);
+        }
+        if (secure.length && practice.length) return `Secure: ${secure.join(", ")}. More practice: ${practice.join(", ")}.`;
+        if (secure.length) return `Secure skills: ${secure.join(", ")}.`;
+        if (practice.length) return `More practice will help with ${practice.join(", ")}.`;
+        return "Keep practicing to build a clear skill picture. Results stay on this device.";
+      }
+
+      function renderSummary() {
+        dom.summaryFirstTry.textContent = `${state.session.firstTry} / ${state.session.completed}`;
+        dom.summaryAfterHelp.textContent = String(state.session.afterHelp);
+        dom.summaryRevealed.textContent = String(state.session.revealed);
+        dom.summarySkillNote.textContent = secureSkillSummary();
+        clearElement(dom.categoryResults);
+        for (const category of CATEGORY_ORDER) {
+          const stats = state.categoryStats[category];
+          const row = document.createElement("tr");
+          const skill = document.createElement("th");
+          skill.scope = "row";
+          skill.textContent = CATEGORY_LABELS[category];
+          const seen = document.createElement("td");
+          seen.textContent = String(stats.completed);
+          const rate = document.createElement("td");
+          rate.textContent = stats.completed ? `${Math.round((stats.firstTry / stats.completed) * 100)}%` : "—";
+          row.append(skill, seen, rate);
+          dom.categoryResults.appendChild(row);
+        }
+      }
+
+      function render() {
+        renderHeader();
+        const summaryVisible = state.screen === "summary";
+        dom.workspace.hidden = summaryVisible;
+        dom.summary.hidden = !summaryVisible;
+        if (summaryVisible) renderSummary();
+        else renderQuestion();
+      }
+
+      function focusAnswer(select = false) {
+        const question = state.activeQuestion;
+        if (!question || state.screen !== "practice" || state.activeAttempt.completed) return;
+        const input = question.format === "blocks-to-number" ? dom.numberAnswer : dom.hundredsAnswer;
+        window.setTimeout(() => {
+          input.focus();
+          if (select && typeof input.select === "function") input.select();
+        }, 0);
+      }
+
+      function validateWhole(raw) {
+        const value = String(raw).trim();
+        if (!value) return { ok: false, message: "Type a number before checking." };
+        if (!/^(0|[1-9]\d{0,2})$/.test(value)) return { ok: false, message: "Use digits from 0 to 999, with no extra zero at the front." };
+        const number = Number(value);
+        return number <= 999 ? { ok: true, value: number } : { ok: false, message: "Use a number from 0 to 999." };
+      }
+
+      function validatePlaces(values) {
+        const cleaned = values.map((value) => String(value).trim());
+        if (cleaned.some((value) => !/^[0-9]$/.test(value))) {
+          return { ok: false, message: "Type one digit in every place, including any zeros." };
+        }
+        return { ok: true, value: cleaned.map(Number) };
+      }
+
+      function setInvalidFeedback(message) {
+        state.activeAttempt.feedback = message;
+        state.activeAttempt.feedbackState = "error";
+        saveState();
+        render();
+        focusAnswer(true);
+      }
+
+      function updateCategoryStats(question, outcome) {
+        for (const category of question.categories) {
+          const stats = state.categoryStats[category];
+          stats.completed += 1;
+          stats[outcome] += 1;
+          stats.rolling.push(outcome);
+          stats.rolling = stats.rolling.slice(-20);
+        }
+      }
+
+      function applyCompletedOutcome(question, outcome) {
+        if (state.completedQuestionIds.includes(question.id)) {
+          state.pendingAttempt = null;
+          return false;
+        }
+        state.completedQuestionIds.push(question.id);
+        state.completedQuestionIds = state.completedQuestionIds.slice(-100);
+        state.aggregate.attempted += 1;
+        state.aggregate[outcome] += 1;
+        state.session.completed += 1;
+        state.session[outcome] += 1;
+        updateCategoryStats(question, outcome);
+        if (outcome === "firstTry") {
+          state.streaks.current += 1;
+          state.streaks.best = Math.max(state.streaks.best, state.streaks.current);
+        } else {
+          state.streaks.current = 0;
+          // Only ordinary misses spawn a fresh category/exact ticket pair. Review and
+          // retention misses reschedule their existing active ticket (below) but never
+          // enqueue new pairs.
+          if (question.reviewKind === "ordinary") enqueueOrdinaryReviews(state, question);
+        }
+        resolveReviewTicket(state, question, outcome);
+        applyAdaptiveObservation(state, question, outcome);
+        state.pendingAttempt = null;
+        return true;
+      }
+
+      function commitOutcome(outcome) {
+        const question = state.activeQuestion;
+        if (!question || !OUTCOMES.includes(outcome)) return false;
+        state.pendingAttempt = { questionId: question.id, outcome };
+        saveState();
+        const changed = applyCompletedOutcome(question, outcome);
+        saveState();
+        return changed;
+      }
+
+      function recoverPendingAttempt() {
+        const pending = state.pendingAttempt;
+        if (!isObject(pending) || !OUTCOMES.includes(pending.outcome)) {
+          state.pendingAttempt = null;
+          return;
+        }
+        if (state.activeQuestion && pending.questionId === state.activeQuestion.id) {
+          if (!state.activePresentation) {
+            state.activePresentation = {
+              showPlaceLabels: state.settings.showPlaceLabels,
+              showExpandedHelp: state.settings.showExpandedHelp
+            };
+          }
+          // applyCompletedOutcome dedupes via completedQuestionIds, so counting cannot double up
+          // even if the crash landed between its two saves. Reconstruct the completed
+          // presentation regardless so the restored screen is coherent.
+          applyCompletedOutcome(state.activeQuestion, pending.outcome);
+          if (state.activeAttempt) {
+            state.activeAttempt.completed = true;
+            state.activeAttempt.outcome = pending.outcome;
+            state.activeAttempt.phase = "correct-await-next";
+            state.activeAttempt.feedback = correctFeedback(state.activeQuestion);
+            state.activeAttempt.feedbackState = "correct";
+          }
+        } else {
+          state.pendingAttempt = null;
+        }
+      }
+
+      function correctFeedback(question) {
+        return `Correct. ${placeExplanation(question, true)}${state.activePresentation.showExpandedHelp ? ` ${expandedExpression(question, true)}.` : ""}`;
+      }
+
+      function handleCorrect() {
+        const attempt = state.activeAttempt;
+        const outcome = attempt.phase === "reveal-retype" ? "revealed" : (attempt.misses === 0 ? "firstTry" : "afterHelp");
+        if (!commitOutcome(outcome)) return;
+        attempt.completed = true;
+        attempt.outcome = outcome;
+        attempt.phase = "correct-await-next";
+        attempt.feedback = correctFeedback(state.activeQuestion);
+        attempt.feedbackState = "correct";
+        saveState();
+        render();
+        dom.next.focus();
+      }
+
+      function handleWrong() {
+        const attempt = state.activeAttempt;
+        attempt.misses += 1;
+        if (attempt.misses === 1) {
+          attempt.phase = "hint-labels";
+          attempt.feedback = "Not yet. Look again at the hundreds, tens, and ones.";
+        } else if (attempt.misses === 2) {
+          attempt.phase = "hint-expanded";
+          attempt.feedback = "Almost. Check what each place is worth.";
+        } else {
+          attempt.phase = "reveal-retype";
+          attempt.feedback = "Here is the full explanation. Type the shown answer to finish.";
+        }
+        attempt.feedbackState = "error";
+        saveState();
+        render();
+        focusAnswer(true);
+      }
+
+      function submitCurrent() {
+        if (submitGuard.locked || !state.activeQuestion || state.activeAttempt.completed) return false;
+        submitGuard.locked = true;
+        try {
+          const question = state.activeQuestion;
+          if (question.format === "blocks-to-number") {
+            const validation = validateWhole(dom.numberAnswer.value);
+            state.activeAttempt.draft.number = dom.numberAnswer.value;
+            if (!validation.ok) {
+              setInvalidFeedback(validation.message);
+              return false;
+            }
+            if (validation.value === question.value) handleCorrect();
+            else handleWrong();
+          } else {
+            const validation = validatePlaces([dom.hundredsAnswer.value, dom.tensAnswer.value, dom.onesAnswer.value]);
+            state.activeAttempt.draft = {
+              number: "",
+              hundreds: dom.hundredsAnswer.value,
+              tens: dom.tensAnswer.value,
+              ones: dom.onesAnswer.value
+            };
+            if (!validation.ok) {
+              setInvalidFeedback(validation.message);
+              return false;
+            }
+            const expected = [question.hundreds, question.tens, question.ones];
+            if (validation.value.every((value, index) => value === expected[index])) handleCorrect();
+            else handleWrong();
+          }
+          return true;
+        } finally {
+          submitGuard.locked = false;
+        }
+      }
+
+      function createQuestionIfNeeded() {
+        if (state.activeQuestion && state.activeAttempt) return;
+        state.activeQuestion = chooseQuestion(state);
+        state.activeAttempt = makeAttempt();
+        state.activePresentation = {
+          showPlaceLabels: state.settings.showPlaceLabels,
+          showExpandedHelp: state.settings.showExpandedHelp
+        };
+        saveState();
+      }
+
+      function recordCompletedSession() {
+        if (state.session.recorded || state.session.target === null || state.session.completed < state.session.target) return;
+        state.session.recorded = true;
+        state.completedSessions.push(clone(state.session));
+        state.completedSessions = state.completedSessions.slice(-20);
+      }
+
+      function nextQuestion() {
+        if (!state.activeAttempt || !state.activeAttempt.completed) return false;
+        const sessionFinished = state.session.target !== null && state.session.completed >= state.session.target;
+        if (sessionFinished) recordCompletedSession();
+        // Apply any settings deferred by Save at this next-problem boundary.
+        if (state.pendingSettings) {
+          const freshSession = state.pendingFreshSession;
+          state.settings = state.pendingSettings;
+          state.pendingSettings = null;
+          state.pendingFreshSession = false;
+          if (freshSession) {
+            startFreshSession();
+            return true;
+          }
+        }
+        if (sessionFinished) {
+          state.screen = "summary";
+          saveState();
+          render();
+          dom.practiceAgain.focus();
+          return true;
+        }
+        state.activeQuestion = null;
+        state.activeAttempt = null;
+        state.activePresentation = null;
+        state.activeTicket = null;
+        createQuestionIfNeeded();
+        saveState();
+        render();
+        focusAnswer();
+        return true;
+      }
+
+      function startFreshSession() {
+        state.session = makeSession(state.settings);
+        state.activeQuestion = null;
+        state.activeAttempt = null;
+        state.activePresentation = null;
+        state.activeTicket = null;
+        state.pendingAttempt = null;
+        state.pendingSettings = null;
+        state.pendingFreshSession = false;
+        state.screen = "practice";
+        createQuestionIfNeeded();
+        saveState();
+        render();
+        focusAnswer();
+      }
+
+      function fillSettings(settings) {
+        const form = dom.settingsForm.elements;
+        form.namedItem("stage-mode").value = settings.plan;
+        form.namedItem("stage").value = String(settings.chosenStage);
+        form.namedItem("question-type").value = settings.format;
+        form.namedItem("session-length").value = String(settings.sessionLength);
+        form.namedItem("show-place-labels").checked = settings.showPlaceLabels;
+        form.namedItem("show-expanded-help").checked = settings.showExpandedHelp;
+        form.namedItem("confirm-reset").checked = false;
+      }
+
+      function readSettings() {
+        const form = dom.settingsForm.elements;
+        const rawLength = form.namedItem("session-length").value;
+        return normalizeSettings({
+          plan: form.namedItem("stage-mode").value,
+          chosenStage: Number(form.namedItem("stage").value),
+          format: form.namedItem("question-type").value,
+          sessionLength: rawLength === "endless" ? "endless" : Number(rawLength),
+          showPlaceLabels: form.namedItem("show-place-labels").checked,
+          showExpandedHelp: form.namedItem("show-expanded-help").checked
+        });
+      }
+
+      function openSettings(opener) {
+        lastDialogOpener = opener;
+        // Show any deferred (pending) intent so the form always reflects the will-be settings.
+        fillSettings(state.pendingSettings || state.settings);
+        if (typeof dom.settingsDialog.showModal === "function") dom.settingsDialog.showModal();
+        else dom.settingsDialog.setAttribute("open", "");
+        const first = dom.settingsDialog.querySelector("input, select, button");
+        if (first) first.focus();
+      }
+
+      function closeSettings() {
+        // Closing/cancelling never discards a genuine deferred change; only Save mutates pending.
+        saveState();
+        if (dom.settingsDialog.open && typeof dom.settingsDialog.close === "function") dom.settingsDialog.close();
+        else dom.settingsDialog.removeAttribute("open");
+        if (lastDialogOpener) lastDialogOpener.focus();
+      }
+
+      function saveSettingsFromDialog() {
+        const next = readSettings();
+        // Saved from the summary screen: no active problem to preserve, so apply immediately
+        // into a fresh session.
+        if (state.screen === "summary") {
+          state.settings = next;
+          state.pendingSettings = null;
+          state.pendingFreshSession = false;
+          closeSettings();
+          startFreshSession();
+          return;
+        }
+        // Otherwise defer: preserve the active problem and apply coherently at the next-problem
+        // boundary. A session-length change also starts a fresh session there.
+        if (JSON.stringify(next) !== JSON.stringify(state.settings)) {
+          state.pendingSettings = next;
+          state.pendingFreshSession = next.sessionLength !== state.settings.sessionLength;
+        } else {
+          state.pendingSettings = null;
+          state.pendingFreshSession = false;
+        }
+        closeSettings();
+      }
+
+      function resetProgress() {
+        const confirmation = dom.settingsForm.elements.namedItem("confirm-reset");
+        if (!confirmation.checked) {
+          confirmation.focus();
+          return false;
+        }
+        removeSavedState();
+        state = createDefaultState();
+        createQuestionIfNeeded();
+        closeSettings();
+        saveState();
+        render();
+        focusAnswer();
+        return true;
+      }
+
+      function renderedCounts() {
+        return {
+          flats: dom.blockGroups.querySelectorAll(".hundred-flat").length,
+          flatCells: dom.blockGroups.querySelectorAll(".hundred-flat > span").length,
+          rods: dom.blockGroups.querySelectorAll(".ten-rod").length,
+          rodSegments: dom.blockGroups.querySelectorAll(".ten-rod > span").length,
+          cubes: dom.blockGroups.querySelectorAll(".one-cube").length,
+          noBlocks: dom.blockGroups.querySelectorAll(".no-blocks").length
+        };
+      }
+
+      function textSnapshot() {
+        const question = state.activeQuestion;
+        return {
+          game: "Place Value Practice",
+          version: GAME_VERSION,
+          screen: state.screen,
+          stage: question ? question.stage : currentCurriculumStage(state),
+          question: question ? {
+            id: question.id,
+            format: question.format,
+            value: question.format === "number-to-places" || state.activeAttempt.phase === "reveal-retype" || state.activeAttempt.completed
+              ? question.value
+              : null,
+            visibleBlocks: question.format === "blocks-to-number" ? renderedCounts() : null
+          } : null,
+          phase: state.activeAttempt ? state.activeAttempt.phase : null,
+          misses: state.activeAttempt ? state.activeAttempt.misses : 0,
+          feedback: state.activeAttempt ? state.activeAttempt.feedback : "",
+          session: clone(state.session)
+        };
+      }
+
+      function forceQuestion(value, options = {}) {
+        const stage = integerIn(options.stage, 1, 7, value === 0 ? 7 : 6);
+        state.screen = "practice";
+        state.activeQuestion = makeQuestion({
+          id: options.id || `test-${value}-${Date.now()}`,
+          value,
+          stage,
+          format: options.format || "blocks-to-number",
+          isDedicatedZero: value === 0,
+          reviewKind: options.reviewKind || "ordinary"
+        });
+        state.activeAttempt = makeAttempt();
+        state.activePresentation = {
+          showPlaceLabels: options.showPlaceLabels ?? state.settings.showPlaceLabels,
+          showExpandedHelp: options.showExpandedHelp ?? state.settings.showExpandedHelp
+        };
+        state.activeTicket = null;
+        render();
+        return textSnapshot();
+      }
+
+      function testGenerate(stage, count = 1, seed = 1) {
+        const rng = mulberry32(seed);
+        const recent = [];
+        const values = [];
+        for (let index = 0; index < count; index += 1) {
+          const value = chooseSpacedValue(stage, recent, rng);
+          values.push(value);
+          recent.push(value);
+          if (recent.length > MAX_RECENT) recent.shift();
+        }
+        return values;
+      }
+
+      function runSelfTests() {
+        const originalState = clone(state);
+        const originalMemory = memoryRaw;
+        const originalSeed = seededValue;
+        const originalOperational = storageOperational;
+        let originalStored = null;
+        try { originalStored = window.localStorage.getItem(STORAGE_KEY); } catch (error) { originalStored = null; }
+        const results = [];
+        const check = (name, condition, detail = "") => results.push({ name, pass: Boolean(condition), detail: condition ? "" : String(detail) });
+        try {
+          check("decompose 305", JSON.stringify(decompose(305)) === JSON.stringify({ hundreds: 3, tens: 0, ones: 5 }));
+          check("overlapping categories", categoriesFor(900, 6).includes("bothZeroTensAndOnes") && categoriesFor(900, 6).includes("zeroTens") && categoriesFor(900, 6).includes("zeroOnes") && categoriesFor(900, 6).includes("multipleHundreds"));
+          for (const value of [108, 120, 305, 900]) {
+            forceQuestion(value, { stage: value < 200 ? 7 : 6 });
+            const counts = renderedCounts();
+            const digits = decompose(value);
+            check(`render ${value}`, counts.flats === digits.hundreds && counts.rods === digits.tens && counts.cubes === digits.ones, JSON.stringify(counts));
+            check(`cells ${value}`, counts.flatCells === digits.hundreds * 100 && counts.rodSegments === digits.tens * 10, JSON.stringify(counts));
+          }
+          forceQuestion(0, { stage: 7 });
+          check("dedicated zero", renderedCounts().noBlocks === 1 && !dom.blockGroups.textContent.includes("000"));
+          const constraints = {
+            1: (value) => [1, 10, 100].includes(value),
+            2: (value) => value >= 101 && value <= 109,
+            3: (value) => value >= 110 && value <= 190 && value % 10 === 0,
+            4: (value) => value >= 111 && value <= 199 && decompose(value).tens > 0 && decompose(value).ones > 0,
+            5: (value) => value >= 100 && value <= 999 && (decompose(value).tens === 0 || decompose(value).ones === 0),
+            6: (value) => value >= 200 && value <= 999,
+            7: (value) => value >= 1 && value <= 999
+          };
+          for (let stage = 1; stage <= 7; stage += 1) {
+            const values = testGenerate(stage, 250, 100 + stage);
+            check(`stage ${stage} constraints`, values.every(constraints[stage]));
+          }
+          const spaced = testGenerate(6, 200, 55);
+          check("recent ten exclusion", spaced.every((value, index) => !spaced.slice(Math.max(0, index - 10), index).includes(value)));
+          const promoted = createDefaultState();
+          promoted.stage = 2;
+          promoted.adaptiveWindow = Array(7).fill(true);
+          applyAdaptiveObservation(promoted, makeQuestion({ id: "p", value: 101, stage: 2, format: "blocks-to-number" }), "firstTry");
+          check("adaptive promotes at 8", promoted.stage === 3 && promoted.adaptiveWindow.length === 0);
+          const demoted = createDefaultState();
+          demoted.stage = 3;
+          demoted.adaptiveWindow = [true, true, true, true, true, false, false];
+          applyAdaptiveObservation(demoted, makeQuestion({ id: "d", value: 110, stage: 3, format: "blocks-to-number" }), "afterHelp");
+          check("adaptive demotes at 5 of 8", demoted.stage === 2);
+          check("whole input rules", validateWhole("").ok === false && validateWhole("004").ok === false && validateWhole(" 108 ").value === 108 && validateWhole("1000").ok === false);
+          check("place input rules", validatePlaces(["3", "0", "5"]).ok && !validatePlaces(["3", "", "5"]).ok);
+          const reviewModel = createDefaultState();
+          reviewModel.session.target = 20;
+          reviewModel.aggregate.attempted = 1;
+          enqueueOrdinaryReviews(reviewModel, makeQuestion({ id: "zero", value: 0, stage: 7, format: "blocks-to-number", isDedicatedZero: true }));
+          check("uncategorized exact review", reviewModel.reviewQueues.exact.some((ticket) => ticket.value === 0));
+          const chosen = createDefaultState();
+          chosen.settings.plan = "chosen";
+          chosen.settings.chosenStage = 2;
+          chosen.stageMastery = { 1: true, 2: true, 3: true, 4: true, 5: true, 6: true, 7: true };
+          const chosenValues = Array.from({ length: 50 }, () => chooseQuestion(chosen, mulberry32(chosen.questionSerial + 90)));
+          check("chosen stage isolation", chosenValues.every((question) => question.stage === 2));
+          const duplicate = createDefaultState();
+          state = duplicate;
+          state.activeQuestion = makeQuestion({ id: "once", value: 101, stage: 2, format: "blocks-to-number" });
+          state.activeAttempt = makeAttempt();
+          state.activePresentation = clone(DEFAULT_SETTINGS);
+          applyCompletedOutcome(state.activeQuestion, "firstTry");
+          applyCompletedOutcome(state.activeQuestion, "firstTry");
+          check("duplicate completion protected", state.aggregate.attempted === 1 && state.aggregate.firstTry === 1);
+          const malformed = normalizeState({ schemaVersion: SCHEMA_VERSION, session: { target: 6, completed: 99 }, settings: DEFAULT_SETTINGS });
+          check("malformed persistence repaired", [5, 10, 15, 20, null].includes(malformed.session.target) && malformed.session.completed <= (malformed.session.target || Number.MAX_SAFE_INTEGER));
+          check("grammar singular plural", unitPhrase(1, "hundred") === "1 hundred" && unitPhrase(2, "hundred") === "2 hundreds");
+
+          // Item 1: exact small-value categories — 1..9 are not zero-tens/zero-ones.
+          check("small value not zero-tens/ones",
+            !categoriesFor(5, 7).includes("zeroTens")
+            && !categoriesFor(5, 7).includes("zeroOnes")
+            && categoriesFor(50, 7).includes("zeroOnes")
+            && categoriesFor(500, 6).includes("zeroTens")
+            && categoriesFor(500, 6).includes("zeroOnes"),
+            JSON.stringify({ five: categoriesFor(5, 7), fifty: categoriesFor(50, 7), fiveHundred: categoriesFor(500, 6) }));
+
+          // Item 2: no standalone Stage-7 1-99 bypass — one/two-digit values still reachable
+          // solely from natural zero-hundreds bucket sampling, and no value 0 leaks out.
+          const stage7 = Array.from({ length: 400 }, (_, i) => generateStageValue(7, mulberry32(7000 + i)));
+          check("stage 7 reaches one/two-digit without bypass",
+            stage7.some((value) => value < 100) && stage7.some((value) => value >= 100)
+            && stage7.every((value) => value >= 1 && value <= 999));
+
+          // Item 3: only ordinary misses spawn ticket pairs; review misses do not.
+          const ordinaryModel = createDefaultState();
+          ordinaryModel.aggregate.attempted = 5;
+          state = ordinaryModel;
+          state.activeQuestion = makeQuestion({ id: "ord", value: 305, stage: 6, format: "blocks-to-number", reviewKind: "ordinary" });
+          state.activeAttempt = makeAttempt();
+          state.activeAttempt.misses = 1;
+          state.activePresentation = clone(DEFAULT_SETTINGS);
+          applyCompletedOutcome(state.activeQuestion, "afterHelp");
+          check("ordinary miss spawns ticket pair",
+            ordinaryModel.reviewQueues.exact.length === 1 && ordinaryModel.reviewQueues.category.length === 1);
+          // Item 3: exact due offset is unclamped by the finite session boundary (target-1 = 9).
+          check("exact review due unclamped by session", ordinaryModel.reviewQueues.exact[0].dueAt >= 12);
+
+          const reviewMissModel = createDefaultState();
+          reviewMissModel.aggregate.attempted = 5;
+          state = reviewMissModel;
+          state.activeQuestion = makeQuestion({ id: "rev", value: 305, stage: 6, format: "blocks-to-number", reviewKind: "category" });
+          state.activeAttempt = makeAttempt();
+          state.activeAttempt.misses = 2;
+          state.activePresentation = clone(DEFAULT_SETTINGS);
+          applyCompletedOutcome(state.activeQuestion, "afterHelp");
+          check("review miss spawns no ticket pairs",
+            reviewMissModel.reviewQueues.exact.length === 0 && reviewMissModel.reviewQueues.category.length === 0);
+
+          // Item 4: Save defers settings; the active problem is preserved.
+          state = createDefaultState();
+          state.screen = "practice";
+          state.activeQuestion = makeQuestion({ id: "active", value: 305, stage: 6, format: "blocks-to-number" });
+          state.activeAttempt = makeAttempt();
+          state.activePresentation = clone(DEFAULT_SETTINGS);
+          fillSettings(state.settings);
+          dom.settingsForm.elements.namedItem("question-type").value = "number-to-places";
+          saveSettingsFromDialog();
+          check("save defers settings and preserves active problem",
+            state.settings.format === "blocks-to-number"
+            && state.pendingSettings && state.pendingSettings.format === "number-to-places"
+            && state.activeQuestion.id === "active");
+          // Item 4: deferred intent persists across reload.
+          const deferred = normalizeState({
+            schemaVersion: SCHEMA_VERSION,
+            pendingSettings: { format: "number-to-places", sessionLength: 20 },
+            pendingFreshSession: true
+          });
+          check("deferred settings persist across reload",
+            deferred.pendingSettings && deferred.pendingSettings.format === "number-to-places"
+            && deferred.pendingFreshSession === true);
+          // Item 4: pending settings apply at the next-problem boundary.
+          state = createDefaultState();
+          state.activeQuestion = makeQuestion({ id: "boundary", value: 305, stage: 6, format: "blocks-to-number" });
+          state.activeAttempt = makeAttempt();
+          state.activeAttempt.completed = true;
+          state.activeAttempt.outcome = "firstTry";
+          state.activePresentation = clone(DEFAULT_SETTINGS);
+          state.pendingSettings = normalizeSettings({ ...DEFAULT_SETTINGS, format: "number-to-places" });
+          state.pendingFreshSession = false;
+          nextQuestion();
+          check("deferred settings applied at boundary",
+            state.settings.format === "number-to-places" && state.pendingSettings === null && state.pendingFreshSession === false);
+
+          // Item 5: first wrong answer shows no numeric count badges; second wrong reveals them.
+          forceQuestion(305, { stage: 6 });
+          state.activeAttempt.phase = "hint-labels";
+          state.activeAttempt.misses = 1;
+          renderQuestion();
+          check("first hint has no numeric count badges",
+            dom.blockGroups.querySelectorAll(".place-group.is-emphasized").length === 3
+            && dom.blockGroups.querySelectorAll(".place-group__heading strong").length === 0);
+          state.activeAttempt.phase = "hint-expanded";
+          state.activeAttempt.misses = 2;
+          renderQuestion();
+          check("second hint reveals numeric count badges",
+            dom.blockGroups.querySelectorAll(".place-group__heading strong").length === 3);
+
+          // Item 6: aria-invalid set on wrong answer, cleared on correct.
+          forceQuestion(305, { stage: 6 });
+          dom.numberAnswer.value = "300";
+          submitCurrent();
+          check("aria-invalid set after wrong answer", dom.numberAnswer.getAttribute("aria-invalid") === "true");
+          dom.numberAnswer.value = "305";
+          submitCurrent();
+          check("aria-invalid cleared on correct", dom.numberAnswer.getAttribute("aria-invalid") === "false");
+
+          // Item 7: pending-attempt recovery reconstructs a coherent completed presentation
+          // without double-counting.
+          state = createDefaultState();
+          state.activeQuestion = makeQuestion({ id: "recover", value: 305, stage: 6, format: "blocks-to-number" });
+          state.activeAttempt = makeAttempt();
+          state.activePresentation = clone(DEFAULT_SETTINGS);
+          state.pendingAttempt = { questionId: "recover", outcome: "afterHelp" };
+          recoverPendingAttempt();
+          check("pending recovery coherent",
+            state.activeAttempt.completed === true
+            && state.activeAttempt.outcome === "afterHelp"
+            && state.activeAttempt.phase === "correct-await-next"
+            && state.activeAttempt.feedbackState === "correct"
+            && state.activeAttempt.feedback.startsWith("Correct.")
+            && state.aggregate.attempted === 1
+            && state.pendingAttempt === null);
+          state.pendingAttempt = { questionId: "recover", outcome: "afterHelp" };
+          recoverPendingAttempt();
+          check("pending recovery does not double-count",
+            state.aggregate.attempted === 1 && state.pendingAttempt === null);
+        } catch (error) {
+          check("self-test exception", false, error && error.stack ? error.stack : error);
+        } finally {
+          state = originalState;
+          memoryRaw = originalMemory;
+          storageOperational = originalOperational;
+          seededValue = originalSeed;
+          seededRandom = originalSeed === null ? null : mulberry32(originalSeed);
+          try {
+            if (originalStored === null) window.localStorage.removeItem(STORAGE_KEY);
+            else window.localStorage.setItem(STORAGE_KEY, originalStored);
+          } catch (error) { /* Storage may be unavailable under file://. */ }
+          render();
+        }
+        const report = {
+          passed: results.filter((result) => result.pass).length,
+          failed: results.filter((result) => !result.pass).length,
+          results
+        };
+        console.groupCollapsed(`Place Value Practice self-tests: ${report.passed} passed, ${report.failed} failed`);
+        console.table(results);
+        console.groupEnd();
+        return report;
+      }
+
+      dom.numberForm.addEventListener("submit", (event) => { event.preventDefault(); submitCurrent(); });
+      dom.placesForm.addEventListener("submit", (event) => { event.preventDefault(); submitCurrent(); });
+      dom.next.addEventListener("click", nextQuestion);
+      dom.practiceAgain.addEventListener("click", startFreshSession);
+      dom.settingsButton.addEventListener("click", () => openSettings(dom.settingsButton));
+      dom.summarySettings.addEventListener("click", () => openSettings(dom.summarySettings));
+      dom.resetProgress.addEventListener("click", resetProgress);
+      dom.settingsForm.addEventListener("submit", (event) => {
+        event.preventDefault();
+        const action = event.submitter && event.submitter.value;
+        if (action === "save") saveSettingsFromDialog();
+        else closeSettings();
+      });
+      dom.settingsDialog.addEventListener("cancel", (event) => { event.preventDefault(); closeSettings(); });
+      document.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" && state.screen === "practice" && state.activeAttempt && state.activeAttempt.completed && !dom.settingsDialog.open) {
+          event.preventDefault();
+          nextQuestion();
+        }
+      });
+      [dom.numberAnswer, dom.hundredsAnswer, dom.tensAnswer, dom.onesAnswer].forEach((input) => {
+        input.addEventListener("input", () => {
+          if (!state.activeAttempt || state.activeAttempt.completed) return;
+          input.value = input.value.replace(/[^0-9]/g, "").slice(0, input === dom.numberAnswer ? 3 : 1);
+          input.setAttribute("aria-invalid", "false");
+          if (input === dom.numberAnswer) state.activeAttempt.draft.number = input.value;
+          else state.activeAttempt.draft[input.name] = input.value;
+          saveState();
+        });
+      });
+
+      window.render_game_to_text = () => JSON.stringify(textSnapshot());
+      window.advanceTime = (milliseconds) => {
+        testClock += Math.max(0, Number(milliseconds) || 0);
+        render();
+        return testClock;
+      };
+      window.runSelfTests = runSelfTests;
+      window.__placeValueTest = Object.freeze({
+        snapshot: () => clone(state),
+        textSnapshot,
+        renderedCounts,
+        setSeed(seed) {
+          if (seed === null || seed === undefined) {
+            seededValue = null;
+            seededRandom = null;
+          } else {
+            seededValue = Number(seed) >>> 0;
+            seededRandom = mulberry32(seededValue);
+          }
+          return seededValue;
+        },
+        forceQuestion,
+        generate: testGenerate,
+        submit(answer) {
+          if (state.activeQuestion.format === "blocks-to-number") dom.numberAnswer.value = String(answer);
+          else {
+            const values = Array.isArray(answer) ? answer : [answer.hundreds, answer.tens, answer.ones];
+            [dom.hundredsAnswer.value, dom.tensAnswer.value, dom.onesAnswer.value] = values.map(String);
+          }
+          submitCurrent();
+          return textSnapshot();
+        },
+        next: nextQuestion,
+        setState(candidate) {
+          state = normalizeState(candidate);
+          createQuestionIfNeeded();
+          render();
+          return clone(state);
+        },
+        clearStorage() {
+          removeSavedState();
+          return true;
+        },
+        reset() {
+          removeSavedState();
+          state = createDefaultState();
+          createQuestionIfNeeded();
+          saveState();
+          render();
+          return clone(state);
+        }
+      });
+
+      state = loadState();
+      recoverPendingAttempt();
+      if (state.screen === "summary" && (!state.session.recorded || state.session.target === null)) state.screen = "practice";
+      createQuestionIfNeeded();
+      saveState();
+      render();
+      focusAnswer();
+    })();
+  </script>
+</body>
+</html>
