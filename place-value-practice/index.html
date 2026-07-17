@@ -1478,7 +1478,7 @@
 
           <form class="answer-panel" id="number-to-places-form" novalidate hidden>
             <fieldset>
-              <legend class="answer-legend" id="places-prompt">Show 236 in each place</legend>
+              <legend class="answer-legend" id="places-prompt"></legend>
               <p class="field-help" id="places-help">Write one digit in each box.</p>
               <div class="place-fields" role="group" aria-labelledby="places-prompt" aria-describedby="places-help answer-feedback">
                 <label class="place-field" for="hundreds-answer">
@@ -2109,14 +2109,22 @@
         normalized.session = normalizeSession(candidate.session, normalized.settings);
         normalized.activeQuestion = normalizeQuestion(candidate.activeQuestion);
         normalized.activeAttempt = normalized.activeQuestion ? normalizeAttempt(candidate.activeAttempt) : null;
-        normalized.activePresentation = isObject(candidate.activePresentation) ? {
-          showPlaceLabels: typeof candidate.activePresentation.showPlaceLabels === "boolean"
-            ? candidate.activePresentation.showPlaceLabels
-            : normalized.settings.showPlaceLabels,
-          showExpandedHelp: typeof candidate.activePresentation.showExpandedHelp === "boolean"
-            ? candidate.activePresentation.showExpandedHelp
-            : normalized.settings.showExpandedHelp
-        } : null;
+        if (normalized.activeQuestion) {
+          // A surviving question must always carry a coherent presentation so render paths
+          // never dereference null: use stored booleans when valid, otherwise fall back to
+          // the normalized settings.
+          const presentation = isObject(candidate.activePresentation) ? candidate.activePresentation : {};
+          normalized.activePresentation = {
+            showPlaceLabels: typeof presentation.showPlaceLabels === "boolean"
+              ? presentation.showPlaceLabels
+              : normalized.settings.showPlaceLabels,
+            showExpandedHelp: typeof presentation.showExpandedHelp === "boolean"
+              ? presentation.showExpandedHelp
+              : normalized.settings.showExpandedHelp
+          };
+        } else {
+          normalized.activePresentation = null;
+        }
         normalized.activeTicket = isObject(candidate.activeTicket) && ["exact", "category"].includes(candidate.activeTicket.kind)
           ? { kind: candidate.activeTicket.kind, id: String(candidate.activeTicket.id) }
           : null;
@@ -2397,11 +2405,18 @@
               reviewKind: "category"
             }, rng);
           }
-          category.postponements += 1;
-          if (category.postponements >= 3) {
-            model.reviewQueues.category = model.reviewQueues.category.filter((ticket) => ticket.id !== category.id);
-          } else {
+          if (chosenMode) {
+            // The fixed chosen stage cannot currently produce a value for this category.
+            // Postpone without incrementing postponements or deleting; the ticket stays for a
+            // future recents window rather than being penalized for a mode-imposed constraint.
             category.dueAt = completed + 2;
+          } else {
+            category.postponements += 1;
+            if (category.postponements >= 3) {
+              model.reviewQueues.category = model.reviewQueues.category.filter((ticket) => ticket.id !== category.id);
+            } else {
+              category.dueAt = completed + 2;
+            }
           }
         }
 
@@ -2445,6 +2460,21 @@
         return selected;
       }
 
+      function evictExactForNewTicket(queue, model) {
+        // The exact queue is at capacity and a genuinely new exact ticket must be represented.
+        // Prefer to evict a ticket that cannot be served at a fixed chosen stage; otherwise evict
+        // the ticket due furthest out. Strict `>` keeps ties stable at the earliest queue slot.
+        const chosenStage = model.settings.plan === "chosen" ? model.settings.chosenStage : null;
+        const isEligible = (ticket) => chosenStage === null || ticket.stage === chosenStage;
+        const ineligible = queue.filter((ticket) => !isEligible(ticket));
+        const pool = ineligible.length ? ineligible : queue;
+        let victim = pool[0];
+        for (const ticket of pool) {
+          if (ticket.dueAt > victim.dueAt) victim = ticket;
+        }
+        return victim.id;
+      }
+
       function enqueueOrdinaryReviews(model, question, rng = currentRandom) {
         const completed = model.aggregate.attempted;
         // Due offsets are lifetime-completion based and intentionally not clamped to the
@@ -2457,6 +2487,10 @@
             existingCategory.dueAt = Math.min(existingCategory.dueAt, due(3, 6));
             existingCategory.missedValue = question.value;
           } else if (model.reviewQueues.category.length < MAX_QUEUE) {
+            // The category queue holds at most one ticket per CATEGORY_ORDER category, and there
+            // are exactly MAX_QUEUE categories. A genuinely new category ticket therefore never
+            // needs to evict: at capacity every category is already represented and would have
+            // matched the existingCategory branch above.
             model.reviewQueues.category.push({
               id: `category-${question.id}-${category}`,
               category,
@@ -2469,15 +2503,27 @@
 
         const existingExact = model.reviewQueues.exact.find((ticket) => ticket.value === question.value);
         if (existingExact) {
+          // The same value can be missed again at a different stage (e.g. an off-stage exact
+          // ticket now missed as a stage-7 ordinary question). Realign the ticket's stage to the
+          // current miss so it is served at the right stage, while keeping id, value,
+          // postponements, and queue size and pulling its dueAt earlier-or-equal.
+          existingExact.stage = question.stage;
           existingExact.dueAt = Math.min(existingExact.dueAt, due(7, 12));
-        } else if (model.reviewQueues.exact.length < MAX_QUEUE) {
-          model.reviewQueues.exact.push({
+        } else {
+          const newExact = {
             id: `exact-${question.id}-${question.value}`,
             value: question.value,
             stage: question.stage,
             dueAt: due(7, 12),
             postponements: 0
-          });
+          };
+          if (model.reviewQueues.exact.length < MAX_QUEUE) {
+            model.reviewQueues.exact.push(newExact);
+          } else {
+            const victimId = evictExactForNewTicket(model.reviewQueues.exact, model);
+            model.reviewQueues.exact = model.reviewQueues.exact.filter((ticket) => ticket.id !== victimId);
+            model.reviewQueues.exact.push(newExact);
+          }
         }
       }
 
@@ -2754,7 +2800,9 @@
         dom.problemInstruction.textContent = blocksMode
           ? "Count each place from left to right."
           : "Write one digit for hundreds, tens, and ones—even when a digit is zero.";
-        dom.placesPrompt.textContent = `Show ${question.value} in each place`;
+        // Keep the hidden number-to-places prompt empty in blocks mode so it never exposes
+        // the answer through a stale DOM read or the accessibility tree.
+        dom.placesPrompt.textContent = blocksMode ? "" : `Show ${question.value} in each place`;
         // A miss emphasizes the place labels; numeric count badges/caption only surface at the
         // second wrong hint and remain for reveal/correct.
         const emphasize = attempt.phase !== "asking";
@@ -2785,10 +2833,12 @@
           setFieldInvalid([dom.hundredsAnswer, dom.tensAnswer, dom.onesAnswer], invalid);
           setFieldInvalid([dom.numberAnswer], false);
         }
-        const locked = attempt.completed || submitGuard.locked;
+        // The Check button's disabled state tracks only attempt.completed. submitGuard.locked is
+        // submitCurrent's synchronous reentry guard; letting it disable the button here would
+        // strand it disabled after a wrong answer (the guard clears without a re-render).
         [dom.numberAnswer, dom.hundredsAnswer, dom.tensAnswer, dom.onesAnswer].forEach((input) => { input.disabled = attempt.completed; });
-        dom.checkNumber.disabled = locked;
-        dom.checkPlaces.disabled = locked;
+        dom.checkNumber.disabled = attempt.completed;
+        dom.checkPlaces.disabled = attempt.completed;
         dom.next.hidden = !attempt.completed;
         renderHint(question, attempt);
         if (attempt.completed && blocksMode) {
@@ -2887,8 +2937,10 @@
       }
 
       function applyCompletedOutcome(question, outcome) {
+        // Idempotent by design: a question already recorded in completedQuestionIds must not
+        // recount. This function never touches state.pendingAttempt; the write-ahead marker is
+        // owned solely by commitOutcome and recoverPendingAttempt.
         if (state.completedQuestionIds.includes(question.id)) {
-          state.pendingAttempt = null;
           return false;
         }
         state.completedQuestionIds.push(question.id);
@@ -2910,47 +2962,64 @@
         }
         resolveReviewTicket(state, question, outcome);
         applyAdaptiveObservation(state, question, outcome);
-        state.pendingAttempt = null;
+        return true;
+      }
+
+      // Identity-checked presentation completion shared by the live commit path and crash
+      // recovery. It refuses to repaint a different question and, when the active attempt
+      // matches the pending descriptor, always leaves it completed and awaiting Next.
+      function reconstructCompletedPresentation(pending) {
+        if (!isObject(pending) || !OUTCOMES.includes(pending.outcome)) return false;
+        const question = state.activeQuestion;
+        const attempt = state.activeAttempt;
+        if (!question || !attempt || question.id !== pending.questionId) return false;
+        if (!state.activePresentation) {
+          state.activePresentation = {
+            showPlaceLabels: state.settings.showPlaceLabels,
+            showExpandedHelp: state.settings.showExpandedHelp
+          };
+        }
+        attempt.completed = true;
+        attempt.outcome = pending.outcome;
+        attempt.phase = "correct-await-next";
+        attempt.feedback = correctFeedback(question);
+        attempt.feedbackState = "correct";
         return true;
       }
 
       function commitOutcome(outcome) {
         const question = state.activeQuestion;
         if (!question || !OUTCOMES.includes(outcome)) return false;
-        state.pendingAttempt = { questionId: question.id, outcome };
+        // Write-ahead the pending descriptor before mutating counters so a crash mid-commit
+        // recovers to exactly-once counting on the next boot.
+        const pending = { questionId: question.id, outcome };
+        state.pendingAttempt = pending;
         saveState();
-        const changed = applyCompletedOutcome(question, outcome);
+        // No persistence write occurs between the counter mutation and presentation completion:
+        // whether counters changed or were already counted, rebuild the completed presentation
+        // through the identity-checked helper, then clear the marker and save exactly once.
+        applyCompletedOutcome(question, outcome);
+        const reconstructed = reconstructCompletedPresentation(pending);
+        if (reconstructed) state.pendingAttempt = null;
         saveState();
-        return changed;
+        return reconstructed;
       }
 
       function recoverPendingAttempt() {
         const pending = state.pendingAttempt;
-        if (!isObject(pending) || !OUTCOMES.includes(pending.outcome)) {
-          state.pendingAttempt = null;
-          return;
-        }
-        if (state.activeQuestion && pending.questionId === state.activeQuestion.id) {
-          if (!state.activePresentation) {
-            state.activePresentation = {
-              showPlaceLabels: state.settings.showPlaceLabels,
-              showExpandedHelp: state.settings.showExpandedHelp
-            };
-          }
-          // applyCompletedOutcome dedupes via completedQuestionIds, so counting cannot double up
-          // even if the crash landed between its two saves. Reconstruct the completed
-          // presentation regardless so the restored screen is coherent.
+        // A valid descriptor that still matches the surviving active question is completed
+        // idempotently: applyCompletedOutcome dedupes via completedQuestionIds so counters
+        // cannot double up, and the shared helper rebuilds a coherent completed presentation.
+        // A stale or invalid descriptor mutates neither counters nor presentation. Either way
+        // the write-ahead marker is cleared; boot's later save persists the result.
+        if (isObject(pending)
+          && OUTCOMES.includes(pending.outcome)
+          && state.activeQuestion
+          && pending.questionId === state.activeQuestion.id) {
           applyCompletedOutcome(state.activeQuestion, pending.outcome);
-          if (state.activeAttempt) {
-            state.activeAttempt.completed = true;
-            state.activeAttempt.outcome = pending.outcome;
-            state.activeAttempt.phase = "correct-await-next";
-            state.activeAttempt.feedback = correctFeedback(state.activeQuestion);
-            state.activeAttempt.feedbackState = "correct";
-          }
-        } else {
-          state.pendingAttempt = null;
+          reconstructCompletedPresentation(pending);
         }
+        state.pendingAttempt = null;
       }
 
       function correctFeedback(question) {
@@ -2960,13 +3029,9 @@
       function handleCorrect() {
         const attempt = state.activeAttempt;
         const outcome = attempt.phase === "reveal-retype" ? "revealed" : (attempt.misses === 0 ? "firstTry" : "afterHelp");
+        // commitOutcome owns all persisted completion and presentation reconstruction; a
+        // successful commit has already left the active attempt correct/awaiting-next and saved.
         if (!commitOutcome(outcome)) return;
-        attempt.completed = true;
-        attempt.outcome = outcome;
-        attempt.phase = "correct-await-next";
-        attempt.feedback = correctFeedback(state.activeQuestion);
-        attempt.feedbackState = "correct";
-        saveState();
         render();
         dom.next.focus();
       }
@@ -3048,16 +3113,19 @@
         if (!state.activeAttempt || !state.activeAttempt.completed) return false;
         const sessionFinished = state.session.target !== null && state.session.completed >= state.session.target;
         if (sessionFinished) recordCompletedSession();
-        // Apply any settings deferred by Save at this next-problem boundary.
+        // Apply any settings deferred by Save at this next-problem boundary, then clear flags.
+        const freshSession = Boolean(state.pendingSettings) && state.pendingFreshSession;
         if (state.pendingSettings) {
-          const freshSession = state.pendingFreshSession;
           state.settings = state.pendingSettings;
           state.pendingSettings = null;
           state.pendingFreshSession = false;
-          if (freshSession) {
-            startFreshSession();
-            return true;
-          }
+        }
+        // A deferred fresh-session restart applies immediately only while the old session is
+        // still running. If it just finished, its summary is shown first (with the new
+        // settings already active); Practice Again then starts the new session.
+        if (freshSession && !sessionFinished) {
+          startFreshSession();
+          return true;
         }
         if (sessionFinished) {
           state.screen = "summary";
@@ -3432,6 +3500,290 @@
           recoverPendingAttempt();
           check("pending recovery does not double-count",
             state.aggregate.attempted === 1 && state.pendingAttempt === null);
+
+          // B1: a normal commit counts exactly once, completes the presentation through the
+          // shared helper, and clears the write-ahead pending descriptor.
+          state = createDefaultState();
+          state.activeQuestion = makeQuestion({ id: "commit", value: 305, stage: 6, format: "blocks-to-number" });
+          state.activeAttempt = makeAttempt();
+          state.activePresentation = clone(DEFAULT_SETTINGS);
+          const committed = commitOutcome("firstTry");
+          check("B commitOutcome counts once and completes presentation",
+            committed === true
+            && state.aggregate.attempted === 1
+            && state.aggregate.firstTry === 1
+            && state.session.completed === 1
+            && state.session.firstTry === 1
+            && state.activeAttempt.completed === true
+            && state.activeAttempt.outcome === "firstTry"
+            && state.activeAttempt.phase === "correct-await-next"
+            && state.activeAttempt.feedbackState === "correct"
+            && state.activeAttempt.feedback.startsWith("Correct.")
+            && state.pendingAttempt === null);
+
+          // B2: recovery of an already-counted question (in completedQuestionIds) with a pending
+          // descriptor and an incomplete attempt reconstructs the presentation without recounting.
+          state = createDefaultState();
+          state.activeQuestion = makeQuestion({ id: "dedupe-recover", value: 305, stage: 6, format: "blocks-to-number" });
+          state.activeAttempt = makeAttempt();
+          state.activePresentation = clone(DEFAULT_SETTINGS);
+          state.completedQuestionIds = ["dedupe-recover"];
+          state.aggregate.attempted = 1;
+          state.aggregate.firstTry = 1;
+          state.session.completed = 1;
+          state.session.firstTry = 1;
+          state.pendingAttempt = { questionId: "dedupe-recover", outcome: "firstTry" };
+          recoverPendingAttempt();
+          check("B recovery repairs deduped completion without recounting",
+            state.aggregate.attempted === 1
+            && state.aggregate.firstTry === 1
+            && state.session.completed === 1
+            && state.activeAttempt.completed === true
+            && state.activeAttempt.phase === "correct-await-next"
+            && state.activeAttempt.feedbackState === "correct"
+            && state.pendingAttempt === null);
+
+          // B3: a stale pending questionId is cleared without completing the current attempt or
+          // mutating counters.
+          state = createDefaultState();
+          state.activeQuestion = makeQuestion({ id: "current", value: 305, stage: 6, format: "blocks-to-number" });
+          state.activeAttempt = makeAttempt();
+          state.activePresentation = clone(DEFAULT_SETTINGS);
+          state.pendingAttempt = { questionId: "other-stale", outcome: "firstTry" };
+          recoverPendingAttempt();
+          check("B stale pending cleared without completing current attempt",
+            state.pendingAttempt === null
+            && state.activeAttempt.completed === false
+            && state.activeAttempt.outcome === null
+            && state.aggregate.attempted === 0
+            && state.aggregate.firstTry === 0);
+
+          // F1: a surviving question with missing stored presentation is repaired from
+          // settings, installs, and renders without throwing.
+          const missingPresentation = normalizeState({
+            schemaVersion: SCHEMA_VERSION,
+            settings: { ...DEFAULT_SETTINGS, showPlaceLabels: false, showExpandedHelp: false },
+            activeQuestion: { id: "f1", value: 305, stage: 6, format: "blocks-to-number", reviewKind: "ordinary" },
+            activeAttempt: { phase: "asking", misses: 0, draft: { number: "", hundreds: "", tens: "", ones: "" } }
+          });
+          check("F1 presentation derived from settings when missing",
+            missingPresentation.activeQuestion !== null
+            && missingPresentation.activePresentation !== null
+            && missingPresentation.activePresentation.showPlaceLabels === false
+            && missingPresentation.activePresentation.showExpandedHelp === false);
+          state = missingPresentation;
+          render();
+          check("F1 missing-presentation state renders safely",
+            state.activePresentation !== null
+            && dom.blockGroups.querySelectorAll(".place-group").length === 3);
+          const noSurvivingQuestion = normalizeState({
+            schemaVersion: SCHEMA_VERSION,
+            activePresentation: { showPlaceLabels: true, showExpandedHelp: true }
+          });
+          check("F1 presentation null without surviving question",
+            noSurvivingQuestion.activeQuestion === null && noSurvivingQuestion.activePresentation === null);
+
+          // F2: a full exact queue of off-stage tickets evicts to represent a chosen-stage miss.
+          const exactEvict = createDefaultState();
+          exactEvict.settings.plan = "chosen";
+          exactEvict.settings.chosenStage = 6;
+          exactEvict.aggregate.attempted = 3;
+          exactEvict.reviewQueues.exact = Array.from({ length: MAX_QUEUE }, (_, i) => ({
+            id: `exact-old-${i}`, value: 101 + i, stage: 2, dueAt: 20 + i, postponements: 0
+          }));
+          state = exactEvict;
+          enqueueOrdinaryReviews(exactEvict, makeQuestion({ id: "f2x", value: 305, stage: 6, format: "blocks-to-number", reviewKind: "ordinary" }), mulberry32(11));
+          check("F2 full off-stage exact queue evicts for chosen-stage miss",
+            exactEvict.reviewQueues.exact.length === MAX_QUEUE
+            && exactEvict.reviewQueues.exact.some((ticket) => ticket.value === 305)
+            && !exactEvict.reviewQueues.exact.some((ticket) => ticket.id === "exact-old-5"));
+
+          // F2: a full category queue holds exactly one ticket per CATEGORY_ORDER category, so a
+          // miss whose selected category already exists updates that ticket in place rather than
+          // evicting: the queue stays capped and every category/id is preserved, while the
+          // matched ticket's missedValue becomes the new value and its dueAt moves earlier-or-equal.
+          const catFull = createDefaultState();
+          catFull.aggregate.attempted = 3;
+          catFull.reviewQueues.category = CATEGORY_ORDER.map((category, i) => ({
+            id: `category-existing-${category}`, category, missedValue: 900, dueAt: 50 + i, postponements: 0
+          }));
+          const catFullIdsBefore = catFull.reviewQueues.category.map((ticket) => ticket.id);
+          const zeroTensBefore = catFull.reviewQueues.category.find((ticket) => ticket.category === "zeroTens");
+          const zeroTensDueBefore = zeroTensBefore.dueAt;
+          state = catFull;
+          // value 105 at stage 2 is categorized solely as "zeroTens", which already has a ticket.
+          enqueueOrdinaryReviews(catFull, makeQuestion({ id: "f2c", value: 105, stage: 2, format: "blocks-to-number", reviewKind: "ordinary" }), mulberry32(21));
+          const catFullCategoriesAfter = catFull.reviewQueues.category.map((ticket) => ticket.category);
+          const catFullIdsAfter = catFull.reviewQueues.category.map((ticket) => ticket.id);
+          const zeroTensAfter = catFull.reviewQueues.category.find((ticket) => ticket.category === "zeroTens");
+          check("F2 full category queue updates existing category in place without eviction",
+            catFull.reviewQueues.category.length === MAX_QUEUE
+            && new Set(catFullCategoriesAfter).size === MAX_QUEUE
+            && JSON.stringify(catFullIdsAfter) === JSON.stringify(catFullIdsBefore)
+            && zeroTensAfter.id === zeroTensBefore.id
+            && zeroTensAfter.missedValue === 105
+            && zeroTensAfter.dueAt <= zeroTensDueBefore,
+            JSON.stringify({ categories: catFullCategoriesAfter, ids: catFullIdsAfter, missedValue: zeroTensAfter.missedValue, dueAt: zeroTensAfter.dueAt }));
+
+          // F2: a due category ticket with no candidate in chosen mode is postponed, not
+          // penalized or deleted.
+          const postponeModel = createDefaultState();
+          postponeModel.settings.plan = "chosen";
+          postponeModel.settings.chosenStage = 2;
+          postponeModel.aggregate.attempted = 4;
+          postponeModel.reviewQueues.category = [{
+            id: "cat-postpone", category: "allThreeNonzero", missedValue: 0, dueAt: 0, postponements: 1
+          }];
+          state = postponeModel;
+          chooseQuestion(postponeModel, mulberry32(31));
+          const postponed = postponeModel.reviewQueues.category.find((ticket) => ticket.id === "cat-postpone");
+          check("F2 chosen-mode no-candidate category postponed not deleted",
+            Boolean(postponed) && postponed.postponements === 1 && postponed.dueAt === postponeModel.aggregate.attempted + 2);
+
+          // F3: a deferred fresh-session restart saved on the final question records the old
+          // finished session and shows its summary before the new session starts.
+          state = createDefaultState();
+          state.settings = normalizeSettings({ ...DEFAULT_SETTINGS, sessionLength: 10 });
+          state.session = makeSession(state.settings);
+          state.session.target = 10;
+          state.session.completed = 10;
+          state.session.firstTry = 10;
+          const finishedSessionId = state.session.id;
+          state.activeQuestion = makeQuestion({ id: "f3", value: 305, stage: 6, format: "blocks-to-number" });
+          state.activeAttempt = makeAttempt();
+          state.activeAttempt.completed = true;
+          state.activeAttempt.outcome = "firstTry";
+          state.activePresentation = clone(DEFAULT_SETTINGS);
+          state.pendingSettings = normalizeSettings({ ...DEFAULT_SETTINGS, sessionLength: 5 });
+          state.pendingFreshSession = true;
+          nextQuestion();
+          check("F3 finished session recorded and summary shown with new settings active",
+            state.screen === "summary"
+            && state.settings.sessionLength === 5
+            && state.pendingSettings === null
+            && state.pendingFreshSession === false
+            && state.session.id === finishedSessionId
+            && state.session.completed === 10
+            && state.completedSessions.some((session) => session.id === finishedSessionId));
+          startFreshSession();
+          check("F3 practice again starts fresh session with applied settings",
+            state.screen === "practice"
+            && state.session.completed === 0
+            && state.session.target === 5
+            && state.activeQuestion !== null);
+
+          // F4: the hidden number-to-places prompt must not leak the answer in blocks mode,
+          // but must show it in number-to-places mode.
+          forceQuestion(462, { stage: 6, format: "blocks-to-number" });
+          check("F4 hidden places prompt empty in blocks mode",
+            dom.placesForm.hidden === true
+            && dom.placesPrompt.textContent === ""
+            && !dom.placesPrompt.textContent.includes("462"));
+          forceQuestion(462, { stage: 6, format: "number-to-places" });
+          check("F4 number-to-places prompt shows the number",
+            dom.placesForm.hidden === false
+            && dom.placesPrompt.textContent.includes("462"));
+
+          // A: a full mixed exact queue at chosen stage 6 must prefer evicting the ineligible
+          // (off-stage) ticket even though it is due nearer than an eligible ticket that is due
+          // furthest out. This fails if eviction scans the whole queue for the furthest dueAt.
+          const exactPref = createDefaultState();
+          exactPref.settings.plan = "chosen";
+          exactPref.settings.chosenStage = 6;
+          exactPref.aggregate.attempted = 3;
+          exactPref.reviewQueues.exact = [
+            { id: "exact-inel-near", value: 105, stage: 2, dueAt: 10, postponements: 0 },
+            { id: "exact-elig-far", value: 250, stage: 6, dueAt: 100, postponements: 0 },
+            { id: "exact-elig-1", value: 260, stage: 6, dueAt: 20, postponements: 0 },
+            { id: "exact-elig-2", value: 270, stage: 6, dueAt: 30, postponements: 0 },
+            { id: "exact-elig-3", value: 280, stage: 6, dueAt: 40, postponements: 0 },
+            { id: "exact-elig-4", value: 290, stage: 6, dueAt: 50, postponements: 0 }
+          ];
+          state = exactPref;
+          enqueueOrdinaryReviews(exactPref, makeQuestion({ id: "apref", value: 305, stage: 6, format: "blocks-to-number", reviewKind: "ordinary" }), mulberry32(41));
+          check("A ineligible nearer-due exact evicted while eligible furthest-due remains",
+            exactPref.reviewQueues.exact.length === MAX_QUEUE
+            && !exactPref.reviewQueues.exact.some((ticket) => ticket.id === "exact-inel-near")
+            && exactPref.reviewQueues.exact.some((ticket) => ticket.id === "exact-elig-far")
+            && exactPref.reviewQueues.exact.some((ticket) => ticket.value === 305));
+
+          // Exact overlapping-stage fix: an ordinary stage-7 miss on a value that already has an
+          // off-stage exact ticket realigns that ticket's stage in place — keeping its id, value,
+          // postponements, and queue size — and pulls its dueAt earlier so the stale far-future
+          // dueAt cannot silently win. chooseQuestion (chosen stage 7) can then serve it.
+          const exactOverlap = createDefaultState();
+          exactOverlap.settings.plan = "chosen";
+          exactOverlap.settings.chosenStage = 7;
+          exactOverlap.aggregate.attempted = 8;
+          exactOverlap.reviewQueues.category = [];
+          exactOverlap.reviewQueues.exact = [{
+            id: "exact-existing-105", value: 105, stage: 2, dueAt: 100000, postponements: 2
+          }];
+          const overlapSeed = 4242;
+          // Derive the exact newly generated dueAt by replaying the seeded draws
+          // enqueueOrdinaryReviews consumes for value 105 at stage 7: one category due(3,6) draw
+          // (zeroTens is a fresh category ticket) then one exact due(7,12) draw. The result stays
+          // far below the existing 100000 dueAt, so Math.min must pick the new value.
+          const overlapReplay = mulberry32(overlapSeed);
+          randomInt(3, 6, overlapReplay);
+          const overlapExpectedDue = exactOverlap.aggregate.attempted + randomInt(7, 12, overlapReplay);
+          state = exactOverlap;
+          enqueueOrdinaryReviews(exactOverlap, makeQuestion({ id: "ovl", value: 105, stage: 7, format: "blocks-to-number", reviewKind: "ordinary" }), mulberry32(overlapSeed));
+          const overlap105 = exactOverlap.reviewQueues.exact.filter((ticket) => ticket.value === 105);
+          check("exact overlapping-stage update keeps identity and pulls dueAt earlier at new stage",
+            overlap105.length === 1
+            && exactOverlap.reviewQueues.exact.length === 1
+            && overlap105[0].id === "exact-existing-105"
+            && overlap105[0].stage === 7
+            && overlap105[0].postponements === 2
+            && overlapExpectedDue < 100000
+            && overlap105[0].dueAt === overlapExpectedDue,
+            JSON.stringify({ tickets: exactOverlap.reviewQueues.exact, expectedDue: overlapExpectedDue }));
+          // Make it due without changing its stage, then confirm chooseQuestion serves it as an
+          // exact review at the updated stage 7.
+          overlap105[0].dueAt = exactOverlap.aggregate.attempted;
+          const overlapSelected = chooseQuestion(exactOverlap, mulberry32(overlapSeed + 1));
+          check("exact overlapping-stage ticket served as stage-7 exact review",
+            overlapSelected.value === 105
+            && overlapSelected.stage === 7
+            && overlapSelected.reviewKind === "exact"
+            && Boolean(exactOverlap.activeTicket)
+            && exactOverlap.activeTicket.kind === "exact"
+            && exactOverlap.activeTicket.id === "exact-existing-105",
+            JSON.stringify({ value: overlapSelected.value, stage: overlapSelected.stage, reviewKind: overlapSelected.reviewKind, activeTicket: exactOverlap.activeTicket }));
+
+          // C (retry lockout): the Check button must stay enabled after a wrong answer so a retry
+          // reaches submission. These cases drive real DOM events (button click / requestSubmit)
+          // rather than calling submitCurrent, exercising the exact path a child would take.
+          state = createDefaultState();
+          forceQuestion(305, { stage: 6, format: "blocks-to-number", id: "dom-retry" });
+          dom.numberAnswer.value = "300";
+          dom.checkNumber.click();
+          check("C wrong answer via DOM advances to first hint with Check still enabled",
+            state.activeAttempt.phase === "hint-labels"
+            && state.activeAttempt.misses === 1
+            && state.activeAttempt.completed === false
+            && dom.checkNumber.disabled === false);
+          // C: invalid input submitted through the real form also leaves Check enabled.
+          dom.numberAnswer.value = "";
+          dom.numberForm.requestSubmit();
+          check("C invalid input via DOM leaves Check enabled",
+            state.activeAttempt.completed === false
+            && state.activeAttempt.feedbackState === "error"
+            && dom.checkNumber.disabled === false);
+          // C: correcting and resubmitting through the enabled button completes exactly once and
+          // reveals Next, counting the question a single time in the aggregate and session.
+          const retryAttemptedBefore = state.aggregate.attempted;
+          const retrySessionBefore = state.session.completed;
+          dom.numberAnswer.value = "305";
+          dom.checkNumber.click();
+          check("C corrected retry via DOM completes once and reveals Next",
+            state.activeAttempt.completed === true
+            && state.activeAttempt.outcome === "afterHelp"
+            && dom.next.hidden === false
+            && dom.checkNumber.disabled === true
+            && state.aggregate.attempted === retryAttemptedBefore + 1
+            && state.session.completed === retrySessionBefore + 1);
         } catch (error) {
           check("self-test exception", false, error && error.stack ? error.stack : error);
         } finally {
