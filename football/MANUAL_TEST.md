@@ -18,6 +18,7 @@ Use this checklist for any football UI change before merge.
 Run these on both iPad sizes and orientations:
 
 - start overlay
+- longest-label Wake Forest picker preview
 - offense call
 - offense question
 - offense feedback
@@ -54,6 +55,9 @@ Run these on both iPhone sizes:
 - no hover-only dependency on call selection or answer selection
 - offense call grid is fully visible without scrolling on both iPads, both phones, and iPad 11 landscape
 - defense call shows one concise, truthful pre-snap look and tendency; choosing a call does not reroll or reveal the opponent's planned call
+- rival picker exposes exactly three native radio choices with a visible checked state, keyboard focus, and at least `44x44` label targets; Start remains a separate CTA above the fold
+- selecting a rival previews its public matchup and controlled accent without starting or sampling the game; Play Again returns with that rival selected
+- Wake Forest's longest label fits both the start picker and defensive pre-snap read without horizontal overflow on every target
 - every question names or models facts from the exact pending snap (down/distance, field or drive distance, committed score, quarter/down, or a real scoring rule); no unrelated fact interrupts the play
 - first miss keeps the same frozen question and adds guided support; a second miss shows the worked model and blocks the football outcome behind Continue
 - initial and guided visuals do not announce a hidden answer in either visible copy or the accessible label
@@ -91,7 +95,7 @@ npm run test:football:release
 
 The release command first runs DOM-free football-domain and contextual-question property tests, then runs every Football contract and UI spec against all six device projects. Coverage includes frozen-snap grounding, structured choice IDs, valid-question-failure bypass telemetry, invalid-context fail-closed behavior, independent RNG streams, bounded stats persistence, mastery/coach-report behavior, situational opponent tendencies, and pre-snap hint truthfulness. Its state matrix follows the game’s production paths: a correct offense answer produces the player touchdown, a second defensive miss produces the capped opponent touchdown path, touchdown buttons produce both possession transitions, and `finishPossession()` produces quarter-end, halftime, and final.
 
-Each project archives these 14 required states:
+Each project archives these 14 required game states:
 
 1. start
 2. offense call
@@ -108,7 +112,7 @@ Each project archives these 14 required states:
 13. halftime
 14. final
 
-An eighteenth screenshot records the reduced-motion state after the matrix also captures offense retry, defense retry, and the blocking explanation/Continue state. The post-test gate requires all 108 PNGs (18 screenshots × 6 projects) to exist and be non-empty. Missing states, clipped or undersized controls, horizontal overflow, uncaught browser errors, failed behavior contracts, or missing artifacts make the command exit nonzero.
+Six additional screenshots record offense retry, defense retry, the blocking explanation/Continue state, reduced motion, the longest-label Wake Forest start preview, and its defensive pre-snap read. The post-test gate requires all 120 PNGs (20 screenshots × 6 projects) to exist and be non-empty. Missing states, clipped or undersized controls, horizontal overflow, uncaught browser errors, failed behavior contracts, or missing artifacts make the command exit nonzero.
 
 Canonical screenshots are retained at:
 
@@ -124,7 +128,7 @@ release matrix. The Coach Report spec verifies that the card and replay CTA fit
 the viewport, the CTA remains at least `44x44`, and the page has no horizontal
 overflow. Its attached `compact-final-overlay.png` stays under Playwright's
 temporary artifact tree and is intentionally not part of the canonical
-108-image gate.
+120-image gate.
 
 ### Quick measurement snippet
 

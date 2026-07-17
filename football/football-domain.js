@@ -151,6 +151,54 @@
     return value;
   }
 
+  function boundedString(value, path, min, max, diagnostics) {
+    if (typeof value !== 'string' || value.trim().length < min || value.length > max) {
+      diagnostics.push(diagnostic(
+        'INVALID_STRING',
+        path,
+        `Expected a string from ${min} through ${max} characters.`,
+      ));
+      return null;
+    }
+    return value;
+  }
+
+  function inspectTeamIdentity(input, path, diagnostics) {
+    if (!isRecord(input)) {
+      diagnostics.push(diagnostic('INVALID_MATCH_TEAM', path, 'Expected a public team identity object.'));
+      return { id: null, displayName: null, shortName: null, endZoneName: null };
+    }
+    return {
+      id: boundedString(input.id, `${path}/id`, 1, 32, diagnostics),
+      displayName: boundedString(input.displayName, `${path}/displayName`, 1, 32, diagnostics),
+      shortName: boundedString(input.shortName, `${path}/shortName`, 1, 16, diagnostics),
+      endZoneName: boundedString(input.endZoneName, `${path}/endZoneName`, 1, 16, diagnostics),
+    };
+  }
+
+  function inspectMatch(input, diagnostics) {
+    if (!isRecord(input)) {
+      diagnostics.push(diagnostic('INVALID_MATCH', '/match', 'Expected one public match descriptor.'));
+      return {
+        schemaVersion: null,
+        player: inspectTeamIdentity(null, '/match/player', diagnostics),
+        opponent: inspectTeamIdentity(null, '/match/opponent', diagnostics),
+      };
+    }
+    if (input.schemaVersion !== 1) {
+      diagnostics.push(diagnostic(
+        'INVALID_MATCH_SCHEMA',
+        '/match/schemaVersion',
+        'Match schema version must be 1.',
+      ));
+    }
+    return {
+      schemaVersion: input.schemaVersion,
+      player: inspectTeamIdentity(input.player, '/match/player', diagnostics),
+      opponent: inspectTeamIdentity(input.opponent, '/match/opponent', diagnostics),
+    };
+  }
+
   function inspectContext(input) {
     const diagnostics = [];
     if (!isRecord(input)) {
@@ -160,6 +208,19 @@
       };
     }
 
+    const match = inspectMatch(input.match, diagnostics);
+    let catalogRival = null;
+    if (match.opponent.id !== null) {
+      try {
+        catalogRival = FOOTBALL_OPPONENT.resolveRival(match.opponent.id);
+      } catch (error) {
+        diagnostics.push(diagnostic(
+          'UNKNOWN_MATCH_OPPONENT',
+          '/match/opponent/id',
+          'Public match opponent ID must name one frozen rival catalog identity.',
+        ));
+      }
+    }
     const possession = input.possession;
     if (possession !== 'offense' && possession !== 'defense') {
       diagnostics.push(diagnostic(
@@ -308,7 +369,35 @@
       ));
     }
     if (privateOpponentSnapshot) {
+      const opponentId = privateOpponentSnapshot.opponentId;
+      const profileKey = privateOpponentSnapshot.profileKey;
       const plannedCallKey = privateOpponentSnapshot.plannedCallKey;
+      if (typeof opponentId !== 'string' || opponentId.trim() === '') {
+        diagnostics.push(diagnostic(
+          'INVALID_PRIVATE_OPPONENT_ID',
+          '/privateOpponentSnapshot/opponentId',
+          'Private opponent snapshot must retain its sampled opponent identity.',
+        ));
+      } else if (opponentId !== match.opponent.id) {
+        diagnostics.push(diagnostic(
+          'MISMATCHED_PRIVATE_OPPONENT_ID',
+          '/privateOpponentSnapshot/opponentId',
+          'Private opponent identity must match the public match context.',
+        ));
+      }
+      if (typeof profileKey !== 'string' || profileKey.trim() === '') {
+        diagnostics.push(diagnostic(
+          'INVALID_PRIVATE_OPPONENT_PROFILE',
+          '/privateOpponentSnapshot/profileKey',
+          'Private opponent snapshot must retain its sampled behavior profile.',
+        ));
+      } else if (catalogRival && profileKey !== catalogRival.profileKey) {
+        diagnostics.push(diagnostic(
+          'MISMATCHED_PRIVATE_OPPONENT_PROFILE',
+          '/privateOpponentSnapshot/profileKey',
+          'Private opponent profile must match the public match context.',
+        ));
+      }
       if (typeof plannedCallKey !== 'string' || plannedCallKey.trim() === '') {
         diagnostics.push(diagnostic(
           'INVALID_PRIVATE_OPPONENT_CALL',
@@ -326,6 +415,7 @@
 
     const value = {
       contextId,
+      match,
       possession,
       direction,
       quarter,

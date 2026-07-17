@@ -26,6 +26,7 @@ test('copy tables cover their exact runtime key domains', async ({ page }) => {
       validPossessionCopy: ['offense', 'defense'].every(key =>
         typeof POSSESSION_COPY.ribbon[key] === 'string' && typeof POSSESSION_COPY.stage[key] === 'string'
       ),
+      possessionCopy: JSON.parse(JSON.stringify(POSSESSION_COPY)),
       validDeskHeaders: Object.values(DESK_HEADER_COPY).every(entry =>
         ['chip', 'kicker', 'action'].every(key => typeof entry[key] === 'string' && entry[key].length > 0)
       ),
@@ -41,6 +42,10 @@ test('copy tables cover their exact runtime key domains', async ({ page }) => {
   expect(contract.validDefenseStop).toBe(true);
   expect(contract.validDefenseGain).toBe(true);
   expect(contract.validPossessionCopy).toBe(true);
+  expect(contract.possessionCopy).toEqual({
+    ribbon: { offense: 'DUKE BALL - OFFENSE', defense: 'UNC BALL - DEFENSE' },
+    stage: { offense: 'Duke on offense', defense: 'UNC on offense' },
+  });
   expect(contract.validDeskHeaders).toBe(true);
 });
 

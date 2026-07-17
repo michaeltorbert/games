@@ -181,6 +181,7 @@ test('approved past-100 team yards start visibly guided and commit the real tota
   const schedulerDraw = await page.evaluate(() => {
     const context = FOOTBALL_DOMAIN.normalizeContext({
       contextId: 'past-100-probe',
+      match: state.match,
       possession: state.possession,
       direction: state.direction,
       quarter: state.quarter,
@@ -259,6 +260,7 @@ test('next-down asks about the frozen play situation and commits the projected d
   const schedulerDraw = await page.evaluate(() => {
     const context = FOOTBALL_DOMAIN.normalizeContext({
       contextId: 'next-down-probe',
+      match: state.match,
       possession: state.possession,
       direction: state.direction,
       quarter: state.quarter,
@@ -360,6 +362,7 @@ test('pre-answer goal-distance place-value visuals hide the requested tens or on
       const yardsToGo = Math.min(10, requestedDistance);
       const snap = FOOTBALL_DOMAIN.createSnap({
         contextId: `answer-leak-${id}-${requestedDistance}`,
+        match: state.match,
         possession: 'offense',
         direction: 1,
         quarter: 2,
@@ -445,6 +448,7 @@ test('teen-score visuals use the real scoreboard 14 while hiding its requested p
     const stages = await page.evaluate((id) => {
       const snap = FOOTBALL_DOMAIN.createSnap({
         contextId: `teen-score-${id}`,
+        match: state.match,
         possession: 'offense', direction: 1, quarter: 3, down: 2,
         yardsToGo: 6, yardLine: 34, firstDownLine: 40, driveStart: 27,
         scores: { player: 14, opponent: 7 },
@@ -717,6 +721,7 @@ test('every resolution policy authorizes only its exact frozen requested gain', 
     const privateOpponentSnapshot = state.opponentSnapshot;
     const base = {
       contextId: 'policy-probe',
+      match: state.match,
       possession: 'offense',
       direction: 1,
       quarter: 2,
@@ -848,6 +853,7 @@ test('second-miss outcomes are deterministic by call family and only long calls 
   const outcomes = await page.evaluate(() => {
     const base = {
       contextId: 'bad-outcome-probe', possession: 'offense', direction: 1, quarter: 2,
+      match: state.match,
       down: 2, yardsToGo: 8, yardLine: 30, firstDownLine: 38, driveStart: 20,
       scores: { player: 7, opponent: 7 }, totalYards: { player: 83, opponent: 71 },
       plays: 4, drivePlays: 2, calls: { offense: 'shortRun', defense: null, matchup: null },
@@ -887,6 +893,7 @@ test('own-1 offensive second-miss loss validates with zero applied yards', async
   ].map((spot, index) => {
     const snap = FOOTBALL_DOMAIN.createSnap({
       contextId: `own-one-${index}`, quarter: 1, down: 2, yardsToGo: 10,
+      match: state.match,
       driveStart: spot.direction === 1 ? 20 : 80,
       scores: { player: 0, opponent: 0 }, totalYards: { player: 0, opponent: 0 },
       plays: 1, drivePlays: 1, calls: { offense: 'mediumPass', defense: null, matchup: null },

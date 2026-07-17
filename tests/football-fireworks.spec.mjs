@@ -30,4 +30,16 @@ test('firework runs cancel stale callbacks and keep opponent bursts subdued', as
   expect(await page.evaluate(() => window.__acceptedFireworkColors)).toEqual([
     '#ffd337', '#ffd337', '#ffd337', '#ffd337', '#ffd337',
   ]);
+
+  for (const [rivalId, color] of [['nc-state', '#cc0000'], ['wake-forest', '#9e7e38']]) {
+    await page.evaluate((id) => {
+      window.__footballTest.selectRival(id);
+      window.__acceptedFireworkColors = [];
+      clearConfetti('ov-td-confetti');
+      activateOverlay('ov-td');
+      spawnFireworks('ov-td-confetti', 'defense');
+    }, rivalId);
+    await page.waitForTimeout(500);
+    expect(await page.evaluate(() => window.__acceptedFireworkColors)).toEqual([color, color]);
+  }
 });

@@ -179,12 +179,20 @@ test('coverage selection stores its tendency and preserves matchup gain multipli
     matchup: 'matched',
   });
   expect(matched.activeSnap.proposal.appliedGain).toBe(3);
-  expect(matched.render.opponentTendency.context).toMatchObject({
+  expect(matched.activeSnap.context.privateOpponentSnapshot.tendency.context).toMatchObject({
     down: 1,
     distance: 10,
     direction: -1,
     yardsToGoal: 80,
   });
+  expect(matched.render.opponentTendency).toMatchObject({
+    opponentId: 'unc',
+    look: { key: expect.any(String), label: expect.any(String), alignment: expect.any(String) },
+    lean: { key: expect.any(String), label: expect.any(String) },
+  });
+  expect(matched.render.opponentTendency).not.toHaveProperty('profileKey');
+  expect(matched.render.opponentTendency).not.toHaveProperty('weights');
+  expect(matched.render.opponentTendency).not.toHaveProperty('tendency');
   expect(matched.questionInstance.familyId).toBeTruthy();
   expect(matched.questionInstance.contextId).toBe(matched.activeSnap.contextId);
 

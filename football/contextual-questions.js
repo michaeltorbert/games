@@ -171,6 +171,13 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
     return value === 1 ? 'is' : 'are';
   }
 
+  function publicTeamLabels(snap) {
+    return {
+      player: snap.context.match.player.displayName,
+      opponent: snap.context.match.opponent.shortName,
+    };
+  }
+
   function comparisonSymbol(left, right) {
     if (left < right) return '<';
     if (left > right) return '>';
@@ -190,9 +197,10 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
   }
 
   function committedTeenScoreTarget(snap) {
+    const labels = publicTeamLabels(snap);
     const candidates = [
-      { team: 'Duke', score: snap.context.scores.player, path: '/context/scores/player' },
-      { team: 'UNC', score: snap.context.scores.opponent, path: '/context/scores/opponent' },
+      { team: labels.player, teamRole: 'player', score: snap.context.scores.player, path: '/context/scores/player' },
+      { team: labels.opponent, teamRole: 'opponent', score: snap.context.scores.opponent, path: '/context/scores/opponent' },
     ];
     return candidates.find(({ score }) => Number.isInteger(score) && score >= 10 && score <= 19) || null;
   }
@@ -215,7 +223,7 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
       explanation: `${target.score} has ${tens} ${tens === 1 ? 'ten' : 'tens'} and ${ones} ${ones === 1 ? 'one' : 'ones'}.`,
       choiceSpec: numericChoiceSpec(0, 9),
       visualType: 'base-ten-score',
-      visualData: { team: target.team, score: target.score, tens, ones, targetPlace },
+      visualData: { team: target.team, teamRole: target.teamRole, score: target.score, tens, ones, targetPlace },
       initialAriaLabel: `${target.team} score ${target.score}; the ${targetPlace} digit is hidden.`,
       guidedAriaLabel: `Look at the ${targetPlace} place in ${target.team} score ${target.score}; the answer remains hidden.`,
       workedAriaLabel: `${target.score} has ${tens} ${tens === 1 ? 'ten' : 'tens'} and ${ones} ${ones === 1 ? 'one' : 'ones'}.`,
@@ -244,6 +252,18 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
     if (!isRecord(snap.proposal)) return decline('invalid-proposal', 'Snap proposal is missing.');
     const c = snap.context;
     const p = snap.proposal;
+    if (!isRecord(c.match) || c.match.schemaVersion !== 1
+      || !isRecord(c.match.player) || !isRecord(c.match.opponent)
+      || typeof c.match.player.id !== 'string' || !c.match.player.id
+      || typeof c.match.player.displayName !== 'string' || !c.match.player.displayName
+      || typeof c.match.player.shortName !== 'string' || !c.match.player.shortName
+      || typeof c.match.player.endZoneName !== 'string' || !c.match.player.endZoneName
+      || typeof c.match.opponent.id !== 'string' || !c.match.opponent.id
+      || typeof c.match.opponent.displayName !== 'string' || !c.match.opponent.displayName
+      || typeof c.match.opponent.shortName !== 'string' || !c.match.opponent.shortName
+      || typeof c.match.opponent.endZoneName !== 'string' || !c.match.opponent.endZoneName) {
+      return decline('invalid-match', 'Snap context must include one complete public match descriptor.');
+    }
     if (!['offense', 'defense'].includes(c.possession)) return decline('invalid-possession', 'Possession must be offense or defense.');
     if (![1, -1].includes(c.direction)) return decline('invalid-direction', 'Direction must be 1 or -1.');
     if (!Number.isInteger(c.quarter) || c.quarter < 1 || c.quarter > 4) return decline('invalid-quarter', 'Quarter must be 1 through 4.');
@@ -612,7 +632,9 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
           return { decline: decline('not-past-100-small-move', 'This exact play must move a real team total across or within 100 through 120 by one to three yards.') };
         }
         if (!inDisplayBand(profile, current, gain, answer)) return { decline: decline('outside-display-band', 'The team-yard relation must stay within the approved display band through 120.') };
-        const team = snap.context.possession === 'offense' ? 'Duke' : 'UNC';
+        const labels = publicTeamLabels(snap);
+        const team = snap.context.possession === 'offense' ? labels.player : labels.opponent;
+        const teamRole = snap.context.possession === 'offense' ? 'player' : 'opponent';
         return eligible(makeSemantic({
           bindings: [
             teamTotalYardsBinding(snap),
@@ -623,7 +645,7 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
           hint: `Count forward ${gain} from ${current}, one yard at a time.`,
           explanation: `${current} + ${gain} = ${answer}, so ${team} would have ${answer} total offensive yards.`,
           choiceSpec: numericChoiceSpec(90, 120), visualType: 'hundreds-move',
-          visualData: { team, startTotal: current, proposedGain: gain, resultTotal: null },
+          visualData: { team, teamRole, startTotal: current, proposedGain: gain, resultTotal: null },
           initialAriaLabel: `${team} has ${current} total offensive yards with ${yards(gain)} possible on this play; the new total is hidden.`,
           guidedAriaLabel: `Count forward ${gain} from ${current}, one yard at a time; the final total remains hidden.`,
           workedAriaLabel: `${current} plus ${gain} is ${answer} total offensive yards for ${team}.`,
@@ -652,6 +674,7 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
     {
       meta: makeMeta({ familyId: 'committed-score-total', skill: 'addition', concept: 'committed-score', purpose: 'coreReview', tier: 'within-10', weight: 1.3, operationType: 'add', answerExposure: 'modeled-with-result-hidden', curriculumSource: 'workbook', introducedOnPage: 18 }),
       derive(snap, profile) {
+        const labels = publicTeamLabels(snap);
         const player = snap.context.scores.player;
         const opponent = snap.context.scores.opponent;
         const answer = player + opponent;
@@ -659,12 +682,12 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
         return eligible(makeSemantic({
           bindings: [contextBinding(snap, 'playerScore', '/context/scores/player'), contextBinding(snap, 'opponentScore', '/context/scores/opponent')],
           operationType: 'add', operandIds: ['playerScore', 'opponentScore'], answer,
-          prompt: `The scoreboard says Duke ${player}, UNC ${opponent}. How many points have both teams scored in all?`,
-          hint: `Join ${player} Duke counters and ${opponent} UNC counters.`,
+          prompt: `The scoreboard says ${labels.player} ${player}, ${labels.opponent} ${opponent}. How many points have both teams scored in all?`,
+          hint: `Join ${player} ${labels.player} counters and ${opponent} ${labels.opponent} counters.`,
           explanation: `${player} + ${opponent} = ${answer} points in all.`,
           choiceSpec: numericChoiceSpec(0, 10), visualType: 'score-parts',
-          visualData: { playerScore: player, opponentScore: opponent, total: null },
-          initialAriaLabel: `${player} Duke score counters and ${opponent} UNC score counters; the total is hidden.`,
+          visualData: { playerLabel: labels.player, opponentLabel: labels.opponent, playerScore: player, opponentScore: opponent, total: null },
+          initialAriaLabel: `${player} ${labels.player} score counters and ${opponent} ${labels.opponent} score counters; the total is hidden.`,
           guidedAriaLabel: `Join the group of ${player} and the group of ${opponent}, then count all counters without announcing the total yet.`,
           workedAriaLabel: `${player} plus ${opponent} equals ${answer} points.`,
         }));
@@ -673,6 +696,7 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
     {
       meta: makeMeta({ familyId: 'committed-score-difference', skill: 'difference', concept: 'committed-score', purpose: 'weakSpot', tier: 'within-10', weight: 1.2, operationType: 'absoluteDifference', answerExposure: 'modeled-with-result-hidden', curriculumSource: 'workbook', introducedOnPage: 110 }),
       derive(snap, profile) {
+        const labels = publicTeamLabels(snap);
         const player = snap.context.scores.player;
         const opponent = snap.context.scores.opponent;
         const answer = Math.abs(player - opponent);
@@ -680,13 +704,13 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
         return eligible(makeSemantic({
           bindings: [contextBinding(snap, 'playerScore', '/context/scores/player'), contextBinding(snap, 'opponentScore', '/context/scores/opponent')],
           operationType: 'absoluteDifference', operandIds: ['playerScore', 'opponentScore'], answer,
-          prompt: `The scoreboard says Duke ${player}, UNC ${opponent}. How many points apart are the teams?`,
-          hint: 'Pair one Duke point with one UNC point. Count the points without partners.',
+          prompt: `The scoreboard says ${labels.player} ${player}, ${labels.opponent} ${opponent}. How many points apart are the teams?`,
+          hint: `Pair one ${labels.player} point with one ${labels.opponent} point. Count the points without partners.`,
           explanation: `${Math.max(player, opponent)} - ${Math.min(player, opponent)} = ${answer}, so the teams are ${answer} point${answer === 1 ? '' : 's'} apart.`,
           choiceSpec: numericChoiceSpec(0, 10), visualType: 'score-difference',
-          visualData: { playerScore: player, opponentScore: opponent, difference: null },
-          initialAriaLabel: `${player} Duke counters and ${opponent} UNC counters are lined up; the difference is hidden.`,
-          guidedAriaLabel: 'Pair the Duke and UNC groups and count the unpaired counters without announcing the result yet.',
+          visualData: { playerLabel: labels.player, opponentLabel: labels.opponent, playerScore: player, opponentScore: opponent, difference: null },
+          initialAriaLabel: `${player} ${labels.player} counters and ${opponent} ${labels.opponent} counters are lined up; the difference is hidden.`,
+          guidedAriaLabel: `Pair the ${labels.player} and ${labels.opponent} groups and count the unpaired counters without announcing the result yet.`,
           workedAriaLabel: `The teams are ${answer} point${answer === 1 ? '' : 's'} apart.`,
         }));
       },

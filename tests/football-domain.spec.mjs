@@ -3,21 +3,41 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import vm from 'node:vm';
 
+const opponentSource = await readFile(new URL('../football/opponent.js', import.meta.url), 'utf8');
 const source = await readFile(new URL('../football/football-domain.js', import.meta.url), 'utf8');
 
-function loadDomain() {
+function loadRealm() {
   const context = vm.createContext({});
+  vm.runInContext(opponentSource, context, { filename: 'opponent.js' });
   vm.runInContext(source, context, { filename: 'football-domain.js' });
-  return context.FOOTBALL_DOMAIN;
+  return context;
+}
+
+function loadDomain() {
+  return loadRealm().FOOTBALL_DOMAIN;
 }
 
 function plain(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
+function match({ opponentId = 'unc', opponentName = 'UNC' } = {}) {
+  return {
+    schemaVersion: 1,
+    player: { id: 'duke', displayName: 'Duke', shortName: 'DUKE', endZoneName: 'DUKE' },
+    opponent: {
+      id: opponentId,
+      displayName: opponentName,
+      shortName: opponentName,
+      endZoneName: opponentName,
+    },
+  };
+}
+
 function context(overrides = {}) {
   return {
     contextId: 17,
+    match: match(),
     possession: 'offense',
     direction: 1,
     quarter: 2,
@@ -35,14 +55,16 @@ function context(overrides = {}) {
   };
 }
 
-function opponentSnapshot(plannedCallKey = 'shortPass') {
+function opponentSnapshot(plannedCallKey = 'shortPass', overrides = {}) {
   return {
-    profileKey: 'test',
+    opponentId: 'unc',
+    profileKey: 'balanced',
     look: { key: 'balanced', label: 'Balanced set', alignment: 'Singleback', leanKeys: ['balanced'] },
     lean: { key: 'balanced', label: 'Run or pass', runWeight: 0.5, passWeight: 0.5 },
     weights: { shortRun: 0.2, shortPass: 0.2, longRun: 0.2, mediumPass: 0.2, longPass: 0.2 },
     plannedCallKey,
-    tendency: { profileKey: 'test' },
+    tendency: { profileKey: 'balanced' },
+    ...overrides,
   };
 }
 
@@ -76,6 +98,7 @@ test('normalizes current-game aliases into one frozen canonical context', () => 
   const domain = loadDomain();
   const input = {
     contextId: 'snap-12', possession: 'offense', quarter: 3, down: 2,
+    match: match(),
     ytg: 7, yd: 43, fdYd: 50, driveStart: 25,
     playerScore: 14, opponentScore: 12, playerTotalYards: 103, opponentTotalYards: 88,
     plays: 9, drivePlays: 3,
@@ -85,6 +108,7 @@ test('normalizes current-game aliases into one frozen canonical context', () => 
 
   assert.deepEqual(plain(normalized), {
     contextId: 'snap-12',
+    match: match(),
     possession: 'offense',
     direction: 1,
     quarter: 3,
@@ -104,6 +128,20 @@ test('normalizes current-game aliases into one frozen canonical context', () => 
   assert.equal(Object.isFrozen(normalized.scores), true);
   assert.equal(Object.isFrozen(normalized.totalYards), true);
   assert.equal(Object.isFrozen(normalized.calls), true);
+});
+
+test('serializes every public match descriptor without private behavior identifiers', () => {
+  const realm = loadRealm();
+  const descriptors = vm.runInContext(
+    'FOOTBALL_OPPONENT.RIVAL_ORDER.map((id) => FOOTBALL_OPPONENT.createMatch(id))',
+    realm,
+  );
+  const serialized = JSON.stringify(descriptors);
+
+  assert.deepEqual(plain(descriptors.map(descriptor => descriptor.opponent.id)), [
+    'unc', 'nc-state', 'wake-forest',
+  ]);
+  assert.doesNotMatch(serialized, /opponentProfileKey|profileKey/);
 });
 
 test('clone is recursive and snapshots do not retain caller-owned references', () => {
@@ -156,6 +194,21 @@ test('a completed defensive snap owns one private frozen copy of the exact oppon
   const serializedMismatch = JSON.stringify(mismatched.diagnostics);
   assert.equal(serializedMismatch.includes('shortPass'), false);
   assert.equal(serializedMismatch.includes('longPass'), false);
+
+  const wrongOpponent = domain.validateContext(defenseContext({
+    privateOpponentSnapshot: opponentSnapshot('shortPass', { opponentId: 'wake-forest-private' }),
+  }));
+  assert.equal(wrongOpponent.ok, false);
+  assert.ok(wrongOpponent.diagnostics.some(item => item.code === 'MISMATCHED_PRIVATE_OPPONENT_ID'));
+
+  const wrongProfile = domain.validateContext(defenseContext({
+    privateOpponentSnapshot: opponentSnapshot('shortPass', { profileKey: 'quickPass' }),
+  }));
+  assert.equal(wrongProfile.ok, false);
+  assert.ok(wrongProfile.diagnostics.some(item => item.code === 'MISMATCHED_PRIVATE_OPPONENT_PROFILE'));
+  const privateDiagnostics = JSON.stringify([...wrongOpponent.diagnostics, ...wrongProfile.diagnostics]);
+  assert.equal(privateDiagnostics.includes('wake-forest-private'), false);
+  assert.equal(privateDiagnostics.includes('quickPass'), false);
 
   const unexpected = domain.validateContext(context({
     privateOpponentSnapshot: opponentSnapshot('shortRun'),
@@ -376,6 +429,9 @@ test('near-goal validation distinguishes the authorized request before both gain
 test('returns structured diagnostics for malformed and contradictory contexts', () => {
   const domain = loadDomain();
   const cases = [
+    [context({ match: null }), '/match'],
+    [context({ match: { ...match(), schemaVersion: 2 } }), '/match/schemaVersion'],
+    [context({ match: { ...match(), opponent: { ...match().opponent, shortName: '' } } }), '/match/opponent/shortName'],
     [context({ contextId: 0 }), '/contextId'],
     [context({ possession: 'specialTeams' }), '/possession'],
     [context({ direction: -1 }), '/direction'],

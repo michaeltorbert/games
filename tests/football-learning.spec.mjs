@@ -235,13 +235,15 @@ test('standard offense and defense calls materially reduce generic game-state sc
   await page.goto('/football/?boot=offense-call');
 
   const result = await page.evaluate(() => {
+    const profileKey = FOOTBALL_OPPONENT.resolveRival(state.match.opponent.id).profileKey;
     const opponentSnapshot = {
-      profileKey: 'test',
+      opponentId: state.match.opponent.id,
+      profileKey,
       look: { key: 'balanced', label: 'Balanced set', alignment: 'Singleback', leanKeys: ['balanced'] },
       lean: { key: 'balanced', label: 'Run or pass', runWeight: 0.5, passWeight: 0.5 },
       weights: { shortRun: 0.2, shortPass: 0.2, longRun: 0.2, mediumPass: 0.2, longPass: 0.2 },
       plannedCallKey: 'longPass',
-      tendency: { profileKey: 'test' },
+      tendency: { profileKey },
     };
     const makeSnap = (possession) => {
       const direction = possession === 'offense' ? 1 : -1;
@@ -249,6 +251,7 @@ test('standard offense and defense calls materially reduce generic game-state sc
       const callKey = possession === 'offense' ? 'shortRun' : 'longPass';
       return FOOTBALL_DOMAIN.createSnap({
         contextId: `distribution-${possession}`,
+        match: state.match,
         possession,
         direction,
         quarter: 2,
@@ -407,6 +410,7 @@ test('adaptation and schema-v2 learning events retain grounded question identity
   const result = await page.evaluate(() => {
     const context = FOOTBALL_DOMAIN.normalizeContext({
       contextId: 77,
+      match: state.match,
       possession: 'offense', direction: 1, quarter: 2, down: 2,
       yardsToGo: 10, yardLine: 30, firstDownLine: 40, driveStart: 27,
       scores: { player: 3, opponent: 4 }, plays: 5, drivePlays: 1,

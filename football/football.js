@@ -1,4 +1,4 @@
-const GAME_VERSION = '1.23.0';
+const GAME_VERSION = '1.24.0';
 let prevPlayerScore = -1, prevOpponentScore = -1;
 let playerRunTimer = 0, playerCelebrateTimer = 0, playerCelebrateDelayTimer = 0;
 const EZ = 5;
@@ -154,6 +154,7 @@ let sessionInitialized = false;
 let contextSequence = 1;
 let questionSequence = 1;
 let questionFaultMode = null;
+let selectedRivalId = FOOTBALL_OPPONENT.DEFAULT_RIVAL_ID;
 
 function mixSeed(seed, salt) {
   let value = (seed ^ salt) >>> 0;
@@ -290,15 +291,103 @@ function oppositePossession(possession) {
 }
 
 function possessionTitle(possession) {
-  return possession === 'offense' ? 'Your ball' : "Opponent's ball";
+  return possession === 'offense' ? 'Your ball' : `${state.match.opponent.shortName}'s ball`;
+}
+
+function formatPossessionCopy(template, match = state.match) {
+  return String(template)
+    .replace(/\bDUKE\b/g, match.player.shortName)
+    .replace(/\bUNC\b/g, match.opponent.shortName)
+    .replace(/\bDuke\b/g, match.player.displayName);
 }
 
 function possessionRibbonText(possession) {
-  return possession === 'offense' ? POSSESSION_COPY.ribbon.offense : POSSESSION_COPY.ribbon.defense;
+  const template = possession === 'offense' ? POSSESSION_COPY.ribbon.offense : POSSESSION_COPY.ribbon.defense;
+  return formatPossessionCopy(template);
 }
 
 function stagePossessionText(possession) {
-  return possession === 'offense' ? POSSESSION_COPY.stage.offense : POSSESSION_COPY.stage.defense;
+  const template = possession === 'offense' ? POSSESSION_COPY.stage.offense : POSSESSION_COPY.stage.defense;
+  return formatPossessionCopy(template);
+}
+
+function rivalForMatch(match = state.match) {
+  return FOOTBALL_OPPONENT.resolveRival(match.opponent.id);
+}
+
+function applyMatchPresentation(match = state.match) {
+  const rival = rivalForMatch(match);
+  const root = document.documentElement;
+  root.dataset.opponent = rival.id;
+  root.style.setProperty('--opponent-accent', rival.presentation.accent);
+  root.style.setProperty('--opponent-accent-dark', rival.presentation.accentDark);
+  root.style.setProperty('--opponent-accent-ink', rival.presentation.accentInk);
+  root.style.setProperty('--opponent-accent-soft', rival.presentation.accentSoft);
+  root.style.setProperty('--opponent-scorebug-top', rival.presentation.scorebugTop);
+  root.style.setProperty('--opponent-scorebug-bottom', rival.presentation.scorebugBottom);
+  const wrap = document.getElementById('wrap');
+  if (wrap) wrap.dataset.opponent = rival.id;
+  const scorebugName = document.getElementById('s-opponent-name');
+  if (scorebugName) scorebugName.textContent = match.opponent.shortName;
+  const endZone = document.getElementById('opponent-end-zone');
+  if (endZone) endZone.textContent = match.opponent.endZoneName;
+  const rivalryLabel = document.getElementById('stage-rivalry-label');
+  if (rivalryLabel) rivalryLabel.textContent = rival.rivalryLabel;
+  return rival;
+}
+
+function updateRivalPreview(match) {
+  const rival = applyMatchPresentation(match);
+  const matchup = document.getElementById('rival-preview-matchup');
+  const style = document.getElementById('rival-preview-style');
+  if (matchup) matchup.textContent = `${match.player.shortName} VS ${match.opponent.shortName}`;
+  if (style) style.textContent = rival.styleBlurb;
+  updatePromptContext(`${match.player.shortName} VS ${match.opponent.shortName} / FOUR QUARTERS / WIN THE RIVALRY`);
+}
+
+function selectRivalPreview(rivalId) {
+  if (state.phase !== 'start') return false;
+  const match = FOOTBALL_OPPONENT.createMatch(rivalId);
+  selectedRivalId = rivalId;
+  state = { ...state, match };
+  updateRivalPreview(match);
+  return true;
+}
+
+function renderRivalPicker() {
+  const options = document.getElementById('rival-options');
+  if (!options) return;
+  options.replaceChildren();
+  for (const rival of FOOTBALL_OPPONENT.listRivals()) {
+    const label = document.createElement('label');
+    label.className = 'rival-option';
+    label.dataset.rivalId = rival.id;
+    const input = document.createElement('input');
+    input.type = 'radio';
+    input.name = 'rival';
+    input.value = rival.id;
+    input.checked = rival.id === selectedRivalId;
+    input.setAttribute('aria-describedby', `rival-style-${rival.id}`);
+    input.addEventListener('change', () => {
+      if (input.checked) selectRivalPreview(rival.id);
+    });
+    const copy = document.createElement('span');
+    copy.className = 'rival-option-copy';
+    const name = document.createElement('span');
+    name.className = 'rival-option-name';
+    name.textContent = rival.shortName;
+    const selected = document.createElement('span');
+    selected.className = 'rival-selected';
+    selected.textContent = 'Selected';
+    const style = document.createElement('span');
+    style.className = 'rival-option-style';
+    style.id = `rival-style-${rival.id}`;
+    style.textContent = rival.styleBlurb;
+    copy.append(name, selected, style);
+    label.append(input, copy);
+    options.appendChild(label);
+  }
+  updateRivalPreview(FOOTBALL_OPPONENT.createMatch(selectedRivalId));
 }
 
 function riskLabelText(risk) {
@@ -320,24 +409,28 @@ function syncUiState() {
 
 function playContextText() {
   if (state.phase === 'start' || !state.possession) {
-    return 'DUKE VS UNC / FOUR QUARTERS / WIN THE RIVALRY';
+    return `${state.match.player.shortName} VS ${state.match.opponent.shortName} / FOUR QUARTERS / WIN THE RIVALRY`;
   }
 
   const score = `SCORE ${state.playerScore}-${state.opponentScore}`;
   if (state.phase === 'touchdown') {
     return state.touchdownSide === 'defense'
-      ? `UNC TOUCHDOWN / ${score}`
-      : `DUKE TOUCHDOWN / ${score}`;
+      ? `${state.match.opponent.shortName} TOUCHDOWN / ${score}`
+      : `${state.match.player.shortName} TOUCHDOWN / ${score}`;
   }
   if (state.phase === 'transition') {
-    const incoming = state.possession === 'offense' ? 'DUKE ON OFFENSE' : 'UNC ON OFFENSE';
+    const incoming = state.possession === 'offense'
+      ? `${state.match.player.shortName} ON OFFENSE`
+      : `${state.match.opponent.shortName} ON OFFENSE`;
     return `POSSESSION CHANGE / ${incoming} / ${score}`;
   }
   if (state.phase === 'quarter') return `END OF Q${state.quarter} / ${score}`;
   if (state.phase === 'halftime') return `HALFTIME / ${score}`;
   if (state.phase === 'final') return `FINAL / ${score}`;
 
-  const owner = state.possession === 'offense' ? 'DUKE BALL' : 'UNC BALL';
+  const owner = state.possession === 'offense'
+    ? `${state.match.player.shortName} BALL`
+    : `${state.match.opponent.shortName} BALL`;
   const bits = [owner, `Q${state.quarter}`, `BALL ON ${ydLabel(state.yd, true).toUpperCase()}`];
 
   if (state.phase === 'call') {
@@ -411,6 +504,7 @@ function yardsToGoal(yd, direction) {
 
 function gameSnapshot() {
   return {
+    match: state.match,
     quarter: state.quarter || 1,
     playerScore: state.playerScore || 0,
     opponentScore: state.opponentScore || 0,
@@ -494,8 +588,9 @@ function makeDriveState(possession) {
   };
 }
 
-function createGameState() {
+function createGameState(match = FOOTBALL_OPPONENT.createMatch()) {
   return {
+    match,
     quarter: 1,
     playerScore: 0,
     opponentScore: 0,
@@ -648,6 +743,7 @@ function nextQuestionInstanceId() {
 function makeSnapContext(calls, privateOpponentSnapshot = null) {
   const context = {
     contextId: nextContextId(),
+    match: state.match,
     possession: state.possession,
     direction: state.direction,
     quarter: state.quarter,
@@ -898,6 +994,7 @@ function updateField(animated) {
 }
 
 function updateStatus() {
+  applyMatchPresentation(state.match);
   document.getElementById('s-down').textContent = downDistanceLabel(state.down, state.ytg);
   document.getElementById('s-yd').textContent = ydLabel(state.yd, true);
   document.getElementById('s-quarter').textContent = state.quarter;
@@ -972,6 +1069,7 @@ function renderMathVisual() {
   overlay.setAttribute('aria-label', visual.ariaLabel);
 
   let tokens = [];
+  const teamToken = (text, team) => ({ text, team });
   switch (visual.type) {
     case 'down-distance':
       tokens = [`${DOWN_NAMES[data.down] || data.down} & ${data.yardsToGo}`];
@@ -1001,18 +1099,28 @@ function renderMathVisual() {
       const onesUnit = data.ones === 1 ? 'ONE' : 'ONES';
       const teamLabel = String(data.team || 'TEAM').toUpperCase();
       tokens = visual.result
-        ? [`${data.tens} ${tensUnit}`, `${data.ones} ${onesUnit}`, `= ${teamLabel} ${data.score}`]
-        : [`${teamLabel} ${data.score}`, data.targetPlace === 'tens' ? '? TENS' : '? ONES'];
+        ? [`${data.tens} ${tensUnit}`, `${data.ones} ${onesUnit}`, teamToken(`= ${teamLabel} ${data.score}`, data.teamRole)]
+        : [teamToken(`${teamLabel} ${data.score}`, data.teamRole), data.targetPlace === 'tens' ? '? TENS' : '? ONES'];
       break;
     }
     case 'drive-strip':
       tokens = ['DRIVE START', visual.result ? `${visual.result.value} YDS` : '? YDS', 'NOW'];
       break;
     case 'score-parts':
-      tokens = [`DUKE ${data.playerScore}`, '+', `UNC ${data.opponentScore}`, visual.result ? `= ${visual.result.value}` : '= ?'];
+      tokens = [
+        teamToken(`${String(data.playerLabel).toUpperCase()} ${data.playerScore}`, 'player'),
+        '+',
+        teamToken(`${String(data.opponentLabel).toUpperCase()} ${data.opponentScore}`, 'opponent'),
+        visual.result ? `= ${visual.result.value}` : '= ?',
+      ];
       break;
     case 'score-difference':
-      tokens = [`DUKE ${data.playerScore}`, 'APART', `UNC ${data.opponentScore}`, visual.result ? `${visual.result.value}` : '?'];
+      tokens = [
+        teamToken(`${String(data.playerLabel).toUpperCase()} ${data.playerScore}`, 'player'),
+        'APART',
+        teamToken(`${String(data.opponentLabel).toUpperCase()} ${data.opponentScore}`, 'opponent'),
+        visual.result ? `${visual.result.value}` : '?',
+      ];
       break;
     case 'scoreboard-read':
       tokens = [data.label || 'SCOREBOARD'];
@@ -1028,7 +1136,7 @@ function renderMathVisual() {
     }
     case 'hundreds-move': {
       if (support === 'initial') {
-        tokens = [`${data.team} TOTAL ${data.startTotal}`, `+${data.proposedGain}`, visual.result ? `= ${visual.result.value}` : '= ?'];
+        tokens = [teamToken(`${data.team} TOTAL ${data.startTotal}`, data.teamRole), `+${data.proposedGain}`, visual.result ? `= ${visual.result.value}` : '= ?'];
       } else {
         tokens = Array.from({ length: data.proposedGain }, (_, index) => data.startTotal + index);
         tokens.push(visual.result ? visual.result.value : '?');
@@ -1055,8 +1163,11 @@ function renderMathVisual() {
       tokens = Object.values(data).filter(value => value !== null && ['string', 'number'].includes(typeof value));
       if (!tokens.length) tokens = ['FOOTBALL MATH'];
   }
-  overlay.innerHTML = `<div class="math-context-row" aria-hidden="true">${tokens.map((token, index) =>
-    `<span class="${index % 2 === 0 ? 'math-context-token' : 'math-context-link'}">${token}</span>`
+  overlay.innerHTML = `<div class="math-context-row" aria-hidden="true">${tokens.map((token, index) => {
+    const tokenValue = token && typeof token === 'object' ? token.text : token;
+    const teamAttribute = token && typeof token === 'object' && token.team ? ` data-team="${token.team}"` : '';
+    return `<span class="${index % 2 === 0 ? 'math-context-token' : 'math-context-link'}"${teamAttribute}>${tokenValue}</span>`;
+  }
   ).join('')}</div>` + (support === 'worked' ? `<span class="math-worked">${question.workedExplanation.text}</span>` : '');
 }
 
@@ -1088,7 +1199,7 @@ function renderDefenseRead() {
     : null;
   el.hidden = !snapshot;
   el.textContent = snapshot
-    ? `Pre-snap read: ${snapshot.look.label}, ${snapshot.look.alignment}. ${snapshot.lean.label}.`
+    ? `Pre-snap read: ${state.match.opponent.shortName} shows ${snapshot.look.label}, ${snapshot.look.alignment}. ${snapshot.lean.label}.`
     : '';
 }
 
@@ -1546,7 +1657,7 @@ function selectOffenseCall(callKey) {
   }
 }
 
-function getOpponentTendency(overrides = {}, profile = 'balanced') {
+function getOpponentTendency(overrides = {}, profile = rivalForMatch(state.match).profileKey) {
   return FOOTBALL_OPPONENT.getTendency({
     ...state,
     possessionsPerQuarter: POSSESSIONS_PER_QUARTER,
@@ -1554,12 +1665,17 @@ function getOpponentTendency(overrides = {}, profile = 'balanced') {
   }, profile);
 }
 
-function planOpponentSnap(overrides = {}, profile = 'balanced', rng = footballRng) {
+function planOpponentSnap(
+  overrides = {},
+  profile = rivalForMatch(state.match).profileKey,
+  rng = footballRng,
+  opponentId = state.match.opponent.id,
+) {
   return FOOTBALL_OPPONENT.planSnap({
     ...state,
     possessionsPerQuarter: POSSESSIONS_PER_QUARTER,
     ...overrides,
-  }, profile, rng);
+  }, profile, rng, opponentId);
 }
 
 function defenseMatches(defenseCallKey, opponentCallKey) {
@@ -1613,7 +1729,7 @@ function selectDefenseCall(defenseCallKey) {
   try {
     prepareQuestion(
       { snap, question },
-      `UNC is threatening ${call.label.toLowerCase()} for <span>${yds(snap.proposal.appliedGain)}</span>`,
+      `${state.match.opponent.shortName} is threatening ${call.label.toLowerCase()} for <span>${yds(snap.proposal.appliedGain)}</span>`,
       `${read}: ${defenseCall.label} vs ${call.label}.`,
     );
   } catch (error) {
@@ -1765,7 +1881,8 @@ function continueAfterExplanation() {
 
 function liveStateMatchesSnap(snap) {
   const context = snap.context;
-  return state.possession === context.possession
+  return JSON.stringify(state.match) === JSON.stringify(context.match)
+    && state.possession === context.possession
     && state.direction === context.direction
     && state.quarter === context.quarter
     && state.down === context.down
@@ -1835,7 +1952,7 @@ function finishCommittedTransition(transition, policy, outcome) {
     }
     updateStatus();
     finalizeStatsPlay(gain, outcome);
-    setFeedback(offense ? 'Touchdown!' : 'Opponent touchdown.', offense ? 'positive' : 'negative');
+    setFeedback(offense ? 'Touchdown!' : `${state.match.opponent.shortName} touchdown.`, offense ? 'positive' : 'negative');
     advTimer = setTimeout(() => showTD(offense ? 'offense' : 'defense'), 900);
     return;
   }
@@ -2052,18 +2169,23 @@ function clearConfetti(containerId) {
   }
 }
 
-// Team-color firework palettes: Duke navy/gold for player scores,
-// UNC-tinged reds/oranges for opponent scores.
+// Duke stays visually stable; opponent scoring draws from the selected public
+// rival palette without changing the number or timing of visual-only bursts.
 const FW_PALETTES = {
   offense: ['#ffd337', '#003087', '#7bafd4', '#ffffff'],
-  defense: ['#ff8c3c', '#ff4d3d', '#ffd337', '#ffffff'],
 };
+
+function fireworkPalette(side) {
+  return side === 'defense'
+    ? rivalForMatch(state.match).presentation.fireworks
+    : FW_PALETTES.offense;
+}
 
 function spawnFireworks(containerId, side = 'offense') {
   if (reducedMotionPreferred()) return;
   const container = document.getElementById(containerId);
   if (!container) return;
-  const colors = FW_PALETTES[side] || FW_PALETTES.offense;
+  const colors = fireworkPalette(side);
   const runId = (fireworkEpochs.get(container) || 0) + 1;
   fireworkEpochs.set(container, runId);
   const bursts = side === 'defense' ? 2 : 5;
@@ -2115,15 +2237,28 @@ function setGameUiInert(isInert) {
 }
 
 function overlayFocusableElements(overlay) {
-  return Array.from(overlay.querySelectorAll(
+  const focusable = Array.from(overlay.querySelectorAll(
     'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
   )).filter((element) => element.getClientRects().length > 0);
+  const namedRadioTargets = new Map();
+  for (const element of focusable) {
+    if (element.tagName !== 'INPUT' || element.type !== 'radio' || !element.name) continue;
+    const formOwner = element.form || overlay;
+    if (!namedRadioTargets.has(formOwner)) namedRadioTargets.set(formOwner, new Map());
+    const groups = namedRadioTargets.get(formOwner);
+    if (!groups.has(element.name) || element.checked) groups.set(element.name, element);
+  }
+  return focusable.filter((element) => {
+    if (element.tagName !== 'INPUT' || element.type !== 'radio' || !element.name) return true;
+    return namedRadioTargets.get(element.form || overlay).get(element.name) === element;
+  });
 }
 
 function focusActiveOverlay(overlay) {
   requestAnimationFrame(() => {
     if (!overlay.classList.contains('show')) return;
-    const target = overlay.querySelector('.ov-btn:not([disabled])') || overlayFocusableElements(overlay)[0] || overlay;
+    const startChoice = overlay.id === 'ov-start' ? overlay.querySelector('input[name="rival"]:checked') : null;
+    const target = startChoice || overlay.querySelector('.ov-btn:not([disabled])') || overlayFocusableElements(overlay)[0] || overlay;
     if (target === overlay && !overlay.hasAttribute('tabindex')) overlay.setAttribute('tabindex', '-1');
     target.focus({ preventScroll: true });
   });
@@ -2203,23 +2338,26 @@ function showStart() {
   clearTimeout(advTimer);
   hideOverlays();
   resetPlayerAnimations();
+  state.phase = 'start';
+  renderRivalPicker();
   activateOverlay('ov-start');
-  updatePromptContext('DUKE VS UNC / FOUR QUARTERS / WIN THE RIVALRY');
+  updateRivalPreview(state.match);
   document.getElementById('play-label').textContent = 'Get ready…';
   document.getElementById('question').textContent = '';
   applyDeskHeader('start');
   setFeedback('');
   hideAnswerButtons();
   hideCallGrid();
-  state.phase = 'start';
   syncUiState();
 }
 
 function startGame() {
   clearTimeout(advTimer);
   if (sessionInitialized) return;
+  const match = FOOTBALL_OPPONENT.createMatch(selectedRivalId);
   initGameSession();
-  state = createGameState();
+  state = createGameState(match);
+  applyMatchPresentation(match);
   hideOverlays();
   startDrive('offense');
 }
@@ -2232,10 +2370,10 @@ function showTD(side = 'offense') {
   Object.assign(state, blankPlayState(), { phase: 'touchdown', touchdownSide: side });
   syncUiState();
   if (overlay) overlay.dataset.side = side;
-  if (badge) badge.textContent = side === 'defense' ? 'OPPONENT TD' : 'TOUCHDOWN';
-  if (title) title.textContent = side === 'defense' ? 'UNC Scores' : 'Touchdown!';
+  if (badge) badge.textContent = side === 'defense' ? `${state.match.opponent.shortName} TD` : 'TOUCHDOWN';
+  if (title) title.textContent = side === 'defense' ? `${state.match.opponent.shortName} Scores` : 'Touchdown!';
   document.getElementById('ov-td-sub').textContent = side === 'defense'
-    ? `Score: ${state.playerScore} - ${state.opponentScore}. UNC has ${state.opponentTds} TD${state.opponentTds === 1 ? '' : 's'} — get it back!`
+    ? `Score: ${state.playerScore} - ${state.opponentScore}. ${state.match.opponent.shortName} has ${state.opponentTds} TD${state.opponentTds === 1 ? '' : 's'} — get it back!`
     : `Score: ${state.playerScore} - ${state.opponentScore}. ${state.tds} player TD${state.tds === 1 ? '' : 's'}!`;
   if (button) button.textContent = touchdownContinueLabel(side);
   activateOverlay('ov-td');
@@ -2251,7 +2389,7 @@ function afterTouchdown() {
   hideOverlays();
   finishPossession(
     state.touchdownSide === 'defense'
-      ? 'Opponent scored. Time to take it back!'
+      ? `${state.match.opponent.shortName} scored. Time to take it back!`
       : 'You scored. Time to play defense!'
   );
 }
@@ -2260,6 +2398,7 @@ function showDefenseTransition(message) {
   clearTimeout(advTimer);
   Object.assign(state, blankPlayState(), { phase: 'transition' });
   syncUiState();
+  document.getElementById('ov-defense-title').textContent = `${state.match.opponent.shortName}'s Ball`;
   document.getElementById('ov-defense-sub').textContent =
     `${message} Score: ${state.playerScore} - ${state.opponentScore}`;
   activateOverlay('ov-defense');
@@ -2311,11 +2450,11 @@ function setBreakScorebug(overlayId, nextLabel) {
   const bug = document.getElementById(overlayId + '-scorebug');
   if (!bug) return;
   bug.innerHTML =
-    `<span class="ov-sb-team">DUKE</span>` +
+    `<span class="ov-sb-team">${state.match.player.shortName}</span>` +
     `<span class="ov-sb-pts">${state.playerScore}</span>` +
     `<span class="ov-sb-dash">–</span>` +
     `<span class="ov-sb-pts">${state.opponentScore}</span>` +
-    `<span class="ov-sb-team">UNC</span>` +
+    `<span class="ov-sb-team">${state.match.opponent.shortName}</span>` +
     `<span class="ov-sb-next">Next: ${nextLabel}</span>`;
 }
 
@@ -2451,8 +2590,12 @@ function showGameOver() {
   document.getElementById('ov-end-title').textContent = title;
   const finalScore = document.getElementById('ov-end-score');
   if (finalScore) finalScore.textContent = `${state.playerScore} - ${state.opponentScore}`;
+  if (finalScore) finalScore.setAttribute(
+    'aria-label',
+    `${state.match.player.displayName} ${state.playerScore}, ${state.match.opponent.displayName} ${state.opponentScore}`,
+  );
   document.getElementById('ov-end-sub').textContent =
-    `${detail} Player TDs: ${state.tds}.`;
+    `${detail} ${state.match.player.displayName} vs ${state.match.opponent.displayName}. Player TDs: ${state.tds}.`;
   populateEndStats();
   clearConfetti('ov-end-confetti');
   activateOverlay('ov-end');
@@ -2463,17 +2606,35 @@ function showGameOver() {
 }
 
 function restart() {
+  const rematchRivalId = state.match.opponent.id;
   clearConfetti('ov-td-confetti');
   clearConfetti('ov-end-confetti');
   resetPlayerAnimations();
   clearGameSessionInitialization();
   pendingStatsPlay = null;
-  state = createGameState();
+  selectedRivalId = rematchRivalId;
+  state = createGameState(FOOTBALL_OPPONENT.createMatch(selectedRivalId));
   prevPlayerScore = -1;
   prevOpponentScore = -1;
   updateField(false);
   updateStatus();
   showStart();
+}
+
+function publicOpponentRead(snapshot) {
+  if (!snapshot) return null;
+  return {
+    opponentId: snapshot.opponentId,
+    look: {
+      key: snapshot.look.key,
+      label: snapshot.look.label,
+      alignment: snapshot.look.alignment,
+    },
+    lean: {
+      key: snapshot.lean.key,
+      label: snapshot.lean.label,
+    },
+  };
 }
 
 function renderGameToText() {
@@ -2485,6 +2646,7 @@ function renderGameToText() {
   };
   return JSON.stringify({
     mode: state.phase,
+    match: state.match,
     quarter: state.quarter,
     half: halfLabel(state.quarter || 1),
     possession: state.possession,
@@ -2514,19 +2676,9 @@ function renderGameToText() {
     drivePlays: state.drivePlays,
     call: state.callKey,
     defenseCall: state.defenseCallKey,
-    opponentCall: state.opponentCallKey,
-    opponentTendency: state.opponentTendency || null,
-    opponentSnapshot: state.opponentSnapshot ? {
-      look: {
-        key: state.opponentSnapshot.look.key,
-        label: state.opponentSnapshot.look.label,
-        alignment: state.opponentSnapshot.look.alignment,
-      },
-      lean: {
-        key: state.opponentSnapshot.lean.key,
-        label: state.opponentSnapshot.lean.label,
-      },
-    } : null,
+    opponentCall: null,
+    opponentTendency: publicOpponentRead(state.opponentSelectionSnapshot),
+    opponentSnapshot: publicOpponentRead(state.opponentSnapshot),
     defenseRead: document.getElementById('defense-read')?.textContent || null,
     matchup: state.matchup,
     gain: state.g ?? null,
@@ -2586,6 +2738,11 @@ function activeContractsSnapshot() {
 function seedDriveStateForTest(overrides = {}) {
   if (!sessionInitialized) initGameSession(0x54c0de);
   clearTimeout(advTimer);
+  const match = Object.prototype.hasOwnProperty.call(overrides, 'match')
+    ? overrides.match
+    : Object.prototype.hasOwnProperty.call(overrides, 'rivalId')
+      ? FOOTBALL_OPPONENT.createMatch(overrides.rivalId)
+      : state.match || FOOTBALL_OPPONENT.createMatch();
   const possession = overrides.possession === 'defense' ? 'defense' : 'offense';
   const direction = overrides.direction ?? directionFor(possession);
   const yardLine = overrides.yardLine ?? overrides.yd ?? startingYardFor(possession);
@@ -2595,6 +2752,7 @@ function seedDriveStateForTest(overrides = {}) {
   const totalYards = overrides.totalYards || {};
   const context = FOOTBALL_DOMAIN.normalizeContext({
     contextId: `seed-validation-${contextSequence}`,
+    match,
     possession,
     direction,
     quarter: overrides.quarter ?? 1,
@@ -2617,7 +2775,7 @@ function seedDriveStateForTest(overrides = {}) {
   });
   pendingStatsPlay = null;
   state = {
-    ...createGameState(),
+    ...createGameState(context.match),
     quarter: context.quarter,
     playerScore: context.scores.player,
     opponentScore: context.scores.opponent,
@@ -2700,12 +2858,21 @@ window.__footballTest = {
   statsHistory() { return FOOTBALL_STATS.history(); },
   statsSession() { return statsSession ? FOOTBALL_STATS.sessionSnapshot(statsSession) : null; },
   opponentProfiles() { return FOOTBALL_OPPONENT.PROFILES; },
+  rivals() { return FOOTBALL_OPPONENT.RIVALS; },
+  rivalOrder() { return FOOTBALL_OPPONENT.RIVAL_ORDER; },
+  createMatch(rivalId) {
+    return arguments.length === 0
+      ? FOOTBALL_OPPONENT.createMatch()
+      : FOOTBALL_OPPONENT.createMatch(rivalId);
+  },
+  selectedRivalId() { return selectedRivalId; },
+  selectRival(rivalId) { return selectRivalPreview(rivalId); },
   opponentSnapshot() { return FOOTBALL_LEARNING.snapshot(state.opponentSnapshot); },
-  getOpponentTendency(overrides = {}, profile = 'balanced') {
+  getOpponentTendency(overrides = {}, profile = rivalForMatch(state.match).profileKey) {
     return getOpponentTendency(overrides, profile);
   },
-  planOpponentSnap(overrides = {}, profile = 'balanced', rng = footballRng) {
-    return planOpponentSnap(overrides, profile, rng);
+  planOpponentSnap(overrides = {}, profile = rivalForMatch(state.match).profileKey, rng = footballRng) {
+    return planOpponentSnap(overrides, profile, rng, state.match.opponent.id);
   },
   pickOpponentCall(weights, rng = footballRng) {
     return FOOTBALL_OPPONENT.pickCall(weights, rng);
@@ -2734,11 +2901,28 @@ updateStatus();
 updateMuteButton();
 
 function applyBootMode() {
-  const boot = new URLSearchParams(window.location.search).get('boot');
+  const params = new URLSearchParams(window.location.search);
+  const boot = params.get('boot');
+  const rivalId = params.get('rival');
+  if (rivalId !== null) {
+    let match;
+    try {
+      match = FOOTBALL_OPPONENT.createMatch(rivalId);
+    } catch (error) {
+      if (!(error instanceof RangeError)) throw error;
+      selectedRivalId = FOOTBALL_OPPONENT.DEFAULT_RIVAL_ID;
+      state = createGameState();
+      return false;
+    }
+    selectedRivalId = match.opponent.id;
+    state = createGameState(match);
+  }
   if (boot === 'offense-call') { startGame(); return true; }
   if (boot === 'defense-call') {
+    const match = FOOTBALL_OPPONENT.createMatch(selectedRivalId);
     initGameSession();
-    state = createGameState();
+    state = createGameState(match);
+    applyMatchPresentation(match);
     hideOverlays();
     startDrive('defense');
     return true;

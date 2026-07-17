@@ -31,6 +31,21 @@ test('all overlays expose one modal dialog and contain keyboard focus', async ({
   }
 });
 
+test('start overlay traps focus around the selected native radio tab stop', async ({ page }) => {
+  await page.goto('/football/');
+  const wakeForest = page.locator('input[name="rival"][value="wake-forest"]');
+  const start = page.locator('#start-game-btn');
+
+  await wakeForest.check();
+  await wakeForest.focus();
+  await expect(wakeForest).toBeFocused();
+
+  await page.keyboard.press('Shift+Tab');
+  await expect(start).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(wakeForest).toBeFocused();
+});
+
 test('closing an overlay restores the game UI and focuses the next control', async ({ page }) => {
   await page.goto('/football/');
   await page.locator('#ov-start .ov-btn').click();

@@ -15,10 +15,9 @@ const FOOTBALL_OPPONENT = (() => {
     return Object.freeze(value);
   }
 
-  // Profiles own both their neutral call mix and every situational adjustment.
-  // Adding a new opponent personality should not require changing the engine.
-  const PROFILES = freeze({
-    balanced: {
+  // Profiles own behavior only. Rival names, copy, and presentation live in
+  // the separately validated identity catalog below.
+  const BALANCED_PROFILE = {
       key: 'balanced',
       label: 'Balanced',
       looks: {
@@ -91,8 +90,171 @@ const FOOTBALL_OPPONENT = (() => {
         lateGameProtectLead: { shortRun: 1.55, shortPass: 1.12, longRun: 1.4, mediumPass: 0.75, longPass: 0.48 },
         lateGameTied: { shortRun: 1.1, shortPass: 1.08, mediumPass: 1.12, longPass: 1.08 },
       },
+  };
+
+  const PROFILES = freeze({
+    // Keep this exact profile numerically compatible with the original UNC
+    // opponent. Its call order, weights, modifiers, looks, and single draw are
+    // the baseline contract for seeded games.
+    balanced: BALANCED_PROFILE,
+    powerRun: {
+      key: 'powerRun',
+      label: 'Power Run',
+      looks: BALANCED_PROFILE.looks,
+      lean: BALANCED_PROFILE.lean,
+      baseWeights: {
+        shortRun: 5.5,
+        shortPass: 1.5,
+        longRun: 5.5,
+        mediumPass: 1.5,
+        longPass: 1.1,
+      },
+      modifiers: BALANCED_PROFILE.modifiers,
+    },
+    quickPass: {
+      key: 'quickPass',
+      label: 'Quick Pass',
+      looks: BALANCED_PROFILE.looks,
+      lean: BALANCED_PROFILE.lean,
+      baseWeights: {
+        shortRun: 1.1,
+        shortPass: 4.4,
+        longRun: 1.1,
+        mediumPass: 4,
+        longPass: 3.8,
+      },
+      modifiers: BALANCED_PROFILE.modifiers,
     },
   });
+
+  const PLAYER_IDENTITY = freeze({
+    id: 'duke',
+    displayName: 'Duke',
+    shortName: 'DUKE',
+    endZoneName: 'DUKE',
+  });
+
+  const RIVAL_ORDER = Object.freeze(['unc', 'nc-state', 'wake-forest']);
+  const DEFAULT_RIVAL_ID = 'unc';
+  const RIVALS = freeze({
+    unc: {
+      id: 'unc',
+      displayName: 'North Carolina',
+      shortName: 'UNC',
+      endZoneName: 'CAROLINA',
+      styleBlurb: 'Balanced attack · ready for any down',
+      profileKey: 'balanced',
+      rivalryLabel: 'Tobacco Road',
+      presentation: {
+        token: 'unc',
+        accent: '#7bafd4',
+        accentDark: '#4e7ba2',
+        accentInk: '#0c2950',
+        accentSoft: '#d9efff',
+        scorebugTop: '#83b6d8',
+        scorebugBottom: '#547fa5',
+        fireworks: ['#ff8c3c', '#ff4d3d', '#ffd337', '#ffffff'],
+      },
+    },
+    'nc-state': {
+      id: 'nc-state',
+      displayName: 'NC State',
+      shortName: 'NC STATE',
+      endZoneName: 'NC STATE',
+      styleBlurb: 'Power run · downhill and physical',
+      profileKey: 'powerRun',
+      rivalryLabel: 'Triangle Showdown',
+      presentation: {
+        token: 'nc-state',
+        accent: '#cc0000',
+        accentDark: '#7f1010',
+        accentInk: '#ffffff',
+        accentSoft: '#ffe0e0',
+        scorebugTop: '#d71920',
+        scorebugBottom: '#8f1015',
+        fireworks: ['#cc0000', '#ffffff', '#7f1010', '#ffd337'],
+      },
+    },
+    'wake-forest': {
+      id: 'wake-forest',
+      displayName: 'Wake Forest',
+      shortName: 'WAKE FOREST',
+      endZoneName: 'WAKE',
+      styleBlurb: 'Quick spread · fast throws in space',
+      profileKey: 'quickPass',
+      rivalryLabel: 'Piedmont Matchup',
+      presentation: {
+        token: 'wake-forest',
+        accent: '#9e7e38',
+        accentDark: '#3b3020',
+        accentInk: '#07152f',
+        accentSoft: '#f4e4b5',
+        scorebugTop: '#80652e',
+        scorebugBottom: '#5d4a27',
+        fireworks: ['#9e7e38', '#ffffff', '#3b3020', '#ffd337'],
+      },
+    },
+  });
+
+  function assertBoundedString(value, label, min, max) {
+    if (typeof value !== 'string' || value.trim().length < min || value.length > max) {
+      throw new TypeError(`${label} must be a string from ${min} through ${max} characters`);
+    }
+  }
+
+  function validateProfile(profileKey, profile) {
+    if (!profile || profile.key !== profileKey) throw new TypeError(`Opponent profile ${profileKey} has an invalid key`);
+    const weightKeys = Object.keys(profile.baseWeights || {});
+    if (weightKeys.length !== CALL_KEYS.length || CALL_KEYS.some(key => !weightKeys.includes(key))) {
+      throw new TypeError(`Opponent profile ${profileKey} must define exactly the five offense call weights`);
+    }
+    for (const key of CALL_KEYS) {
+      if (!(Number.isFinite(profile.baseWeights[key]) && profile.baseWeights[key] > 0)) {
+        throw new RangeError(`Opponent profile ${profileKey} has a non-positive ${key} weight`);
+      }
+    }
+    for (const [factorKey, multipliers] of Object.entries(profile.modifiers || {})) {
+      for (const [callKey, multiplier] of Object.entries(multipliers || {})) {
+        if (!CALL_KEYS.includes(callKey) || !(Number.isFinite(multiplier) && multiplier > 0)) {
+          throw new RangeError(`Opponent modifier ${profileKey}.${factorKey}.${callKey} must be positive`);
+        }
+      }
+    }
+    const coveredLeans = new Set(Object.values(profile.looks || {}).flatMap(look => look.leanKeys || []));
+    for (const leanKey of ['run', 'balanced', 'pass']) {
+      if (!coveredLeans.has(leanKey)) throw new TypeError(`Opponent profile ${profileKey} has no ${leanKey} look`);
+    }
+  }
+
+  function validateCatalog() {
+    if (RIVAL_ORDER.length !== 3 || new Set(RIVAL_ORDER).size !== 3 || !RIVAL_ORDER.includes(DEFAULT_RIVAL_ID)) {
+      throw new TypeError('Rival order must contain exactly three unique identities including the default');
+    }
+    for (const [profileKey, profile] of Object.entries(PROFILES)) validateProfile(profileKey, profile);
+    if (Object.keys(RIVALS).length !== RIVAL_ORDER.length) throw new TypeError('Rival catalog and order differ');
+    const hexColor = /^#[0-9a-f]{6}$/i;
+    for (const rivalId of RIVAL_ORDER) {
+      const rival = RIVALS[rivalId];
+      if (!rival || rival.id !== rivalId) throw new TypeError(`Rival ${rivalId} has an invalid identity`);
+      assertBoundedString(rival.displayName, `${rivalId} displayName`, 1, 24);
+      assertBoundedString(rival.shortName, `${rivalId} shortName`, 1, 12);
+      assertBoundedString(rival.endZoneName, `${rivalId} endZoneName`, 1, 12);
+      assertBoundedString(rival.styleBlurb, `${rivalId} styleBlurb`, 1, 64);
+      assertBoundedString(rival.rivalryLabel, `${rivalId} rivalryLabel`, 1, 24);
+      if (!PROFILES[rival.profileKey]) throw new RangeError(`Rival ${rivalId} references an unknown profile`);
+      if (rival.presentation?.token !== rivalId) throw new TypeError(`Rival ${rivalId} has an invalid presentation token`);
+      for (const colorKey of ['accent', 'accentDark', 'accentInk', 'accentSoft', 'scorebugTop', 'scorebugBottom']) {
+        if (!hexColor.test(rival.presentation[colorKey])) throw new TypeError(`Rival ${rivalId} has an invalid ${colorKey}`);
+      }
+      if (!Array.isArray(rival.presentation.fireworks)
+        || rival.presentation.fireworks.length !== 4
+        || rival.presentation.fireworks.some(color => !hexColor.test(color))) {
+        throw new TypeError(`Rival ${rivalId} must define four firework colors`);
+      }
+    }
+  }
+
+  validateCatalog();
 
   function finiteNumber(value, fallback) {
     return Number.isFinite(Number(value)) ? Number(value) : fallback;
@@ -113,6 +275,37 @@ const FOOTBALL_OPPONENT = (() => {
       throw new TypeError('Opponent profile must be a profile key or object');
     }
     return profileKeyOrProfile;
+  }
+
+  function resolveRival(rivalId) {
+    if (typeof rivalId !== 'string' || !Object.prototype.hasOwnProperty.call(RIVALS, rivalId)) {
+      throw new RangeError('Unknown rival ID');
+    }
+    return RIVALS[rivalId];
+  }
+
+  function listRivals() {
+    return Object.freeze(RIVAL_ORDER.map(rivalId => RIVALS[rivalId]));
+  }
+
+  function createMatch(rivalId) {
+    const resolvedId = arguments.length === 0 ? DEFAULT_RIVAL_ID : rivalId;
+    const rival = resolveRival(resolvedId);
+    return freeze({
+      schemaVersion: 1,
+      player: {
+        id: PLAYER_IDENTITY.id,
+        displayName: PLAYER_IDENTITY.displayName,
+        shortName: PLAYER_IDENTITY.shortName,
+        endZoneName: PLAYER_IDENTITY.endZoneName,
+      },
+      opponent: {
+        id: rival.id,
+        displayName: rival.displayName,
+        shortName: rival.shortName,
+        endZoneName: rival.endZoneName,
+      },
+    });
   }
 
   function distanceFactor(distance) {
@@ -270,13 +463,17 @@ const FOOTBALL_OPPONENT = (() => {
     };
   }
 
-  function planSnap(gameState = {}, profileKeyOrProfile = 'balanced', rng = Math.random) {
+  function planSnap(gameState = {}, profileKeyOrProfile = 'balanced', rng = Math.random, opponentId) {
     const profile = resolveProfile(profileKeyOrProfile);
+    if (typeof opponentId !== 'string' || opponentId.trim() === '') {
+      throw new TypeError('Opponent planning requires a public opponent ID');
+    }
     const tendency = getTendency(gameState, profile);
     const lean = qualitativeLean(tendency.weights, profile);
     const plannedCallKey = pickCall(tendency.weights, rng);
     const look = lookForLean(profile, lean.key);
     return freeze({
+      opponentId,
       profileKey: tendency.profileKey,
       look: {
         key: look.key,
@@ -291,5 +488,17 @@ const FOOTBALL_OPPONENT = (() => {
     });
   }
 
-  return freeze({ CALL_KEYS, PROFILES, getTendency, pickCall, planSnap });
+  return freeze({
+    CALL_KEYS,
+    PROFILES,
+    RIVALS,
+    RIVAL_ORDER,
+    DEFAULT_RIVAL_ID,
+    resolveRival,
+    listRivals,
+    createMatch,
+    getTendency,
+    pickCall,
+    planSnap,
+  });
 })();

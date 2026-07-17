@@ -4,14 +4,14 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <title>Football Math!</title>
-<link rel="apple-touch-icon" href="apple-touch-icon.png?v=1.23.0">
-<link rel="icon" type="image/png" href="apple-touch-icon.png?v=1.23.0">
+<link rel="apple-touch-icon" href="apple-touch-icon.png?v=1.24.0">
+<link rel="icon" type="image/png" href="apple-touch-icon.png?v=1.24.0">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow+Condensed:wght@600;700;800&display=swap">
-<link rel="stylesheet" href="../shared/fonts.css?v=1.23.0">
-<link rel="stylesheet" href="../shared/reset.css?v=1.23.0">
-<link rel="stylesheet" href="football.css?v=1.23.0">
+<link rel="stylesheet" href="../shared/fonts.css?v=1.24.0">
+<link rel="stylesheet" href="../shared/reset.css?v=1.24.0">
+<link rel="stylesheet" href="football.css?v=1.24.0">
 </head>
 <body>
 <div id="broadcast-shell">
@@ -23,7 +23,7 @@
       </div>
       <div id="status">
         <div class="sb-team sb-duke"><span class="sb-name">DUKE</span><span class="sb-score" id="s-pscore">0</span></div>
-        <div class="sb-team sb-unc"><span class="sb-name">UNC</span><span class="sb-score" id="s-oscore">0</span></div>
+        <div class="sb-team sb-opponent"><span class="sb-name" id="s-opponent-name">UNC</span><span class="sb-score" id="s-oscore">0</span></div>
         <div class="sb-divider"></div>
         <div class="sb-info">
           <span class="sb-label">Quarter</span><span class="sb-val" id="s-quarter">1</span>
@@ -41,7 +41,7 @@
     <section id="field-stage" aria-label="Football field">
       <div class="stage-head">
         <div class="stage-brand">
-          <span class="stage-chip">Tobacco Road</span>
+          <span class="stage-chip" id="stage-rivalry-label">Tobacco Road</span>
           <span class="stage-copy">Broadcast view</span>
         </div>
         <div id="stage-possession">Duke on offense</div>
@@ -52,7 +52,7 @@
           <span id="mute-icon" aria-hidden="true">&#128266;</span>
         </button>
         <div class="ez-text ez-left" style="color:#003087">DUKE</div>
-        <div class="ez-text ez-right" style="color:#7BAFD4">CAROLINA</div>
+        <div class="ez-text ez-right ez-opponent" id="opponent-end-zone">CAROLINA</div>
         <div id="fd-line"></div>
         <div id="fd-chain" aria-hidden="true">
           <div class="fd-chain-link"></div>
@@ -121,7 +121,15 @@
     <span class="ov-broadcast-badge ov-badge-info">KICKOFF</span>
     <div class="ov-title" id="ov-start-title">Football Math!</div>
     <div class="ov-sub" id="ov-start-sub">Call plays, answer math, and win the rivalry over 4 quarters.</div>
-    <button class="ov-btn" onclick="startGame()">Start Game</button>
+    <fieldset class="rival-picker" id="rival-picker">
+      <legend>Choose the visiting rival</legend>
+      <div class="rival-options" id="rival-options"></div>
+    </fieldset>
+    <div class="rival-preview" id="rival-preview" aria-live="polite" aria-atomic="true">
+      <span class="rival-preview-matchup" id="rival-preview-matchup">DUKE VS UNC</span>
+      <span class="rival-preview-style" id="rival-preview-style">Balanced attack · ready for any down</span>
+    </div>
+    <button class="ov-btn" id="start-game-btn" type="button" onclick="startGame()">Start Game</button>
   </div>
 </div>
 <div class="overlay" id="ov-td" data-side="offense" role="dialog" aria-modal="true" aria-labelledby="ov-td-title" aria-describedby="ov-td-sub" aria-hidden="true" inert>
@@ -231,16 +239,16 @@
   </div>
 </div>
 
-<script src="copy.js?v=1.23.0"></script>
-<script src="learning.js?v=1.23.0"></script>
-<script src="stats.js?v=1.23.0"></script>
-<script src="opponent.js?v=1.23.0"></script>
-<script src="football-domain.js?v=1.23.0"></script>
-<script src="contextual-questions.js?v=1.23.0"></script>
-<script src="football.js?v=1.23.0"></script>
+<script src="copy.js?v=1.24.0"></script>
+<script src="learning.js?v=1.24.0"></script>
+<script src="stats.js?v=1.24.0"></script>
+<script src="opponent.js?v=1.24.0"></script>
+<script src="football-domain.js?v=1.24.0"></script>
+<script src="contextual-questions.js?v=1.24.0"></script>
+<script src="football.js?v=1.24.0"></script>
 <script>
   document.getElementById('version-display').textContent = `v${GAME_VERSION}`;
 </script>
-<script src="../shared/updater.js?v=1.23.0"></script>
+<script src="../shared/updater.js?v=1.24.0"></script>
 </body>
 </html>
