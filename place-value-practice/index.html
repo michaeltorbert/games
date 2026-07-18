@@ -28,6 +28,8 @@
       --radius-medium: 18px;
       --radius-small: 12px;
       --tap: 44px;
+      --block-unit: 7px;
+      --block-ten: 70px;
     }
 
     *,
@@ -292,11 +294,23 @@
     }
 
     .block-board {
+      --block-unit: 7px;
+      --block-ten: 70px;
       margin: 0 0 clamp(22px, 4vw, 32px);
       padding: clamp(14px, 2.5vw, 22px);
       border: 1px solid var(--line);
       border-radius: var(--radius-large);
       background: var(--paper-deep);
+    }
+
+    .block-board[data-block-density="compact"] {
+      --block-unit: 6px;
+      --block-ten: 60px;
+    }
+
+    .block-board[data-block-density="dense"] {
+      --block-unit: 5.25px;
+      --block-ten: 52.5px;
     }
 
     .block-groups {
@@ -340,25 +354,29 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      min-height: 126px;
+      min-height: max(126px, var(--block-ten));
     }
 
     .hundreds-visual {
-      gap: 8px;
-      flex-wrap: wrap;
+      display: grid;
+      width: 100%;
+      grid-template-columns: repeat(auto-fit, var(--block-ten));
+      align-content: center;
+      gap: var(--block-unit);
     }
 
     .hundred-flat {
       display: grid;
-      width: clamp(32px, 5vw, 54px);
-      aspect-ratio: 1;
+      width: var(--block-ten);
+      height: var(--block-ten);
       grid-template-columns: repeat(10, minmax(0, 1fr));
       grid-template-rows: repeat(10, minmax(0, 1fr));
       overflow: hidden;
-      border: 2px solid #6f91aa;
+      border: 1px solid #6f91aa;
       border-radius: 5px;
       background: #d9e5ec;
       box-shadow: 0 1px 2px rgb(61 97 125 / 0.12);
+      flex: 0 0 auto;
     }
 
     .hundred-flat > span {
@@ -378,38 +396,118 @@
 
     .tens-visual {
       align-items: flex-end;
-      gap: clamp(6px, 1.2vw, 10px);
+      gap: var(--block-unit);
       flex-wrap: wrap;
     }
 
     .ten-rod {
       display: grid;
       grid-template-rows: repeat(10, 1fr);
-      width: clamp(17px, 2.4vw, 22px);
-      height: 112px;
+      width: var(--block-unit);
+      height: var(--block-ten);
       overflow: hidden;
-      border: 2px solid #6f91aa;
-      border-radius: 5px;
+      border: 1px solid #6f91aa;
+      border-radius: 3px;
       background: #d9e5ec;
+      flex: 0 0 auto;
     }
 
     .ten-rod span:not(:last-child) {
-      border-bottom: 1px solid rgb(85 123 152 / 0.45);
+      border-bottom: 0.5px solid rgb(85 123 152 / 0.48);
     }
 
     .ones-visual {
       display: grid;
-      grid-template-columns: repeat(3, clamp(22px, 3.2vw, 28px));
+      grid-template-columns: repeat(3, var(--block-unit));
       align-content: center;
-      gap: clamp(6px, 1vw, 9px);
+      gap: var(--block-unit);
     }
 
     .one-cube {
-      aspect-ratio: 1;
-      border: 2px solid #6f91aa;
-      border-radius: 6px;
+      width: var(--block-unit);
+      height: var(--block-unit);
+      border: 1px solid #6f91aa;
+      border-radius: 2px;
       background: #d9e5ec;
-      box-shadow: inset 0 0 0 3px rgb(255 255 255 / 0.34);
+      box-shadow: inset 0 0 0 0.5px rgb(255 255 255 / 0.42), 0 0 0 0.5px rgb(61 97 125 / 0.08);
+      flex: 0 0 auto;
+    }
+
+    .block-groups.is-free {
+      display: block;
+    }
+
+    .free-block-layout {
+      display: flex;
+      min-height: 190px;
+      align-items: center;
+      align-content: center;
+      justify-content: center;
+      flex-wrap: wrap;
+      gap: calc(var(--block-unit) + 3px);
+      padding: clamp(12px, 3vw, 24px);
+      border-radius: var(--radius-medium);
+      background: rgb(255 255 255 / 0.68);
+    }
+
+    .free-block-layout > [role="img"] {
+      animation: free-block-enter 320ms ease both;
+    }
+
+    .free-block-layout.is-strategy-cued .hundred-flat {
+      box-shadow: 0 0 0 3px rgb(85 123 152 / 0.18);
+    }
+
+    .free-block-layout.is-strategy-cued .ten-rod {
+      box-shadow: 0 0 0 3px rgb(66 112 91 / 0.18);
+    }
+
+    .free-block-layout.is-strategy-cued .one-cube {
+      box-shadow: 0 0 0 2px rgb(154 85 77 / 0.18);
+    }
+
+    .free-layout-key {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-wrap: wrap;
+      gap: 7px 14px;
+      margin-top: 10px;
+      color: var(--ink-soft);
+      font-size: 0.8rem;
+      font-weight: 760;
+    }
+
+    .free-layout-key span::before {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      margin-right: 6px;
+      border: 1px solid #6f91aa;
+      border-radius: 3px;
+      background: #d9e5ec;
+      content: "";
+      vertical-align: 0;
+    }
+
+    .restored-columns-note {
+      grid-column: 1 / -1;
+      margin: 0 0 10px;
+      color: var(--blue-dark);
+      font-size: 0.82rem;
+      font-weight: 800;
+      text-align: center;
+    }
+
+    @keyframes free-block-enter {
+      from {
+        opacity: 0;
+        transform: translateY(7px) rotate(var(--block-tilt, 0deg));
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0) rotate(var(--block-tilt, 0deg));
+      }
     }
 
     .no-blocks {
@@ -488,6 +586,54 @@
       margin: 0;
       padding: 0;
       border: 0;
+    }
+
+    .word-choice-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .word-choice {
+      min-height: 62px;
+      padding: 11px 14px;
+      border: 1.5px solid var(--line-strong);
+      border-radius: var(--radius-small);
+      background: var(--surface);
+      color: var(--ink);
+      font-weight: 780;
+      line-height: 1.3;
+      text-align: left;
+      transition: border-color 160ms ease, background-color 160ms ease, color 160ms ease, transform 160ms ease;
+    }
+
+    .word-choice:hover:not(:disabled) {
+      border-color: var(--blue);
+      background: var(--surface-blue);
+    }
+
+    .word-choice:active:not(:disabled) {
+      transform: translateY(1px);
+    }
+
+    .word-choice.is-missed {
+      border-color: #d5aaa5;
+      background: #fff7f6;
+      color: #8b655f;
+      text-decoration: line-through;
+      text-decoration-thickness: 1px;
+    }
+
+    .word-choice.is-answer {
+      border-color: var(--success);
+      background: #edf4f0;
+      color: #355d4a;
+    }
+
+    .word-choice:disabled:not(.is-missed):not(.is-answer) {
+      color: #85898b;
+      cursor: default;
+      opacity: 0.68;
     }
 
     .answer-legend {
@@ -1071,6 +1217,10 @@
       grid-template-columns: repeat(3, minmax(0, 1fr));
     }
 
+    .radio-grid--four {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+
     .radio-grid--five {
       grid-template-columns: repeat(5, minmax(0, 1fr));
     }
@@ -1240,17 +1390,27 @@
         min-height: 98px;
       }
 
-      .hundred-flat {
-        width: clamp(28px, 8vw, 38px);
+      .block-board {
+        --block-unit: 5px;
+        --block-ten: 50px;
       }
 
-      .ten-rod {
-        width: clamp(10px, 3vw, 15px);
-        height: 90px;
+      .block-board[data-block-density="compact"] {
+        --block-unit: 4.5px;
+        --block-ten: 45px;
       }
 
-      .ones-visual {
-        grid-template-columns: repeat(3, clamp(18px, 5.5vw, 24px));
+      .block-board[data-block-density="dense"] {
+        --block-unit: 4px;
+        --block-ten: 40px;
+      }
+
+      .free-block-layout {
+        min-height: 180px;
+      }
+
+      .word-choice-grid {
+        grid-template-columns: 1fr;
       }
 
       .answer-row {
@@ -1304,22 +1464,8 @@
         font-size: 0.66rem;
       }
 
-      .hundred-flat {
-        width: clamp(26px, 7.5vw, 32px);
-        border-width: 1.5px;
-      }
-
       .tens-visual {
-        gap: 4px;
-      }
-
-      .ten-rod {
-        width: 9px;
-      }
-
-      .ones-visual {
-        grid-template-columns: repeat(3, 20px);
-        gap: 5px;
+        gap: var(--block-unit);
       }
 
       .workspace-actions,
@@ -1343,6 +1489,7 @@
       }
 
       .radio-grid--three,
+      .radio-grid--four,
       .radio-grid--five {
         grid-template-columns: repeat(2, minmax(0, 1fr));
       }
@@ -1500,6 +1647,13 @@
             </fieldset>
           </form>
 
+          <form class="answer-panel" id="number-words-form" novalidate hidden>
+            <fieldset>
+              <legend class="answer-legend" id="words-prompt">Choose the words that name this number</legend>
+              <div class="word-choice-grid" id="word-choice-grid" role="group" aria-labelledby="words-prompt" aria-describedby="answer-feedback"></div>
+            </fieldset>
+          </form>
+
           <p class="feedback" id="answer-feedback" role="status" aria-live="polite" aria-atomic="true">Ready when you are. Take your time.</p>
         </div>
 
@@ -1568,7 +1722,7 @@
 
     <footer class="app-footer">
       <p>Practice stays on this device.</p>
-      <p>Version 1.0.0</p>
+      <p>Version 1.1.0</p>
     </footer>
   </div>
 
@@ -1624,10 +1778,10 @@
 
         <fieldset class="setting-group">
           <legend>Question format</legend>
-          <p class="setting-note">Switch between pictures and place-value digits.</p>
-          <div class="radio-grid radio-grid--three">
+          <p class="setting-note">Mix pictures, place-value digits, and number words—or focus on one.</p>
+          <div class="radio-grid radio-grid--four">
             <label class="radio-tile">
-              <input type="radio" name="question-type" value="blocks-to-number" checked>
+              <input type="radio" name="question-type" value="blocks-to-number">
               <span>Blocks to Number</span>
             </label>
             <label class="radio-tile">
@@ -1635,8 +1789,12 @@
               <span>Number to Place Values</span>
             </label>
             <label class="radio-tile">
-              <input type="radio" name="question-type" value="mixed">
-              <span>Mixed</span>
+              <input type="radio" name="question-type" value="number-words">
+              <span>Number Words</span>
+            </label>
+            <label class="radio-tile">
+              <input type="radio" name="question-type" value="mixed" checked>
+              <span>Mixed Practice</span>
             </label>
           </div>
         </fieldset>
@@ -1727,21 +1885,25 @@
     "use strict";
 
     (() => {
-      const GAME_VERSION = "1.0.0";
+      const GAME_VERSION = "1.1.0";
       const SCHEMA_VERSION = 1;
       const STORAGE_KEY = "place-value-practice:progress:v1";
       const MAX_QUEUE = 6;
       const MAX_RECENT = 10;
-      const REVIEW_KINDS = ["ordinary", "retention", "category", "exact"];
+      const MAX_TRANSFER_QUEUE = 3;
+      const REVIEW_KINDS = ["ordinary", "retention", "category", "exact", "transfer"];
       const PHASES = ["asking", "hint-labels", "hint-expanded", "reveal-retype", "correct-await-next"];
       const OUTCOMES = ["firstTry", "afterHelp", "revealed"];
+      const QUESTION_FORMATS = ["blocks-to-number", "number-to-places", "number-words"];
+      const TRANSFER_CATEGORIES = ["zeroTens", "zeroOnes", "bothZeroTensAndOnes"];
       const CATEGORY_ORDER = [
         "individualBlockValue",
         "bothZeroTensAndOnes",
         "zeroTens",
         "zeroOnes",
         "multipleHundreds",
-        "allThreeNonzero"
+        "allThreeNonzero",
+        "numberWords"
       ];
       const CATEGORY_LABELS = {
         zeroTens: "numbers with zero tens",
@@ -1749,7 +1911,8 @@
         bothZeroTensAndOnes: "exact hundreds",
         allThreeNonzero: "all three places",
         multipleHundreds: "multiple hundreds",
-        individualBlockValue: "individual block values"
+        individualBlockValue: "individual block values",
+        numberWords: "number words"
       };
       const STAGE_LABELS = {
         1: "Individual block values",
@@ -1763,7 +1926,7 @@
       const DEFAULT_SETTINGS = Object.freeze({
         plan: "adaptive",
         chosenStage: 2,
-        format: "blocks-to-number",
+        format: "mixed",
         sessionLength: 10,
         showPlaceLabels: true,
         showExpandedHelp: true
@@ -1832,6 +1995,150 @@
         };
       }
 
+      const SMALL_NUMBER_WORDS = [
+        "zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine",
+        "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen"
+      ];
+      const TENS_NUMBER_WORDS = ["", "", "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety"];
+
+      function wordsBelowHundred(value) {
+        if (value < 20) return SMALL_NUMBER_WORDS[value];
+        const tens = Math.floor(value / 10);
+        const ones = value % 10;
+        return ones ? `${TENS_NUMBER_WORDS[tens]}-${SMALL_NUMBER_WORDS[ones]}` : TENS_NUMBER_WORDS[tens];
+      }
+
+      function numberToWords(value) {
+        const safe = integerIn(value, 0, 999, 0);
+        if (safe < 100) return wordsBelowHundred(safe);
+        const hundreds = Math.floor(safe / 100);
+        const rest = safe % 100;
+        return `${SMALL_NUMBER_WORDS[hundreds]} hundred${rest ? ` ${wordsBelowHundred(rest)}` : ""}`;
+      }
+
+      function wordParts(value) {
+        const { hundreds, tens, ones } = decompose(value);
+        const parts = [];
+        if (hundreds) parts.push(`${SMALL_NUMBER_WORDS[hundreds]} hundred`);
+        const rest = tens * 10 + ones;
+        if (rest) parts.push(wordsBelowHundred(rest));
+        if (!parts.length) parts.push("zero");
+        return parts;
+      }
+
+      // Value-sensitive, word-only first hint for number-word questions. It never prints a digit;
+      // it names the reading strategy for exactly five value domains: zero, ones (1–19), tens
+      // (20–99), exact hundreds (H00), and other three-digit numbers. Later phases (hint-expanded)
+      // keep the explicit wordParts remediation.
+      function firstWordHint(value) {
+        if (value === 0) {
+          return {
+            title: "Think about an empty amount",
+            intro: "This number names an amount with no hundreds, tens, or ones.",
+            steps: ["Picture an empty amount", "Say its one-word name", "Nothing comes before or after"]
+          };
+        }
+        if (value < 20) {
+          return {
+            title: "Use one whole number word",
+            intro: "This number has its own conventional word name. Say it as a whole instead of splitting it into separate tens and ones words.",
+            steps: ["Say the whole word", "Keep the word name together", "Do not split it into place words"]
+          };
+        }
+        if (value < 100) {
+          return {
+            title: "Start with the tens word",
+            intro: "Say the tens word first. Add a ones word and a hyphen only when there are ones.",
+            steps: ["Tens word first", "Add ones only when needed", "Use a hyphen only with both words"]
+          };
+        }
+        const { tens, ones } = decompose(value);
+        if (tens === 0 && ones === 0) {
+          return {
+            title: "Say the hundreds only",
+            intro: "This is a whole group of hundreds with nothing after it. Say the hundreds word and stop.",
+            steps: ["Say the hundreds word", "Then say hundred", "Nothing comes after"]
+          };
+        }
+        return {
+          title: "Say hundreds, then the rest",
+          intro: "Say the hundreds word first, then the tens-and-ones part. A zero place stays quiet.",
+          steps: ["Hundreds word first", "Then the tens and ones", "Skip any zero place"]
+        };
+      }
+
+      function stringSeed(text) {
+        let hash = 2166136261;
+        for (const character of String(text)) {
+          hash ^= character.charCodeAt(0);
+          hash = Math.imul(hash, 16777619);
+        }
+        return hash >>> 0;
+      }
+
+      function shuffled(items, rng) {
+        const result = items.slice();
+        for (let index = result.length - 1; index > 0; index -= 1) {
+          const swap = randomInt(0, index, rng);
+          [result[index], result[swap]] = [result[swap], result[index]];
+        }
+        return result;
+      }
+
+      function adjacentDigit(digit) {
+        return digit === 9 ? 8 : digit + 1;
+      }
+
+      function buildWordChoices(value, id) {
+        const { hundreds: h, tens: t, ones: o } = decompose(value);
+        const candidates = [];
+        const seen = new Set([value]);
+        const add = (candidate, misconception) => {
+          if (!Number.isInteger(candidate) || candidate < 0 || candidate > 999 || seen.has(candidate)) return;
+          seen.add(candidate);
+          candidates.push({ value: candidate, text: numberToWords(candidate), misconception });
+        };
+
+        if (value === 0) {
+          add(10, "zero confused with one ten");
+          add(100, "zero confused with one hundred");
+          add(1, "zero confused with one");
+        } else {
+          if (h > 0 && (t === 0 || o === 0)) add(Number(`${h}${t ? t : ""}${o ? o : ""}`), "zero placeholder omitted");
+          if (t !== o) add(h * 100 + o * 10 + t, "tens and ones reversed");
+          if (h > 0) add(t * 10 + o, "hundreds place omitted");
+          if (h > 0 && (t > 0 || o > 0)) add(h * 100, "tens and ones dropped");
+          if (h > 0) add(adjacentDigit(h) * 100 + t * 10 + o, "hundreds digit changed");
+          add(h * 100 + adjacentDigit(t) * 10 + o, "tens digit changed");
+          add(h * 100 + t * 10 + adjacentDigit(o), "ones digit changed");
+          if (h === 0) add(100 + value, "an extra hundred added");
+        }
+
+        for (let offset = 1; candidates.length < 3 && offset <= 9; offset += 1) {
+          add((value + offset) % 1000, "nearby number");
+        }
+        // Insertion order above is pedagogical priority (most representative misconceptions first,
+        // then nearby-number fillers). Take the first three unique distractors in that priority
+        // order, then shuffle only the final display positions so the four choices are unbiased on
+        // screen. For 305 the priority head is [35, 350, 5], so 35 and 350 are always retained.
+        const rng = mulberry32(stringSeed(`${id}:${value}:words`));
+        const distractors = candidates.slice(0, 3);
+        return shuffled([
+          { value, text: numberToWords(value), misconception: "correct" },
+          ...distractors
+        ], rng);
+      }
+
+      function transferCategoryFor(value, stage) {
+        if (stage === 1) return null;
+        const { hundreds: h, tens: t, ones: o } = decompose(value);
+        if (h <= 0) return null;
+        if (t === 0 && o === 0) return "bothZeroTensAndOnes";
+        if (t === 0) return "zeroTens";
+        if (o === 0) return "zeroOnes";
+        return null;
+      }
+
       function categoriesFor(value, stage) {
         if (stage === 1) return ["individualBlockValue"];
         const { hundreds: h, tens: t, ones: o } = decompose(value);
@@ -1846,10 +2153,15 @@
         return CATEGORY_ORDER.filter((category) => matches[category]);
       }
 
-      function makeQuestion({ id, value, stage, format, isDedicatedZero = false, reviewKind = "ordinary" }) {
+      function makeQuestion({ id, value, stage, format, layout = "fixed", isDedicatedZero = false, reviewKind = "ordinary" }) {
         const safeValue = integerIn(value, 0, 999, 0);
         const safeStage = integerIn(stage, 1, 7, 2);
         const digits = decompose(safeValue);
+        const safeFormat = QUESTION_FORMATS.includes(format) ? format : "blocks-to-number";
+        const transferCategory = transferCategoryFor(safeValue, safeStage);
+        const safeLayout = safeFormat === "blocks-to-number" && layout === "free" && transferCategory ? "free" : "fixed";
+        const categories = categoriesFor(safeValue, safeStage);
+        if (safeFormat === "number-words") categories.push("numberWords");
         return {
           id: String(id),
           value: safeValue,
@@ -1857,8 +2169,11 @@
           tens: digits.tens,
           ones: digits.ones,
           stage: safeStage,
-          format: format === "number-to-places" ? "number-to-places" : "blocks-to-number",
-          categories: categoriesFor(safeValue, safeStage),
+          format: safeFormat,
+          layout: safeLayout,
+          transferCategory,
+          wordChoices: safeFormat === "number-words" ? buildWordChoices(safeValue, id) : [],
+          categories,
           isDedicatedZero: Boolean(isDedicatedZero && safeStage === 7 && safeValue === 0),
           reviewKind: REVIEW_KINDS.includes(reviewKind) ? reviewKind : "ordinary"
         };
@@ -1874,13 +2189,21 @@
         }]));
       }
 
+      function blankTransferEvidence() {
+        return Object.fromEntries(TRANSFER_CATEGORIES.map((category) => [category, {
+          blocksToNumber: [],
+          numberToPlaces: [],
+          unlocked: false
+        }]));
+      }
+
       function normalizeSettings(candidate) {
         const source = isObject(candidate) ? candidate : {};
         const lengthValues = [5, 10, 15, 20, "endless"];
         return {
           plan: source.plan === "chosen" ? "chosen" : "adaptive",
           chosenStage: integerIn(source.chosenStage, 1, 7, DEFAULT_SETTINGS.chosenStage),
-          format: ["blocks-to-number", "number-to-places", "mixed"].includes(source.format)
+          format: [...QUESTION_FORMATS, "mixed"].includes(source.format)
             ? source.format
             : DEFAULT_SETTINGS.format,
           sessionLength: lengthValues.includes(source.sessionLength) ? source.sessionLength : DEFAULT_SETTINGS.sessionLength,
@@ -1909,6 +2232,7 @@
           completed: false,
           outcome: null,
           draft: { number: "", hundreds: "", tens: "", ones: "" },
+          selectedWordChoices: [],
           feedback: "Ready when you are. Take your time.",
           feedbackState: "neutral"
         };
@@ -1923,7 +2247,8 @@
           stageMastery: { 1: true, 2: false, 3: false, 4: false, 5: false, 6: false, 7: false },
           aggregate: { attempted: 0, firstTry: 0, afterHelp: 0, revealed: 0 },
           categoryStats: blankCategoryStats(),
-          reviewQueues: { exact: [], category: [] },
+          transferEvidence: blankTransferEvidence(),
+          reviewQueues: { exact: [], category: [], transfer: [] },
           recentValues: [],
           streaks: { current: 0, best: 0 },
           completedSessions: [],
@@ -1962,16 +2287,72 @@
         return result;
       }
 
+      // A value only counts as evidence for a category when its digits genuinely match that exact
+      // shape: zeroTens = H0O (hundreds>0, tens=0, ones>0), zeroOnes = HT0 (hundreds>0, tens>0,
+      // ones=0), bothZeroTensAndOnes = H00 (hundreds>0). Any other stored value is discarded.
+      const TRANSFER_VALUE_MATCHES = {
+        zeroTens: (value) => {
+          const d = decompose(value);
+          return d.hundreds > 0 && d.tens === 0 && d.ones > 0;
+        },
+        zeroOnes: (value) => {
+          const d = decompose(value);
+          return d.hundreds > 0 && d.tens > 0 && d.ones === 0;
+        },
+        bothZeroTensAndOnes: (value) => {
+          const d = decompose(value);
+          return d.hundreds > 0 && d.tens === 0 && d.ones === 0;
+        }
+      };
+
+      function normalizeTransferEvidence(candidate) {
+        const result = blankTransferEvidence();
+        if (!isObject(candidate)) return result;
+        for (const category of TRANSFER_CATEGORIES) {
+          const source = isObject(candidate[category]) ? candidate[category] : {};
+          const matchesCategory = TRANSFER_VALUE_MATCHES[category];
+          const cleanValues = (values) => Array.isArray(values)
+            ? [...new Set(values.filter((value) =>
+                Number.isInteger(value) && value >= 0 && value <= 999 && matchesCategory(value)))].slice(-4)
+            : [];
+          result[category] = {
+            blocksToNumber: cleanValues(source.blocksToNumber),
+            numberToPlaces: cleanValues(source.numberToPlaces),
+            unlocked: false
+          };
+          // Unlocked is derived solely from a valid different-value pair; the stored boolean is
+          // ignored so a hand-edited or stale flag cannot open a gate without genuine evidence.
+          result[category].unlocked = result[category].blocksToNumber.some((blocksValue) =>
+            result[category].numberToPlaces.some((placesValue) => placesValue !== blocksValue));
+        }
+        return result;
+      }
+
       function normalizeTicket(ticket, kind, fallbackIndex) {
         if (!isObject(ticket)) return null;
         const dueAt = nonnegative(ticket.dueAt, 0);
         const id = typeof ticket.id === "string" && ticket.id ? ticket.id : `${kind}-${fallbackIndex}`;
+        const format = QUESTION_FORMATS.includes(ticket.format) ? ticket.format : null;
+        const layout = ticket.layout === "free" ? "free" : "fixed";
         if (kind === "exact") {
           if (!Number.isInteger(ticket.value) || ticket.value < 0 || ticket.value > 999) return null;
           return {
             id,
             value: ticket.value,
             stage: integerIn(ticket.stage, 1, 7, ticket.value === 0 ? 7 : 2),
+            format,
+            layout,
+            dueAt,
+            postponements: nonnegative(ticket.postponements)
+          };
+        }
+        if (kind === "transfer") {
+          if (!TRANSFER_CATEGORIES.includes(ticket.category)) return null;
+          return {
+            id,
+            category: ticket.category,
+            missedValue: integerIn(ticket.missedValue, 0, 999, 0),
+            stage: integerIn(ticket.stage, 1, 7, 5),
             dueAt,
             postponements: nonnegative(ticket.postponements)
           };
@@ -1981,6 +2362,8 @@
           id,
           category: ticket.category,
           missedValue: integerIn(ticket.missedValue, 0, 999, 0),
+          format,
+          layout,
           dueAt,
           postponements: nonnegative(ticket.postponements)
         };
@@ -1990,11 +2373,12 @@
         if (!Array.isArray(candidate)) return [];
         const seen = new Set();
         const result = [];
+        const limit = kind === "category" ? CATEGORY_ORDER.length : (kind === "transfer" ? MAX_TRANSFER_QUEUE : MAX_QUEUE);
         candidate.forEach((ticket, index) => {
           const normalized = normalizeTicket(ticket, kind, index);
           if (!normalized) return;
           const key = kind === "exact" ? normalized.value : normalized.category;
-          if (seen.has(key) || result.length >= MAX_QUEUE) return;
+          if (seen.has(key) || result.length >= limit) return;
           seen.add(key);
           result.push(normalized);
         });
@@ -2006,19 +2390,34 @@
         if (!Number.isInteger(candidate.value) || candidate.value < 0 || candidate.value > 999) return null;
         const stage = integerIn(candidate.stage, 1, 7, 0);
         if (!stage) return null;
-        if (!["blocks-to-number", "number-to-places"].includes(candidate.format)) return null;
+        if (!QUESTION_FORMATS.includes(candidate.format)) return null;
         if (candidate.value === 0 && stage !== 7) return null;
         return makeQuestion({
           id: candidate.id,
           value: candidate.value,
           stage,
           format: candidate.format,
+          layout: candidate.layout,
           isDedicatedZero: candidate.isDedicatedZero,
           reviewKind: candidate.reviewKind
         });
       }
 
-      function normalizeAttempt(candidate) {
+      function minimumMissesForPhase(phase) {
+        if (phase === "hint-labels") return 1;
+        if (phase === "hint-expanded") return 2;
+        if (phase === "reveal-retype") return 3;
+        return 0;
+      }
+
+      function phaseForMisses(misses) {
+        if (misses >= 3) return "reveal-retype";
+        if (misses === 2) return "hint-expanded";
+        if (misses === 1) return "hint-labels";
+        return "asking";
+      }
+
+      function normalizeAttempt(candidate, question) {
         if (!isObject(candidate)) return makeAttempt();
         const attempt = makeAttempt();
         attempt.phase = PHASES.includes(candidate.phase) ? candidate.phase : "asking";
@@ -2037,8 +2436,65 @@
           ? candidate.feedbackState
           : "neutral";
         if (attempt.completed && !attempt.outcome) attempt.completed = false;
-        if (attempt.completed) attempt.phase = "correct-await-next";
+        const originalPhase = attempt.phase;
+        const originalMisses = attempt.misses;
+        const rawSelections = Array.isArray(candidate.selectedWordChoices)
+          ? [...new Set(candidate.selectedWordChoices.filter((index) => Number.isInteger(index) && index >= 0 && index <= 3))]
+          : [];
+        if (question && question.format === "number-words") {
+          const correctIndex = question.wordChoices.findIndex((choice) => choice.value === question.value);
+          attempt.selectedWordChoices = attempt.completed
+            ? rawSelections
+            : rawSelections.filter((index) => index !== correctIndex);
+        } else {
+          attempt.selectedWordChoices = [];
+        }
+        if (attempt.completed) {
+          attempt.phase = "correct-await-next";
+        } else {
+          attempt.outcome = null;
+          const wrongChoiceCount = question && question.format === "number-words"
+            ? attempt.selectedWordChoices.length
+            : 0;
+          attempt.misses = Math.max(attempt.misses, minimumMissesForPhase(attempt.phase), wrongChoiceCount);
+          attempt.phase = phaseForMisses(attempt.misses);
+          const selectionsChanged = JSON.stringify(attempt.selectedWordChoices) !== JSON.stringify(rawSelections);
+          const repaired = attempt.phase !== originalPhase || attempt.misses !== originalMisses || selectionsChanged;
+          if (repaired && attempt.misses > 0) {
+            attempt.feedbackState = "error";
+            if (question && question.format === "number-words") {
+              attempt.feedback = attempt.misses === 1
+                ? "Not yet. Say the number from left to right, one word part at a time."
+                : (attempt.misses === 2
+                    ? "Almost. Build the number name from the word parts below."
+                    : "Here is the full word name. Choose it to finish.");
+            }
+          }
+        }
         return attempt;
+      }
+
+      function ticketBacksQuestion(ticket, kind, question, transferEvidence) {
+        if (!ticket || !question || question.reviewKind !== kind) return false;
+        if (kind === "exact") {
+          return ticket.value === question.value
+            && ticket.stage === question.stage
+            && (!ticket.format || ticket.format === question.format);
+        }
+        if (kind === "category") {
+          return question.categories.includes(ticket.category)
+            && question.value !== ticket.missedValue
+            && (!ticket.format || ticket.format === question.format);
+        }
+        if (kind === "transfer") {
+          const evidence = transferEvidence[ticket.category];
+          return ticket.category === question.transferCategory
+            && Boolean(evidence && evidence.unlocked)
+            && question.format === "blocks-to-number"
+            && question.layout === "free"
+            && question.value !== ticket.missedValue;
+        }
+        return false;
       }
 
       function normalizeSession(candidate, settings) {
@@ -2083,11 +2539,19 @@
           revealed: nonnegative(aggregate.revealed)
         };
         normalized.categoryStats = normalizeCategoryStats(candidate.categoryStats);
+        normalized.transferEvidence = normalizeTransferEvidence(candidate.transferEvidence);
         const queues = isObject(candidate.reviewQueues) ? candidate.reviewQueues : {};
         normalized.reviewQueues = {
           exact: normalizeQueue(queues.exact, "exact"),
-          category: normalizeQueue(queues.category, "category")
+          category: normalizeQueue(queues.category, "category"),
+          transfer: normalizeQueue(queues.transfer, "transfer")
         };
+        // A transfer ticket is meaningful only while its category is genuinely unlocked. Prune
+        // tickets for categories that lost their gate above so a locked category cannot resurrect
+        // a position-free prompt.
+        normalized.reviewQueues.transfer = normalized.reviewQueues.transfer.filter((ticket) =>
+          normalized.transferEvidence[ticket.category]
+          && normalized.transferEvidence[ticket.category].unlocked);
         normalized.recentValues = Array.isArray(candidate.recentValues)
           ? candidate.recentValues.filter((value) => Number.isInteger(value) && value >= 0 && value <= 999).slice(-MAX_RECENT)
           : [];
@@ -2108,7 +2572,43 @@
         normalized.pendingFreshSession = Boolean(candidate.pendingFreshSession);
         normalized.session = normalizeSession(candidate.session, normalized.settings);
         normalized.activeQuestion = normalizeQuestion(candidate.activeQuestion);
-        normalized.activeAttempt = normalized.activeQuestion ? normalizeAttempt(candidate.activeAttempt) : null;
+        normalized.activeAttempt = normalized.activeQuestion
+          ? normalizeAttempt(candidate.activeAttempt, normalized.activeQuestion)
+          : null;
+        normalized.activeTicket = isObject(candidate.activeTicket) && ["exact", "category", "transfer"].includes(candidate.activeTicket.kind)
+          ? { kind: candidate.activeTicket.kind, id: String(candidate.activeTicket.id) }
+          : null;
+        normalized.pendingAttempt = isObject(candidate.pendingAttempt) ? clone(candidate.pendingAttempt) : null;
+        if (normalized.activeQuestion && normalized.activeAttempt) {
+          const question = normalized.activeQuestion;
+          const category = question.transferCategory;
+          const gateOpen = TRANSFER_CATEGORIES.includes(category)
+            && normalized.transferEvidence[category]
+            && normalized.transferEvidence[category].unlocked;
+          if (!normalized.activeAttempt.completed && question.layout === "free"
+            && question.reviewKind !== "transfer" && !gateOpen) {
+            // An incomplete ordinary/exact/category free question without its learned gate falls
+            // back to the fixed H-T-O scaffold. Completed presentations stay visually stable.
+            question.layout = "fixed";
+          }
+          if (!normalized.activeAttempt.completed && ["exact", "category", "transfer"].includes(question.reviewKind)) {
+            const kind = question.reviewKind;
+            const activeTicketMatchesKind = normalized.activeTicket && normalized.activeTicket.kind === kind;
+            const queue = normalized.reviewQueues[kind];
+            const ticket = activeTicketMatchesKind
+              ? queue.find((entry) => entry.id === normalized.activeTicket.id)
+              : null;
+            if (!ticketBacksQuestion(ticket, kind, question, normalized.transferEvidence)) {
+              // Incomplete review work must be backed by the exact normalized ticket it is meant
+              // to resolve. Keep the queue obligation, but discard malformed presentation state so
+              // chooseQuestion can regenerate a fresh, correctly backed review.
+              normalized.activeQuestion = null;
+              normalized.activeAttempt = null;
+              normalized.activeTicket = null;
+              normalized.pendingAttempt = null;
+            }
+          }
+        }
         if (normalized.activeQuestion) {
           // A surviving question must always carry a coherent presentation so render paths
           // never dereference null: use stored booleans when valid, otherwise fall back to
@@ -2125,18 +2625,19 @@
         } else {
           normalized.activePresentation = null;
         }
-        normalized.activeTicket = isObject(candidate.activeTicket) && ["exact", "category"].includes(candidate.activeTicket.kind)
-          ? { kind: candidate.activeTicket.kind, id: String(candidate.activeTicket.id) }
-          : null;
         if (normalized.activeTicket) {
           const queue = normalized.reviewQueues[normalized.activeTicket.kind];
-          const matchesQuestion = normalized.activeQuestion
-            && normalized.activeQuestion.reviewKind === normalized.activeTicket.kind;
-          if (!matchesQuestion || !queue.some((ticket) => ticket.id === normalized.activeTicket.id)) {
+          const ticket = queue.find((entry) => entry.id === normalized.activeTicket.id);
+          const matchesQuestion = ticketBacksQuestion(
+            ticket,
+            normalized.activeTicket.kind,
+            normalized.activeQuestion,
+            normalized.transferEvidence
+          );
+          if (!matchesQuestion) {
             normalized.activeTicket = null;
           }
         }
-        normalized.pendingAttempt = isObject(candidate.pendingAttempt) ? clone(candidate.pendingAttempt) : null;
         normalized.adaptiveWindow = Array.isArray(candidate.adaptiveWindow)
           ? candidate.adaptiveWindow.filter((bit) => typeof bit === "boolean").slice(-8)
           : [];
@@ -2313,7 +2814,13 @@
       }
 
       function chooseFormat(settings, rng = currentRandom) {
-        if (settings.format === "mixed") return rng() < 0.5 ? "blocks-to-number" : "number-to-places";
+        if (settings.format === "mixed") {
+          return weightedChoice([
+            { value: "blocks-to-number", weight: 36 },
+            { value: "number-to-places", weight: 32 },
+            { value: "number-words", weight: 32 }
+          ], rng);
+        }
         return settings.format;
       }
 
@@ -2327,11 +2834,32 @@
         const byValue = new Map();
         for (let stage = 1; stage <= unlockedStage; stage += 1) {
           for (const value of stageDomain(stage, true)) {
-            if (!categoriesFor(value, stage).includes(category)) continue;
+            if (category !== "numberWords" && !categoriesFor(value, stage).includes(category)) continue;
             if (!byValue.has(value)) byValue.set(value, { value, stage });
           }
         }
         return [...byValue.values()];
+      }
+
+      function transferCandidates(category, unlockedStage, fixedStage = null) {
+        const candidates = [];
+        const firstStage = fixedStage === null ? 1 : fixedStage;
+        const lastStage = fixedStage === null ? unlockedStage : fixedStage;
+        for (let stage = firstStage; stage <= lastStage; stage += 1) {
+          for (const value of stageDomain(stage, true)) {
+            if (transferCategoryFor(value, stage) === category) candidates.push({ value, stage });
+          }
+        }
+        return candidates;
+      }
+
+      function chooseTransferCandidate(ticket, unlockedStage, recent, fixedStage = null, rng = currentRandom) {
+        const eligible = transferCandidates(ticket.category, unlockedStage, fixedStage)
+          .filter((candidate) => candidate.value !== ticket.missedValue);
+        if (!eligible.length) return null;
+        const unblocked = eligible.filter((candidate) => !recent.includes(candidate.value));
+        if (unblocked.length) return unblocked[randomInt(0, unblocked.length - 1, rng)];
+        return leastRecentChoice(eligible, recent, rng);
       }
 
       function chooseCategoryCandidate(ticket, unlockedStage, recent, rng = currentRandom) {
@@ -2363,11 +2891,20 @@
       }
 
       function createSelectedQuestion(model, selection, rng = currentRandom) {
+        const format = QUESTION_FORMATS.includes(selection.format) ? selection.format : chooseFormat(model.settings, rng);
+        const transferCategory = transferCategoryFor(selection.value, selection.stage);
+        const transferUnlocked = transferCategory && model.transferEvidence[transferCategory].unlocked;
+        const requestedFree = selection.layout === "free";
+        const ordinaryFree = !selection.layout
+          && format === "blocks-to-number"
+          && transferUnlocked
+          && rng() < 0.42;
         const question = makeQuestion({
           id: nextQuestionId(model),
           value: selection.value,
           stage: selection.stage,
-          format: chooseFormat(model.settings, rng),
+          format,
+          layout: format === "blocks-to-number" && transferUnlocked && (requestedFree || ordinaryFree) ? "free" : "fixed",
           isDedicatedZero: selection.value === 0 && selection.stage === 7,
           reviewKind: selection.reviewKind
         });
@@ -2382,17 +2919,51 @@
         const completed = model.aggregate.attempted;
         const unlockedStage = currentCurriculumStage(model);
         const chosenMode = model.settings.plan === "chosen";
-        const exact = dueTicket(model.reviewQueues.exact.filter((ticket) => !chosenMode || ticket.stage === unlockedStage), completed);
+        // Focus filtering: Mixed accepts every due exact/category ticket; a focused format accepts
+        // exact/category tickets only when their stored format is null (legacy) or exactly matches
+        // the focus. Transfer prompts are position-free blocks, so they are eligible only in Mixed
+        // or the Blocks focus. The whole queue is filtered before dueTicket so incompatible tickets
+        // are simply skipped this turn and left unchanged/deferred rather than mutated.
+        const focus = model.settings.format;
+        const isMixed = focus === "mixed";
+        const formatMatches = (ticket) => isMixed || !ticket.format || ticket.format === focus;
+        const transferEligible = isMixed || focus === "blocks-to-number";
+        const exact = dueTicket(model.reviewQueues.exact.filter((ticket) =>
+          (!chosenMode || ticket.stage === unlockedStage) && formatMatches(ticket)), completed);
         if (exact) {
           model.activeTicket = { kind: "exact", id: exact.id };
           return createSelectedQuestion(model, {
             value: exact.value,
             stage: exact.stage,
+            format: exact.format,
+            layout: exact.layout,
             reviewKind: "exact"
           }, rng);
         }
 
-        const category = dueTicket(model.reviewQueues.category, completed);
+        const transfer = transferEligible ? dueTicket(model.reviewQueues.transfer, completed) : null;
+        if (transfer) {
+          const candidate = chooseTransferCandidate(
+            transfer,
+            unlockedStage,
+            model.recentValues,
+            chosenMode ? unlockedStage : null,
+            rng
+          );
+          if (candidate) {
+            model.activeTicket = { kind: "transfer", id: transfer.id };
+            return createSelectedQuestion(model, {
+              value: candidate.value,
+              stage: candidate.stage,
+              format: "blocks-to-number",
+              layout: "free",
+              reviewKind: "transfer"
+            }, rng);
+          }
+          transfer.dueAt = completed + 2;
+        }
+
+        const category = dueTicket(model.reviewQueues.category.filter(formatMatches), completed);
         if (category) {
           const candidate = chosenMode
             ? chooseCategoryCandidateAtStage(category, unlockedStage, model.recentValues, rng)
@@ -2402,6 +2973,8 @@
             return createSelectedQuestion(model, {
               value: candidate.value,
               stage: candidate.stage,
+              format: category.format,
+              layout: category.layout,
               reviewKind: "category"
             }, rng);
           }
@@ -2460,6 +3033,47 @@
         return selected;
       }
 
+      function enqueueTransferRetest(model, question, minimum = 3, maximum = 6, rng = currentRandom) {
+        const category = question.transferCategory;
+        if (!TRANSFER_CATEGORIES.includes(category)) return;
+        const dueAt = model.aggregate.attempted + randomInt(minimum, maximum, rng);
+        const existing = model.reviewQueues.transfer.find((ticket) => ticket.category === category);
+        if (existing) {
+          existing.missedValue = question.value;
+          existing.stage = question.stage;
+          existing.dueAt = Math.min(existing.dueAt, dueAt);
+          return;
+        }
+        if (model.reviewQueues.transfer.length >= MAX_TRANSFER_QUEUE) return;
+        model.reviewQueues.transfer.push({
+          id: `transfer-${question.id}-${category}`,
+          category,
+          missedValue: question.value,
+          stage: question.stage,
+          dueAt,
+          postponements: 0
+        });
+      }
+
+      function recordTransferEvidence(model, question, outcome) {
+        if (outcome !== "firstTry" || !question.transferCategory || question.layout === "free") return false;
+        const evidence = model.transferEvidence[question.transferCategory];
+        const key = question.format === "blocks-to-number"
+          ? "blocksToNumber"
+          : (question.format === "number-to-places" ? "numberToPlaces" : null);
+        if (!key) return false;
+        if (!evidence[key].includes(question.value)) evidence[key].push(question.value);
+        evidence[key] = evidence[key].slice(-4);
+        const distinctPair = evidence.blocksToNumber.some((blocksValue) =>
+          evidence.numberToPlaces.some((placesValue) => placesValue !== blocksValue));
+        if (!evidence.unlocked && distinctPair) {
+          evidence.unlocked = true;
+          enqueueTransferRetest(model, question, 1, 1);
+          return true;
+        }
+        return false;
+      }
+
       function evictExactForNewTicket(queue, model) {
         // The exact queue is at capacity and a genuinely new exact ticket must be represented.
         // Prefer to evict a ticket that cannot be served at a fixed chosen stage; otherwise evict
@@ -2481,20 +3095,26 @@
         // finite-session boundary, so unfinished tickets persist across sessions.
         const due = (minimum, maximum) => completed + randomInt(minimum, maximum, rng);
         if (question.categories.length) {
-          const category = lowestRateCategory(model, question.categories);
+          const category = question.format === "number-words"
+            ? "numberWords"
+            : lowestRateCategory(model, question.categories);
           const existingCategory = model.reviewQueues.category.find((ticket) => ticket.category === category);
           if (existingCategory) {
             existingCategory.dueAt = Math.min(existingCategory.dueAt, due(3, 6));
             existingCategory.missedValue = question.value;
-          } else if (model.reviewQueues.category.length < MAX_QUEUE) {
-            // The category queue holds at most one ticket per CATEGORY_ORDER category, and there
-            // are exactly MAX_QUEUE categories. A genuinely new category ticket therefore never
+            existingCategory.format = question.format;
+            existingCategory.layout = question.layout;
+          } else if (model.reviewQueues.category.length < CATEGORY_ORDER.length) {
+            // The category queue holds at most one ticket per CATEGORY_ORDER category. A genuinely new
+            // category ticket therefore never
             // needs to evict: at capacity every category is already represented and would have
             // matched the existingCategory branch above.
             model.reviewQueues.category.push({
               id: `category-${question.id}-${category}`,
               category,
               missedValue: question.value,
+              format: question.format,
+              layout: question.layout,
               dueAt: due(3, 6),
               postponements: 0
             });
@@ -2508,12 +3128,16 @@
           // current miss so it is served at the right stage, while keeping id, value,
           // postponements, and queue size and pulling its dueAt earlier-or-equal.
           existingExact.stage = question.stage;
+          existingExact.format = question.format;
+          existingExact.layout = question.layout;
           existingExact.dueAt = Math.min(existingExact.dueAt, due(7, 12));
         } else {
           const newExact = {
             id: `exact-${question.id}-${question.value}`,
             value: question.value,
             stage: question.stage,
+            format: question.format,
+            layout: question.layout,
             dueAt: due(7, 12),
             postponements: 0
           };
@@ -2579,6 +3203,8 @@
         blocksCaption: document.getElementById("blocks-caption"),
         numberForm: document.getElementById("blocks-to-number-form"),
         placesForm: document.getElementById("number-to-places-form"),
+        wordsForm: document.getElementById("number-words-form"),
+        wordChoiceGrid: document.getElementById("word-choice-grid"),
         numberAnswer: document.getElementById("number-answer"),
         hundredsAnswer: document.getElementById("hundreds-answer"),
         tensAnswer: document.getElementById("tens-answer"),
@@ -2630,7 +3256,7 @@
         inputs.forEach((input) => input.setAttribute("aria-invalid", invalid ? "true" : "false"));
       }
 
-      function makeBlock(kind, index) {
+      function makeBlock(kind, index, tilt = 0) {
         const block = document.createElement("div");
         // role="img" exposes each top-level flat/rod/cube as one repeated accessible unit
         // (via its aria-label) while its decorative cell/segment descendants stay hidden.
@@ -2656,11 +3282,56 @@
           block.setAttribute("aria-label", "one unit cube");
         }
         block.dataset.blockIndex = String(index);
+        block.dataset.blockKind = kind;
+        block.style.setProperty("--block-tilt", `${tilt}deg`);
         return block;
+      }
+
+      function setBoardDensity(question) {
+        const density = question.hundreds >= 7 ? "dense" : (question.hundreds >= 4 ? "compact" : "roomy");
+        dom.questionBoard.dataset.blockDensity = density;
+      }
+
+      function renderFreeBlocks(question, strategyCued) {
+        dom.blockGroups.className = "block-groups is-free";
+        const layout = document.createElement("div");
+        layout.className = `free-block-layout${strategyCued ? " is-strategy-cued" : ""}`;
+        const descriptors = [];
+        for (let index = 0; index < question.hundreds; index += 1) descriptors.push({ kind: "hundreds", index });
+        for (let index = 0; index < question.tens; index += 1) descriptors.push({ kind: "tens", index });
+        for (let index = 0; index < question.ones; index += 1) descriptors.push({ kind: "ones", index });
+        const rng = mulberry32(stringSeed(`${question.id}:${question.value}:free-layout`));
+        const mixed = shuffled(descriptors, rng);
+        const placeRank = { hundreds: 0, tens: 1, ones: 2 };
+        const hasMultipleKinds = new Set(mixed.map((descriptor) => descriptor.kind)).size > 1;
+        const stillInPlaceOrder = mixed.every((descriptor, index) => index === 0
+          || placeRank[mixed[index - 1].kind] <= placeRank[descriptor.kind]);
+        if (hasMultipleKinds && stillInPlaceOrder && mixed.length > 1) {
+          [mixed[0], mixed[mixed.length - 1]] = [mixed[mixed.length - 1], mixed[0]];
+        }
+        mixed.forEach((descriptor, position) => {
+          const tilt = [-2.2, 1.4, -0.7, 2.1, 0][position % 5];
+          layout.appendChild(makeBlock(descriptor.kind, descriptor.index, tilt));
+        });
+        dom.blockGroups.appendChild(layout);
+        if (strategyCued) {
+          const key = document.createElement("div");
+          key.className = "free-layout-key";
+          ["Flat = 100", "Rod = 10", "Cube = 1"].forEach((text) => {
+            const item = document.createElement("span");
+            item.textContent = text;
+            key.appendChild(item);
+          });
+          dom.blockGroups.appendChild(key);
+        }
+        dom.blocksCaption.textContent = strategyCued
+          ? "Base-ten blocks are mixed without place columns. A flat is one hundred, a rod is one ten, and a cube is one."
+          : "Base-ten flats, rods, and cubes are mixed together without place columns.";
       }
 
       function renderBlocks(question, emphasize, showCounts) {
         clearElement(dom.blockGroups);
+        setBoardDensity(question);
         dom.blockGroups.className = "block-groups";
         if (question.isDedicatedZero) {
           const empty = document.createElement("div");
@@ -2669,6 +3340,17 @@
           dom.blockGroups.appendChild(empty);
           dom.blocksCaption.textContent = "There are no base-ten blocks in the workspace.";
           return;
+        }
+        const restoreColumns = question.layout === "free" && state.activeAttempt.misses >= 2;
+        if (question.layout === "free" && !restoreColumns) {
+          renderFreeBlocks(question, state.activeAttempt.misses === 1);
+          return;
+        }
+        if (restoreColumns) {
+          const note = document.createElement("p");
+          note.className = "restored-columns-note";
+          note.textContent = "Let’s put the blocks back into Hundreds, Tens, and Ones.";
+          dom.blockGroups.appendChild(note);
         }
         const places = [
           { key: "hundreds", label: "Hundreds", count: question.hundreds },
@@ -2707,13 +3389,33 @@
 
       function renderNumeral(question) {
         clearElement(dom.blockGroups);
+        delete dom.questionBoard.dataset.blockDensity;
         dom.blockGroups.className = "numeral-board";
         const numeral = document.createElement("div");
         numeral.className = "numeral-display";
         numeral.textContent = String(question.value);
         numeral.setAttribute("aria-label", `Number ${question.value}`);
         dom.blockGroups.appendChild(numeral);
-        dom.blocksCaption.textContent = `The number shown is ${question.value}. Write its hundreds, tens, and ones digits.`;
+        dom.blocksCaption.textContent = question.format === "number-words"
+          ? `The numeral shown is ${question.value}. Choose the matching number words.`
+          : `The number shown is ${question.value}. Write its hundreds, tens, and ones digits.`;
+      }
+
+      function renderWordChoices(question, attempt) {
+        clearElement(dom.wordChoiceGrid);
+        question.wordChoices.forEach((choice, index) => {
+          const button = document.createElement("button");
+          const missed = attempt.selectedWordChoices.includes(index) && choice.value !== question.value;
+          const isAnswer = choice.value === question.value && (attempt.completed || attempt.phase === "reveal-retype");
+          button.type = "button";
+          button.className = `word-choice${missed ? " is-missed" : ""}${isAnswer ? " is-answer" : ""}`;
+          button.textContent = choice.text;
+          button.dataset.choiceIndex = String(index);
+          button.setAttribute("aria-pressed", attempt.selectedWordChoices.includes(index) ? "true" : "false");
+          button.disabled = attempt.completed || missed || (attempt.phase === "reveal-retype" && !isAnswer);
+          button.addEventListener("click", () => submitWordChoice(index));
+          dom.wordChoiceGrid.appendChild(button);
+        });
       }
 
       function renderHint(question, attempt) {
@@ -2724,6 +3426,46 @@
         const intro = document.createElement("p");
         const list = document.createElement("ul");
         list.className = "hint-steps";
+        if (question.format === "number-words") {
+          const parts = wordParts(question.value);
+          if (attempt.phase === "hint-labels") {
+            const guidance = firstWordHint(question.value);
+            dom.hintTitle.textContent = guidance.title;
+            intro.textContent = guidance.intro;
+            guidance.steps.forEach((text) => {
+              const item = document.createElement("li");
+              item.textContent = text;
+              list.appendChild(item);
+            });
+          } else if (attempt.phase === "hint-expanded") {
+            dom.hintTitle.textContent = "Build the word name in parts";
+            intro.textContent = "Read these word parts in order, then find the choice that matches.";
+            parts.forEach((text) => {
+              const item = document.createElement("li");
+              item.textContent = text;
+              list.appendChild(item);
+            });
+          } else {
+            dom.hintTitle.textContent = "Now choose the shown word name";
+            intro.textContent = `The number name is “${numberToWords(question.value)}.” Choose that answer to finish.`;
+            const item = document.createElement("li");
+            item.textContent = numberToWords(question.value);
+            list.appendChild(item);
+          }
+          dom.hintBody.append(intro, list);
+          return;
+        }
+        if (question.layout === "free" && attempt.misses === 1) {
+          dom.hintTitle.textContent = "Sort by shape in your mind";
+          intro.textContent = "The blocks stay mixed. Find the flats, rods, and cubes before you count their value.";
+          ["Flat = 100", "Rod = 10", "Cube = 1"].forEach((text) => {
+            const item = document.createElement("li");
+            item.textContent = text;
+            list.appendChild(item);
+          });
+          dom.hintBody.append(intro, list);
+          return;
+        }
         if (attempt.phase === "hint-labels") {
           dom.hintTitle.textContent = "Look at each place";
           intro.textContent = question.format === "blocks-to-number"
@@ -2794,15 +3536,19 @@
         if (!question || !attempt) return;
         dom.problemCount.textContent = `Question ${state.session.completed + (attempt.completed ? 0 : 1)}`;
         const blocksMode = question.format === "blocks-to-number";
+        const placesMode = question.format === "number-to-places";
+        const wordsMode = question.format === "number-words";
         dom.problemTitle.textContent = blocksMode
           ? (question.stage === 1 ? "What is this block worth?" : "What number do these blocks show?")
-          : `Show ${question.value} in each place`;
+          : (placesMode ? `Show ${question.value} in each place` : `Which words name ${question.value}?`);
         dom.problemInstruction.textContent = blocksMode
-          ? "Count each place from left to right."
-          : "Write one digit for hundreds, tens, and ones—even when a digit is zero.";
+          ? (question.layout === "free" ? "Recognize each block type, wherever it appears." : "Count each place from left to right.")
+          : (placesMode
+              ? "Write one digit for hundreds, tens, and ones—even when a digit is zero."
+              : "Choose the word name that matches the numeral.");
         // Keep the hidden number-to-places prompt empty in blocks mode so it never exposes
         // the answer through a stale DOM read or the accessibility tree.
-        dom.placesPrompt.textContent = blocksMode ? "" : `Show ${question.value} in each place`;
+        dom.placesPrompt.textContent = placesMode ? `Show ${question.value} in each place` : "";
         // A miss emphasizes the place labels; numeric count badges/caption only surface at the
         // second wrong hint and remain for reveal/correct.
         const emphasize = attempt.phase !== "asking";
@@ -2812,9 +3558,11 @@
         if (blocksMode) renderBlocks(question, emphasize, showCounts);
         else renderNumeral(question);
         dom.numberForm.hidden = !blocksMode;
-        dom.placesForm.hidden = blocksMode;
+        dom.placesForm.hidden = !placesMode;
+        dom.wordsForm.hidden = !wordsMode;
+        if (wordsMode) renderWordChoices(question, attempt);
         // Number-to-Places: visibly emphasize the three field labels after the first miss.
-        const emphasizeFields = !blocksMode && attempt.misses > 0;
+        const emphasizeFields = placesMode && attempt.misses > 0;
         dom.placesForm.querySelectorAll(".place-field").forEach((field) => {
           field.classList.toggle("is-emphasized", emphasizeFields);
         });
@@ -2829,9 +3577,11 @@
         if (blocksMode) {
           setFieldInvalid([dom.numberAnswer], invalid);
           setFieldInvalid([dom.hundredsAnswer, dom.tensAnswer, dom.onesAnswer], false);
-        } else {
+        } else if (placesMode) {
           setFieldInvalid([dom.hundredsAnswer, dom.tensAnswer, dom.onesAnswer], invalid);
           setFieldInvalid([dom.numberAnswer], false);
+        } else {
+          setFieldInvalid([dom.numberAnswer, dom.hundredsAnswer, dom.tensAnswer, dom.onesAnswer], false);
         }
         // The Check button's disabled state tracks only attempt.completed. submitGuard.locked is
         // submitCurrent's synchronous reentry guard; letting it disable the button here would
@@ -2895,7 +3645,12 @@
       function focusAnswer(select = false) {
         const question = state.activeQuestion;
         if (!question || state.screen !== "practice" || state.activeAttempt.completed) return;
-        const input = question.format === "blocks-to-number" ? dom.numberAnswer : dom.hundredsAnswer;
+        const input = question.format === "blocks-to-number"
+          ? dom.numberAnswer
+          : (question.format === "number-to-places"
+              ? dom.hundredsAnswer
+              : dom.wordChoiceGrid.querySelector(".word-choice:not(:disabled)"));
+        if (!input) return;
         window.setTimeout(() => {
           input.focus();
           if (select && typeof input.select === "function") input.select();
@@ -2950,15 +3705,24 @@
         state.session.completed += 1;
         state.session[outcome] += 1;
         updateCategoryStats(question, outcome);
+        recordTransferEvidence(state, question, outcome);
         if (outcome === "firstTry") {
           state.streaks.current += 1;
           state.streaks.best = Math.max(state.streaks.best, state.streaks.current);
         } else {
           state.streaks.current = 0;
-          // Only ordinary misses spawn a fresh category/exact ticket pair. Review and
-          // retention misses reschedule their existing active ticket (below) but never
-          // enqueue new pairs.
-          if (question.reviewKind === "ordinary") enqueueOrdinaryReviews(state, question);
+          // Ordinary misses spawn the usual category/exact pair. A number-word retention miss
+          // also creates a pair so every wrong word tap has a durable later review; active
+          // category/exact reviews simply reschedule their existing ticket below.
+          if (question.reviewKind === "ordinary"
+            || (question.format === "number-words" && question.reviewKind === "retention")) {
+            enqueueOrdinaryReviews(state, question);
+          }
+          // A missed position-free prompt always comes back position-free later. Transfer review
+          // misses already own a ticket, so resolveReviewTicket below reschedules that one.
+          if (question.layout === "free" && question.reviewKind !== "transfer") {
+            enqueueTransferRetest(state, question);
+          }
         }
         resolveReviewTicket(state, question, outcome);
         applyAdaptiveObservation(state, question, outcome);
@@ -3023,6 +3787,9 @@
       }
 
       function correctFeedback(question) {
+        if (question.format === "number-words") {
+          return `Correct. ${question.value} is written “${numberToWords(question.value)}.”`;
+        }
         return `Correct. ${placeExplanation(question, true)}${state.activePresentation.showExpandedHelp ? ` ${expandedExpression(question, true)}.` : ""}`;
       }
 
@@ -3038,16 +3805,27 @@
 
       function handleWrong() {
         const attempt = state.activeAttempt;
+        const question = state.activeQuestion;
         attempt.misses += 1;
         if (attempt.misses === 1) {
           attempt.phase = "hint-labels";
-          attempt.feedback = "Not yet. Look again at the hundreds, tens, and ones.";
+          attempt.feedback = question.format === "number-words"
+            ? "Not yet. Say the number from left to right, one word part at a time."
+            : (question.layout === "free"
+                ? "Not yet. Find each kind of block before you count."
+                : "Not yet. Look again at the hundreds, tens, and ones.");
         } else if (attempt.misses === 2) {
           attempt.phase = "hint-expanded";
-          attempt.feedback = "Almost. Check what each place is worth.";
+          attempt.feedback = question.format === "number-words"
+            ? "Almost. Build the number name from the word parts below."
+            : (question.layout === "free"
+                ? "Almost. The blocks are back in place-value columns now."
+                : "Almost. Check what each place is worth.");
         } else {
           attempt.phase = "reveal-retype";
-          attempt.feedback = "Here is the full explanation. Type the shown answer to finish.";
+          attempt.feedback = question.format === "number-words"
+            ? "Here is the full word name. Choose it to finish."
+            : "Here is the full explanation. Type the shown answer to finish.";
         }
         attempt.feedbackState = "error";
         saveState();
@@ -3069,7 +3847,7 @@
             }
             if (validation.value === question.value) handleCorrect();
             else handleWrong();
-          } else {
+          } else if (question.format === "number-to-places") {
             const validation = validatePlaces([dom.hundredsAnswer.value, dom.tensAnswer.value, dom.onesAnswer.value]);
             state.activeAttempt.draft = {
               number: "",
@@ -3084,7 +3862,26 @@
             const expected = [question.hundreds, question.tens, question.ones];
             if (validation.value.every((value, index) => value === expected[index])) handleCorrect();
             else handleWrong();
+          } else {
+            return false;
           }
+          return true;
+        } finally {
+          submitGuard.locked = false;
+        }
+      }
+
+      function submitWordChoice(index) {
+        if (submitGuard.locked || !state.activeQuestion || state.activeAttempt.completed) return false;
+        const question = state.activeQuestion;
+        const attempt = state.activeAttempt;
+        if (question.format !== "number-words" || !Number.isInteger(index) || !question.wordChoices[index]) return false;
+        if (attempt.selectedWordChoices.includes(index)) return false;
+        submitGuard.locked = true;
+        try {
+          attempt.selectedWordChoices.push(index);
+          if (question.wordChoices[index].value === question.value) handleCorrect();
+          else handleWrong();
           return true;
         } finally {
           submitGuard.locked = false;
@@ -3259,19 +4056,33 @@
         return {
           game: "Place Value Practice",
           version: GAME_VERSION,
+          representation: "DOM workspace; reading order is top-to-bottom and left-to-right.",
           screen: state.screen,
           stage: question ? question.stage : currentCurriculumStage(state),
           question: question ? {
             id: question.id,
             format: question.format,
-            value: question.format === "number-to-places" || state.activeAttempt.phase === "reveal-retype" || state.activeAttempt.completed
+            layout: question.layout,
+            transferCategory: question.transferCategory,
+            columnsRestored: question.layout === "free" && state.activeAttempt.misses >= 2,
+            value: question.format !== "blocks-to-number" || state.activeAttempt.phase === "reveal-retype" || state.activeAttempt.completed
               ? question.value
               : null,
-            visibleBlocks: question.format === "blocks-to-number" ? renderedCounts() : null
+            visibleBlocks: question.format === "blocks-to-number" ? renderedCounts() : null,
+            wordChoices: question.format === "number-words"
+              ? question.wordChoices.map((choice, index) => ({
+                  text: choice.text,
+                  selected: state.activeAttempt.selectedWordChoices.includes(index),
+                  disabled: state.activeAttempt.completed
+                    || state.activeAttempt.selectedWordChoices.includes(index)
+                    || (state.activeAttempt.phase === "reveal-retype" && choice.value !== question.value)
+                }))
+              : null
           } : null,
           phase: state.activeAttempt ? state.activeAttempt.phase : null,
           misses: state.activeAttempt ? state.activeAttempt.misses : 0,
           feedback: state.activeAttempt ? state.activeAttempt.feedback : "",
+          transferEvidence: clone(state.transferEvidence),
           session: clone(state.session)
         };
       }
@@ -3284,6 +4095,7 @@
           value,
           stage,
           format: options.format || "blocks-to-number",
+          layout: options.layout || "fixed",
           isDedicatedZero: value === 0,
           reviewKind: options.reviewKind || "ordinary"
         });
@@ -3315,6 +4127,7 @@
         const originalMemory = memoryRaw;
         const originalSeed = seededValue;
         const originalOperational = storageOperational;
+        const originalTestClock = testClock;
         let originalStored = null;
         try { originalStored = window.localStorage.getItem(STORAGE_KEY); } catch (error) { originalStored = null; }
         const results = [];
@@ -3432,7 +4245,7 @@
           dom.settingsForm.elements.namedItem("question-type").value = "number-to-places";
           saveSettingsFromDialog();
           check("save defers settings and preserves active problem",
-            state.settings.format === "blocks-to-number"
+            state.settings.format === DEFAULT_SETTINGS.format
             && state.pendingSettings && state.pendingSettings.format === "number-to-places"
             && state.activeQuestion.id === "active");
           // Item 4: deferred intent persists across reload.
@@ -3617,8 +4430,8 @@
           const catFullIdsAfter = catFull.reviewQueues.category.map((ticket) => ticket.id);
           const zeroTensAfter = catFull.reviewQueues.category.find((ticket) => ticket.category === "zeroTens");
           check("F2 full category queue updates existing category in place without eviction",
-            catFull.reviewQueues.category.length === MAX_QUEUE
-            && new Set(catFullCategoriesAfter).size === MAX_QUEUE
+            catFull.reviewQueues.category.length === CATEGORY_ORDER.length
+            && new Set(catFullCategoriesAfter).size === CATEGORY_ORDER.length
             && JSON.stringify(catFullIdsAfter) === JSON.stringify(catFullIdsBefore)
             && zeroTensAfter.id === zeroTensBefore.id
             && zeroTensAfter.missedValue === 105
@@ -3784,12 +4597,560 @@
             && dom.checkNumber.disabled === true
             && state.aggregate.attempted === retryAttemptedBefore + 1
             && state.session.completed === retrySessionBefore + 1);
+
+          // Enrichment: number names cover the complete supported domain with conventional
+          // American classroom wording and exactly four unique misconception-aware choices.
+          check("number words 0, 105, 240, 999",
+            numberToWords(0) === "zero"
+            && numberToWords(105) === "one hundred five"
+            && numberToWords(240) === "two hundred forty"
+            && numberToWords(999) === "nine hundred ninety-nine");
+          const choices305 = buildWordChoices(305, "word-choice-test");
+          check("word choices are four unique meaningful options",
+            choices305.length === 4
+            && new Set(choices305.map((choice) => choice.value)).size === 4
+            && choices305.some((choice) => choice.value === 305)
+            && choices305.filter((choice) => choice.value !== 305).every((choice) => choice.misconception !== "correct")
+            && choices305.some((choice) => choice.misconception === "zero placeholder omitted"),
+            JSON.stringify(choices305));
+
+          // Any wrong word tap disqualifies first try and completion schedules a word-format
+          // exact review instead of letting sequential guesses count toward mastery.
+          state = createDefaultState();
+          forceQuestion(305, { id: "word-review", stage: 6, format: "number-words" });
+          const wordCorrectIndex = state.activeQuestion.wordChoices.findIndex((choice) => choice.value === 305);
+          const wordWrongIndex = state.activeQuestion.wordChoices.findIndex((choice) => choice.value !== 305);
+          submitWordChoice(wordWrongIndex);
+          const wordFirstMiss = state.activeAttempt.misses === 1
+            && state.activeAttempt.completed === false
+            && state.activeAttempt.selectedWordChoices.includes(wordWrongIndex);
+          submitWordChoice(wordCorrectIndex);
+          check("wrong word tap cannot earn first try and schedules word review",
+            wordFirstMiss
+            && state.activeAttempt.outcome === "afterHelp"
+            && state.aggregate.firstTry === 0
+            && state.reviewQueues.exact.some((ticket) => ticket.value === 305 && ticket.format === "number-words"));
+
+          // Each zero-pattern transfer gate requires distinct first-try evidence in both
+          // directions. Unlocking creates a near-term position-free transfer ticket.
+          state = createDefaultState();
+          forceQuestion(305, { id: "transfer-blocks", stage: 5, format: "blocks-to-number", layout: "fixed" });
+          dom.numberAnswer.value = "305";
+          submitCurrent();
+          forceQuestion(405, { id: "transfer-places", stage: 5, format: "number-to-places" });
+          [dom.hundredsAnswer.value, dom.tensAnswer.value, dom.onesAnswer.value] = ["4", "0", "5"];
+          submitCurrent();
+          check("distinct bidirectional evidence unlocks zero-tens transfer",
+            state.transferEvidence.zeroTens.unlocked === true
+            && state.transferEvidence.zeroTens.blocksToNumber.includes(305)
+            && state.transferEvidence.zeroTens.numberToPlaces.includes(405)
+            && state.reviewQueues.transfer.some((ticket) => ticket.category === "zeroTens"));
+
+          const sameValueEvidence = createDefaultState();
+          sameValueEvidence.transferEvidence.zeroTens.blocksToNumber = [305];
+          state = sameValueEvidence;
+          forceQuestion(305, { id: "same-value-reverse", stage: 5, format: "number-to-places" });
+          [dom.hundredsAnswer.value, dom.tensAnswer.value, dom.onesAnswer.value] = ["3", "0", "5"];
+          submitCurrent();
+          check("same value in both directions does not unlock transfer",
+            state.transferEvidence.zeroTens.unlocked === false);
+
+          // A free miss stays unscaffolded with a type cue once, restores columns on the second
+          // miss, and schedules a later free re-test after completion.
+          state = createDefaultState();
+          state.transferEvidence.zeroTens = {
+            blocksToNumber: [305], numberToPlaces: [405], unlocked: true
+          };
+          forceQuestion(605, { id: "free-remediation", stage: 6, format: "blocks-to-number", layout: "free" });
+          dom.numberAnswer.value = "600";
+          submitCurrent();
+          const firstFreeHint = dom.blockGroups.classList.contains("is-free")
+            && dom.blockGroups.querySelectorAll(".free-layout-key").length === 1
+            && dom.blockGroups.querySelectorAll(".place-group").length === 0;
+          dom.numberAnswer.value = "650";
+          submitCurrent();
+          const restoredOnSecond = dom.blockGroups.querySelectorAll(".place-group").length === 3
+            && dom.blockGroups.querySelectorAll(".restored-columns-note").length === 1;
+          dom.numberAnswer.value = "605";
+          submitCurrent();
+          check("free remediation keeps cue then restores columns and re-tests later",
+            firstFreeHint
+            && restoredOnSecond
+            && state.activeAttempt.outcome === "afterHelp"
+            && state.reviewQueues.transfer.some((ticket) => ticket.category === "zeroTens"));
+
+          // The visible outer geometry uses one shared unit: cube u × u, rod u × 10u,
+          // flat 10u × 10u. Compare rendered dimensions rather than CSS declarations.
+          forceQuestion(111, { id: "geometry", stage: 4, format: "blocks-to-number" });
+          const flatRect = dom.blockGroups.querySelector(".hundred-flat").getBoundingClientRect();
+          const rodRect = dom.blockGroups.querySelector(".ten-rod").getBoundingClientRect();
+          const cubeRect = dom.blockGroups.querySelector(".one-cube").getBoundingClientRect();
+          const close = (left, right) => Math.abs(left - right) < 0.05;
+          check("shared-unit base-ten geometry",
+            close(flatRect.width, cubeRect.width * 10)
+            && close(flatRect.height, cubeRect.height * 10)
+            && close(rodRect.width, cubeRect.width)
+            && close(rodRect.height, cubeRect.height * 10),
+            JSON.stringify({ flat: [flatRect.width, flatRect.height], rod: [rodRect.width, rodRect.height], cube: [cubeRect.width, cubeRect.height] }));
+
+          // Preserve the agreed scheduler: five perfect observations do not promote; the
+          // existing 7-of-8 rule remains the only early-stage promotion gate.
+          const fiveStreak = createDefaultState();
+          fiveStreak.stage = 2;
+          for (let index = 0; index < 5; index += 1) {
+            applyAdaptiveObservation(fiveStreak, makeQuestion({ id: `five-${index}`, value: 101 + index, stage: 2, format: "blocks-to-number" }), "firstTry");
+          }
+          check("no five-streak auto-promotion", fiveStreak.stage === 2 && fiveStreak.adaptiveWindow.length === 5);
+
+          // A: phone (<=720px) block densities use exactly representable pairs so a flat is ten
+          // rods and a rod is ten cubes in rendered geometry. Read the declared custom properties
+          // straight from the stylesheet so the assertion is viewport-independent.
+          const phonePairs = [];
+          for (const sheet of Array.from(document.styleSheets)) {
+            let rules;
+            try { rules = sheet.cssRules; } catch (sheetError) { continue; }
+            if (!rules) continue;
+            for (const rule of Array.from(rules)) {
+              const conditions = rule.conditionText || (rule.media && rule.media.mediaText) || "";
+              if (!(rule instanceof CSSMediaRule) || !/720px/.test(conditions)) continue;
+              for (const inner of Array.from(rule.cssRules)) {
+                if (!inner.selectorText || !inner.selectorText.includes(".block-board")) continue;
+                const unit = parseFloat(inner.style.getPropertyValue("--block-unit"));
+                const ten = parseFloat(inner.style.getPropertyValue("--block-ten"));
+                if (Number.isFinite(unit) && Number.isFinite(ten)) phonePairs.push({ unit, ten });
+              }
+            }
+          }
+          check("A phone densities use exactly representable ten = 10 x unit pairs",
+            phonePairs.length === 3
+            && phonePairs.every((pair) => Math.abs(pair.ten - pair.unit * 10) < 1e-9)
+            && phonePairs.some((pair) => pair.unit === 5 && pair.ten === 50)
+            && phonePairs.some((pair) => pair.unit === 4.5 && pair.ten === 45)
+            && phonePairs.some((pair) => pair.unit === 4 && pair.ten === 40),
+            JSON.stringify(phonePairs));
+
+          // B: a focused format filters the whole exact/category queue before selecting a due
+          // ticket. Incompatible tickets are skipped (not mutated) and a later compatible ticket
+          // can still be served; legacy null-format tickets remain compatible with any focus.
+          const focusModel = createDefaultState();
+          focusModel.settings.format = "number-words";
+          focusModel.aggregate.attempted = 20;
+          focusModel.reviewQueues.exact = [
+            { id: "exact-incompat", value: 305, stage: 6, format: "blocks-to-number", layout: "fixed", dueAt: 0, postponements: 0 },
+            { id: "exact-compat", value: 240, stage: 6, format: "number-words", layout: "fixed", dueAt: 1, postponements: 0 }
+          ];
+          state = focusModel;
+          const focusPick = chooseQuestion(focusModel, mulberry32(77));
+          check("B focused mode skips incompatible exact, serves compatible one, leaves skip intact",
+            focusPick.format === "number-words"
+            && focusPick.value === 240
+            && Boolean(focusModel.activeTicket)
+            && focusModel.activeTicket.id === "exact-compat"
+            && focusModel.reviewQueues.exact.some((t) => t.id === "exact-incompat" && t.dueAt === 0 && t.format === "blocks-to-number"));
+
+          const legacyFocusModel = createDefaultState();
+          legacyFocusModel.settings.format = "number-words";
+          legacyFocusModel.aggregate.attempted = 20;
+          legacyFocusModel.reviewQueues.exact = [
+            { id: "exact-legacy", value: 240, stage: 6, format: null, layout: "fixed", dueAt: 0, postponements: 0 }
+          ];
+          state = legacyFocusModel;
+          const legacyPick = chooseQuestion(legacyFocusModel, mulberry32(78));
+          check("B focused mode accepts legacy null-format exact ticket",
+            Boolean(legacyFocusModel.activeTicket)
+            && legacyFocusModel.activeTicket.id === "exact-legacy"
+            && legacyPick.value === 240);
+
+          const transferFocusModel = createDefaultState();
+          transferFocusModel.settings.format = "number-words";
+          transferFocusModel.transferEvidence.zeroTens = { blocksToNumber: [305], numberToPlaces: [405], unlocked: true };
+          transferFocusModel.aggregate.attempted = 20;
+          transferFocusModel.reviewQueues.transfer = [{ id: "t-zt", category: "zeroTens", missedValue: 305, stage: 5, dueAt: 0, postponements: 0 }];
+          state = transferFocusModel;
+          chooseQuestion(transferFocusModel, mulberry32(79));
+          check("B focused number-words mode never serves a transfer prompt or mutates its ticket",
+            !(transferFocusModel.activeTicket && transferFocusModel.activeTicket.kind === "transfer")
+            && transferFocusModel.reviewQueues.transfer.some((t) => t.id === "t-zt" && t.dueAt === 0));
+
+          const transferBlocksModel = createDefaultState();
+          transferBlocksModel.settings.format = "blocks-to-number";
+          transferBlocksModel.transferEvidence.zeroTens = { blocksToNumber: [305], numberToPlaces: [405], unlocked: true };
+          transferBlocksModel.aggregate.attempted = 20;
+          transferBlocksModel.reviewQueues.transfer = [{ id: "t-ztb", category: "zeroTens", missedValue: 305, stage: 5, dueAt: 0, postponements: 0 }];
+          state = transferBlocksModel;
+          const blocksTransferPick = chooseQuestion(transferBlocksModel, mulberry32(80));
+          check("B blocks focus serves an eligible transfer prompt as a free layout",
+            Boolean(transferBlocksModel.activeTicket)
+            && transferBlocksModel.activeTicket.kind === "transfer"
+            && blocksTransferPick.layout === "free");
+
+          // C: the value-sensitive first word hint covers exactly five word-only buckets.
+          const hintZero = firstWordHint(0);
+          const hintOnes = firstWordHint(7);
+          const hintTens = firstWordHint(40);
+          const hintExactH = firstWordHint(300);
+          const hintOther = firstWordHint(305);
+          const hintBuckets = [hintZero, hintOnes, hintTens, hintExactH, hintOther];
+          const noDigits = (hint) => !/[0-9]/.test(`${hint.title} ${hint.intro} ${hint.steps.join(" ")}`);
+          check("C five first-word-hint buckets are distinct and word-only",
+            new Set(hintBuckets.map((hint) => hint.title)).size === 5
+            && hintBuckets.every(noDigits)
+            && hintBuckets.every((hint) => hint.steps.length === 3));
+          check("C first-word-hint bucket boundaries route each value domain",
+            firstWordHint(19).title === hintOnes.title
+            && firstWordHint(20).title === hintTens.title
+            && firstWordHint(99).title === hintTens.title
+            && firstWordHint(100).title === hintExactH.title
+            && firstWordHint(120).title === hintOther.title);
+          state = createDefaultState();
+          forceQuestion(305, { id: "hint-render", stage: 6, format: "number-words" });
+          state.activeAttempt.phase = "hint-labels";
+          state.activeAttempt.misses = 1;
+          renderQuestion();
+          check("C number-words first hint renders value-sensitive word-only steps",
+            dom.hintTitle.textContent === firstWordHint(305).title
+            && dom.hintBody.querySelectorAll(".hint-steps li").length === 3
+            && !/[0-9]/.test(dom.hintBody.textContent));
+          const hintText = (value) => {
+            const hint = firstWordHint(value);
+            return `${hint.title} ${hint.intro} ${hint.steps.join(" ")}`.toLowerCase();
+          };
+          check("C zero first hint guides without disclosing the answer word",
+            !hintText(0).includes(numberToWords(0).toLowerCase()));
+          check("C teen and two-digit hints preserve place value and condition ones and hyphens",
+            !/no tens (part|place)/.test(hintText(15))
+            && hintText(15).includes("separate tens and ones words")
+            && hintText(40).includes("only when")
+            && hintText(47).includes("only when"));
+
+          // D: malformed transfer persistence keeps only digit-matching evidence, derives unlocked
+          // from a genuine different-value pair, prunes tickets for locked categories, coerces a
+          // gateless restored free question to fixed, and discards a stale transfer question.
+          const teDirty = normalizeTransferEvidence({
+            zeroTens: { blocksToNumber: [305, 250, 999], numberToPlaces: [405], unlocked: false },
+            zeroOnes: { blocksToNumber: [250], numberToPlaces: [250], unlocked: true },
+            bothZeroTensAndOnes: { blocksToNumber: [300], numberToPlaces: [500], unlocked: false }
+          });
+          check("D transfer evidence retains only matching values and derives unlocked from a real pair",
+            teDirty.zeroTens.blocksToNumber.includes(305)
+            && !teDirty.zeroTens.blocksToNumber.includes(250)
+            && !teDirty.zeroTens.blocksToNumber.includes(999)
+            && teDirty.zeroTens.unlocked === true
+            && teDirty.zeroOnes.unlocked === false
+            && teDirty.bothZeroTensAndOnes.unlocked === true,
+            JSON.stringify(teDirty));
+          const lockedTicketState = normalizeState({
+            schemaVersion: SCHEMA_VERSION,
+            transferEvidence: { zeroTens: { blocksToNumber: [305], numberToPlaces: [305], unlocked: true } },
+            reviewQueues: { transfer: [{ id: "t-locked", category: "zeroTens", missedValue: 305, stage: 5, dueAt: 0, postponements: 0 }] },
+            activeQuestion: { id: "free-nogate", value: 305, stage: 6, format: "blocks-to-number", layout: "free", reviewKind: "ordinary" },
+            activeAttempt: { phase: "asking", misses: 0, draft: { number: "", hundreds: "", tens: "", ones: "" } }
+          });
+          check("D locked category prunes transfer ticket and coerces restored free question to fixed",
+            lockedTicketState.transferEvidence.zeroTens.unlocked === false
+            && lockedTicketState.reviewQueues.transfer.length === 0
+            && lockedTicketState.activeQuestion.layout === "fixed");
+          const staleTransferState = normalizeState({
+            schemaVersion: SCHEMA_VERSION,
+            transferEvidence: { zeroTens: { blocksToNumber: [305], numberToPlaces: [305], unlocked: true } },
+            reviewQueues: { transfer: [] },
+            activeQuestion: { id: "stale-transfer", value: 405, stage: 6, format: "blocks-to-number", layout: "free", reviewKind: "transfer" },
+            activeAttempt: { phase: "asking", misses: 0, draft: { number: "", hundreds: "", tens: "", ones: "" } },
+            activeTicket: { kind: "transfer", id: "t-gone" }
+          });
+          check("D stale transfer question without a valid gate and ticket is discarded",
+            staleTransferState.activeQuestion === null
+            && staleTransferState.activeAttempt === null
+            && staleTransferState.activeTicket === null);
+          const validTransferState = normalizeState({
+            schemaVersion: SCHEMA_VERSION,
+            transferEvidence: { zeroTens: { blocksToNumber: [305], numberToPlaces: [405], unlocked: true } },
+            reviewQueues: { transfer: [{ id: "t-valid", category: "zeroTens", missedValue: 205, stage: 5, dueAt: 0, postponements: 0 }] },
+            activeQuestion: { id: "valid-transfer", value: 605, stage: 6, format: "blocks-to-number", layout: "free", reviewKind: "transfer" },
+            activeAttempt: { phase: "asking", misses: 0, draft: { number: "", hundreds: "", tens: "", ones: "" } },
+            activeTicket: { kind: "transfer", id: "t-valid" }
+          });
+          check("D valid unlocked transfer question, ticket, and activeTicket survive normalization",
+            validTransferState.activeQuestion !== null
+            && validTransferState.activeQuestion.layout === "free"
+            && validTransferState.reviewQueues.transfer.some((t) => t.id === "t-valid")
+            && Boolean(validTransferState.activeTicket)
+            && validTransferState.activeTicket.id === "t-valid");
+
+          const askingAttempt = () => ({
+            phase: "asking",
+            misses: 0,
+            completed: false,
+            draft: { number: "", hundreds: "", tens: "", ones: "" }
+          });
+          const staleIdTransferState = normalizeState({
+            schemaVersion: SCHEMA_VERSION,
+            transferEvidence: { zeroTens: { blocksToNumber: [305], numberToPlaces: [405], unlocked: true } },
+            reviewQueues: { transfer: [{ id: "t-current", category: "zeroTens", missedValue: 205, stage: 5, dueAt: 0, postponements: 0 }] },
+            activeQuestion: { id: "transfer-stale-id", value: 605, stage: 6, format: "blocks-to-number", layout: "free", reviewKind: "transfer" },
+            activeAttempt: askingAttempt(),
+            activeTicket: { kind: "transfer", id: "t-stale" },
+            pendingAttempt: { questionId: "transfer-stale-id", outcome: "firstTry" }
+          });
+          check("D incomplete transfer requires its exact backing ticket id",
+            staleIdTransferState.activeQuestion === null
+            && staleIdTransferState.activeAttempt === null
+            && staleIdTransferState.activeTicket === null
+            && staleIdTransferState.pendingAttempt === null
+            && staleIdTransferState.reviewQueues.transfer.some((ticket) => ticket.id === "t-current"));
+
+          const exactMismatchState = normalizeState({
+            schemaVersion: SCHEMA_VERSION,
+            reviewQueues: { exact: [{ id: "exact-305", value: 305, stage: 6, format: "blocks-to-number", layout: "fixed", dueAt: 0, postponements: 0 }] },
+            activeQuestion: { id: "exact-wrong-value", value: 405, stage: 6, format: "blocks-to-number", layout: "fixed", reviewKind: "exact" },
+            activeAttempt: askingAttempt(),
+            activeTicket: { kind: "exact", id: "exact-305" }
+          });
+          const categoryMismatchState = normalizeState({
+            schemaVersion: SCHEMA_VERSION,
+            reviewQueues: { category: [{ id: "cat-zero-ones", category: "zeroOnes", missedValue: 250, format: "blocks-to-number", layout: "fixed", dueAt: 0, postponements: 0 }] },
+            activeQuestion: { id: "category-wrong-skill", value: 305, stage: 6, format: "blocks-to-number", layout: "fixed", reviewKind: "category" },
+            activeAttempt: askingAttempt(),
+            activeTicket: { kind: "category", id: "cat-zero-ones" }
+          });
+          check("D incomplete exact and category reviews require semantic ticket matches",
+            exactMismatchState.activeQuestion === null
+            && exactMismatchState.reviewQueues.exact.some((ticket) => ticket.id === "exact-305")
+            && categoryMismatchState.activeQuestion === null
+            && categoryMismatchState.reviewQueues.category.some((ticket) => ticket.id === "cat-zero-ones"));
+
+          const legacyExactState = normalizeState({
+            schemaVersion: SCHEMA_VERSION,
+            reviewQueues: { exact: [{ id: "exact-legacy-valid", value: 240, stage: 6, format: null, layout: "fixed", dueAt: 0, postponements: 0 }] },
+            activeQuestion: { id: "legacy-exact-question", value: 240, stage: 6, format: "number-words", layout: "fixed", reviewKind: "exact" },
+            activeAttempt: askingAttempt(),
+            activeTicket: { kind: "exact", id: "exact-legacy-valid" }
+          });
+          const validCategoryState = normalizeState({
+            schemaVersion: SCHEMA_VERSION,
+            reviewQueues: { category: [{ id: "cat-zero-tens-valid", category: "zeroTens", missedValue: 305, format: "blocks-to-number", layout: "fixed", dueAt: 0, postponements: 0 }] },
+            activeQuestion: { id: "category-valid-question", value: 405, stage: 6, format: "blocks-to-number", layout: "fixed", reviewKind: "category" },
+            activeAttempt: askingAttempt(),
+            activeTicket: { kind: "category", id: "cat-zero-tens-valid" }
+          });
+          check("D valid legacy exact and different-value category reviews survive normalization",
+            Boolean(legacyExactState.activeQuestion)
+            && Boolean(legacyExactState.activeTicket)
+            && legacyExactState.activeTicket.id === "exact-legacy-valid"
+            && Boolean(validCategoryState.activeQuestion)
+            && Boolean(validCategoryState.activeTicket)
+            && validCategoryState.activeTicket.id === "cat-zero-tens-valid");
+
+          const completedAttempt = (outcome, misses) => ({
+            phase: "correct-await-next",
+            misses,
+            completed: true,
+            outcome,
+            draft: { number: "", hundreds: "", tens: "", ones: "" },
+            feedback: "Correct.",
+            feedbackState: "correct"
+          });
+          const completedExact = normalizeState({
+            schemaVersion: SCHEMA_VERSION,
+            reviewQueues: { exact: [] },
+            activeQuestion: { id: "completed-exact", value: 305, stage: 6, format: "blocks-to-number", layout: "fixed", reviewKind: "exact" },
+            activeAttempt: completedAttempt("firstTry", 0),
+            activeTicket: { kind: "exact", id: "exact-consumed" }
+          });
+          const completedCategory = normalizeState({
+            schemaVersion: SCHEMA_VERSION,
+            reviewQueues: { category: [] },
+            activeQuestion: { id: "completed-category", value: 405, stage: 6, format: "blocks-to-number", layout: "fixed", reviewKind: "category" },
+            activeAttempt: completedAttempt("firstTry", 0),
+            activeTicket: { kind: "category", id: "category-consumed" }
+          });
+          const completedTransfer = normalizeState({
+            schemaVersion: SCHEMA_VERSION,
+            transferEvidence: { zeroTens: { blocksToNumber: [305], numberToPlaces: [405], unlocked: true } },
+            reviewQueues: { transfer: [] },
+            activeQuestion: { id: "completed-transfer", value: 605, stage: 6, format: "blocks-to-number", layout: "free", reviewKind: "transfer" },
+            activeAttempt: completedAttempt("firstTry", 0),
+            activeTicket: { kind: "transfer", id: "transfer-consumed" }
+          });
+          check("D completed first-try review presentations survive after their tickets are consumed",
+            completedExact.activeQuestion && completedExact.activeAttempt.completed && completedExact.activeTicket === null
+            && completedCategory.activeQuestion && completedCategory.activeAttempt.completed && completedCategory.activeTicket === null
+            && completedTransfer.activeQuestion && completedTransfer.activeAttempt.completed && completedTransfer.activeQuestion.layout === "free" && completedTransfer.activeTicket === null);
+
+          const completedAfterHelpTransfer = normalizeState({
+            schemaVersion: SCHEMA_VERSION,
+            transferEvidence: { zeroTens: { blocksToNumber: [305], numberToPlaces: [405], unlocked: true } },
+            reviewQueues: { transfer: [{ id: "transfer-rescheduled", category: "zeroTens", missedValue: 205, stage: 5, dueAt: 12, postponements: 0 }] },
+            activeQuestion: { id: "completed-transfer-help", value: 605, stage: 6, format: "blocks-to-number", layout: "free", reviewKind: "transfer" },
+            activeAttempt: completedAttempt("afterHelp", 1),
+            activeTicket: { kind: "transfer", id: "transfer-rescheduled" }
+          });
+          check("D completed after-help transfer remains visible with its rescheduled ticket",
+            Boolean(completedAfterHelpTransfer.activeQuestion)
+            && completedAfterHelpTransfer.activeAttempt.completed
+            && completedAfterHelpTransfer.activeAttempt.outcome === "afterHelp"
+            && Boolean(completedAfterHelpTransfer.activeTicket)
+            && completedAfterHelpTransfer.activeTicket.id === "transfer-rescheduled");
+
+          state = normalizeState({
+            schemaVersion: SCHEMA_VERSION,
+            reviewQueues: { exact: [{ id: "exact-pending", value: 305, stage: 6, format: "blocks-to-number", layout: "fixed", dueAt: 0, postponements: 0 }] },
+            activeQuestion: { id: "pending-exact-question", value: 305, stage: 6, format: "blocks-to-number", layout: "fixed", reviewKind: "exact" },
+            activeAttempt: askingAttempt(),
+            activeTicket: { kind: "exact", id: "exact-pending" },
+            pendingAttempt: { questionId: "pending-exact-question", outcome: "firstTry" }
+          });
+          recoverPendingAttempt();
+          const pendingRecoveredCount = state.aggregate.attempted;
+          recoverPendingAttempt();
+          check("D valid pending review recovers exactly once and consumes only its ticket",
+            state.activeQuestion.id === "pending-exact-question"
+            && state.activeAttempt.completed
+            && state.activeAttempt.outcome === "firstTry"
+            && state.reviewQueues.exact.length === 0
+            && state.pendingAttempt === null
+            && pendingRecoveredCount === 1
+            && state.aggregate.attempted === 1);
+
+          const wordHistoryQuestion = makeQuestion({
+            id: "word-history-normalization",
+            value: 305,
+            stage: 6,
+            format: "number-words",
+            reviewKind: "ordinary"
+          });
+          const historyCorrectIndex = wordHistoryQuestion.wordChoices.findIndex((choice) => choice.value === 305);
+          const historyWrongIndices = wordHistoryQuestion.wordChoices
+            .map((choice, index) => ({ choice, index }))
+            .filter((entry) => entry.choice.value !== 305)
+            .map((entry) => entry.index);
+          const restoredWordAttempt = (selectedWordChoices, misses = 0, phase = "asking", feedback = "Ready when you are. Take your time.") => normalizeState({
+            schemaVersion: SCHEMA_VERSION,
+            activeQuestion: {
+              id: wordHistoryQuestion.id,
+              value: 305,
+              stage: 6,
+              format: "number-words",
+              layout: "fixed",
+              reviewKind: "ordinary"
+            },
+            activeAttempt: {
+              phase,
+              misses,
+              completed: false,
+              selectedWordChoices,
+              draft: { number: "", hundreds: "", tens: "", ones: "" },
+              feedback,
+              feedbackState: phase === "asking" ? "neutral" : "error"
+            }
+          });
+          state = restoredWordAttempt([historyWrongIndices[0]]);
+          render();
+          submitWordChoice(historyCorrectIndex);
+          check("D restored wrong word choice cannot regain first-try credit",
+            state.activeAttempt.completed
+            && state.activeAttempt.outcome === "afterHelp"
+            && state.activeAttempt.misses === 1);
+
+          const twoWrongWords = restoredWordAttempt(historyWrongIndices.slice(0, 2));
+          const threeWrongWords = restoredWordAttempt(historyWrongIndices);
+          check("D restored word history derives second-hint and reveal phases from wrong choices",
+            twoWrongWords.activeAttempt.misses === 2
+            && twoWrongWords.activeAttempt.phase === "hint-expanded"
+            && threeWrongWords.activeAttempt.misses === 3
+            && threeWrongWords.activeAttempt.phase === "reveal-retype"
+            && !threeWrongWords.activeAttempt.selectedWordChoices.includes(historyCorrectIndex));
+
+          const correctOnlyWord = restoredWordAttempt([historyCorrectIndex]);
+          const correctAndWrongWord = restoredWordAttempt([historyCorrectIndex, historyWrongIndices[0]]);
+          check("D incomplete restored word history removes a preselected correct answer",
+            correctOnlyWord.activeAttempt.selectedWordChoices.length === 0
+            && correctOnlyWord.activeAttempt.misses === 0
+            && correctOnlyWord.activeAttempt.phase === "asking"
+            && !correctAndWrongWord.activeAttempt.selectedWordChoices.includes(historyCorrectIndex)
+            && correctAndWrongWord.activeAttempt.selectedWordChoices.length === 1
+            && correctAndWrongWord.activeAttempt.misses === 1);
+
+          const nonWordHistory = normalizeState({
+            schemaVersion: SCHEMA_VERSION,
+            activeQuestion: { id: "non-word-history", value: 305, stage: 6, format: "blocks-to-number", layout: "fixed", reviewKind: "ordinary" },
+            activeAttempt: { ...askingAttempt(), selectedWordChoices: [0, 1, 2] }
+          });
+          const validFirstWordMiss = restoredWordAttempt(
+            [historyWrongIndices[0]],
+            1,
+            "hint-labels",
+            "Stored first-hint feedback."
+          );
+          check("D word-choice normalization clears non-word history and preserves a valid first miss",
+            nonWordHistory.activeAttempt.selectedWordChoices.length === 0
+            && validFirstWordMiss.activeAttempt.misses === 1
+            && validFirstWordMiss.activeAttempt.phase === "hint-labels"
+            && validFirstWordMiss.activeAttempt.selectedWordChoices[0] === historyWrongIndices[0]
+            && validFirstWordMiss.activeAttempt.feedback === "Stored first-hint feedback.");
+
+          // E: pedagogical distractor priority keeps 305's representative 35 and 350 for every id,
+          // and every value 0-999 yields exactly four unique choices including the answer.
+          const retains = Array.from({ length: 40 }, (_, i) => buildWordChoices(305, `retain-${i}`));
+          check("E 305 word choices always retain 35 and 350 across ids and stay four unique",
+            retains.every((choices) =>
+              choices.length === 4
+              && new Set(choices.map((c) => c.value)).size === 4
+              && choices.some((c) => c.value === 35)
+              && choices.some((c) => c.value === 350)
+              && choices.some((c) => c.value === 305)));
+          let everyValueFour = true;
+          for (let v = 0; v <= 999; v += 1) {
+            const choices = buildWordChoices(v, `sweep-${v}`);
+            if (choices.length !== 4
+              || new Set(choices.map((c) => c.value)).size !== 4
+              || !choices.some((c) => c.value === v)) {
+              everyValueFour = false;
+              break;
+            }
+          }
+          check("E every value 0-999 yields exactly four unique word choices including the answer", everyValueFour);
+          const boundaryChoices = [9, 90, 900].map((value) => buildWordChoices(value, `boundary-${value}`));
+          check("E digit-change distractors step inward instead of wrapping nine to zero or one",
+            boundaryChoices[0].some((choice) => choice.value === 8 && choice.misconception === "ones digit changed")
+            && boundaryChoices[1].some((choice) => choice.value === 80 && choice.misconception === "tens digit changed")
+            && boundaryChoices[2].some((choice) => choice.value === 800 && choice.misconception === "hundreds digit changed"));
+          let everyDisplayedDigitChangeIsAdjacent = true;
+          for (let value = 0; value <= 999 && everyDisplayedDigitChangeIsAdjacent; value += 1) {
+            const sourceDigits = decompose(value);
+            for (const choice of buildWordChoices(value, `digit-change-${value}`)) {
+              if (!choice.misconception.endsWith("digit changed")) continue;
+              const choiceDigits = decompose(choice.value);
+              const place = choice.misconception.split(" ")[0];
+              const otherPlaces = ["hundreds", "tens", "ones"].filter((name) => name !== place);
+              if (choiceDigits[place] !== adjacentDigit(sourceDigits[place])
+                || otherPlaces.some((name) => choiceDigits[name] !== sourceDigits[name])) {
+                everyDisplayedDigitChangeIsAdjacent = false;
+                break;
+              }
+            }
+          }
+          check("E every displayed changed-digit distractor changes only that digit by one", everyDisplayedDigitChangeIsAdjacent);
+
+          // F: advanceTime advances and returns the deterministic clock without re-rendering, so the
+          // rendered block nodes keep their identity across frames.
+          state = createDefaultState();
+          forceQuestion(111, { id: "adv-identity", stage: 4, format: "blocks-to-number" });
+          const flatBefore = dom.blockGroups.querySelector(".hundred-flat");
+          const clockBefore = window.advanceTime(0);
+          const clockAfter = window.advanceTime(500);
+          const flatAfter = dom.blockGroups.querySelector(".hundred-flat");
+          check("F advanceTime advances clock without re-rendering and preserves node identity",
+            clockAfter === clockBefore + 500
+            && flatBefore !== null
+            && flatAfter === flatBefore);
         } catch (error) {
           check("self-test exception", false, error && error.stack ? error.stack : error);
         } finally {
           state = originalState;
           memoryRaw = originalMemory;
           storageOperational = originalOperational;
+          testClock = originalTestClock;
           seededValue = originalSeed;
           seededRandom = originalSeed === null ? null : mulberry32(originalSeed);
           try {
@@ -3841,9 +5202,11 @@
       });
 
       window.render_game_to_text = () => JSON.stringify(textSnapshot());
+      // advanceTime only moves the deterministic test clock forward and returns it. It must not
+      // render: the generic web-game client calls it every synthetic frame, and repainting here
+      // would rebuild the block DOM and restart entrance animations mid-capture.
       window.advanceTime = (milliseconds) => {
         testClock += Math.max(0, Number(milliseconds) || 0);
-        render();
         return testClock;
       };
       window.runSelfTests = runSelfTests;
@@ -3863,13 +5226,22 @@
         },
         forceQuestion,
         generate: testGenerate,
+        numberToWords,
+        buildWordChoices,
         submit(answer) {
-          if (state.activeQuestion.format === "blocks-to-number") dom.numberAnswer.value = String(answer);
-          else {
+          if (state.activeQuestion.format === "blocks-to-number") {
+            dom.numberAnswer.value = String(answer);
+            submitCurrent();
+          } else if (state.activeQuestion.format === "number-to-places") {
             const values = Array.isArray(answer) ? answer : [answer.hundreds, answer.tens, answer.ones];
             [dom.hundredsAnswer.value, dom.tensAnswer.value, dom.onesAnswer.value] = values.map(String);
+            submitCurrent();
+          } else {
+            const index = Number.isInteger(answer) && answer >= 0 && answer < state.activeQuestion.wordChoices.length
+              ? answer
+              : state.activeQuestion.wordChoices.findIndex((choice) => choice.value === Number(answer) || choice.text === String(answer));
+            submitWordChoice(index);
           }
-          submitCurrent();
           return textSnapshot();
         },
         next: nextQuestion,

@@ -37,6 +37,6 @@ const GAMES = [
     color: '#315f7d',
     accent: '#d9e5ec',
     url: 'place-value-practice/',
-    version: '1.0.0',
+    version: '1.1.0',
   },
 ];
