@@ -1450,6 +1450,21 @@ body::after {
   display: none;
 }
 
+/* Non-live DOM mirror for kick/try actions. Visible feedback is the single
+   polite announcement source. */
+#special-action-live {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
 #ui-desk[data-phase="question"] #question,
 #ui-desk[data-phase="feedback"] #question {
   position: relative;
@@ -1541,6 +1556,140 @@ body::after {
 
 #call-grid[data-count="4"] .call-btn {
   grid-column: span 1;
+}
+
+/* Fourth-down and conversion decisions deliberately use their own grid so the
+   five-card offense and four-card defense call contracts remain unchanged. */
+#decision-grid {
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  align-content: start;
+}
+
+#decision-grid[data-count="2"] {
+  width: min(100%, 760px);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  justify-self: center;
+}
+
+#decision-grid[data-count="1"] {
+  width: min(100%, 420px);
+  grid-template-columns: minmax(0, 1fr);
+  justify-self: center;
+}
+
+.decision-btn {
+  position: relative;
+  overflow: hidden;
+  min-width: 44px;
+  min-height: 178px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 8px;
+  padding: 20px 18px 18px;
+  border: 1px solid rgba(119, 177, 227, 0.5);
+  border-bottom-width: 5px;
+  border-radius: 22px;
+  background: linear-gradient(180deg, rgba(20, 74, 145, 0.98), rgba(7, 22, 54, 0.98));
+  box-shadow: var(--shadow-card);
+  color: #fff;
+  cursor: pointer;
+  font-family: 'Barlow Condensed', 'Nunito', sans-serif;
+  font-size: clamp(30px, 2.8vw, 46px);
+  font-weight: 800;
+  line-height: 1;
+  text-align: left;
+  transition: transform 0.12s ease, box-shadow 0.12s ease, border-color 0.12s ease;
+}
+
+.decision-btn::before {
+  content: "";
+  position: absolute;
+  inset: auto 0 0;
+  height: 5px;
+  background: linear-gradient(90deg, rgba(255, 211, 55, 0.98), rgba(255, 211, 55, 0.16));
+}
+
+.decision-btn::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.58;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.13), transparent 44%),
+    radial-gradient(circle at 50% 100%, rgba(255, 211, 55, 0.12), transparent 46%);
+}
+
+.decision-btn > * {
+  position: relative;
+  z-index: 1;
+}
+
+.decision-eyebrow {
+  color: #d7e6fb;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.decision-label {
+  color: var(--gold);
+  font-family: 'Bebas Neue', 'Barlow Condensed', sans-serif;
+  font-size: clamp(44px, 4vw, 66px);
+  line-height: 0.88;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.decision-desc {
+  color: #d9e5f9;
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 1.12;
+}
+
+.decision-btn:hover,
+.decision-btn:focus-visible {
+  transform: translateY(-4px);
+  box-shadow: 0 24px 38px rgba(0, 0, 0, 0.34);
+}
+
+.decision-btn:focus-visible {
+  outline: 3px solid #fff;
+  outline-offset: 3px;
+}
+
+.decision-btn:active {
+  transform: translateY(1px);
+}
+
+.decision-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+#decision-grid[data-possession="defense"] .decision-btn {
+  border-color: rgba(244, 164, 59, 0.48);
+  background: linear-gradient(180deg, rgba(96, 57, 13, 0.98), rgba(30, 18, 7, 0.98));
+}
+
+#decision-grid[data-possession="defense"] .decision-btn::before {
+  background: linear-gradient(90deg, rgba(244, 164, 59, 0.98), rgba(244, 164, 59, 0.18));
+}
+
+#decision-grid[data-possession="defense"] .decision-eyebrow,
+#decision-grid[data-possession="defense"] .decision-desc {
+  color: #f0d5b4;
+}
+
+#decision-grid[data-possession="defense"] .decision-label {
+  color: #ffd4a1;
 }
 
 .call-btn {
@@ -2569,6 +2718,15 @@ body::after {
   #call-grid[data-count="5"] .call-btn:nth-child(5) {
     grid-column: span 1;
   }
+
+  #decision-grid {
+    gap: 10px;
+  }
+
+  .decision-btn {
+    min-height: 136px;
+    padding: 16px 14px;
+  }
 }
 
 @media (orientation: portrait), (max-width: 760px) {
@@ -2647,7 +2805,13 @@ body::after {
     gap: 0 20px;
   }
 
-  #ui-desk:is([data-phase="call"], [data-phase="question"], [data-phase="feedback"]) #desk-head {
+  #ui-desk:is(
+    [data-phase="call"],
+    [data-phase="question"],
+    [data-phase="feedback"],
+    [data-phase="fourth-down-decision"],
+    [data-phase="conversion-decision"]
+  ) #desk-head {
     display: none;
   }
 
@@ -2737,6 +2901,18 @@ body::after {
 
   .ans-btn {
     min-height: 158px;
+  }
+
+  .decision-btn {
+    min-height: 128px;
+  }
+
+  .decision-label {
+    font-size: clamp(38px, 4.6vw, 54px);
+  }
+
+  .decision-desc {
+    font-size: 15px;
   }
 
   #btn-row[data-choice-type="category"] .ans-btn,
@@ -2926,6 +3102,28 @@ body::after {
   #ui-desk[data-phase="call"] #call-grid .call-desc {
     font-size: 10px;
   }
+
+  #decision-grid {
+    gap: 8px;
+  }
+
+  .decision-btn {
+    min-height: 112px;
+    gap: 5px;
+    padding: 12px 10px;
+  }
+
+  .decision-eyebrow {
+    font-size: 10px;
+  }
+
+  .decision-label {
+    font-size: clamp(30px, 2.5vw, 40px);
+  }
+
+  .decision-desc {
+    font-size: 12px;
+  }
 }
 
 @media (max-width: 760px) {
@@ -2993,7 +3191,13 @@ body::after {
     display: none;
   }
 
-  #ui-desk:is([data-phase="call"], [data-phase="question"], [data-phase="feedback"]) #desk-head {
+  #ui-desk:is(
+    [data-phase="call"],
+    [data-phase="question"],
+    [data-phase="feedback"],
+    [data-phase="fourth-down-decision"],
+    [data-phase="conversion-decision"]
+  ) #desk-head {
     display: none;
   }
 
@@ -3112,6 +3316,36 @@ body::after {
 
   #call-grid[data-count="5"] .call-btn:last-child {
     grid-column: auto;
+  }
+
+  #decision-grid,
+  #decision-grid[data-count="2"] {
+    width: 100%;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  #decision-grid[data-count="3"] .decision-btn:last-child {
+    grid-column: 1 / -1;
+  }
+
+  .decision-btn {
+    min-height: 96px;
+    gap: 4px;
+    padding: 12px 10px 10px;
+    border-radius: 18px;
+  }
+
+  .decision-eyebrow {
+    font-size: 10px;
+  }
+
+  .decision-label {
+    font-size: clamp(30px, 9vw, 42px);
+  }
+
+  .decision-desc {
+    font-size: 12px;
   }
 
   .call-btn {
@@ -3412,6 +3646,14 @@ body::after {
     font-size: 38px;
   }
 
+  .decision-btn {
+    min-height: 90px;
+  }
+
+  .decision-label {
+    font-size: clamp(28px, 8.5vw, 38px);
+  }
+
   #btn-row[data-choice-type="yard"] .ans-btn {
     font-size: 20px;
   }
@@ -3480,22 +3722,38 @@ body::after {
   #ui-desk {
     margin-top: -28px;
   }
+
+  #ui-desk[data-phase="fourth-down-decision"] #action-panel {
+    padding-top: 8px;
+  }
 }
 
 @media (hover: none) and (pointer: coarse) {
   .call-btn:hover,
+  .decision-btn:hover,
   .ans-btn:hover,
   .ov-btn:hover {
     transform: none;
   }
 
   .call-btn:hover,
+  .decision-btn:hover,
   .ans-btn:hover {
     box-shadow: var(--shadow-card);
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .decision-btn {
+    transition: none;
+  }
+
+  .decision-btn:hover,
+  .decision-btn:focus-visible,
+  .decision-btn:active {
+    transform: none;
+  }
+
   .ans-btn.correct,
   .ans-btn.wrong,
   #ball.ball-moving,

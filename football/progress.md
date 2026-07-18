@@ -281,3 +281,41 @@ Original prompt: Implement the next Football issue with GPT-5.6 Sol Ultra writin
 - Passed the final complete release gate: 48/48 Node contracts, 217 Playwright checks passed, 305 intentional cross-project skips, and 120/120 canonical screenshots verified across all six required device projects. One unrelated fixed-timer particle check missed once under the parallel load, then passed 10/10 in isolation and the unchanged complete gate passed on rerun.
 - Visually inspected the Wake Forest start and defensive-read artifacts across the release matrix, including both corrected iPad portrait layouts; names, selected state, touch targets, and Start CTA remain readable and fully in frame.
 - Closed the final review round with Grok 4.5, Gemini 3.1 Pro High, and GPT-5.6 Sol Ultra approval. The Opus 4.8 lane's only requested change claimed `render_game_to_text()` was undefined; this was rejected as wrong because `football.js` explicitly exports it and the full browser matrix invokes it successfully. No valid P0-P2 or durable follow-up remains.
+
+---
+
+Original prompt: Implement Football issue #23 through the reconciled six-point touchdown, conversion, fourth-down decision, special-teams placement, and stats schema-v3 contract, then release the completed work as v1.25.0 with complete verification.
+
+## Football v1.25.0 issue #23 scoring and special teams
+
+- Reconciled the implementation contract around a tagged `activePlay` authority for scrimmage, punt, field goal, and conversion plays, with closed type-specific contexts and independently validated projections.
+- Changed touchdowns to six points and made the PAT/two-point conversion a distinct instructional play with its own IDs, stats row, commit guard, and possession-closing lifecycle.
+- Added pre-snap fourth-down go/punt/legal-field-goal decisions, deterministic private opponent decisions, direction-aware kick placement, and explicit restart reasons carried through quarter and halftime routing.
+- Migrated the inner play-history schema to v3 while retaining `footballMathStats:v1`, preserving read-only v1/v2 normalization, future-schema fail-closed behavior, privacy-safe telemetry, typed special-team metrics, and exactly-once rows.
+- Added separate accessible two/three-card decision UI, TRY scorebug semantics, non-color live result text, and release artifacts for player/opponent decision, conversion, punt, and field-goal states without changing the exact five/four normal call grids.
+- Bumped `GAME_VERSION`, all 13 Football asset cache keys, the portal registry, and the version manifest together to v1.25.0. The final `npm run test:football:release` passed: 64 DOM-free checks passed with 0 failures; Playwright recorded 253 passed, 365 intentional project-scope skips, and 0 failures; posttest verified all 228 Football release screenshots across all six projects.
+- Follow-up browser repairs made decision-grid focus synchronous, validated ordinary terminal misses from their policy intent instead of feeding derived result kinds back as forced outcomes, removed the stale `activeSnap` compatibility authority from pending resolution, and preserved canonical active-play references in the derived scrimmage view.
+- Strengthened tagged-play policy and canonical-reference regressions without removing the existing focus, privacy, transition, or accuracy assertions. Earlier targeted checks also passed: primary integration 44/44, primary release matrix 4/4, and six-device focused call layout 18/18.
+- The final phone-only repair added a `<=420px` fourth-down action-panel spacing correction after the focus and authority fixes. Its formerly failing iPhone 15 test passed, and visual inspection confirmed all three cards fully in frame; the complete browser release gate is green.
+
+---
+
+Original prompt: Repair the validated Football issue #23 release blockers and lower-priority contract/accessibility gaps in the existing v1.25.0 checkout without committing or changing release/cache surfaces.
+
+## Football v1.25.0 issue #23 contract-repair pass
+
+- Corrected receiver-favorable punt precedence so every goal-line crossing is a touchback in both directions, while non-crossing favorable punts retain the receiving-own-20 cap.
+- Split special recovery identity policy: an unchanged, fully frozen rejected play may retain its IDs, while invalid-context creation failures and commit-time live drift retain diagnostic links but allocate fresh play/context IDs for rebuilt facts. Retries still preserve the action, conversion attempt type, opponent decision, and frozen punt draw.
+- Closed initial special-play, public match/team, context-ID, and scrimmage call-key contracts at both domain and contextual-question boundaries.
+- Restricted special instructional bindings and runtime learning events to an explicit outcome-independent allowlist; removed unused special Coach Report labels.
+- Added synchronous keyboard focus transfer, one visible polite feedback source, and rendered-action-aware normal/recovery copy for fourth down and conversions.
+- Added direct domain/context, recovery, keyboard, live-region, telemetry, punt touchback, and 24-case special audio-policy regressions.
+- Passed 67/67 DOM-free domain/context/stats contracts, 48/48 primary contextual integration checks, 5/5 primary audio checks, and 12/12 primary stats/release-matrix checks.
+- Ran the prescribed browser-client smoke on a live offense question; the rendered question/answers matched `render_game_to_text()` and no console/page-error artifact was produced.
+- Passed the broad six-project `npm run test:football` layout suite (18/18) and the focused primary copy/accessibility/learning/coach checks (19/19).
+- Closed the 57/58-yard recovery boundary so a field goal that becomes illegal under changed live facts reopens the currently legal player choice or deterministic opponent decision instead of trapping the game on an unusable retry card.
+- The orchestrator's final `npm run test:football:release` gate passed: 67 DOM-free checks, 259 Playwright passes, 395 intentional project-scope skips, and all 228 canonical screenshots verified across all six required device projects.
+- Hardened schema-v3 persistence around the permanent `footballMathStats:v1:central-write` Web Lock: rows stage synchronously for live views, merge against a fresh lock-time read, never fall back to an unlocked write, preserve future schemas byte-for-byte, and deduplicate stable plays across tabs.
+- Added a compact private `archivedPlayIndex` so replay protection survives the 200-row journal cap, plus private `lastResolvedByConcept` evidence so a delayed older row cannot replace newer learning evidence even when the journal cap displaces that newer row. Deterministic regressions cover concurrent tabs, stale tabs, cap eviction, transitional archive migration, exact fallback IDs, and permanently retired production sequence gaps.
+- Closed the final review delta with fresh Sol Ultra and three independent specialist/broad reviewers all reporting no P0-P3 findings; the archive test specialist explicitly confirmed its prior P3 coverage debt resolved. Opus hit its monthly-spend 429, Gemini authentication expired, Grok reached its turn cap, and the single quota-controlled Fable planning call had already exhausted its hard turn cap, so no unsupported five-model final consensus is claimed.
+- The superseding complete `npm run test:football:release` gate passed: 82/82 DOM-free checks, 263 Playwright passes, 415 intentional project-scope skips, and all 228 canonical screenshots verified across all six required device projects.

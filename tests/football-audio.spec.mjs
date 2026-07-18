@@ -1,5 +1,12 @@
 import { test, expect } from '@playwright/test';
 
+function primaryOnly(testInfo) {
+  test.skip(
+    testInfo.project.name !== 'ipad-11-landscape',
+    'The exhaustive special-play audio matrix runs once on the primary target.',
+  );
+}
+
 function trackErrors(page) {
   const errors = [];
   page.on('pageerror', error => errors.push(String(error)));
@@ -72,9 +79,9 @@ async function seedFourthDownDefense(page) {
     direction: -1,
     quarter: 1,
     down: 4,
-    yardsToGo: 10,
-    yardLine: 70,
-    firstDownLine: 60,
+    yardsToGo: 2,
+    yardLine: 45,
+    firstDownLine: 43,
     driveStart: 80,
     scores: { player: 0, opponent: 0 },
     plays: 0,
@@ -262,5 +269,85 @@ test('correct fourth-down defense celebrates while misses and bypasses stay sile
     outcome: 'turnoverOnDowns',
   });
   expect(await oscillatorStarts(page)).toEqual([]);
+  expect(errors).toEqual([]);
+});
+
+test('special-play audio is positive only for first-try or retry instructional success in either possession', async ({ page }, testInfo) => {
+  primaryOnly(testInfo);
+  const errors = trackErrors(page);
+  await installAudioMock(page);
+  await page.goto('/football/');
+  await page.locator('#ov-start .ov-btn').click();
+  await installDeterministicStreams(page, 0.5);
+
+  const policies = ['firstTryCorrect', 'retryCorrect', 'secondMiss', 'questionBypass'];
+  for (const playType of ['conversion', 'fieldGoal', 'punt']) {
+    for (const possession of ['offense', 'defense']) {
+      for (const policy of policies) {
+        const before = await page.evaluate(({ playType: type, possession: side, policy: resolutionPolicy }) => {
+          const direction = side === 'offense' ? 1 : -1;
+          const yardLine = type === 'fieldGoal'
+            ? side === 'offense' ? 60 : 40
+            : type === 'punt'
+              ? side === 'offense' ? 50 : 80
+              : side === 'offense' ? 20 : 80;
+          window.__footballTest.setQuestionFault(resolutionPolicy === 'questionBypass' ? 'empty-pool' : null);
+          window.__footballTest.seedDriveState({
+            possession: side,
+            direction,
+            quarter: 1,
+            down: 1,
+            yardsToGo: 10,
+            yardLine,
+            firstDownLine: yardLine + (direction * 10),
+            driveStart: yardLine,
+            scores: { player: 0, opponent: 0 },
+            totalYards: { player: 0, opponent: 0 },
+            plays: 0,
+            drivePlays: 0,
+          });
+          const activePlay = type === 'conversion'
+            ? makeConversionActivePlay('pat')
+            : type === 'fieldGoal'
+              ? makeFieldGoalActivePlay()
+              : makePuntActivePlay({ travelYards: 40 });
+          startSpecialPlay(activePlay, 'Special-play audio probe.');
+          return window.__footballTest.activeContracts();
+        }, { playType, possession, policy });
+        await page.evaluate(() => { window.__audioEvents = []; });
+
+        if (policy !== 'questionBypass') {
+          const wrongIds = before.questionInstance.choices
+            .filter(choice => choice.id !== before.questionInstance.correctChoiceId)
+            .map(choice => choice.id);
+          if (policy === 'firstTryCorrect') {
+            await answerChoice(page, before.questionInstance.correctChoiceId);
+          } else if (policy === 'retryCorrect') {
+            await answerChoice(page, wrongIds[0]);
+            expect(await oscillatorStarts(page)).toEqual([]);
+            await answerChoice(page, before.questionInstance.correctChoiceId);
+          } else {
+            await answerChoice(page, wrongIds[0]);
+            await answerChoice(page, wrongIds[1]);
+            await page.locator('#question-continue').click();
+          }
+        }
+        await page.evaluate(() => window.__footballTest.setQuestionFault(null));
+
+        const after = await page.evaluate(() => window.__footballTest.activeContracts());
+        const row = after.statsSession.completedPlays.at(-1);
+        expect(row.playType, `${playType}:${possession}:${policy}`).toBe(playType);
+        expect(row.instructionalStatus).toBe(policy === 'questionBypass' ? 'bypassed' : 'presented');
+        expect(row.resolution).toBe(policy === 'questionBypass' ? null : policy);
+        const starts = await oscillatorStarts(page);
+        if (policy === 'firstTryCorrect' || policy === 'retryCorrect') {
+          expect(starts, `${playType}:${possession}:${policy}`).toHaveLength(2);
+          expect(starts.every(event => event.includes(':sine:'))).toBe(true);
+        } else {
+          expect(starts, `${playType}:${possession}:${policy}`).toEqual([]);
+        }
+      }
+    }
+  }
   expect(errors).toEqual([]);
 });

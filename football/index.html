@@ -4,14 +4,14 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <title>Football Math!</title>
-<link rel="apple-touch-icon" href="apple-touch-icon.png?v=1.24.0">
-<link rel="icon" type="image/png" href="apple-touch-icon.png?v=1.24.0">
+<link rel="apple-touch-icon" href="apple-touch-icon.png?v=1.25.0">
+<link rel="icon" type="image/png" href="apple-touch-icon.png?v=1.25.0">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow+Condensed:wght@600;700;800&display=swap">
-<link rel="stylesheet" href="../shared/fonts.css?v=1.24.0">
-<link rel="stylesheet" href="../shared/reset.css?v=1.24.0">
-<link rel="stylesheet" href="football.css?v=1.24.0">
+<link rel="stylesheet" href="../shared/fonts.css?v=1.25.0">
+<link rel="stylesheet" href="../shared/reset.css?v=1.25.0">
+<link rel="stylesheet" href="football.css?v=1.25.0">
 </head>
 <body>
 <div id="broadcast-shell">
@@ -29,10 +29,10 @@
           <span class="sb-label">Quarter</span><span class="sb-val" id="s-quarter">1</span>
         </div>
         <div class="sb-info">
-          <span class="sb-label">Down</span><span class="sb-val" id="s-down">1st &amp; 10</span>
+          <span class="sb-label" id="s-down-label">Down</span><span class="sb-val" id="s-down">1st &amp; 10</span>
         </div>
         <div class="sb-info">
-          <span class="sb-label">Ball On</span><span class="sb-val" id="s-yd">own 20</span>
+          <span class="sb-label" id="s-yd-label">Ball On</span><span class="sb-val" id="s-yd">own 20</span>
         </div>
         <div id="sb-poss" class="sb-poss" aria-label="Possession">&#9654;</div>
       </div>
@@ -97,11 +97,13 @@
         <div id="play-label">Get ready…</div>
         <div id="question"></div>
         <div id="defense-read" aria-live="polite" hidden></div>
-        <div id="feedback" aria-live="polite"></div>
+        <div id="special-action-live" aria-hidden="true"></div>
+        <div id="feedback" role="status" aria-live="polite" aria-atomic="true"></div>
       </section>
 
       <section id="action-panel" class="panel">
         <div id="call-grid" class="hidden"></div>
+        <div id="decision-grid" class="hidden" role="group" aria-label="Special-teams decision"></div>
         <div id="btn-row">
           <button class="ans-btn" id="b0" onclick="handleAnswer(0)">-</button>
           <button class="ans-btn" id="b1" onclick="handleAnswer(1)">-</button>
@@ -239,16 +241,16 @@
   </div>
 </div>
 
-<script src="copy.js?v=1.24.0"></script>
-<script src="learning.js?v=1.24.0"></script>
-<script src="stats.js?v=1.24.0"></script>
-<script src="opponent.js?v=1.24.0"></script>
-<script src="football-domain.js?v=1.24.0"></script>
-<script src="contextual-questions.js?v=1.24.0"></script>
-<script src="football.js?v=1.24.0"></script>
+<script src="copy.js?v=1.25.0"></script>
+<script src="learning.js?v=1.25.0"></script>
+<script src="stats.js?v=1.25.0"></script>
+<script src="opponent.js?v=1.25.0"></script>
+<script src="football-domain.js?v=1.25.0"></script>
+<script src="contextual-questions.js?v=1.25.0"></script>
+<script src="football.js?v=1.25.0"></script>
 <script>
   document.getElementById('version-display').textContent = `v${GAME_VERSION}`;
 </script>
-<script src="../shared/updater.js?v=1.24.0"></script>
+<script src="../shared/updater.js?v=1.25.0"></script>
 </body>
 </html>

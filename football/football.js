@@ -1,4 +1,4 @@
-const GAME_VERSION = '1.24.0';
+const GAME_VERSION = '1.25.0';
 let prevPlayerScore = -1, prevOpponentScore = -1;
 let playerRunTimer = 0, playerCelebrateTimer = 0, playerCelebrateDelayTimer = 0;
 const EZ = 5;
@@ -7,7 +7,7 @@ function yardToPct(y) { return EZ + (y / 100) * (100 - 2 * EZ); }
 const DOWN_NAMES = ["", "1st", "2nd", "3rd", "4th"];
 const QUARTER_NAMES = ["", "1st", "2nd", "3rd", "4th"];
 const START_YARD = 20;
-const TD_POINTS = 7;
+const TD_POINTS = 6;
 const POSSESSIONS_PER_QUARTER = 4;
 
 const COACH_CONCEPT_LABELS = Object.freeze({
@@ -31,7 +31,13 @@ const COACH_CONCEPT_LABELS = Object.freeze({
   'committed-score': 'Reading the score',
   'quarter-read': 'Reading the quarter',
   'down-read': 'Reading the down',
-  'scoring-rule': 'Touchdown points',
+  'touchdown-base-scoring': 'Six-point touchdowns',
+  'conversion-scoring': 'Conversion points',
+  'conversion-placement': 'Conversion try spot',
+  'field-goal-scoring': 'Field-goal points',
+  'field-goal-distance': 'Field-goal distance',
+  'punt-distance': 'Punt distance',
+  'punt-placement': 'Punt landing spot',
   'play-outcome': 'Reading the play result',
   'line-to-gain-comparison': 'Comparing the play to the marker',
   'team-total-yards': 'Team yards through 120',
@@ -153,6 +159,8 @@ let presentationRng = Math.random;
 let sessionInitialized = false;
 let contextSequence = 1;
 let questionSequence = 1;
+let possessionSequence = 1;
+let playSequence = 1;
 let questionFaultMode = null;
 let selectedRivalId = FOOTBALL_OPPONENT.DEFAULT_RIVAL_ID;
 
@@ -201,6 +209,8 @@ function initGameSession(rootSeed) {
   pendingStatsPlay = null;
   contextSequence = 1;
   questionSequence = 1;
+  possessionSequence = 1;
+  playSequence = 1;
   sessionInitialized = true;
 }
 
@@ -214,13 +224,19 @@ function clearGameSessionInitialization() {
   pendingStatsPlay = null;
   contextSequence = 1;
   questionSequence = 1;
+  possessionSequence = 1;
+  playSequence = 1;
 }
 
 function dispatchFootballEvent(type, detail) {
   if (typeof window === 'undefined' || typeof window.dispatchEvent !== 'function') return;
-  window.dispatchEvent(new CustomEvent(type, {
-    detail: FOOTBALL_LEARNING.snapshot(detail),
-  }));
+  try {
+    window.dispatchEvent(new CustomEvent(type, {
+      detail: FOOTBALL_LEARNING.snapshot(detail),
+    }));
+  } catch (error) {
+    // Diagnostics and result observers cannot participate in authoritative state transitions.
+  }
 }
 
 function reportFootballDiagnostic(code, details = {}) {
@@ -428,14 +444,22 @@ function playContextText() {
   if (state.phase === 'halftime') return `HALFTIME / ${score}`;
   if (state.phase === 'final') return `FINAL / ${score}`;
 
+  if (state.phase === 'conversion-decision' || state.activePlay?.playType === 'conversion') {
+    const attempt = state.activePlay?.context?.attemptType === 'twoPoint' ? 'TWO-POINT TRY' : 'CONVERSION';
+    return `${ownerForPossession(state.possession)} / ${attempt} / ${score}`;
+  }
+
   const owner = state.possession === 'offense'
     ? `${state.match.player.shortName} BALL`
     : `${state.match.opponent.shortName} BALL`;
   const bits = [owner, `Q${state.quarter}`, `BALL ON ${ydLabel(state.yd, true).toUpperCase()}`];
 
-  if (state.phase === 'call') {
+  if (state.phase === 'call' || state.phase === 'fourth-down-decision') {
     bits.push(`${DOWN_NAMES[state.down] || state.down} & ${state.ytg}`);
   }
+
+  if (state.activePlay?.playType === 'fieldGoal') bits.push(`${state.activePlay.context.attemptDistance}-YARD FIELD GOAL`);
+  if (state.activePlay?.playType === 'punt') bits.push(`${state.activePlay.proposal.appliedTravelYards}-YARD PUNT`);
 
   if (state.phase === 'question' || state.phase === 'explanation' || state.phase === 'feedback') {
     if (state.g != null) bits.push(`${state.g} YDS IN PLAY`);
@@ -445,6 +469,10 @@ function playContextText() {
   }
 
   return bits.join(' / ');
+}
+
+function ownerForPossession(possession) {
+  return possession === 'offense' ? `${state.match.player.shortName} BALL` : `${state.match.opponent.shortName} BALL`;
 }
 
 function updatePromptContext(text = playContextText()) {
@@ -466,16 +494,11 @@ function applyDeskHeader(key) {
 }
 
 function touchdownContinueLabel(side) {
-  if (state.quarterPossessions + 1 < POSSESSIONS_PER_QUARTER) {
-    return side === 'defense' ? 'Play Offense!' : 'Play Defense!';
-  }
-  if (state.quarter >= 4) return 'Final Score';
-  if (state.quarter === 2) return 'Halftime!';
-  return 'Next Quarter';
+  return side === 'defense' ? 'Defend Conversion' : 'Choose Conversion';
 }
 
 function startingYardFor(possession) {
-  return possession === 'offense' ? START_YARD : 100 - START_YARD;
+  return FOOTBALL_DOMAIN.startingYardFor(possession);
 }
 
 function nextFirstDownLine(yd, direction) {
@@ -505,6 +528,8 @@ function yardsToGoal(yd, direction) {
 function gameSnapshot() {
   return {
     match: state.match,
+    gameId: state.gameId || statsSession?.gameId || null,
+    possessionId: state.possessionId || null,
     quarter: state.quarter || 1,
     playerScore: state.playerScore || 0,
     opponentScore: state.opponentScore || 0,
@@ -519,6 +544,12 @@ function gameSnapshot() {
     gradedQuestions: state.gradedQuestions || 0,
     firstDowns: state.firstDowns || 0,
     pendingNextPossession: state.pendingNextPossession || null,
+    pendingNextStartYardLine: Number.isInteger(state.pendingNextStartYardLine)
+      ? state.pendingNextStartYardLine
+      : null,
+    pendingRestartReason: state.pendingRestartReason || null,
+    finalizedPossessionIds: [...(state.finalizedPossessionIds || [])],
+    committedPlayIds: [...(state.committedPlayIds || [])],
   };
 }
 
@@ -535,6 +566,7 @@ function makeQuestionUiState() {
 
 function blankPlayState() {
   return {
+    activePlay: null,
     activeSnap: null,
     questionInstance: null,
     pendingResolution: null,
@@ -547,6 +579,10 @@ function blankPlayState() {
     opponentTendency: null,
     opponentSnapshot: null,
     opponentSelectionSnapshot: null,
+    opponentDecisionSnapshot: null,
+    publicSpecialAction: null,
+    fourthDownGoChosen: false,
+    specialRecoveryPlay: null,
     matchup: null,
     questionId: null,
     questionSkill: null,
@@ -571,9 +607,9 @@ function blankPlayState() {
   };
 }
 
-function makeDriveState(possession) {
+function makeDriveState(possession, startYardLine = startingYardFor(possession)) {
   const direction = directionFor(possession);
-  const yd = startingYardFor(possession);
+  const yd = clamp(startYardLine, 1, 99);
   const fdYd = nextFirstDownLine(yd, direction);
   return {
     possession,
@@ -591,6 +627,8 @@ function makeDriveState(possession) {
 function createGameState(match = FOOTBALL_OPPONENT.createMatch()) {
   return {
     match,
+    gameId: statsSession?.gameId || null,
+    possessionId: null,
     quarter: 1,
     playerScore: 0,
     opponentScore: 0,
@@ -605,6 +643,10 @@ function createGameState(match = FOOTBALL_OPPONENT.createMatch()) {
     gradedQuestions: 0,
     firstDowns: 0,
     pendingNextPossession: null,
+    pendingNextStartYardLine: null,
+    pendingRestartReason: null,
+    finalizedPossessionIds: [],
+    committedPlayIds: [],
     phase: 'start',
     ...makeDriveState('offense'),
     ...blankPlayState(),
@@ -668,44 +710,103 @@ function statsCallsFromSnap(snap) {
   };
 }
 
-function beginStatsPlay(snap, question) {
-  pendingStatsPlay = FOOTBALL_STATS.beginPlay(statsSession, {
-    preSnap: statsContextFromSnap(snap),
-    calls: statsCallsFromSnap(snap),
-    offeredYards: snap.proposal.appliedGain,
+function statsContextFromPlay(activePlay) {
+  const snap = FOOTBALL_DOMAIN.activeSnapFromPlay(activePlay);
+  return snap ? statsContextFromSnap(snap) : statsContext();
+}
+
+function statsMetricsForPlay(activePlay, transition = activePlay.proposal) {
+  if (activePlay.playType === 'scrimmage') {
+    return {
+      offeredYards: activePlay.proposal.appliedGain,
+      actualYards: transition.appliedGain,
+    };
+  }
+  if (activePlay.playType === 'conversion') {
+    return {
+      attemptType: activePlay.context.attemptType,
+      attemptValue: activePlay.context.attemptValue,
+      tryYardLine: activePlay.context.tryYardLine,
+      pointsAwarded: transition.points,
+    };
+  }
+  if (activePlay.playType === 'fieldGoal') {
+    return {
+      attemptDistance: activePlay.context.attemptDistance,
+      pointsAwarded: transition.points,
+    };
+  }
+  return {
+    travelDistance: transition.appliedTravelYards,
+    landingYardLine: transition.landingYardLine,
+    touchback: transition.restartReason === 'puntTouchback',
+    travelClass: transition.mode,
+  };
+}
+
+function beginStatsDraft(activePlay) {
+  const snap = FOOTBALL_DOMAIN.activeSnapFromPlay(activePlay);
+  pendingStatsPlay = FOOTBALL_STATS.beginPlayDraft(statsSession, {
+    playType: activePlay.playType,
+    possessionId: activePlay.possessionId,
+    playId: activePlay.playId,
+    preSnap: statsContextFromPlay(activePlay),
+    calls: snap ? statsCallsFromSnap(snap) : null,
+    offeredYards: snap ? snap.proposal.appliedGain : null,
+    metrics: statsMetricsForPlay(activePlay),
+    links: {
+      familyId: null,
+      contextId: activePlay.contextId,
+      questionInstanceId: null,
+    },
+  });
+  return pendingStatsPlay;
+}
+
+function sanitizedStatsQuestion(question) {
+  return {
+    id: question.familyId,
+    familyId: question.familyId,
+    contextId: question.contextId,
+    questionInstanceId: question.questionInstanceId,
+    skill: question.skill,
+    concept: question.concept,
+    purpose: question.purpose,
+    grading: question.grading,
+    tier: question.tier,
+  };
+}
+
+function markStatsPresented(question) {
+  return FOOTBALL_STATS.markPresented(pendingStatsPlay, {
     links: {
       familyId: question.familyId,
       contextId: question.contextId,
       questionInstanceId: question.questionInstanceId,
     },
     question: {
-      id: question.familyId,
-      familyId: question.familyId,
-      contextId: question.contextId,
-      questionInstanceId: question.questionInstanceId,
-      skill: question.skill,
-      concept: question.concept,
-      purpose: question.purpose,
-      grading: question.grading,
-      tier: question.tier,
+      ...sanitizedStatsQuestion(question),
     },
   });
 }
 
-function beginBypassedStatsPlay(snap) {
-  pendingStatsPlay = FOOTBALL_STATS.beginBypassedPlay(statsSession, {
-    preSnap: statsContextFromSnap(snap),
-    calls: statsCallsFromSnap(snap),
-    offeredYards: snap.proposal.appliedGain,
+function markStatsBypassed(activePlay, links = {}) {
+  return FOOTBALL_STATS.markBypassed(pendingStatsPlay, {
     links: {
-      familyId: null,
-      contextId: snap.contextId,
-      questionInstanceId: null,
+      familyId: links.familyId ?? null,
+      contextId: links.contextId ?? activePlay.contextId,
+      questionInstanceId: links.questionInstanceId ?? null,
     },
   });
 }
 
-function finalizeStatsPlay(actualYards, outcome) {
+function discardPendingStatsPlay() {
+  const pending = pendingStatsPlay;
+  pendingStatsPlay = null;
+  return pending ? FOOTBALL_STATS.discardPlay(pending) : false;
+}
+
+function finalizeStatsPlay(activePlay, transition, outcome) {
   const pending = pendingStatsPlay;
   pendingStatsPlay = null;
   if (!pending) return false;
@@ -713,8 +814,9 @@ function finalizeStatsPlay(actualYards, outcome) {
     ? FOOTBALL_STATS.completeBypassedPlay
     : FOOTBALL_STATS.completePlay;
   return complete(statsSession, pending, {
-    actualYards,
+    actualYards: activePlay.playType === 'scrimmage' ? transition.appliedGain : null,
     outcome,
+    metrics: statsMetricsForPlay(activePlay, transition),
     postPlay: statsContext(),
   });
 }
@@ -738,6 +840,14 @@ function nextContextId() {
 
 function nextQuestionInstanceId() {
   return `question-${questionSequence++}`;
+}
+
+function nextPossessionId() {
+  return `${state.gameId || statsSession?.gameId || 'game'}-possession-${possessionSequence++}`;
+}
+
+function nextPlayId() {
+  return `${state.gameId || statsSession?.gameId || 'game'}-play-${playSequence++}`;
 }
 
 function makeSnapContext(calls, privateOpponentSnapshot = null) {
@@ -769,7 +879,7 @@ function makeSnapContext(calls, privateOpponentSnapshot = null) {
   return context;
 }
 
-function makeActiveSnap(callKey, opts = {}) {
+function makeActiveScrimmagePlay(callKey, opts = {}) {
   const call = OFFENSE_CALLS[callKey] || OFFENSE_CALLS.shortRun;
   const maxPossible = state.direction === 1 ? 100 - state.yd : state.yd;
   const maxG = Math.max(1, Math.min(call.gRange[1], maxPossible));
@@ -797,18 +907,156 @@ function makeActiveSnap(callKey, opts = {}) {
     if (error && typeof error === 'object') error.contextId = error.contextId ?? context.contextId;
     throw error;
   }
+  const activePlay = FOOTBALL_DOMAIN.createActivePlay({
+    schemaVersion: 1,
+    playType: 'scrimmage',
+    gameId: state.gameId,
+    possessionId: state.possessionId,
+    playId: opts.playId || nextPlayId(),
+    contextId: snap.contextId,
+    context: snap.context,
+    proposal: snap.proposal,
+    call: snap.call,
+  });
   const candidate = questionFaultMode === 'invalid-projection'
-    ? { ...snap.proposal, endYardLine: snap.proposal.endYardLine + state.direction }
-    : snap.proposal;
-  const validation = FOOTBALL_DOMAIN.validateTransition(snap, candidate);
+    ? { ...activePlay.proposal, endYardLine: activePlay.proposal.endYardLine + state.direction }
+    : activePlay.proposal;
+  const validation = FOOTBALL_DOMAIN.validatePlayTransition(activePlay, candidate);
   if (!validation.ok) {
     const error = new Error('The proposed football transition failed independent validation.');
     error.code = 'invalid-projection';
     error.diagnostics = validation.diagnostics;
-    error.contextId = snap.contextId;
+    error.contextId = activePlay.contextId;
+    error.activePlay = activePlay;
     throw error;
   }
-  return snap;
+  return activePlay;
+}
+
+function makeActiveSnap(callKey, opts = {}) {
+  return FOOTBALL_DOMAIN.activeSnapFromPlay(makeActiveScrimmagePlay(callKey, opts));
+}
+
+function makeSpecialContext(playType, details = {}) {
+  const context = {
+    schemaVersion: 1,
+    playType,
+    contextId: details.contextId || nextContextId(),
+    match: state.match,
+    possession: state.possession,
+    direction: state.direction,
+    quarter: state.quarter,
+    ...(playType === 'punt' || playType === 'fieldGoal' ? { yardLine: state.yd } : {}),
+    ...(playType === 'fieldGoal' ? {
+      attemptDistance: FOOTBALL_DOMAIN.fieldGoalDistance(state.yd, state.direction),
+    } : {}),
+    ...(playType === 'conversion' ? {
+      tryYardLine: FOOTBALL_DOMAIN.tryYardLineFor(state.direction),
+      attemptType: details.attemptType,
+      attemptValue: details.attemptType === 'twoPoint' ? 2 : 1,
+    } : {}),
+    scores: {
+      player: state.playerScore,
+      opponent: state.opponentScore,
+    },
+  };
+  if (questionFaultMode === 'invalid-context') context.direction = state.direction * -1;
+  return context;
+}
+
+function validateNewSpecialPlay(activePlay) {
+  const candidate = questionFaultMode === 'invalid-projection'
+    ? { ...activePlay.proposal, points: (activePlay.proposal.points || 0) + 1 }
+    : activePlay.proposal;
+  const validation = FOOTBALL_DOMAIN.validatePlayTransition(activePlay, candidate);
+  if (!validation.ok) {
+    const error = new Error('The proposed special-team transition failed independent validation.');
+    error.code = 'invalid-projection';
+    error.diagnostics = validation.diagnostics;
+    error.contextId = activePlay.contextId;
+    error.activePlay = activePlay;
+    throw error;
+  }
+  return activePlay;
+}
+
+function makePuntActivePlay(options = {}) {
+  const travelYards = Number.isInteger(options.travelYards) ? options.travelYards : randomInt(35, 50);
+  const playId = options.playId || nextPlayId();
+  const contextId = options.contextId || nextContextId();
+  try {
+    const context = makeSpecialContext('punt', { ...options, contextId });
+    const proposal = FOOTBALL_DOMAIN.projectPunt(context, travelYards, { mode: 'normal' });
+    return validateNewSpecialPlay(FOOTBALL_DOMAIN.createActivePlay({
+      schemaVersion: 1,
+      playType: 'punt',
+      gameId: state.gameId,
+      possessionId: state.possessionId,
+      playId,
+      contextId: context.contextId,
+      context,
+      proposal,
+    }));
+  } catch (error) {
+    if (error && typeof error === 'object') {
+      error.playId = error.playId ?? playId;
+      error.contextId = error.contextId ?? contextId;
+      error.recoverySpec = { playType: 'punt', travelYards };
+    }
+    throw error;
+  }
+}
+
+function makeFieldGoalActivePlay(options = {}) {
+  const playId = options.playId || nextPlayId();
+  const contextId = options.contextId || nextContextId();
+  try {
+    const context = makeSpecialContext('fieldGoal', { ...options, contextId });
+    const proposal = FOOTBALL_DOMAIN.projectFieldGoal(context, 'made');
+    return validateNewSpecialPlay(FOOTBALL_DOMAIN.createActivePlay({
+      schemaVersion: 1,
+      playType: 'fieldGoal',
+      gameId: state.gameId,
+      possessionId: state.possessionId,
+      playId,
+      contextId: context.contextId,
+      context,
+      proposal,
+    }));
+  } catch (error) {
+    if (error && typeof error === 'object') {
+      error.playId = error.playId ?? playId;
+      error.contextId = error.contextId ?? contextId;
+      error.recoverySpec = { playType: 'fieldGoal' };
+    }
+    throw error;
+  }
+}
+
+function makeConversionActivePlay(attemptType, options = {}) {
+  const playId = options.playId || nextPlayId();
+  const contextId = options.contextId || nextContextId();
+  try {
+    const context = makeSpecialContext('conversion', { ...options, contextId, attemptType });
+    const proposal = FOOTBALL_DOMAIN.projectConversion(context, 'made');
+    return validateNewSpecialPlay(FOOTBALL_DOMAIN.createActivePlay({
+      schemaVersion: 1,
+      playType: 'conversion',
+      gameId: state.gameId,
+      possessionId: state.possessionId,
+      playId,
+      contextId: context.contextId,
+      context,
+      proposal,
+    }));
+  } catch (error) {
+    if (error && typeof error === 'object') {
+      error.playId = error.playId ?? playId;
+      error.contextId = error.contextId ?? contextId;
+      error.recoverySpec = { playType: 'conversion', attemptType };
+    }
+    throw error;
+  }
 }
 
 function readQuestionPointer(root, path) {
@@ -823,21 +1071,29 @@ function sameContractValue(left, right) {
   return JSON.stringify(left) === JSON.stringify(right);
 }
 
-function validateQuestionInstance(snap, question) {
+function validateQuestionInstance(activePlay, question) {
   if (!question || typeof question !== 'object') throw Object.assign(new Error('Question builder returned no contract.'), { code: 'malformed-question' });
-  if (question.contextId !== snap.contextId || !question.questionInstanceId || question.id !== question.familyId) {
-    throw Object.assign(new Error('Question identity does not link to the frozen snap.'), { code: 'malformed-question' });
+  if (question.contextId !== activePlay.contextId || !question.questionInstanceId || question.id !== question.familyId
+    || question.playType !== activePlay.playType) {
+    throw Object.assign(new Error('Question identity does not link to the frozen play.'), { code: 'malformed-question' });
   }
   if (!Array.isArray(question.bindings) || question.bindings !== question.premises || !question.bindings.length) {
     throw Object.assign(new Error('Question bindings are missing or have drifted.'), { code: 'malformed-question' });
   }
+  const specialBindingPaths = activePlay.playType === 'scrimmage'
+    ? null
+    : new Set(FOOTBALL_CONTEXTUAL_QUESTIONS.SPECIAL_BINDING_PATHS[activePlay.playType] || []);
   for (const binding of question.bindings) {
     if (binding?.source?.kind === 'context'
-      && binding.source.path.startsWith('/context/privateOpponentSnapshot')) {
+      && /private|opponentDecision|plannedCall|weight/i.test(binding.source.path)) {
       throw Object.assign(new Error('Question bindings may not expose the private opponent snapshot.'), { code: 'malformed-question' });
     }
+    if (specialBindingPaths && binding?.source?.kind === 'context'
+      && !specialBindingPaths.has(binding.source.path)) {
+      throw Object.assign(new Error('Special-team question bindings exceed the outcome-independent public allowlist.'), { code: 'malformed-question' });
+    }
     const actual = binding?.source?.kind === 'context'
-      ? readQuestionPointer(snap, binding.source.path)
+      ? readQuestionPointer(activePlay, binding.source.path)
       : binding?.source?.kind === 'rule'
         ? FOOTBALL_CONTEXTUAL_QUESTIONS.RULES[binding.source.ruleId]
         : undefined;
@@ -862,11 +1118,11 @@ function validateQuestionInstance(snap, question) {
   return question;
 }
 
-function pickQuestion(snap) {
+function pickQuestion(activePlay) {
   const profile = contextualQuestionProfile();
-  const inspected = FOOTBALL_CONTEXTUAL_QUESTIONS.inspect(snap, profile);
+  const inspected = FOOTBALL_CONTEXTUAL_QUESTIONS.inspect(activePlay, profile);
   const eligible = questionFaultMode === 'empty-pool' ? [] : inspected.eligible.map((entry) => {
-    const selection = FOOTBALL_CONTEXTUAL_QUESTIONS.selectionFor(snap, entry.familyId);
+    const selection = FOOTBALL_CONTEXTUAL_QUESTIONS.selectionFor(activePlay, entry.familyId);
     return { ...entry, selectionMultiplier: selection.multiplier };
   });
   if (!eligible.length) {
@@ -874,7 +1130,7 @@ function pickQuestion(snap) {
     error.code = 'empty-pool';
     error.declined = inspected.declined;
     error.familyId = null;
-    error.contextId = snap.contextId;
+    error.contextId = activePlay.contextId;
     error.questionInstanceId = null;
     throw error;
   }
@@ -890,7 +1146,7 @@ function pickQuestion(snap) {
       ? 'guided'
       : 'initial';
     const support = FOOTBALL_LEARNING.supportFor(learningSession, entry.skill, firstSupport);
-    const built = FOOTBALL_CONTEXTUAL_QUESTIONS.build(snap, entry.familyId, {
+    const built = FOOTBALL_CONTEXTUAL_QUESTIONS.build(activePlay, entry.familyId, {
       support,
       presentationRng,
       profile: inspected.profile,
@@ -900,14 +1156,14 @@ function pickQuestion(snap) {
       : built;
     question = FOOTBALL_DOMAIN.deepFreeze(FOOTBALL_DOMAIN.clone({
       ...source,
-      contextId: snap.contextId,
+      contextId: activePlay.contextId,
       questionInstanceId: nextQuestionInstanceId(),
     }));
-    return validateQuestionInstance(snap, question);
+    return validateQuestionInstance(activePlay, question);
   } catch (error) {
     const failure = error && typeof error === 'object' ? error : new Error(String(error));
     failure.familyId = failure.familyId ?? entry.familyId;
-    failure.contextId = failure.contextId ?? snap.contextId;
+    failure.contextId = failure.contextId ?? activePlay.contextId;
     failure.questionInstanceId = failure.questionInstanceId ?? question?.questionInstanceId ?? null;
     throw failure;
   }
@@ -995,8 +1251,15 @@ function updateField(animated) {
 
 function updateStatus() {
   applyMatchPresentation(state.match);
-  document.getElementById('s-down').textContent = downDistanceLabel(state.down, state.ytg);
-  document.getElementById('s-yd').textContent = ydLabel(state.yd, true);
+  const conversionMode = state.phase === 'conversion-decision' || state.activePlay?.playType === 'conversion';
+  const downLabel = document.getElementById('s-down-label');
+  const yardLabel = document.getElementById('s-yd-label');
+  if (downLabel) downLabel.textContent = conversionMode ? 'Play' : 'Down';
+  if (yardLabel) yardLabel.textContent = conversionMode ? 'Try Spot' : 'Ball On';
+  document.getElementById('s-down').textContent = conversionMode ? 'TRY' : downDistanceLabel(state.down, state.ytg);
+  document.getElementById('s-yd').textContent = conversionMode
+    ? '2-yard line'
+    : ydLabel(state.yd, true);
   document.getElementById('s-quarter').textContent = state.quarter;
   const pEl = document.getElementById('s-pscore');
   const oEl = document.getElementById('s-oscore');
@@ -1159,6 +1422,36 @@ function renderMathVisual() {
     case 'touchdown-rule':
       tokens = ['TOUCHDOWN', visual.result ? `${visual.result.value} POINTS` : '? POINTS'];
       break;
+    case 'conversion-value':
+      tokens = [
+        teamToken(`${String(data.team || 'TEAM').toUpperCase()} ${data.score}`, data.teamRole),
+        data.attemptType === 'twoPoint' ? 'TWO-POINT TRY' : 'PAT',
+        visual.result ? `${visual.result.value} ${visual.result.value === 1 ? 'POINT' : 'POINTS'}` : '? POINTS',
+      ];
+      break;
+    case 'conversion-marker':
+      tokens = [
+        data.direction === 1 ? 'GOAL 100' : 'GOAL 0',
+        'TWO YARDS BACK',
+        visual.result ? `TRY ${visual.result.value}` : 'TRY ?',
+      ];
+      break;
+    case 'field-goal-distance':
+      tokens = [`${data.attemptDistance}-YARD FIELD GOAL`];
+      break;
+    case 'field-goal-value':
+      tokens = [
+        teamToken(`${String(data.team || 'TEAM').toUpperCase()} ${data.score}`, data.teamRole),
+        `${data.attemptDistance}-YD FG`,
+        visual.result ? `${visual.result.value} POINTS` : '? POINTS',
+      ];
+      break;
+    case 'punt-travel':
+      tokens = [`START ${data.startYardLine}`, data.direction === 1 ? 'KICK RIGHT' : 'KICK LEFT', `${data.travelYards} YDS`];
+      break;
+    case 'punt-landing':
+      tokens = [`START ${data.startYardLine}`, `${data.travelYards} YDS`, visual.result ? `LAND ${visual.result.value}` : 'LAND ?'];
+      break;
     default:
       tokens = Object.values(data).filter(value => value !== null && ['string', 'number'].includes(typeof value));
       if (!tokens.length) tokens = ['FOOTBALL MATH'];
@@ -1227,8 +1520,18 @@ function hideCallGrid() {
   grid.innerHTML = '';
 }
 
+function hideDecisionGrid() {
+  const grid = document.getElementById('decision-grid');
+  if (!grid) return;
+  grid.classList.add('hidden');
+  delete grid.dataset.count;
+  delete grid.dataset.possession;
+  grid.replaceChildren();
+}
+
 function renderButtons() {
   hideCallGrid();
+  hideDecisionGrid();
   const row = document.getElementById('btn-row');
   row.classList.remove('hidden');
   const choices = state.questionInstance?.choices || [];
@@ -1254,12 +1557,15 @@ function renderButtons() {
   });
 }
 
-function renderCallGrid(calls, onPick) {
+function renderCallGrid(calls, onPick, { focusFirst = false } = {}) {
   hideAnswerButtons();
+  hideDecisionGrid();
   hideMathVisual();
   const grid = document.getElementById('call-grid');
   grid.innerHTML = '';
   grid.classList.remove('hidden');
+  grid.setAttribute('role', 'group');
+  grid.setAttribute('aria-label', state.possession === 'defense' ? 'Defense coverage calls' : 'Offense play calls');
   grid.dataset.count = String(calls.length);
   grid.dataset.possession = state.possession;
   calls.forEach((call) => {
@@ -1273,9 +1579,66 @@ function renderCallGrid(calls, onPick) {
       `<span class="call-diagram" aria-hidden="true">${diagram}</span>` +
       `<span class="call-label">${call.label}</span>` +
       `<span class="call-desc">${call.desc}</span>`;
-    btn.addEventListener('click', () => onPick(call.key));
+    btn.addEventListener('click', () => {
+      const transferFocus = document.activeElement === btn;
+      const handled = onPick(call.key);
+      if (transferFocus && handled !== false && !btn.isConnected) {
+        const target = document.querySelector(
+          '#btn-row:not(.hidden) .ans-btn:not(.hidden):not(:disabled)'
+        );
+        if (target) target.focus({ preventScroll: true });
+      }
+    });
     grid.appendChild(btn);
   });
+  const firstButton = grid.querySelector('.call-btn:not(:disabled)');
+  if (focusFirst && firstButton && !document.querySelector('.overlay.show')) {
+    firstButton.focus({ preventScroll: true });
+  }
+}
+
+function renderDecisionGrid(actions, onPick, ariaLabel) {
+  hideAnswerButtons();
+  hideCallGrid();
+  hideMathVisual();
+  const grid = document.getElementById('decision-grid');
+  grid.replaceChildren();
+  grid.classList.remove('hidden');
+  grid.dataset.count = String(actions.length);
+  grid.dataset.possession = state.possession;
+  grid.setAttribute('aria-label', ariaLabel || 'Special-teams decision');
+  actions.forEach((action) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'decision-btn';
+    button.dataset.action = action.key;
+    const eyebrow = document.createElement('span');
+    eyebrow.className = 'decision-eyebrow';
+    eyebrow.textContent = action.eyebrow || 'Decision';
+    const label = document.createElement('span');
+    label.className = 'decision-label';
+    label.textContent = action.label;
+    const description = document.createElement('span');
+    description.className = 'decision-desc';
+    description.textContent = action.desc;
+    button.append(eyebrow, label, description);
+    button.addEventListener('click', () => {
+      const transferFocus = document.activeElement === button;
+      const handled = onPick(action.key);
+      if (transferFocus && handled !== false && !button.isConnected) {
+        const target = document.querySelector(
+          '#btn-row:not(.hidden) .ans-btn:not(.hidden):not(:disabled), '
+          + '#call-grid:not(.hidden) .call-btn:not(:disabled)'
+        );
+        if (target) target.focus({ preventScroll: true });
+      }
+    });
+    grid.appendChild(button);
+  });
+  const firstButton = grid.querySelector('.decision-btn:not([disabled])');
+  if (firstButton && !document.querySelector('.overlay.show')) {
+    firstButton.focus({ preventScroll: true });
+  }
 }
 
 function disableAnswers() {
@@ -1394,39 +1757,331 @@ function updateMuteButton() {
 }
 
 // -- Play flow ----------------------------------------------------------------
-function showCallPrompt({ preserveOpponentSnapshot = false } = {}) {
-  clearTimeout(advTimer);
-  const opponentSnapshot = preserveOpponentSnapshot ? state.opponentSnapshot : null;
-  Object.assign(state, blankPlayState(), { phase: 'call' });
-  if (state.possession === 'defense') {
-    state.opponentSnapshot = opponentSnapshot || planOpponentSnap();
-  }
+function announceSpecialAction(text) {
+  const live = document.getElementById('special-action-live');
+  if (live) live.textContent = text || '';
+}
+
+function renderOrdinaryCallPrompt({ focusFirstCall = false } = {}) {
+  state.phase = 'call';
   updateStatus();
   if (state.possession === 'offense') {
     document.getElementById('play-label').textContent = downDistanceLabel(state.down, state.ytg);
     document.getElementById('question').textContent = 'Call the snap. Every play uses your learning plan.';
     applyDeskHeader('callOffense');
-    renderCallGrid(Object.values(OFFENSE_CALLS), selectOffenseCall);
+    renderCallGrid(Object.values(OFFENSE_CALLS), selectOffenseCall, { focusFirst: focusFirstCall });
   } else {
     document.getElementById('play-label').textContent = downDistanceLabel(state.down, state.ytg);
     document.getElementById('question').textContent = 'Call the coverage.';
     applyDeskHeader('callDefense');
-    renderCallGrid(Object.values(DEFENSE_CALLS), selectDefenseCall);
+    renderCallGrid(Object.values(DEFENSE_CALLS), selectDefenseCall, { focusFirst: focusFirstCall });
   }
   setFeedback('');
 }
 
-function startDrive(possession) {
+function fourthDownDecisionState() {
+  return {
+    possession: state.possession,
+    direction: state.direction,
+    quarter: state.quarter,
+    quarterPossessions: state.quarterPossessions,
+    possessionsPerQuarter: POSSESSIONS_PER_QUARTER,
+    yardLine: state.yd,
+    yardsToGo: state.ytg,
+    scores: { player: state.playerScore, opponent: state.opponentScore },
+  };
+}
+
+function taggedOpponentDecision(decision) {
+  if (decision?.gameId === state.gameId && decision?.possessionId === state.possessionId) return decision;
+  return FOOTBALL_DOMAIN.deepFreeze({
+    ...FOOTBALL_DOMAIN.clone(decision),
+    gameId: state.gameId,
+    possessionId: state.possessionId,
+  });
+}
+
+function showPlayerFourthDownDecision(recovery = null) {
+  state.phase = 'fourth-down-decision';
+  state.specialRecoveryPlay = recovery;
+  updateStatus();
+  document.getElementById('play-label').textContent = downDistanceLabel(state.down, state.ytg);
+  const frozenAction = recovery?.playType === 'punt' ? 'punt'
+    : recovery?.playType === 'fieldGoal' ? 'fieldGoal' : null;
+  const preservedPuntTravel = recovery?.proposal?.requestedTravelYards ?? recovery?.travelYards;
+  const actions = frozenAction ? [{
+    key: frozenAction,
+    eyebrow: 'Same action',
+    label: frozenAction === 'punt' ? 'Retry Punt' : 'Retry Field Goal',
+    desc: frozenAction === 'punt'
+      ? `The preserved ${preservedPuntTravel}-yard punt draw is waiting.`
+      : 'The same field-goal try is waiting.',
+  }] : [
+    { key: 'go', eyebrow: 'Keep the drive alive', label: 'Go for it', desc: 'Choose from the normal five-play call sheet.' },
+    { key: 'punt', eyebrow: 'Change field position', label: 'Punt', desc: 'Kick the ball away and pin the opponent back.' },
+  ];
+  if (!frozenAction && FOOTBALL_DOMAIN.isFieldGoalLegal(state.yd, state.direction)) actions.push({
+    key: 'fieldGoal',
+    eyebrow: `${FOOTBALL_DOMAIN.fieldGoalDistance(state.yd, state.direction)}-yard attempt`,
+    label: 'Field Goal',
+    desc: 'Try to score three points.',
+  });
+  const fieldGoalAction = actions.find(({ key }) => key === 'fieldGoal');
+  let decisionCopy;
+  if (frozenAction === 'punt') {
+    decisionCopy = `Retry the preserved ${preservedPuntTravel}-yard punt.`;
+    document.getElementById('question').textContent = decisionCopy;
+    setDeskHeader('4th Down', 'Retry the same punt.', decisionCopy);
+  } else if (frozenAction === 'fieldGoal') {
+    decisionCopy = 'Retry the same field-goal try.';
+    document.getElementById('question').textContent = decisionCopy;
+    setDeskHeader('4th Down', 'Retry the same field goal.', decisionCopy);
+  } else if (fieldGoalAction) {
+    decisionCopy = `Choose go, punt, or the legal ${FOOTBALL_DOMAIN.fieldGoalDistance(state.yd, state.direction)}-yard field goal.`;
+    document.getElementById('question').textContent = 'Make the fourth-down decision.';
+    setDeskHeader('4th Down', 'Make the fourth-down call.', decisionCopy);
+  } else {
+    decisionCopy = 'Choose go or punt.';
+    document.getElementById('question').textContent = 'Make the fourth-down decision.';
+    setDeskHeader('4th Down', 'Make the fourth-down call.', 'Go for it or punt.');
+  }
+  renderDecisionGrid(
+    actions,
+    selectFourthDownAction,
+    frozenAction ? 'Retry the same fourth-down action' : 'Choose a fourth-down action',
+  );
+  setFeedback(decisionCopy, 'info');
+  announceSpecialAction(decisionCopy);
+  syncUiState();
+}
+
+function opponentSpecialActionLabel(action) {
+  if (action === 'fieldGoal') return `${state.match.opponent.shortName} chooses a field goal.`;
+  if (action === 'punt') return `${state.match.opponent.shortName} chooses to punt.`;
+  if (action === 'twoPoint') return `${state.match.opponent.shortName} chooses a two-point try.`;
+  return `${state.match.opponent.shortName} chooses a PAT.`;
+}
+
+function buildSpecialPlay(action, recovery = null) {
+  const conversionAction = action === 'pat' || action === 'twoPoint';
+  const sameAction = recovery?.playType === action
+    || (conversionAction && recovery?.playType === 'conversion'
+      && (recovery?.context?.attemptType || recovery?.attemptType) === action);
+  if (sameAction && recovery.proposal) return recovery;
+  const spec = sameAction ? recovery : {};
+  if (action === 'punt') return makePuntActivePlay(spec);
+  if (action === 'fieldGoal') return makeFieldGoalActivePlay(spec);
+  if (action === 'pat' || action === 'twoPoint') return makeConversionActivePlay(action, spec);
+  throw new Error(`Unknown special-team action: ${action}`);
+}
+
+function specialRecoverySpec(activePlay, { preserveIdentity = true } = {}) {
+  if (!activePlay || activePlay.playType === 'scrimmage') return null;
+  return FOOTBALL_DOMAIN.deepFreeze({
+    playType: activePlay.playType,
+    ...(preserveIdentity ? {
+      playId: activePlay.playId,
+      contextId: activePlay.contextId,
+    } : {}),
+    ...(activePlay.playType === 'punt'
+      ? { travelYards: activePlay.proposal.requestedTravelYards }
+      : {}),
+    ...(activePlay.playType === 'conversion'
+      ? { attemptType: activePlay.context.attemptType }
+      : {}),
+  });
+}
+
+function handleInvalidSpecialPlay(error, origin, action, decision = null) {
+  discardPendingStatsPlay();
+  const recoveryCandidate = error?.activePlay || error?.recoverySpec || state.specialRecoveryPlay;
+  const recovery = recoveryCandidate && !Object.isFrozen(recoveryCandidate)
+    ? FOOTBALL_DOMAIN.deepFreeze(FOOTBALL_DOMAIN.clone(recoveryCandidate))
+    : recoveryCandidate;
+  reportFootballDiagnostic(error?.code || 'invalid-context', {
+    message: error?.message || 'The special-team play could not be validated.',
+    diagnostics: error?.diagnostics || null,
+    playId: error?.playId ?? error?.activePlay?.playId ?? null,
+    familyId: error?.familyId ?? null,
+    contextId: error?.contextId ?? recovery?.contextId ?? null,
+    questionInstanceId: error?.questionInstanceId ?? null,
+  });
+  const fieldGoalNoLongerLegal = origin === 'fourth-down-decision'
+    && action === 'fieldGoal'
+    && !FOOTBALL_DOMAIN.isFieldGoalLegal(state.yd, state.direction);
+  if (fieldGoalNoLongerLegal) {
+    Object.assign(state, blankPlayState(), {
+      phase: origin,
+      opponentDecisionSnapshot: null,
+      publicSpecialAction: null,
+      specialRecoveryPlay: null,
+    });
+    if (state.possession === 'offense') showPlayerFourthDownDecision();
+    else beginOpponentFourthDown();
+    return;
+  }
+  Object.assign(state, blankPlayState(), {
+    phase: origin,
+    opponentDecisionSnapshot: decision,
+    publicSpecialAction: state.possession === 'defense' ? action : null,
+    specialRecoveryPlay: recovery,
+  });
+  if (origin === 'conversion-decision') {
+    showConversionDecision(recovery, decision);
+  } else if (state.possession === 'offense') {
+    showPlayerFourthDownDecision(recovery);
+  } else {
+    updateStatus();
+    const preservedPuntTravel = recovery?.proposal?.requestedTravelYards ?? recovery?.travelYards;
+    const recoveryCopy = action === 'punt'
+      ? `Retry the preserved ${preservedPuntTravel}-yard punt.`
+      : 'Retry the same field-goal try.';
+    setDeskHeader('4th Down', 'Retry the opponent action.', recoveryCopy);
+    document.getElementById('play-label').textContent = action === 'punt' ? 'Punt' : 'Field Goal';
+    document.getElementById('question').textContent = recoveryCopy;
+    renderDecisionGrid([{
+      key: action,
+      eyebrow: 'Same action',
+      label: action === 'punt' ? 'Retry Punt' : 'Retry Field Goal',
+      desc: action === 'punt'
+        ? `The opponent's preserved ${preservedPuntTravel}-yard punt draw is waiting.`
+        : "The opponent's same field-goal try is waiting.",
+    }], retryOpponentSpecialAction, 'Retry the same opponent action');
+    setFeedback(`That play could not be checked. ${recoveryCopy}`, 'info');
+    announceSpecialAction(recoveryCopy);
+    syncUiState();
+  }
+}
+
+function retryOpponentSpecialAction(action) {
+  const decision = state.opponentDecisionSnapshot;
+  const recoveryType = state.specialRecoveryPlay?.playType;
+  if (state.phase !== 'fourth-down-decision' || state.possession !== 'defense'
+    || !decision || decision.action !== action || recoveryType !== action) return false;
+  let activePlay;
+  try {
+    activePlay = buildSpecialPlay(action, state.specialRecoveryPlay);
+  } catch (error) {
+    handleInvalidSpecialPlay(error, 'fourth-down-decision', action, decision);
+    return false;
+  }
+  startSpecialPlay(activePlay, opponentSpecialActionLabel(action));
+  return true;
+}
+
+function retryOpponentConversionAction(action) {
+  const decision = state.opponentDecisionSnapshot;
+  const recoveryAction = state.specialRecoveryPlay?.context?.attemptType
+    || state.specialRecoveryPlay?.attemptType;
+  if (state.phase !== 'conversion-decision' || state.possession !== 'defense'
+    || !decision || decision.action !== action || recoveryAction !== action) return false;
+  let activePlay;
+  try {
+    activePlay = buildSpecialPlay(action, state.specialRecoveryPlay);
+  } catch (error) {
+    handleInvalidSpecialPlay(error, 'conversion-decision', action, decision);
+    return false;
+  }
+  startSpecialPlay(activePlay, opponentSpecialActionLabel(action));
+  return true;
+}
+
+function beginOpponentFourthDown(decision = null, recovery = null) {
+  const frozenDecision = decision || taggedOpponentDecision(FOOTBALL_OPPONENT.decideFourthDown(fourthDownDecisionState()));
+  state.opponentDecisionSnapshot = frozenDecision;
+  if (frozenDecision.action === 'go') {
+    state.fourthDownGoChosen = true;
+    state.opponentSnapshot = state.opponentSnapshot || planOpponentSnap();
+    renderOrdinaryCallPrompt();
+    return;
+  }
+  state.publicSpecialAction = frozenDecision.action;
+  let activePlay;
+  try {
+    activePlay = buildSpecialPlay(frozenDecision.action, recovery);
+  } catch (error) {
+    handleInvalidSpecialPlay(error, 'fourth-down-decision', frozenDecision.action, frozenDecision);
+    return;
+  }
+  startSpecialPlay(activePlay, opponentSpecialActionLabel(frozenDecision.action));
+}
+
+function showCallPrompt({ preserveOpponentSnapshot = false, forceScrimmage = false, focusFirstCall = false } = {}) {
+  clearTimeout(advTimer);
+  const opponentSnapshot = preserveOpponentSnapshot ? state.opponentSnapshot : null;
+  const decision = state.down === 4 ? state.opponentDecisionSnapshot : null;
+  const recovery = state.down === 4 ? state.specialRecoveryPlay : null;
+  const goChosen = state.down === 4 && (forceScrimmage || state.fourthDownGoChosen);
+  Object.assign(state, blankPlayState(), {
+    phase: 'call',
+    opponentDecisionSnapshot: decision,
+    opponentSnapshot,
+    specialRecoveryPlay: recovery,
+    fourthDownGoChosen: goChosen,
+  });
+  announceSpecialAction('');
+  if (state.down === 4 && !goChosen) {
+    if (state.possession === 'offense') showPlayerFourthDownDecision(recovery);
+    else beginOpponentFourthDown(decision, recovery);
+    return;
+  }
+  if (state.possession === 'defense') {
+    state.opponentSnapshot = opponentSnapshot || planOpponentSnap();
+  }
+  renderOrdinaryCallPrompt({ focusFirstCall });
+}
+
+function selectFourthDownAction(action) {
+  if (state.phase !== 'fourth-down-decision' || state.possession !== 'offense') return false;
+  const recoveryAction = state.specialRecoveryPlay?.playType;
+  if (recoveryAction && action !== recoveryAction) return false;
+  if (action === 'go') {
+    const recovery = state.specialRecoveryPlay;
+    Object.assign(state, blankPlayState(), {
+      phase: 'call',
+      fourthDownGoChosen: true,
+      specialRecoveryPlay: recovery,
+    });
+    renderOrdinaryCallPrompt();
+    return true;
+  }
+  if (action === 'fieldGoal' && !FOOTBALL_DOMAIN.isFieldGoalLegal(state.yd, state.direction)) return false;
+  let activePlay;
+  try {
+    activePlay = buildSpecialPlay(action, state.specialRecoveryPlay);
+  } catch (error) {
+    handleInvalidSpecialPlay(error, 'fourth-down-decision', action);
+    return false;
+  }
+  startSpecialPlay(activePlay, action === 'punt'
+    ? 'You choose to punt.'
+    : `You choose a ${activePlay.context.attemptDistance}-yard field goal.`);
+  return true;
+}
+
+function startDrive(possession, startYardLine = null, restartReason = null) {
   clearTimeout(advTimer);
   hideOverlays();
   resetPlayerAnimations();
+  const resolvedStart = Number.isInteger(startYardLine)
+    ? startYardLine
+    : state.pendingNextPossession === possession && Number.isInteger(state.pendingNextStartYardLine)
+      ? state.pendingNextStartYardLine
+      : startingYardFor(possession);
+  const resolvedReason = restartReason
+    || (state.pendingNextPossession === possession ? state.pendingRestartReason : null)
+    || 'scheduledStart';
   state = {
     ...gameSnapshot(),
-    ...makeDriveState(possession),
+    possessionId: nextPossessionId(),
+    ...makeDriveState(possession, resolvedStart),
     ...blankPlayState(),
     phase: 'call',
   };
   state.pendingNextPossession = null;
+  state.pendingNextStartYardLine = null;
+  state.pendingRestartReason = null;
+  state.restartReason = resolvedReason;
   updateField(false);
   updateStatus();
   showCallPrompt();
@@ -1457,38 +2112,75 @@ function syncQuestionMirrors() {
   state.outcomeCommitted = ui.outcomeCommitted;
 }
 
-function activateSnapMirrors(snap, question = null) {
-  const play = legacyPlayFromTransition(snap, snap.proposal, question);
+function activatePlayMirrors(activePlay, question = null) {
+  const snap = FOOTBALL_DOMAIN.activeSnapFromPlay(activePlay);
+  const play = snap ? legacyPlayFromTransition(snap, snap.proposal, question) : null;
+  state.activePlay = activePlay;
   state.activeSnap = snap;
   state.questionInstance = question;
   state.pendingResolution = null;
   state.questionUi = makeQuestionUiState();
   if (question) state.questionUi.support = question.support;
-  state.g = snap.proposal.appliedGain;
-  state.label = snap.call.label;
-  state.callKey = snap.call.key;
-  state.defenseCallKey = snap.context.calls.defense;
-  state.opponentCallKey = snap.context.possession === 'defense' ? snap.context.calls.offense : null;
-  state.matchup = snap.context.calls.matchup;
+  state.g = snap ? snap.proposal.appliedGain : null;
+  state.label = snap ? snap.call.label
+    : activePlay.playType === 'punt' ? 'Punt'
+      : activePlay.playType === 'fieldGoal' ? 'Field Goal'
+        : activePlay.context.attemptType === 'twoPoint' ? 'Two-Point Try' : 'PAT';
+  state.callKey = snap?.call?.key || null;
+  state.defenseCallKey = snap?.context?.calls?.defense || null;
+  state.opponentCallKey = snap?.context?.possession === 'defense' ? snap.context.calls.offense : null;
+  state.matchup = snap?.context?.calls?.matchup || null;
   state.play = play;
   state.outcomeMessage = null;
   syncQuestionMirrors();
 }
 
-function prepareQuestion(bundle, labelHtml, feedbackCopy = '') {
-  const { snap, question } = bundle;
-  activateSnapMirrors(snap, question);
-  state.pendingResolution = FOOTBALL_DOMAIN.deepFreeze({
+function activateSnapMirrors(snap, question = null) {
+  const activePlay = FOOTBALL_DOMAIN.createActivePlay({
     schemaVersion: 1,
-    policy: 'awaitingAnswer',
+    playType: 'scrimmage',
+    gameId: state.gameId,
+    possessionId: state.possessionId,
+    playId: nextPlayId(),
     contextId: snap.contextId,
+    context: snap.context,
+    proposal: snap.proposal,
+    call: snap.call,
+  });
+  activatePlayMirrors(activePlay, question);
+}
+
+function learningEventPlayScope(activePlay = state.activePlay) {
+  if (!activePlay) return {};
+  return {
+    gameId: activePlay.gameId,
+    possessionId: activePlay.possessionId,
+    playId: activePlay.playId,
+    playType: activePlay.playType,
+  };
+}
+
+function prepareQuestion(bundle, labelHtml, feedbackCopy = '') {
+  const { activePlay, question } = bundle;
+  activatePlayMirrors(activePlay, question);
+  state.pendingResolution = FOOTBALL_DOMAIN.deepFreeze({
+    schemaVersion: 2,
+    policy: 'awaitingAnswer',
+    gameId: activePlay.gameId,
+    possessionId: activePlay.possessionId,
+    playId: activePlay.playId,
+    playType: activePlay.playType,
+    contextId: activePlay.contextId,
+    familyId: question.familyId,
     questionInstanceId: question.questionInstanceId,
     transitionToCommit: null,
   });
   state.phase = 'question';
   document.getElementById('play-label').innerHTML = labelHtml;
   document.getElementById('question').textContent = question.prompt.text;
-  applyDeskHeader(state.possession === 'offense' ? 'questionOffense' : 'questionDefense');
+  applyDeskHeader(activePlay.playType === 'scrimmage'
+    ? (state.possession === 'offense' ? 'questionOffense' : 'questionDefense')
+    : (state.possession === 'offense' ? 'specialQuestionOffense' : 'specialQuestionDefense'));
   syncUiState();
   const visibleGuidance = question.support === 'guided' ? question.hint.text : '';
   setFeedback([feedbackCopy, visibleGuidance].filter(Boolean).join(' '), visibleGuidance ? 'info' : 'neutral');
@@ -1499,8 +2191,8 @@ function prepareQuestion(bundle, labelHtml, feedbackCopy = '') {
       code: 'question-presentation-failure',
     });
   }
-  beginStatsPlay(snap, question);
-  FOOTBALL_LEARNING.recordPresented(learningSession, question);
+  markStatsPresented(question);
+  FOOTBALL_LEARNING.recordPresented(learningSession, question, learningEventPlayScope(activePlay));
 }
 
 function restoreCallAfterInvalid(opponentSnapshot = null) {
@@ -1510,7 +2202,7 @@ function restoreCallAfterInvalid(opponentSnapshot = null) {
 }
 
 function handleInvalidSnap(error, opponentSnapshot = null) {
-  pendingStatsPlay = null;
+  discardPendingStatsPlay();
   reportFootballDiagnostic(error?.code || 'invalid-context', {
     message: error?.message || 'The football context or projection was invalid.',
     diagnostics: error?.diagnostics || null,
@@ -1527,24 +2219,19 @@ function snapOpponentSnapshot(snap) {
     : null;
 }
 
-function handleQuestionPreparationFailure(error, snap, question) {
-  pendingStatsPlay = null;
-  const preservedSnapshot = snapOpponentSnapshot(snap);
-  reportFootballDiagnostic('question-presentation-failure', {
-    message: error?.message || 'The contextual question UI could not be prepared.',
-    familyId: question?.familyId ?? null,
-    contextId: snap?.contextId ?? null,
-    questionInstanceId: question?.questionInstanceId ?? null,
-  });
+function activePlayOpponentSnapshot(activePlay) {
+  const snap = FOOTBALL_DOMAIN.activeSnapFromPlay(activePlay);
+  return snapOpponentSnapshot(snap);
+}
 
-  Object.assign(state, blankPlayState(), { phase: 'call' });
-  if (state.possession === 'defense' && preservedSnapshot) state.opponentSnapshot = preservedSnapshot;
-  try {
-    showCallPrompt({ preserveOpponentSnapshot: state.possession === 'defense' && Boolean(preservedSnapshot) });
-  } catch (rollbackError) {
-    console.warn('[football:question-presentation-rollback-failure]', rollbackError?.message || rollbackError);
+function handleQuestionPreparationFailure(error, activePlay, question, feedbackCopy = '') {
+  if (error && typeof error === 'object') {
+    error.code = 'question-presentation-failure';
+    error.familyId = error.familyId ?? question?.familyId ?? null;
+    error.contextId = error.contextId ?? activePlay?.contextId ?? null;
+    error.questionInstanceId = error.questionInstanceId ?? question?.questionInstanceId ?? null;
   }
-  throw error;
+  bypassQuestionSubsystem(activePlay, error, feedbackCopy || 'The play goes on without a question.');
 }
 
 function expectedRequestedGainForResolution(snap, policy) {
@@ -1580,19 +2267,71 @@ function secondMissOutcomeForSnap(snap) {
   return outcome;
 }
 
-function validateResolutionTransition(snap, policy, transition) {
+function scrimmageResolutionValidationOptions(snap, policy) {
   const outcome = policy === 'secondMiss' ? secondMissOutcomeForSnap(snap) : null;
-  return FOOTBALL_DOMAIN.validateTransition(snap, transition, {
+  return {
     expectedRequestedGain: expectedRequestedGainForResolution(snap, policy),
     expectedResultKind: outcome?.resultKind || undefined,
     expectedResultReason: outcome?.resultReason || undefined,
-  });
+  };
 }
 
-function makePendingResolution(policy, transition) {
-  const snap = state.activeSnap;
-  if (!snap) throw new Error('Cannot resolve a play without an active snap');
-  const validated = validateResolutionTransition(snap, policy, transition);
+function expectedTransitionForResolution(activePlay, policy) {
+  if (!activePlay) throw Object.assign(new Error('Resolution policy requires a frozen active play.'), { code: 'invalid-resolution-policy' });
+  const possession = activePlay.context.possession;
+  if (policy === 'questionBypass') return activePlay.proposal;
+  if (!['firstTryCorrect', 'retryCorrect', 'secondMiss'].includes(policy)) {
+    throw Object.assign(new Error(`Unknown resolution policy: ${policy}`), { code: 'invalid-resolution-policy' });
+  }
+  const instructionalSuccess = policy === 'firstTryCorrect' || policy === 'retryCorrect';
+  if (activePlay.playType === 'scrimmage') {
+    const snap = FOOTBALL_DOMAIN.activeSnapFromPlay(activePlay);
+    if (instructionalSuccess) {
+      return possession === 'offense' ? activePlay.proposal : FOOTBALL_DOMAIN.reprojectGain(snap, 0);
+    }
+    const miss = secondMissOutcomeForSnap(snap);
+    return FOOTBALL_DOMAIN.reprojectGain(snap, miss.requestedGain, miss.resultReason ? {
+      resultKind: miss.resultKind || undefined,
+      resultReason: miss.resultReason,
+    } : null);
+  }
+  const proposalWins = instructionalSuccess ? possession === 'offense' : possession === 'defense';
+  if (proposalWins) return activePlay.proposal;
+  if (activePlay.playType === 'punt') return FOOTBALL_DOMAIN.reprojectPunt(activePlay, 'receiverFavorable');
+  if (activePlay.playType === 'fieldGoal') {
+    return FOOTBALL_DOMAIN.reprojectFieldGoal(activePlay, instructionalSuccess ? 'blocked' : 'missed');
+  }
+  return FOOTBALL_DOMAIN.reprojectConversion(activePlay, 'missed');
+}
+
+function validateResolutionTransition(activePlay, policy, transition) {
+  if (!activePlay?.playType && activePlay?.context && activePlay?.proposal) {
+    return FOOTBALL_DOMAIN.validateTransition(
+      activePlay,
+      transition,
+      scrimmageResolutionValidationOptions(activePlay, policy),
+    );
+  }
+  if (activePlay?.playType === 'scrimmage') {
+    const snap = FOOTBALL_DOMAIN.activeSnapFromPlay(activePlay);
+    return FOOTBALL_DOMAIN.validatePlayTransition(
+      activePlay,
+      transition,
+      scrimmageResolutionValidationOptions(snap, policy),
+    );
+  }
+  const expected = expectedTransitionForResolution(activePlay, policy);
+  const options = activePlay.playType === 'punt'
+    ? { expectedMode: expected.mode, expectedTravelYards: expected.requestedTravelYards }
+    : { expectedResultKind: expected.resultKind };
+  return FOOTBALL_DOMAIN.validatePlayTransition(activePlay, transition, options);
+}
+
+function makePendingResolution(policy, transition = null, links = null) {
+  const activePlay = state.activePlay;
+  if (!activePlay) throw new Error('Cannot resolve a play without an active play');
+  const candidate = transition || expectedTransitionForResolution(activePlay, policy);
+  const validated = validateResolutionTransition(activePlay, policy, candidate);
   if (!validated.ok) {
     const error = new Error('Resolution transition failed independent validation.');
     error.code = 'invalid-projection';
@@ -1600,61 +2339,110 @@ function makePendingResolution(policy, transition) {
     throw error;
   }
   return FOOTBALL_DOMAIN.deepFreeze({
-    schemaVersion: 1,
+    schemaVersion: 2,
     policy,
-    contextId: snap.contextId,
-    questionInstanceId: state.questionInstance?.questionInstanceId || null,
+    gameId: activePlay.gameId,
+    possessionId: activePlay.possessionId,
+    playId: activePlay.playId,
+    playType: activePlay.playType,
+    contextId: activePlay.contextId,
+    familyId: links?.familyId ?? state.questionInstance?.familyId ?? null,
+    questionInstanceId: links?.questionInstanceId ?? state.questionInstance?.questionInstanceId ?? null,
     transitionToCommit: validated.value,
   });
 }
 
-function bypassQuestionSubsystem(snap, error, feedbackCopy) {
-  const exact = FOOTBALL_DOMAIN.validateTransition(snap, snap.proposal);
+function bypassQuestionSubsystem(activePlay, error, feedbackCopy) {
+  const exact = FOOTBALL_DOMAIN.validatePlayTransition(activePlay, activePlay.proposal);
   if (!exact.ok) {
-    handleInvalidSnap(Object.assign(new Error('Question fallback rejected a contradictory football proposal.'), {
+    const invalid = Object.assign(new Error('Question fallback rejected a contradictory football proposal.'), {
       code: 'invalid-projection',
       diagnostics: exact.diagnostics,
-    }), snapOpponentSnapshot(snap));
+      recoverySpec: specialRecoverySpec(activePlay),
+    });
+    if (activePlay.playType === 'scrimmage') handleInvalidSnap(invalid, activePlayOpponentSnapshot(activePlay));
+    else handleInvalidSpecialPlay(invalid,
+      activePlay.playType === 'conversion' ? 'conversion-decision' : 'fourth-down-decision',
+      activePlay.playType === 'conversion' ? activePlay.context.attemptType : activePlay.playType,
+      state.opponentDecisionSnapshot);
     return;
   }
   reportFootballDiagnostic(error?.code || 'question-subsystem-failure', {
     message: error?.message || 'The contextual question could not be built.',
     familyId: error?.familyId ?? null,
-    contextId: error?.contextId ?? snap.contextId,
+    contextId: error?.contextId ?? activePlay.contextId,
     questionInstanceId: error?.questionInstanceId ?? null,
   });
-  activateSnapMirrors(snap, null);
+  const bypassLinks = {
+    familyId: error?.familyId ?? null,
+    contextId: error?.contextId ?? activePlay.contextId,
+    questionInstanceId: error?.questionInstanceId ?? null,
+  };
+  activatePlayMirrors(activePlay, null);
   state.phase = 'feedback';
-  beginBypassedStatsPlay(snap);
-  state.pendingResolution = makePendingResolution('questionBypass', exact.value);
-  applyDeskHeader(state.possession === 'offense' ? 'resultOffense' : 'resultDefense');
+  hideAnswerButtons();
+  hideCallGrid();
+  hideDecisionGrid();
+  hideMathVisual();
+  document.getElementById('play-label').innerHTML = playPromptLabel(activePlay);
+  document.getElementById('question').textContent = 'No math question this time. The play still counts.';
+  markStatsBypassed(activePlay, bypassLinks);
+  state.pendingResolution = makePendingResolution('questionBypass', exact.value, bypassLinks);
+  applyDeskHeader(activePlay.playType === 'scrimmage'
+    ? (state.possession === 'offense' ? 'resultOffense' : 'resultDefense')
+    : (state.possession === 'offense' ? 'specialResultOffense' : 'specialResultDefense'));
   setFeedback(feedbackCopy || 'The play goes on without a question.', 'info');
   commitPendingResolution();
 }
 
+function playPromptLabel(activePlay) {
+  if (activePlay.playType === 'scrimmage') {
+    return `${activePlay.call.label}: if it works, <span>${yds(activePlay.proposal.appliedGain)}</span>`;
+  }
+  if (activePlay.playType === 'punt') return `Punt preview: <span>${yds(activePlay.proposal.appliedTravelYards)}</span>`;
+  if (activePlay.playType === 'fieldGoal') return `<span>${activePlay.context.attemptDistance}-yard field goal</span>`;
+  return activePlay.context.attemptType === 'twoPoint' ? '<span>Two-point try</span>' : '<span>PAT try</span>';
+}
+
+function startInstructionForPlay(activePlay, labelHtml = playPromptLabel(activePlay), feedbackCopy = '') {
+  beginStatsDraft(activePlay);
+  let question;
+  try {
+    question = pickQuestion(activePlay);
+  } catch (error) {
+    bypassQuestionSubsystem(activePlay, error, 'The play is valid, so it counts without a math question.');
+    return false;
+  }
+  try {
+    prepareQuestion({ activePlay, question }, labelHtml, feedbackCopy);
+    return true;
+  } catch (error) {
+    handleQuestionPreparationFailure(error, activePlay, question,
+      'The play is valid, so it counts without a math question.');
+    return false;
+  }
+}
+
+function startSpecialPlay(activePlay, revealCopy = '') {
+  state.publicSpecialAction = activePlay.playType === 'conversion'
+    ? activePlay.context.attemptType
+    : activePlay.playType;
+  announceSpecialAction(revealCopy);
+  return startInstructionForPlay(activePlay, playPromptLabel(activePlay), revealCopy);
+}
+
 function selectOffenseCall(callKey) {
   if (state.phase !== 'call' || state.possession !== 'offense') return;
-  let snap;
+  let activePlay;
   try {
-    snap = makeActiveSnap(callKey, {
+    activePlay = makeActiveScrimmagePlay(callKey, {
       calls: { offense: callKey, defense: null, matchup: null },
     });
   } catch (error) {
     handleInvalidSnap(error);
     return;
   }
-  let question;
-  try {
-    question = pickQuestion(snap);
-  } catch (error) {
-    bypassQuestionSubsystem(snap, error, 'The snap is valid, so the full play counts without a question.');
-    return;
-  }
-  try {
-    prepareQuestion({ snap, question }, `${snap.call.label}: if it works, <span>${yds(snap.proposal.appliedGain)}</span>`);
-  } catch (error) {
-    handleQuestionPreparationFailure(error, snap, question);
-  }
+  startInstructionForPlay(activePlay);
 }
 
 function getOpponentTendency(overrides = {}, profile = rivalForMatch(state.match).profileKey) {
@@ -1699,9 +2487,9 @@ function selectDefenseCall(defenseCallKey) {
   const opponentCallKey = selection.plannedCallKey;
   const matched = defenseMatches(defenseCallKey, opponentCallKey);
   const defenseCall = DEFENSE_CALLS[defenseCallKey];
-  let snap;
+  let activePlay;
   try {
-    snap = makeActiveSnap(opponentCallKey, {
+    activePlay = makeActiveScrimmagePlay(opponentCallKey, {
       gainMultiplier: matched ? 0.65 : 1.2,
       privateOpponentSnapshot: selection,
       calls: {
@@ -1715,26 +2503,15 @@ function selectDefenseCall(defenseCallKey) {
     return;
   }
   state.opponentTendency = selection.tendency;
-  state.opponentSelectionSnapshot = snap.context.privateOpponentSnapshot;
+  state.opponentSelectionSnapshot = activePlay.context.privateOpponentSnapshot;
   state.opponentSnapshot = null;
   const call = OFFENSE_CALLS[opponentCallKey];
   const read = matched ? 'Good matchup' : 'Mismatch';
-  let question;
-  try {
-    question = pickQuestion(snap);
-  } catch (error) {
-    bypassQuestionSubsystem(snap, error, 'The snap is valid, so the threatened play counts without a question.');
-    return;
-  }
-  try {
-    prepareQuestion(
-      { snap, question },
-      `${state.match.opponent.shortName} is threatening ${call.label.toLowerCase()} for <span>${yds(snap.proposal.appliedGain)}</span>`,
-      `${read}: ${defenseCall.label} vs ${call.label}.`,
-    );
-  } catch (error) {
-    handleQuestionPreparationFailure(error, snap, question);
-  }
+  startInstructionForPlay(
+    activePlay,
+    `${state.match.opponent.shortName} is threatening ${call.label.toLowerCase()} for <span>${yds(activePlay.proposal.appliedGain)}</span>`,
+    `${read}: ${defenseCall.label} vs ${call.label}.`,
+  );
 }
 
 function handleAnswer(idx) {
@@ -1746,6 +2523,7 @@ function handleAnswer(idx) {
   const question = learningQuestionFromState();
   const isCorrect = choice.id === question.correctChoiceId;
   FOOTBALL_LEARNING.recordAttempt(learningSession, question, {
+    ...learningEventPlayScope(),
     attempt: state.questionUi.attempt,
     selectedChoiceId: choice.id,
     correct: isCorrect,
@@ -1771,21 +2549,25 @@ function learningQuestionFromState() {
 
 function completeCorrectAnswer(btn, question) {
   const result = state.questionUi.attempt === 1 ? 'firstTryCorrect' : 'retryCorrect';
-  const transition = state.activeSnap.context.possession === 'offense'
-    ? state.activeSnap.proposal
-    : FOOTBALL_DOMAIN.reprojectGain(state.activeSnap, 0);
-  state.pendingResolution = makePendingResolution(result, transition);
+  state.pendingResolution = makePendingResolution(result);
   btn.classList.add('correct');
   disableAnswers();
   state.phase = 'feedback';
   hideContinueButton();
-  const msg = state.possession === 'defense'
-    ? outcomeMessage(PLAY_OUTCOME_COPY.defenseStop, state.opponentCallKey)
-    : state.questionUi.attempt > 1
-      ? 'Great retry. The full play counts!'
-      : 'Correct. Run the play!';
+  const special = state.activePlay.playType !== 'scrimmage';
+  const msg = special
+    ? state.possession === 'defense'
+      ? 'Correct. Your defense denies the opponent’s best special-teams result.'
+      : state.questionUi.attempt > 1 ? 'Great retry. Your special-teams play succeeds.' : 'Correct. Run the special-teams play!'
+    : state.possession === 'defense'
+      ? outcomeMessage(PLAY_OUTCOME_COPY.defenseStop, state.opponentCallKey)
+      : state.questionUi.attempt > 1
+        ? 'Great retry. The full play counts!'
+        : 'Correct. Run the play!';
   state.outcomeMessage = msg;
-  applyDeskHeader(state.possession === 'offense' ? 'resultOffense' : 'resultDefense');
+  applyDeskHeader(special
+    ? (state.possession === 'offense' ? 'specialResultOffense' : 'specialResultDefense')
+    : (state.possession === 'offense' ? 'resultOffense' : 'resultDefense'));
   setFeedback(msg, 'positive');
   commitPendingResolution();
 }
@@ -1793,13 +2575,7 @@ function completeCorrectAnswer(btn, question) {
 function handleInstructionalMiss(btn, choice, question) {
   let secondMissPending = null;
   if (state.questionUi.attempt !== 1) {
-    const missOutcome = secondMissOutcomeForSnap(state.activeSnap);
-    const transition = FOOTBALL_DOMAIN.reprojectGain(state.activeSnap, missOutcome.requestedGain,
-      missOutcome.resultReason ? {
-        resultKind: missOutcome.resultKind || undefined,
-        resultReason: missOutcome.resultReason,
-      } : null);
-    secondMissPending = makePendingResolution('secondMiss', transition);
+    secondMissPending = makePendingResolution('secondMiss');
   }
   if (state.questionUi.attempt !== 1 && !secondMissPending) {
     const error = new Error('A terminal instructional miss requires one validated pending resolution.');
@@ -1816,7 +2592,9 @@ function handleInstructionalMiss(btn, choice, question) {
     state.questionUi.support = FOOTBALL_LEARNING.nextSupport(state.questionUi.support);
     syncQuestionMirrors();
     renderMathVisual();
-    applyDeskHeader(state.possession === 'offense' ? 'retryOffense' : 'retryDefense');
+    applyDeskHeader(state.activePlay.playType === 'scrimmage'
+      ? (state.possession === 'offense' ? 'retryOffense' : 'retryDefense')
+      : (state.possession === 'offense' ? 'specialRetryOffense' : 'specialRetryDefense'));
     setFeedback(`Good try. ${question.hint.text}`, 'info');
     const next = [0, 1, 2, 3]
       .map(i => document.getElementById('b' + i))
@@ -1833,33 +2611,54 @@ function handleInstructionalMiss(btn, choice, question) {
   syncQuestionMirrors();
   syncUiState();
   renderMathVisual();
-  applyDeskHeader(state.possession === 'offense' ? 'explainOffense' : 'explainDefense');
+  applyDeskHeader(state.activePlay.playType === 'scrimmage'
+    ? (state.possession === 'offense' ? 'explainOffense' : 'explainDefense')
+    : (state.possession === 'offense' ? 'specialExplainOffense' : 'specialExplainDefense'));
   setFeedback(question.workedExplanation.text, 'info');
   showContinueButton();
 }
 
 function recordQuestionResolution(result) {
   if (!state.questionInstance || state.questionUi.resolutionRecorded) return false;
+  state.questionUi.resolutionRecorded = true;
+  state.gradedQuestions++;
+  if (result === 'firstTryCorrect' || result === 'retryCorrect') state.correctAnswers++;
+  syncQuestionMirrors();
   FOOTBALL_LEARNING.recordResolved(learningSession, state.questionInstance, result, {
+    ...learningEventPlayScope(),
     support: state.questionUi.support,
   });
   FOOTBALL_STATS.recordResolution(pendingStatsPlay, result);
-  state.gradedQuestions++;
-  if (result === 'firstTryCorrect' || result === 'retryCorrect') state.correctAnswers++;
-  state.questionUi.resolutionRecorded = true;
-  syncQuestionMirrors();
   return true;
 }
 
 function continueAfterExplanation() {
   if (state.phase !== 'explanation' || !state.questionUi.continueRequired || state.questionUi.outcomeCommitted) return;
+  const continueButton = document.getElementById('question-continue');
+  const focusNextCall = document.activeElement === continueButton;
   state.questionUi.continueRequired = false;
   hideContinueButton();
   state.phase = 'feedback';
   syncQuestionMirrors();
   syncUiState();
 
-  if (state.possession === 'offense') {
+  if (state.activePlay.playType !== 'scrimmage') {
+    const transition = state.pendingResolution.transitionToCommit;
+    const message = transition.resultKind === 'conversionMade'
+      ? `${state.activePlay.context.attemptType === 'twoPoint' ? 'Two-point try' : 'PAT'} made.`
+      : transition.resultKind === 'conversionMissed'
+        ? `${state.activePlay.context.attemptType === 'twoPoint' ? 'Two-point try' : 'PAT'} no good.`
+        : transition.resultKind === 'fieldGoalMade'
+          ? 'Field goal made for three points.'
+          : transition.resultKind === 'fieldGoalBlocked'
+            ? 'Field goal blocked. The ball changes hands at the original line of scrimmage.'
+            : transition.resultKind === 'fieldGoalMissed'
+              ? 'Field goal no good. The ball changes hands at the original line of scrimmage.'
+              : `The punt puts the receiving team at field marker ${transition.nextStartYardLine}.`;
+    state.outcomeMessage = message;
+    applyDeskHeader(state.possession === 'offense' ? 'specialResultOffense' : 'specialResultDefense');
+    setFeedback(message, 'negative');
+  } else if (state.possession === 'offense') {
     const reason = state.pendingResolution.transitionToCommit.resultReason;
     const msg = PLAY_OUTCOME_COPY.secondMiss[reason];
     state.outcomeMessage = msg;
@@ -1876,45 +2675,86 @@ function continueAfterExplanation() {
     applyDeskHeader('resultDefense');
     setFeedback(`${msg} The mistake costs only ${yds(cappedGain)}.`, 'negative');
   }
-  commitPendingResolution();
+  commitPendingResolution({ focusNextCall });
 }
 
-function liveStateMatchesSnap(snap) {
-  const context = snap.context;
-  return JSON.stringify(state.match) === JSON.stringify(context.match)
-    && state.possession === context.possession
-    && state.direction === context.direction
-    && state.quarter === context.quarter
-    && state.down === context.down
+function liveStateMatchesPlay(activePlay) {
+  const context = activePlay.context;
+  if (state.gameId !== activePlay.gameId || state.possessionId !== activePlay.possessionId
+    || state.possession !== context.possession || state.direction !== context.direction
+    || state.quarter !== context.quarter || state.playerScore !== context.scores.player
+    || state.opponentScore !== context.scores.opponent || JSON.stringify(state.match) !== JSON.stringify(context.match)) return false;
+  if (activePlay.playType === 'conversion') return true;
+  if (state.yd !== context.yardLine) return false;
+  if (activePlay.playType !== 'scrimmage') return true;
+  return state.down === context.down
     && state.ytg === context.yardsToGo
-    && state.yd === context.yardLine
     && state.fdYd === context.firstDownLine
     && state.driveStart === context.driveStart
-    && state.playerScore === context.scores.player
-    && state.opponentScore === context.scores.opponent
     && state.playerTotalYards === context.totalYards.player
     && state.opponentTotalYards === context.totalYards.opponent
     && state.plays === context.plays
     && state.drivePlays === context.drivePlays;
 }
 
-function applyCanonicalTransition(transition) {
-  if (state.possession === 'offense') state.playerTotalYards += transition.appliedGain;
-  else state.opponentTotalYards += transition.appliedGain;
-  state.yd = transition.endYardLine;
-  state.fdYd = transition.newFirstDownLine;
-  state.down = transition.newDown;
-  state.ytg = transition.newYardsToGo;
-  state.animYd = transition.endYardLine;
-  state.drivePlays++;
-  state.plays++;
-  state.g = transition.appliedGain;
-  state.play = legacyPlayFromTransition(state.activeSnap, transition, state.questionInstance);
-  updateField(true);
-  updateStatus();
+function liveStateMatchesSnap(snap) {
+  const activePlay = state.activePlay?.playType === 'scrimmage'
+    ? state.activePlay
+    : FOOTBALL_DOMAIN.createActivePlay({
+        schemaVersion: 1,
+        playType: 'scrimmage',
+        gameId: state.gameId,
+        possessionId: state.possessionId,
+        playId: 'compatibility-live-check',
+        contextId: snap.contextId,
+        context: snap.context,
+        proposal: snap.proposal,
+        call: snap.call,
+      });
+  return liveStateMatchesPlay(activePlay);
 }
 
-function outcomeForTransition(transition, policy) {
+function applyCanonicalTransition(activePlay, transition) {
+  if (activePlay.playType === 'scrimmage') {
+    if (state.possession === 'offense') state.playerTotalYards += transition.appliedGain;
+    else state.opponentTotalYards += transition.appliedGain;
+    state.yd = transition.endYardLine;
+    state.fdYd = transition.newFirstDownLine;
+    state.down = transition.newDown;
+    state.ytg = transition.newYardsToGo;
+    state.animYd = transition.endYardLine;
+    state.drivePlays++;
+    state.plays++;
+    state.g = transition.appliedGain;
+    state.play = legacyPlayFromTransition(state.activeSnap, transition, state.questionInstance);
+    if (transition.resultKind === 'touchdown') {
+      if (activePlay.context.possession === 'offense') {
+        state.tds++;
+        state.playerScore += TD_POINTS;
+      } else {
+        state.opponentTds++;
+        state.opponentScore += TD_POINTS;
+      }
+    }
+  } else if (activePlay.playType === 'punt') {
+    state.yd = transition.landingYardLine;
+    state.animYd = transition.landingYardLine;
+  } else if (transition.points > 0) {
+    if (activePlay.context.possession === 'offense') state.playerScore += transition.points;
+    else state.opponentScore += transition.points;
+  }
+}
+
+function outcomeForTransition(activePlay, transition, policy) {
+  if (activePlay.playType === 'punt') return transition.resultKind === 'puntTouchback' ? 'puntTouchback' : 'puntLanded';
+  if (activePlay.playType === 'conversion') {
+    return transition.resultKind === 'conversionMissed'
+      && activePlay.context.possession === 'defense'
+      && (policy === 'firstTryCorrect' || policy === 'retryCorrect')
+      ? 'conversionDenied'
+      : transition.resultKind;
+  }
+  if (activePlay.playType === 'fieldGoal') return transition.resultKind;
   if (transition.resultKind === 'touchdown') return 'touchdown';
   if (transition.resultKind === 'firstDown') return 'firstDown';
   if (transition.resultKind === 'turnoverOnDowns') return 'turnoverOnDowns';
@@ -1923,64 +2763,122 @@ function outcomeForTransition(transition, policy) {
   return transition.appliedGain > 0 ? 'gain' : transition.appliedGain < 0 ? 'loss' : 'noGain';
 }
 
-function finishCommittedTransition(transition, policy, outcome) {
-  const gain = transition.appliedGain;
-  const offense = state.possession === 'offense';
+function terminalPlacement(activePlay, transition, policy) {
+  if (activePlay.playType !== 'scrimmage') return {
+    nextPossession: transition.nextPossession,
+    nextStartYardLine: transition.nextStartYardLine,
+    restartReason: transition.restartReason,
+  };
+  const snap = FOOTBALL_DOMAIN.activeSnapFromPlay(activePlay);
+  return FOOTBALL_DOMAIN.terminalPlacementForScrimmage(
+    snap,
+    transition,
+    scrimmageResolutionValidationOptions(snap, policy),
+  );
+}
 
-  if (outcome === 'turnover') {
-    showFieldFloat(transition.resultReason === 'fumble' ? 'FUMBLE!' : 'INTERCEPTED!', 'negative');
-  } else if (offense && gain > 0) {
-    startPlayerRun(transition.resultKind === 'touchdown' || transition.resultKind === 'firstDown' || gain >= 8);
-  } else if (!offense && gain === 0) {
-    showFieldFloat('STOPPED', 'negative');
-    flashDefenseStop();
-  } else if (gain > 0) {
-    showFieldFloat(`+${gain} YDS`);
-  } else if (gain < 0) {
-    showFieldFloat(`${gain} YDS`, 'negative');
-  } else {
-    showFieldFloat('NO GAIN', 'negative');
-  }
+function finalizePossessionState(possessionId, placement) {
+  if (!possessionId || !placement || (state.finalizedPossessionIds || []).includes(possessionId)) return false;
+  state.finalizedPossessionIds = [...(state.finalizedPossessionIds || []), possessionId];
+  state.quarterPossessions++;
+  const periodComplete = state.quarterPossessions >= POSSESSIONS_PER_QUARTER;
+  const finalPossession = state.quarter >= 4 && periodComplete;
+  const halftimePossession = state.quarter === 2 && periodComplete;
+  state.pendingNextPossession = finalPossession ? null
+    : halftimePossession ? 'defense' : placement.nextPossession;
+  state.pendingNextStartYardLine = finalPossession ? null
+    : halftimePossession ? 80 : placement.nextStartYardLine;
+  state.pendingRestartReason = finalPossession ? null
+    : halftimePossession ? 'halftimeKickoff' : placement.restartReason;
+  return true;
+}
 
-  if (outcome === 'touchdown') {
-    if (offense) {
-      state.tds++;
-      state.playerScore += TD_POINTS;
-    } else {
-      state.opponentTds++;
-      state.opponentScore += TD_POINTS;
+function routePossessionPresentation(message) {
+  if (state.quarterPossessions >= POSSESSIONS_PER_QUARTER) {
+    if (state.quarter >= 4) {
+      showGameOver();
+      return;
     }
-    updateStatus();
-    finalizeStatsPlay(gain, outcome);
-    setFeedback(offense ? 'Touchdown!' : `${state.match.opponent.shortName} touchdown.`, offense ? 'positive' : 'negative');
-    advTimer = setTimeout(() => showTD(offense ? 'offense' : 'defense'), 900);
+    if (state.quarter === 2) {
+      showHalftime(message);
+      return;
+    }
+    showQuarterEnd(message);
+    return;
+  }
+  if (state.pendingNextPossession === 'offense') showOffenseTransition(message);
+  else showDefenseTransition(message);
+}
+
+function specialResultMessage(activePlay, transition) {
+  if (activePlay.playType === 'punt') {
+    return transition.resultKind === 'puntTouchback'
+      ? 'The punt reaches the end zone. Touchback: the receiving team starts at its own 20.'
+      : `The punt ends at field marker ${transition.nextStartYardLine}.`;
+  }
+  if (activePlay.playType === 'fieldGoal') {
+    if (transition.resultKind === 'fieldGoalMade') return 'Field goal made. Three points.';
+    if (transition.resultKind === 'fieldGoalBlocked') return 'Field goal blocked. The ball changes hands at the original line of scrimmage.';
+    return 'Field goal no good. The ball changes hands at the original line of scrimmage.';
+  }
+  const name = activePlay.context.attemptType === 'twoPoint' ? 'Two-point try' : 'PAT';
+  return transition.resultKind === 'conversionMade'
+    ? `${name} made for ${transition.points} ${transition.points === 1 ? 'point' : 'points'}.`
+    : `${name} no good.`;
+}
+
+function applyCommittedOutcomeBookkeeping(activePlay, outcome) {
+  if (activePlay.playType !== 'scrimmage') return;
+  const offense = activePlay.context.possession === 'offense';
+  if (outcome === 'turnoverOnDowns' && !offense) state.defenseStops++;
+  if (outcome === 'firstDown' && offense) state.firstDowns++;
+}
+
+function finishCommittedTransition(activePlay, transition, policy, outcome, { focusNextCall = false } = {}) {
+  const offense = activePlay.context.possession === 'offense';
+  if (activePlay.playType !== 'scrimmage') {
+    const message = specialResultMessage(activePlay, transition);
+    const playerSucceeded = policy === 'firstTryCorrect' || policy === 'retryCorrect';
+    state.outcomeMessage = message;
+    setFeedback(message, playerSucceeded ? 'positive' : policy === 'questionBypass' ? 'info' : 'negative');
+    if (playerSucceeded) playCorrect();
+    if (activePlay.playType === 'punt') showFieldFloat(transition.resultKind === 'puntTouchback' ? 'TOUCHBACK' : 'PUNT');
+    else if (transition.points > 0) showFieldFloat(`+${transition.points} PTS`, offense ? 'first-down' : 'negative');
+    else showFieldFloat(activePlay.playType === 'fieldGoal' ? 'NO GOOD' : 'TRY FAILED', 'negative');
+    advTimer = setTimeout(() => routePossessionPresentation(message), 1400);
     return;
   }
 
+  const gain = transition.appliedGain;
+  if (outcome === 'turnover') showFieldFloat(transition.resultReason === 'fumble' ? 'FUMBLE!' : 'INTERCEPTED!', 'negative');
+  else if (offense && gain > 0) startPlayerRun(transition.resultKind === 'touchdown' || transition.resultKind === 'firstDown' || gain >= 8);
+  else if (!offense && gain === 0) { showFieldFloat('STOPPED', 'negative'); flashDefenseStop(); }
+  else if (gain > 0) showFieldFloat(`+${gain} YDS`);
+  else if (gain < 0) showFieldFloat(`${gain} YDS`, 'negative');
+  else showFieldFloat('NO GAIN', 'negative');
+
+  if (outcome === 'touchdown') {
+    setFeedback(offense ? 'Touchdown! Six points. Choose the conversion next.' : `${state.match.opponent.shortName} touchdown. Six points; the conversion is next.`, offense ? 'positive' : 'negative');
+    advTimer = setTimeout(() => showTD(offense ? 'offense' : 'defense'), 900);
+    return;
+  }
   if (outcome === 'turnoverOnDowns') {
-    if (!offense) state.defenseStops++;
-    updateStatus();
-    finalizeStatsPlay(gain, outcome);
     setFeedback('Turnover on downs.', offense ? 'negative' : 'positive');
     if (!offense && (policy === 'firstTryCorrect' || policy === 'retryCorrect')) playCorrect();
-    advTimer = setTimeout(() => finishPossession(
+    advTimer = setTimeout(() => routePossessionPresentation(
       offense ? 'Turnover on downs. Time to play defense!' : `${state.outcomeMessage || 'Your defense held!'} Turnover on downs!`
     ), offense ? 1400 : 1500);
     return;
   }
-
   if (outcome === 'turnover') {
-    finalizeStatsPlay(gain, outcome);
     setFeedback(state.outcomeMessage || 'Turnover.', offense ? 'negative' : 'positive');
-    advTimer = setTimeout(() => finishPossession(
+    advTimer = setTimeout(() => routePossessionPresentation(
       offense ? `${state.outcomeMessage || 'Turnover.'} Time to play defense!` : 'Takeaway! Time to play offense!'
     ), 1500);
     return;
   }
-
   if (outcome === 'firstDown') {
     if (offense) {
-      state.firstDowns++;
       showFieldFloat('FIRST DOWN!', 'first-down');
       flashFdLine();
       setFeedback('First down!', 'positive');
@@ -1988,63 +2886,111 @@ function finishCommittedTransition(transition, policy, outcome) {
       clearTimeout(playerCelebrateDelayTimer);
       playerCelebrateDelayTimer = setTimeout(startPlayerCelebrate, 700);
     }
-    finalizeStatsPlay(gain, outcome);
-    advTimer = setTimeout(showCallPrompt, offense ? 1400 : 1600);
+    advTimer = setTimeout(() => showCallPrompt({ focusFirstCall: focusNextCall }), offense ? 1400 : 1600);
     return;
   }
-
-  finalizeStatsPlay(gain, outcome);
   if (outcome === 'stop') playCorrect();
-  if (offense && policy !== 'secondMiss' && policy !== 'questionBypass') {
-    setFeedback('Correct.', 'positive');
-    playCorrect();
-  }
-  advTimer = setTimeout(showCallPrompt, policy === 'secondMiss' ? 1800 : offense ? 1400 : 1500);
+  if (offense && policy !== 'secondMiss' && policy !== 'questionBypass') { setFeedback('Correct.', 'positive'); playCorrect(); }
+  advTimer = setTimeout(
+    () => showCallPrompt({ focusFirstCall: focusNextCall }),
+    policy === 'secondMiss' ? 1800 : offense ? 1400 : 1500,
+  );
 }
 
-function commitPendingResolution() {
+function handleInvalidCommittedPlay(error, activePlay) {
+  if (!error || typeof error !== 'object') error = new Error(String(error || 'The committed play was invalid.'));
+  error.familyId = error.familyId ?? state.questionInstance?.familyId ?? null;
+  error.playId = error.playId ?? activePlay.playId;
+  error.contextId = error.contextId ?? activePlay.contextId;
+  error.questionInstanceId = error.questionInstanceId
+    ?? state.questionInstance?.questionInstanceId
+    ?? null;
+  if (activePlay.playType === 'scrimmage') {
+    handleInvalidSnap(error, activePlayOpponentSnapshot(activePlay));
+    return;
+  }
+  if (!error.recoverySpec) error.activePlay = activePlay;
+  handleInvalidSpecialPlay(error,
+    activePlay.playType === 'conversion' ? 'conversion-decision' : 'fourth-down-decision',
+    activePlay.playType === 'conversion' ? activePlay.context.attemptType : activePlay.playType,
+    state.opponentDecisionSnapshot);
+}
+
+function commitPendingResolution({ focusNextCall = false } = {}) {
   const pending = state.pendingResolution;
-  const snap = state.activeSnap;
-  if (!pending || !snap || state.questionUi.outcomeCommitted) return false;
-  const opponentSnapshot = snapOpponentSnapshot(snap);
-  if (pending.contextId !== snap.contextId || !liveStateMatchesSnap(snap)) {
-    handleInvalidSnap(Object.assign(new Error('Live football state no longer matches the frozen snap.'), {
+  const activePlay = state.activePlay;
+  if (!pending || !activePlay || state.questionUi.outcomeCommitted
+    || (state.committedPlayIds || []).includes(activePlay.playId)) return false;
+  const identityMatches = pending.gameId === activePlay.gameId
+    && pending.possessionId === activePlay.possessionId
+    && pending.playId === activePlay.playId
+    && pending.playType === activePlay.playType
+    && pending.contextId === activePlay.contextId;
+  if (!identityMatches) {
+    handleInvalidCommittedPlay(Object.assign(new Error('Live football state no longer matches the frozen play.'), {
       code: 'invalid-context',
-    }), opponentSnapshot);
+      recoverySpec: specialRecoverySpec(activePlay, { preserveIdentity: false }),
+    }), activePlay);
+    return false;
+  }
+  if (!liveStateMatchesPlay(activePlay)) {
+    handleInvalidCommittedPlay(Object.assign(new Error('Live football state no longer matches the frozen play.'), {
+      code: 'invalid-context',
+      recoverySpec: specialRecoverySpec(activePlay, { preserveIdentity: false }),
+    }), activePlay);
     return false;
   }
   let validation;
   try {
-    validation = validateResolutionTransition(snap, pending.policy, pending.transitionToCommit);
+    validation = validateResolutionTransition(activePlay, pending.policy, pending.transitionToCommit);
   } catch (error) {
-    handleInvalidSnap(error, opponentSnapshot);
+    handleInvalidCommittedPlay(error, activePlay);
     return false;
   }
   if (!validation.ok) {
-    handleInvalidSnap(Object.assign(new Error('The frozen resolution is not a valid football transition.'), {
+    handleInvalidCommittedPlay(Object.assign(new Error('The frozen resolution is not a valid football transition.'), {
       code: 'invalid-projection',
       diagnostics: validation.diagnostics,
-    }), opponentSnapshot);
+    }), activePlay);
     return false;
   }
 
-  applyCanonicalTransition(validation.value);
+  applyCanonicalTransition(activePlay, validation.value);
+  state.committedPlayIds = [...(state.committedPlayIds || []), activePlay.playId];
   state.questionUi.outcomeCommitted = true;
+  const placement = terminalPlacement(activePlay, validation.value, pending.policy);
+  if (placement) finalizePossessionState(activePlay.possessionId, placement);
+  const outcome = outcomeForTransition(activePlay, validation.value, pending.policy);
+  applyCommittedOutcomeBookkeeping(activePlay, outcome);
   if (pending.policy !== 'questionBypass') recordQuestionResolution(pending.policy);
   syncQuestionMirrors();
-  const outcome = outcomeForTransition(validation.value, pending.policy);
+  finalizeStatsPlay(activePlay, validation.value, outcome);
+  const settledPlacement = placement && state.pendingNextPossession
+    ? FOOTBALL_DOMAIN.deepFreeze({
+        nextPossession: state.pendingNextPossession,
+        nextStartYardLine: state.pendingNextStartYardLine,
+        restartReason: state.pendingRestartReason,
+      })
+    : null;
   dispatchFootballEvent('football:result', {
-    schemaVersion: 1,
-    familyId: state.questionInstance?.familyId || null,
-    contextId: snap.contextId,
-    questionInstanceId: state.questionInstance?.questionInstanceId || null,
-    possession: snap.context.possession,
+    schemaVersion: 2,
+    gameId: activePlay.gameId,
+    possessionId: activePlay.possessionId,
+    playId: activePlay.playId,
+    playType: activePlay.playType,
+    familyId: pending.familyId ?? state.questionInstance?.familyId ?? null,
+    contextId: activePlay.contextId,
+    questionInstanceId: pending.questionInstanceId ?? state.questionInstance?.questionInstanceId ?? null,
+    possession: activePlay.context.possession,
     policy: pending.policy,
     outcome,
     transition: validation.value,
+    placement: settledPlacement,
   });
+  if (activePlay.playType === 'scrimmage' || activePlay.playType === 'punt') updateField(true);
+  updateStatus();
   syncUiState();
-  finishCommittedTransition(validation.value, pending.policy, outcome);
+  finishCommittedTransition(activePlay, validation.value, pending.policy, outcome, { focusNextCall });
   return true;
 }
 
@@ -2267,7 +3213,7 @@ function focusActiveOverlay(overlay) {
 function focusGameplayControl() {
   requestAnimationFrame(() => {
     if (document.querySelector('.overlay.show')) return;
-    const selectors = ['#call-grid .call-btn', '#btn-row .ans-btn', '#mute-toggle'];
+    const selectors = ['#decision-grid .decision-btn', '#call-grid .call-btn', '#btn-row .ans-btn', '#mute-toggle'];
     let target = null;
     for (const selector of selectors) {
       target = Array.from(document.querySelectorAll(selector)).find(
@@ -2386,12 +3332,114 @@ function showTD(side = 'offense') {
 }
 
 function afterTouchdown() {
+  const expectedSide = state.possession === 'defense' ? 'defense' : 'offense';
+  if (state.phase !== 'touchdown' || state.touchdownSide !== expectedSide) return false;
   hideOverlays();
-  finishPossession(
-    state.touchdownSide === 'defense'
-      ? `${state.match.opponent.shortName} scored. Time to take it back!`
-      : 'You scored. Time to play defense!'
-  );
+  showConversionDecision();
+  return true;
+}
+
+function conversionDecisionState() {
+  return {
+    possession: state.possession,
+    direction: state.direction,
+    quarter: state.quarter,
+    quarterPossessions: state.quarterPossessions,
+    possessionsPerQuarter: POSSESSIONS_PER_QUARTER,
+    scores: { player: state.playerScore, opponent: state.opponentScore },
+  };
+}
+
+function showConversionDecision(recovery = null, decision = null) {
+  clearTimeout(advTimer);
+  hideOverlays();
+  const recoveryAction = recovery?.context?.attemptType || recovery?.attemptType || null;
+  Object.assign(state, blankPlayState(), {
+    phase: 'conversion-decision',
+    opponentDecisionSnapshot: decision,
+    publicSpecialAction: state.possession === 'defense' ? recoveryAction : null,
+    specialRecoveryPlay: recovery,
+  });
+  updateStatus();
+  document.getElementById('play-label').textContent = 'Conversion Try';
+  if (state.possession === 'offense') {
+    const actions = recoveryAction ? [{
+      key: recoveryAction,
+      eyebrow: 'Same try',
+      label: recoveryAction === 'twoPoint' ? 'Retry Two-Point Try' : 'Retry PAT',
+      desc: 'The same conversion choice is waiting.',
+    }] : [
+      { key: 'pat', eyebrow: 'Kick for one', label: 'PAT', desc: 'A made kick adds one point.' },
+      { key: 'twoPoint', eyebrow: 'Go for two', label: 'Two-Point Try', desc: 'A successful try adds two points.' },
+    ];
+    if (recoveryAction) {
+      const retryName = recoveryAction === 'twoPoint' ? 'two-point try' : 'PAT';
+      document.getElementById('question').textContent = `Retry the same ${retryName}.`;
+      setDeskHeader('Try', 'Retry the same conversion.', `Retry the same ${retryName}.`);
+    } else {
+      document.getElementById('question').textContent = 'Choose one point or two points.';
+      applyDeskHeader('conversionOffense');
+    }
+    renderDecisionGrid(
+      actions,
+      selectConversionAction,
+      recoveryAction ? 'Retry the same conversion attempt' : 'Choose a conversion attempt',
+    );
+    setFeedback(recoveryAction
+      ? 'That try could not be checked. Try the same conversion again.'
+      : 'The touchdown awarded six points. The conversion is a separate play.', 'info');
+    announceSpecialAction(recoveryAction
+      ? 'The same conversion choice is waiting for another try.'
+      : 'Touchdown: six points. Choose the separate conversion.');
+    syncUiState();
+    return;
+  }
+
+  const frozenDecision = decision || taggedOpponentDecision(FOOTBALL_OPPONENT.decideConversion(conversionDecisionState()));
+  state.opponentDecisionSnapshot = frozenDecision;
+  state.publicSpecialAction = frozenDecision.action;
+  document.getElementById('question').textContent = `${state.match.opponent.shortName} announces its conversion.`;
+  if (recoveryAction) {
+    const retryName = recoveryAction === 'twoPoint' ? 'two-point try' : 'PAT';
+    document.getElementById('question').textContent = `Retry the same opponent ${retryName}.`;
+    setDeskHeader('Try', 'Retry the opponent conversion.', `Retry the same ${retryName}.`);
+    renderDecisionGrid([{
+      key: recoveryAction,
+      eyebrow: 'Same try',
+      label: recoveryAction === 'twoPoint' ? 'Retry Two-Point Try' : 'Retry PAT',
+      desc: "The opponent's conversion choice stays the same.",
+    }], retryOpponentConversionAction, 'Retry the same opponent conversion');
+    setFeedback('That try could not be checked. The same opponent conversion is waiting.', 'info');
+    announceSpecialAction(opponentSpecialActionLabel(frozenDecision.action));
+    syncUiState();
+    return;
+  }
+  applyDeskHeader('conversionDefense');
+  let activePlay;
+  try {
+    activePlay = buildSpecialPlay(frozenDecision.action, recovery);
+  } catch (error) {
+    handleInvalidSpecialPlay(error, 'conversion-decision', frozenDecision.action, frozenDecision);
+    return;
+  }
+  startSpecialPlay(activePlay, opponentSpecialActionLabel(frozenDecision.action));
+}
+
+function selectConversionAction(action) {
+  if (state.phase !== 'conversion-decision' || state.possession !== 'offense'
+    || !['pat', 'twoPoint'].includes(action)) return false;
+  const recoveryAction = state.specialRecoveryPlay?.context?.attemptType
+    || state.specialRecoveryPlay?.attemptType;
+  if (recoveryAction && action !== recoveryAction) return false;
+  let activePlay;
+  try {
+    activePlay = buildSpecialPlay(action, state.specialRecoveryPlay);
+  } catch (error) {
+    handleInvalidSpecialPlay(error, 'conversion-decision', action);
+    return false;
+  }
+  startSpecialPlay(activePlay, action === 'twoPoint' ? 'You choose a two-point try.' : 'You choose a PAT.');
+  return true;
 }
 
 function showDefenseTransition(message) {
@@ -2405,8 +3453,11 @@ function showDefenseTransition(message) {
 }
 
 function startDefense() {
+  if (state.phase !== 'transition'
+    || (state.pendingNextPossession && state.pendingNextPossession !== 'defense')) return false;
   hideOverlays();
   startDrive('defense');
+  return true;
 }
 
 function showOffenseTransition(message) {
@@ -2419,29 +3470,26 @@ function showOffenseTransition(message) {
 }
 
 function startOffense() {
+  if (state.phase !== 'transition'
+    || (state.pendingNextPossession && state.pendingNextPossession !== 'offense')) return false;
   hideOverlays();
   startDrive('offense');
+  return true;
 }
 
+// Release-matrix setup retains this legacy seam. Production terminal plays go
+// through commitPendingResolution() and guarded finalizePossessionState().
 function finishPossession(message) {
-  const nextPossession = oppositePossession(state.possession);
-  state.quarterPossessions++;
-  updateStatus();
-
-  if (state.quarterPossessions >= POSSESSIONS_PER_QUARTER) {
-    state.pendingNextPossession = state.quarter === 2 ? 'defense' : nextPossession;
-    if (state.quarter >= 4) { showGameOver(); return; }
-    if (state.quarter === 2) { showHalftime(message); return; }
-    showQuarterEnd(message);
-    return;
-  }
-
-  state.pendingNextPossession = null;
-  if (nextPossession === 'offense') {
-    showOffenseTransition(message);
-  } else {
-    showDefenseTransition(message);
-  }
+  const nextPossession = state.pendingNextPossession || oppositePossession(state.possession);
+  const placement = {
+    nextPossession,
+    nextStartYardLine: Number.isInteger(state.pendingNextStartYardLine)
+      ? state.pendingNextStartYardLine
+      : startingYardFor(nextPossession),
+    restartReason: state.pendingRestartReason || 'legacyScheduledChange',
+  };
+  finalizePossessionState(state.possessionId, placement);
+  routePossessionPresentation(message);
 }
 
 // Fill a break overlay's broadcast scorebug (decorative; sub text keeps the
@@ -2480,13 +3528,15 @@ function showHalftime(message) {
 }
 
 function nextQuarter() {
+  if (!['quarter', 'halftime'].includes(state.phase) || state.quarter >= 4) return false;
   const endingQuarter = state.quarter;
   const fallbackPossession = endingQuarter >= 2 ? 'defense' : 'offense';
   const nextPossession = state.pendingNextPossession || fallbackPossession;
   hideOverlays();
   state.quarter = Math.min(state.quarter + 1, 4);
   state.quarterPossessions = 0;
-  startDrive(nextPossession);
+  startDrive(nextPossession, state.pendingNextStartYardLine, state.pendingRestartReason);
+  return true;
 }
 
 function populateEndStats() {
@@ -2580,7 +3630,12 @@ function showGameOver() {
       ? 'Good effort. Try another game.'
       : 'Both teams finished even.';
 
-  Object.assign(state, blankPlayState(), { pendingNextPossession: null, phase: 'final' });
+  Object.assign(state, blankPlayState(), {
+    pendingNextPossession: null,
+    pendingNextStartYardLine: null,
+    pendingRestartReason: null,
+    phase: 'final',
+  });
   syncUiState();
   const endOv = document.getElementById('ov-end');
   endOv.classList.remove('ov-win', 'ov-loss', 'ov-tie');
@@ -2637,6 +3692,32 @@ function publicOpponentRead(snapshot) {
   };
 }
 
+function conversionRenderState() {
+  const activeConversion = state.activePlay?.playType === 'conversion'
+    ? state.activePlay
+    : null;
+  if (state.phase !== 'conversion-decision' && !activeConversion) return null;
+  const recoveryAttempt = state.specialRecoveryPlay?.context?.attemptType
+    || state.specialRecoveryPlay?.attemptType;
+  const publicAttempt = ['pat', 'twoPoint'].includes(state.publicSpecialAction)
+    ? state.publicSpecialAction
+    : null;
+  const attemptType = activeConversion?.context?.attemptType
+    || recoveryAttempt
+    || publicAttempt
+    || null;
+  const tryYardLine = activeConversion?.context?.tryYardLine
+    ?? FOOTBALL_DOMAIN.tryYardLineFor(state.direction);
+  return {
+    status: activeConversion ? 'active' : 'decision',
+    attemptType,
+    attemptValue: activeConversion?.context?.attemptValue
+      ?? (attemptType === 'pat' ? 1 : attemptType === 'twoPoint' ? 2 : null),
+    tryYardLine,
+    trySpot: ydLabel(tryYardLine),
+  };
+}
+
 function renderGameToText() {
   const learning = learningSession || {
     presented: 0,
@@ -2644,6 +3725,7 @@ function renderGameToText() {
     byConcept: {},
     historicalMastery: {},
   };
+  const conversion = conversionRenderState();
   return JSON.stringify({
     mode: state.phase,
     match: state.match,
@@ -2658,18 +3740,22 @@ function renderGameToText() {
       player: state.playerTotalYards,
       opponent: state.opponentTotalYards,
     },
-    down: state.down,
-    ytg: state.ytg,
-    yardLine: ydLabel(state.yd),
-    absoluteYard: state.yd,
-    firstDownLine: ydLabel(state.fdYd),
+    down: conversion ? null : state.down,
+    ytg: conversion ? null : state.ytg,
+    yardLine: conversion ? conversion.trySpot : ydLabel(state.yd),
+    absoluteYard: conversion ? conversion.tryYardLine : state.yd,
+    firstDownLine: conversion ? null : ydLabel(state.fdYd),
     direction: state.direction,
+    conversion,
     plays: state.plays,
     correctAnswers: state.correctAnswers,
     gradedQuestions: state.gradedQuestions,
     quarterPossessions: state.quarterPossessions,
     possessionsPerQuarter: POSSESSIONS_PER_QUARTER,
     pendingNextPossession: state.pendingNextPossession || null,
+    pendingNextStartYardLine: Number.isInteger(state.pendingNextStartYardLine) ? state.pendingNextStartYardLine : null,
+    pendingRestartReason: state.pendingRestartReason || null,
+    restartReason: state.restartReason || null,
     playerTouchdowns: state.tds,
     opponentTouchdowns: state.opponentTds,
     defenseStops: state.defenseStops,
@@ -2683,7 +3769,12 @@ function renderGameToText() {
     matchup: state.matchup,
     gain: state.g ?? null,
     learningTier: state.questionInstance?.tier || null,
-    contextId: state.activeSnap?.contextId || null,
+    gameId: state.gameId || null,
+    possessionId: state.possessionId || null,
+    playId: state.activePlay?.playId || null,
+    playType: state.activePlay?.playType || null,
+    contextId: state.activePlay?.contextId || null,
+    publicSpecialAction: state.publicSpecialAction || null,
     questionInstanceId: state.questionInstance?.questionInstanceId || null,
     questionFamilyId: state.questionInstance?.familyId || null,
     questionId: state.questionInstance?.familyId || null,
@@ -2725,6 +3816,7 @@ function renderGameToText() {
 
 function activeContractsSnapshot() {
   return {
+    activePlay: state.activePlay ? FOOTBALL_LEARNING.snapshot(state.activePlay) : null,
     activeSnap: state.activeSnap ? FOOTBALL_LEARNING.snapshot(state.activeSnap) : null,
     questionInstance: state.questionInstance ? FOOTBALL_LEARNING.snapshot(state.questionInstance) : null,
     pendingResolution: state.pendingResolution ? FOOTBALL_LEARNING.snapshot(state.pendingResolution) : null,
@@ -2776,6 +3868,8 @@ function seedDriveStateForTest(overrides = {}) {
   pendingStatsPlay = null;
   state = {
     ...createGameState(context.match),
+    gameId: overrides.gameId || statsSession.gameId,
+    possessionId: overrides.possessionId || nextPossessionId(),
     quarter: context.quarter,
     playerScore: context.scores.player,
     opponentScore: context.scores.opponent,
@@ -2789,6 +3883,11 @@ function seedDriveStateForTest(overrides = {}) {
     correctAnswers: overrides.correctAnswers ?? 0,
     gradedQuestions: overrides.gradedQuestions ?? 0,
     firstDowns: overrides.firstDowns ?? 0,
+    pendingNextPossession: overrides.pendingNextPossession || null,
+    pendingNextStartYardLine: Number.isInteger(overrides.pendingNextStartYardLine) ? overrides.pendingNextStartYardLine : null,
+    pendingRestartReason: overrides.pendingRestartReason || null,
+    finalizedPossessionIds: [...(overrides.finalizedPossessionIds || [])],
+    committedPlayIds: [...(overrides.committedPlayIds || [])],
     possession: context.possession,
     direction: context.direction,
     yd: context.yardLine,
@@ -2887,6 +3986,34 @@ window.__footballTest = {
   },
   answerChoice(choiceId) {
     return answerChoiceForTest(choiceId);
+  },
+  selectDecision(action) {
+    if (state.phase === 'fourth-down-decision') {
+      return state.possession === 'offense'
+        ? selectFourthDownAction(action)
+        : retryOpponentSpecialAction(action);
+    }
+    if (state.phase === 'conversion-decision') {
+      return state.possession === 'offense'
+        ? selectConversionAction(action)
+        : retryOpponentConversionAction(action);
+    }
+    return false;
+  },
+  continueAfterTouchdown() {
+    if (state.phase !== 'touchdown') return false;
+    afterTouchdown();
+    return activeContractsSnapshot();
+  },
+  decisionActions() {
+    return Array.from(document.querySelectorAll('#decision-grid .decision-btn')).map(button => button.dataset.action);
+  },
+  finalizePossessionState(possessionId, placement) {
+    return finalizePossessionState(possessionId, placement);
+  },
+  routePossessionPresentation(message = 'Possession complete.') {
+    routePossessionPresentation(message);
+    return JSON.parse(renderGameToText());
   },
   activeContracts() {
     return activeContractsSnapshot();

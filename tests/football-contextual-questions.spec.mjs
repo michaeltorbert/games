@@ -82,10 +82,63 @@ function context(overrides = {}) {
 }
 
 function makeSnap(domain, overrides = {}, gain = 4) {
-  return domain.createSnap(context(overrides), {
+  const sourceContext = context(overrides);
+  return domain.createSnap(sourceContext, {
     gain,
-    callKey: overrides.possession === 'defense' ? 'shortPass' : 'shortRun',
+    callKey: overrides.callKey ?? sourceContext.calls.offense,
     label: 'Test call',
+  });
+}
+
+function makeSpecialPlay(domain, playType, overrides = {}) {
+  const possession = overrides.possession ?? 'offense';
+  const direction = possession === 'offense' ? 1 : -1;
+  const contextId = overrides.contextId ?? `${playType}-${possession}`;
+  const common = {
+    schemaVersion: 1,
+    playType,
+    contextId,
+    match: overrides.match ?? matchDescriptor(),
+    possession,
+    direction,
+    quarter: overrides.quarter ?? 4,
+    scores: overrides.scores ?? { player: 13, opponent: 12 },
+  };
+  let specialContext;
+  let proposal;
+  if (playType === 'conversion') {
+    const attemptType = overrides.attemptType ?? 'pat';
+    specialContext = domain.normalizeSpecialContext(playType, {
+      ...common,
+      tryYardLine: domain.tryYardLineFor(direction),
+      attemptType,
+      attemptValue: attemptType === 'pat' ? 1 : 2,
+    });
+    proposal = domain.projectConversion(specialContext, overrides.outcome ?? 'made');
+  } else if (playType === 'fieldGoal') {
+    const yardLine = overrides.yardLine ?? (direction === 1 ? 60 : 40);
+    specialContext = domain.normalizeSpecialContext(playType, {
+      ...common,
+      yardLine,
+      attemptDistance: domain.fieldGoalDistance(yardLine, direction),
+    });
+    proposal = domain.projectFieldGoal(specialContext, overrides.outcome ?? 'made');
+  } else {
+    const yardLine = overrides.yardLine ?? (direction === 1 ? 30 : 70);
+    specialContext = domain.normalizeSpecialContext(playType, { ...common, yardLine });
+    proposal = domain.projectPunt(specialContext, overrides.travelYards ?? 40, {
+      mode: overrides.mode ?? 'normal',
+    });
+  }
+  return domain.createActivePlay({
+    schemaVersion: 1,
+    playType,
+    gameId: overrides.gameId ?? 'game-special',
+    possessionId: overrides.possessionId ?? `possession-${possession}`,
+    playId: overrides.playId ?? `play-${contextId}`,
+    contextId,
+    context: specialContext,
+    proposal,
   });
 }
 
@@ -172,6 +225,8 @@ function recompute(question) {
     case 'goalDistanceAfterGain': return Math.abs(operands[0] - operands[1]) - operands[2];
     case 'driveDistancePlusGain': return Math.abs(operands[1] - operands[0]) + operands[2];
     case 'ruleValue': return operands[0];
+    case 'conversionValue': return operands[0] === 'pat' ? 1 : 2;
+    case 'tryMarkerForDirection': return operands[0] === 1 ? 98 : 2;
     default: throw new Error(`Unknown operation ${question.operation.type}`);
   }
 }
@@ -252,6 +307,8 @@ test('exports one deeply frozen plain-global API with a closed contract', () => 
   });
   assert.equal(typeof questions.inspect, 'function');
   assert.equal(typeof questions.build, 'function');
+  assert.deepEqual(plain(questions.PLAY_TYPES), ['scrimmage', 'punt', 'fieldGoal', 'conversion']);
+  assert.deepEqual(Object.keys(questions.FAMILY_REGISTRY), plain(questions.PLAY_TYPES));
   assert.ok(questions.OPERATION_TYPES.length > 0);
   assert.equal(questions.OPERATION_TYPES.includes('nextOrdinal'), false);
   assert.ok(questions.ANSWER_EXPOSURE_POLICIES.includes('hidden-until-worked'));
@@ -327,8 +384,8 @@ test('short, exact, surplus, fact-family, fourth-down, and touchdown facts use t
     [makeSnap(domain, { down: 4, yardsToGo: 10, firstDownLine: 40 }, 4), ['line-to-gain-missing-part', 'line-to-gain-fact-family']],
     [makeSnap(domain, { down: 4, yardsToGo: 10, firstDownLine: 40 }, 10), ['line-to-gain-exact']],
     [makeSnap(domain, { down: 4, yardsToGo: 4, firstDownLine: 34 }, 7), ['line-to-gain-surplus']],
-    [makeSnap(domain, { yardLine: 95, firstDownLine: 100, yardsToGo: 5, driveStart: 90, down: 4 }, 20), ['line-to-gain-exact', 'touchdown-points']],
-    [makeSnap(domain, { possession: 'defense', direction: -1, yardLine: 5, firstDownLine: 0, yardsToGo: 5, driveStart: 10, down: 4 }, 20), ['line-to-gain-exact', 'touchdown-points']],
+    [makeSnap(domain, { yardLine: 95, firstDownLine: 100, yardsToGo: 5, driveStart: 90, down: 4 }, 20), ['line-to-gain-exact', 'touchdown-base-points']],
+    [makeSnap(domain, { possession: 'defense', direction: -1, yardLine: 5, firstDownLine: 0, yardsToGo: 5, driveStart: 10, down: 4 }, 20), ['line-to-gain-exact', 'touchdown-base-points']],
   ];
   for (const [snap, expectedFamilies] of cases) {
     const ids = questions.inspect(snap, questions.DEFAULT_PROFILE).eligible.map((candidate) => candidate.familyId);
@@ -336,6 +393,283 @@ test('short, exact, surplus, fact-family, fourth-down, and touchdown facts use t
       assert.ok(ids.includes(familyId), `${familyId} for ${snap.context.possession}`);
       verifyGrounding(questions, snap, questions.build(snap, familyId));
     }
+  }
+});
+
+test('touchdown scoring retires the automatic-seven identity and teaches the touchdown-only six', () => {
+  const { domain, questions } = loadModules();
+  const snap = makeSnap(domain, {
+    yardLine: 95,
+    firstDownLine: 100,
+    yardsToGo: 5,
+    driveStart: 90,
+    down: 4,
+  }, 20);
+  const question = questions.build(snap, 'touchdown-base-points');
+  verifyGrounding(questions, snap, question);
+  assert.equal(question.playType, 'scrimmage');
+  assert.equal(question.concept, 'touchdown-base-scoring');
+  assert.equal(question.answer.value, 6);
+  assert.match(question.prompt.text, /touchdown itself/i);
+  assert.match(question.workedExplanation.text, /separate conversion/i);
+  assert.equal(Object.hasOwn(questions.RULES, 'game.touchdownPoints'), false);
+  assert.throws(
+    () => questions.build(snap, 'touchdown-points'),
+    (error) => error.code === 'unknown-family',
+  );
+  const registry = Object.values(questions.FAMILY_REGISTRY).flat();
+  assert.equal(registry.some((entry) => entry.familyId === 'touchdown-points'), false);
+  assert.equal(registry.some((entry) => entry.concept === 'scoring-rule'), false);
+  for (const callFamilies of Object.values(questions.CALL_AFFINITIES)) {
+    assert.equal(callFamilies.includes('touchdown-points'), false);
+  }
+  assert.ok(Object.values(questions.CALL_AFFINITIES).some((families) => families.includes('touchdown-base-points')));
+});
+
+test('special-team registries are closed, buildable, neutral, and grounded in each public active play', () => {
+  const { domain, questions } = loadModules();
+  const expectedIds = {
+    conversion: ['conversion-attempt-value', 'conversion-try-marker'],
+    fieldGoal: ['field-goal-attempt-distance', 'field-goal-point-value'],
+    punt: ['punt-travel-distance', 'punt-landing-spot'],
+  };
+  for (const [playType, ids] of Object.entries(expectedIds)) {
+    assert.deepEqual(plain(questions.FAMILY_REGISTRY[playType].map((entry) => entry.familyId)), ids);
+    assert.ok(questions.FAMILY_REGISTRY[playType].every((entry) => entry.playType === playType));
+  }
+  assert.deepEqual(plain(questions.SPECIAL_BINDING_PATHS), {
+    conversion: [
+      '/context/scores/player', '/context/scores/opponent',
+      '/context/attemptType', '/context/attemptValue',
+      '/context/direction', '/context/tryYardLine',
+    ],
+    fieldGoal: [
+      '/context/scores/player', '/context/scores/opponent',
+      '/context/attemptDistance',
+    ],
+    punt: [
+      '/context/direction', '/proposal/startYardLine',
+      '/proposal/rawLandingYardLine', '/proposal/appliedTravelYards',
+      '/proposal/landingYardLine',
+    ],
+  });
+
+  const plays = [
+    makeSpecialPlay(domain, 'conversion', { possession: 'offense', attemptType: 'pat' }),
+    makeSpecialPlay(domain, 'conversion', { possession: 'defense', attemptType: 'twoPoint' }),
+    makeSpecialPlay(domain, 'fieldGoal', { possession: 'offense', yardLine: 60 }),
+    makeSpecialPlay(domain, 'fieldGoal', { possession: 'defense', yardLine: 40 }),
+    makeSpecialPlay(domain, 'punt', { possession: 'offense', yardLine: 30, travelYards: 40 }),
+    makeSpecialPlay(domain, 'punt', { possession: 'defense', yardLine: 70, travelYards: 40 }),
+  ];
+
+  for (const play of plays) {
+    const inspection = questions.inspect(play);
+    assert.equal(inspection.playType, play.playType);
+    assert.deepEqual(
+      plain(inspection.eligible.map((entry) => entry.familyId)),
+      expectedIds[play.playType],
+      `${play.playType}:${play.context.possession}`,
+    );
+    assert.ok([...inspection.eligible, ...inspection.declined]
+      .every((entry) => expectedIds[play.playType].includes(entry.familyId)));
+    for (const candidate of inspection.eligible) {
+      const question = questions.build(play, candidate.familyId, { presentationRng: () => 0.37 });
+      verifyGrounding(questions, play, question);
+      assert.equal(question.playType, play.playType);
+      assert.equal(question.choices.length, 4);
+      assert.ok(question.choices.filter((choice) => choice.id !== question.correctChoiceId).length >= 2);
+      assert.deepEqual(plain(question.selection), {
+        strategy: 'play-type-neutral-v1',
+        role: play.context.possession,
+        selectedCallId: null,
+        multiplier: 1,
+      });
+      const allowedPaths = new Set(questions.SPECIAL_BINDING_PATHS[play.playType]);
+      for (const binding of question.bindings) {
+        if (binding.source.kind === 'context') {
+          assert.ok(allowedPaths.has(binding.source.path), `${candidate.familyId}:${binding.source.path}`);
+          assert.doesNotMatch(
+            binding.source.path,
+            /resultKind|points|made|restart|nextPossession|nextStart|mode|requestedTravel/i,
+          );
+        } else {
+          assert.deepEqual(plain(binding.source), {
+            kind: 'rule',
+            ruleId: 'game.fieldGoalPoints',
+          });
+        }
+      }
+      assert.equal(JSON.stringify(question).includes('privateOpponent'), false);
+      assert.equal(deepFrozen(question), true);
+    }
+  }
+
+  const [pat, twoPoint, forwardFieldGoal, reverseFieldGoal, forwardPunt, reversePunt] = plays;
+  assert.equal(questions.build(pat, 'conversion-attempt-value').answer.value, 1);
+  assert.equal(questions.build(pat, 'conversion-try-marker').answer.value, 98);
+  assert.equal(questions.build(twoPoint, 'conversion-attempt-value').answer.value, 2);
+  assert.equal(questions.build(twoPoint, 'conversion-try-marker').answer.value, 2);
+  assert.equal(questions.build(forwardFieldGoal, 'field-goal-attempt-distance').answer.value, 57);
+  assert.equal(questions.build(reverseFieldGoal, 'field-goal-attempt-distance').answer.value, 57);
+  assert.equal(questions.build(forwardFieldGoal, 'field-goal-point-value').answer.value, 3);
+  assert.equal(questions.build(reverseFieldGoal, 'field-goal-point-value').answer.value, 3);
+  assert.equal(questions.build(forwardPunt, 'punt-travel-distance').answer.value, 40);
+  assert.equal(questions.build(forwardPunt, 'punt-landing-spot').answer.value, 70);
+  assert.equal(questions.build(reversePunt, 'punt-travel-distance').answer.value, 40);
+  assert.equal(questions.build(reversePunt, 'punt-landing-spot').answer.value, 30);
+
+  assert.throws(
+    () => questions.build(pat, 'yards-to-go-read'),
+    (error) => error.code === 'family-play-type-mismatch',
+  );
+  assert.throws(
+    () => questions.build(forwardPunt, 'field-goal-attempt-distance'),
+    (error) => error.code === 'family-play-type-mismatch',
+  );
+});
+
+test('punt touchbacks preserve direction polarity and retain a truthful travel family', () => {
+  const { domain, questions } = loadModules();
+  const cases = [
+    makeSpecialPlay(domain, 'punt', { possession: 'offense', yardLine: 70, travelYards: 35 }),
+    makeSpecialPlay(domain, 'punt', { possession: 'defense', yardLine: 30, travelYards: 35 }),
+  ];
+  for (const play of cases) {
+    assert.equal(play.proposal.resultKind, 'puntTouchback');
+    assert.equal(play.proposal.appliedTravelYards, 30);
+    assert.equal(play.proposal.landingYardLine, play.context.possession === 'offense' ? 80 : 20);
+    const inspection = questions.inspect(play);
+    assert.deepEqual(plain(inspection.eligible.map((entry) => entry.familyId)), ['punt-travel-distance']);
+    assert.equal(
+      inspection.declined.find((entry) => entry.familyId === 'punt-landing-spot')?.reason.code,
+      'punt-touchback-placement',
+    );
+    const question = questions.build(play, 'punt-travel-distance');
+    verifyGrounding(questions, play, question);
+    assert.equal(question.answer.value, 30);
+  }
+});
+
+test('contextual punt validation gives goal crossing precedence over receiver-favorable caps in both directions', () => {
+  const { domain, questions } = loadModules();
+  const cases = [
+    { possession: 'offense', yardLine: 70, resultKind: 'punt', raw: 90 },
+    { possession: 'defense', yardLine: 30, resultKind: 'punt', raw: 10 },
+    { possession: 'offense', yardLine: 85, resultKind: 'puntTouchback', raw: 100 },
+    { possession: 'defense', yardLine: 15, resultKind: 'puntTouchback', raw: 0 },
+  ];
+  for (const row of cases) {
+    const activeThreat = makeSpecialPlay(domain, 'punt', {
+      possession: row.possession,
+      yardLine: row.yardLine,
+      travelYards: 35,
+    });
+    const alternate = {
+      ...plain(activeThreat),
+      proposal: plain(domain.reprojectPunt(activeThreat, 'receiverFavorable')),
+    };
+    assert.equal(alternate.proposal.rawLandingYardLine, row.raw);
+    assert.equal(alternate.proposal.resultKind, row.resultKind);
+    assert.equal(
+      alternate.proposal.restartReason,
+      row.resultKind === 'puntTouchback' ? 'puntTouchback' : 'punt',
+    );
+    const inspection = questions.inspect(alternate);
+    assert.equal(inspection.eligible.length, 0);
+    assert.ok(inspection.declined.every(entry => entry.reason.code === 'alternate-initial-proposal'));
+
+    if (row.resultKind === 'puntTouchback') {
+      const stalePrecedence = plain(alternate);
+      stalePrecedence.proposal.resultKind = 'punt';
+      stalePrecedence.proposal.restartReason = 'punt';
+      const rejected = questions.inspect(stalePrecedence);
+      assert.equal(rejected.eligible.length, 0);
+      assert.ok(rejected.declined.every(entry => entry.reason.code === 'invalid-punt-proposal'));
+    }
+  }
+});
+
+test('contextual special boundary rejects every alternate initial proposal', () => {
+  const { domain, questions } = loadModules();
+  const fieldGoal = makeSpecialPlay(domain, 'fieldGoal');
+  const conversion = makeSpecialPlay(domain, 'conversion');
+  const candidates = [
+    {
+      ...plain(fieldGoal),
+      proposal: plain(domain.reprojectFieldGoal(fieldGoal, 'missed')),
+    },
+    {
+      ...plain(fieldGoal),
+      proposal: plain(domain.reprojectFieldGoal(fieldGoal, 'blocked')),
+    },
+    {
+      ...plain(conversion),
+      proposal: plain(domain.reprojectConversion(conversion, 'missed')),
+    },
+  ];
+  for (const candidate of candidates) {
+    const inspection = questions.inspect(candidate);
+    assert.equal(inspection.eligible.length, 0, candidate.proposal.resultKind);
+    assert.ok(
+      inspection.declined.every(entry => entry.reason.code === 'alternate-initial-proposal'),
+      candidate.proposal.resultKind,
+    );
+    assert.throws(
+      () => questions.build(candidate, questions.FAMILY_REGISTRY[candidate.playType][0].familyId),
+      error => error.code === 'alternate-initial-proposal',
+    );
+  }
+});
+
+test('special-team inspection rejects extra private or contradictory fields deterministically', () => {
+  const { domain, questions } = loadModules();
+  const valid = makeSpecialPlay(domain, 'fieldGoal', { possession: 'defense', yardLine: 40 });
+  const privateContext = plain(valid);
+  privateContext.context.privateOpponentDecision = { action: 'fieldGoal', secret: 'do-not-leak' };
+  const privateInspection = questions.inspect(privateContext);
+  assert.equal(privateInspection.eligible.length, 0);
+  assert.ok(privateInspection.declined.every((entry) => entry.reason.code === 'invalid-context-shape'));
+  assert.throws(
+    () => questions.build(privateContext, 'field-goal-attempt-distance'),
+    (error) => error.code === 'invalid-context-shape',
+  );
+
+  const extraProposal = plain(valid);
+  extraProposal.proposal.plannedCallKey = 'longPass';
+  const first = questions.inspect(extraProposal);
+  const second = questions.inspect(extraProposal);
+  assert.deepEqual(plain(first), plain(second));
+  assert.equal(first.eligible.length, 0);
+  assert.ok(first.declined.every((entry) => entry.reason.code === 'invalid-proposal-shape'));
+
+  const contradictory = plain(valid);
+  contradictory.context.attemptDistance = 56;
+  contradictory.proposal.attemptDistance = 56;
+  const contradiction = questions.inspect(contradictory);
+  assert.equal(contradiction.eligible.length, 0);
+  assert.ok(contradiction.declined.every((entry) => entry.reason.code === 'invalid-field-goal'));
+
+  for (const invalidId of [null, 0, '   ']) {
+    const invalidIdentity = plain(valid);
+    invalidIdentity.contextId = invalidId;
+    invalidIdentity.context.contextId = invalidId;
+    invalidIdentity.proposal.contextId = invalidId;
+    const inspection = questions.inspect(invalidIdentity);
+    assert.equal(inspection.eligible.length, 0, String(invalidId));
+    assert.ok(inspection.declined.every(entry => entry.reason.code === 'invalid-context-identity'));
+  }
+
+  for (const alteredMatch of [
+    { ...matchDescriptor(), privateProfile: 'balanced' },
+    { ...matchDescriptor(), player: { ...matchDescriptor().player, privateRating: 99 } },
+    { ...matchDescriptor(), opponent: { ...matchDescriptor().opponent, profileKey: 'balanced' } },
+  ]) {
+    const nestedExtra = plain(valid);
+    nestedExtra.context.match = alteredMatch;
+    const inspection = questions.inspect(nestedExtra);
+    assert.equal(inspection.eligible.length, 0);
+    assert.ok(inspection.declined.every(entry => entry.reason.code === 'invalid-match'));
   }
 });
 
@@ -390,6 +724,7 @@ test('next-down is grounded in the frozen proposal and hides the projected resul
     weight: 1.1,
     operationType: 'ordinal',
     answerExposure: 'modeled-with-result-hidden',
+    playType: 'scrimmage',
   });
 
   const question = questions.build(snap, 'next-down', {
@@ -1063,6 +1398,28 @@ test('malformed or contradictory snaps fail closed with deterministic diagnostic
     assert.equal(first.eligible.length, 0);
     assert.equal(first.declined.length > 0, true);
     assert.throws(() => questions.build(snap, 'yards-to-go-read'));
+  }
+
+  for (const invalidId of [null, 0, '   ']) {
+    const invalidIdentity = plain(valid);
+    invalidIdentity.contextId = invalidId;
+    invalidIdentity.context.contextId = invalidId;
+    invalidIdentity.proposal.contextId = invalidId;
+    const inspection = questions.inspect(invalidIdentity);
+    assert.equal(inspection.eligible.length, 0, String(invalidId));
+    assert.ok(inspection.declined.every(entry => entry.reason.code === 'invalid-context-identity'));
+  }
+
+  for (const alteredMatch of [
+    { ...matchDescriptor(), privateProfile: 'balanced' },
+    { ...matchDescriptor(), player: { ...matchDescriptor().player, privateRating: 99 } },
+    { ...matchDescriptor(), opponent: { ...matchDescriptor().opponent, profileKey: 'balanced' } },
+  ]) {
+    const nestedExtra = plain(valid);
+    nestedExtra.context.match = alteredMatch;
+    const inspection = questions.inspect(nestedExtra);
+    assert.equal(inspection.eligible.length, 0);
+    assert.ok(inspection.declined.every(entry => entry.reason.code === 'invalid-match'));
   }
 });
 

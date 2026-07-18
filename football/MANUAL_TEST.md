@@ -23,10 +23,15 @@ Run these on both iPad sizes and orientations:
 - offense question
 - offense feedback
 - player touchdown overlay
+- player conversion decision, question, and feedback
+- legal three-card player fourth-down decision and its five-call “go” branch
+- player punt and field-goal question/result states
 - defense call
 - defense question
 - defense feedback
 - opponent touchdown overlay
+- opponent conversion question, retry, explanation, and feedback
+- opponent punt, field-goal, and fourth-down “go” states
 - defense transition overlay
 - offense transition overlay
 - quarter-end overlay
@@ -41,20 +46,34 @@ Run these on both iPhone sizes:
 - offense call
 - offense question
 - offense feedback
+- player fourth-down decision
+- player conversion decision and question
+- player punt and field-goal question/result states
 - defense transition overlay
 - offense transition overlay
 - player touchdown overlay
 - opponent touchdown overlay
+- opponent conversion question/result
+- opponent punt and field-goal question/result states
 - quarter-end overlay
 - halftime overlay
 - final overlay
 
 ## Interaction Checks
 
-- touch targets on `.call-btn` and `.ans-btn` stay comfortably tappable
+- touch targets on `.call-btn`, `.decision-btn`, and `.ans-btn` stay at least
+  `44x44`
 - no hover-only dependency on call selection or answer selection
 - offense call grid is fully visible without scrolling on both iPads, both phones, and iPad 11 landscape
+- a legal player fourth down shows exactly three separate decision cards (go,
+  punt, field goal); an illegal field goal leaves exactly two
+- choosing fourth-down “go” returns to exactly five normal offensive call cards;
+  an opponent “go” returns to exactly four normal defensive call cards
+- the conversion decision shows exactly two separate cards (PAT and two-point
+  try), while the scorebug reads `TRY` and a try spot rather than a fake down
 - defense call shows one concise, truthful pre-snap look and tendency; choosing a call does not reroll or reveal the opponent's planned call
+- opponent punt, field-goal, and conversion actions are announced politely and
+  visibly before their questions without exposing the private decision snapshot
 - rival picker exposes exactly three native radio choices with a visible checked state, keyboard focus, and at least `44x44` label targets; Start remains a separate CTA above the fold
 - selecting a rival previews its public matchup and controlled accent without starting or sampling the game; Play Again returns with that rival selected
 - Wake Forest's longest label fits both the start picker and defensive pre-snap read without horizontal overflow on every target
@@ -65,6 +84,35 @@ Run these on both iPhone sizes:
 - scorebug remains readable without clipped LIVE ribbon or possession indicator
 - field, line-to-gain badge, and lower-third do not collide at device edges
 - overlays fit without broken clipping or unreadable buttons
+
+## Football and Persistence Invariants
+
+- a touchdown adds six points; its CTA starts a fresh conversion play rather
+  than immediately ending the possession
+- a made PAT adds one point and a made two-point try adds two; instructional
+  success helps the player offense and denies the opponent offense
+- touchdown and conversion use distinct play/context IDs and stats rows, while
+  the possession and `quarterPossessions` close exactly once after conversion
+- a made field goal adds three and restarts the scheduled receiving possession
+  at its own 20; a miss or defensive block hands off at the original absolute
+  line of scrimmage
+- a normal punt retains its frozen 35–50 yard travel; a goal-line punt becomes a
+  touchback and a receiver-favorable punt cannot pin the receiver inside its own
+  20
+- Q1→Q2 and Q3→Q4 retain pending placement; halftime replaces it with the
+  prescribed opponent start at absolute 80; Q4 completes the conversion before
+  showing the final and schedules no restart
+- local history keeps the `footballMathStats:v1` key but writes inner schema 3;
+  schema-1/schema-2 rows normalize in memory without a read rewrite, the next
+  completed play writes v3, and an unknown future schema remains byte-for-byte
+  untouched
+- special-team rows use typed outcomes/metrics without adding kick distance,
+  punt travel, or conversion values to scrimmage/team/drive yard totals
+- repeated answer, Continue, touchdown, or transition controls cannot append a
+  duplicate play row, learning resolution, result event, or possession close
+- public render state, persisted rows, diagnostics, and result telemetry contain
+  stable public IDs/facts only—never the private opponent decision or planned
+  call snapshot
 
 ## Verification Notes
 
@@ -93,26 +141,72 @@ Run the complete Football release verifier before merge:
 npm run test:football:release
 ```
 
-The release command first runs DOM-free football-domain and contextual-question property tests, then runs every Football contract and UI spec against all six device projects. Coverage includes frozen-snap grounding, structured choice IDs, valid-question-failure bypass telemetry, invalid-context fail-closed behavior, independent RNG streams, bounded stats persistence, mastery/coach-report behavior, situational opponent tendencies, and pre-snap hint truthfulness. Its state matrix follows the game’s production paths: a correct offense answer produces the player touchdown, a second defensive miss produces the capped opponent touchdown path, touchdown buttons produce both possession transitions, and `finishPossession()` produces quarter-end, halftime, and final.
+The release command first runs DOM-free football-domain and contextual-question
+property tests, then runs every Football contract and UI spec against all six
+device projects. Coverage includes tagged `activePlay` grounding, type-specific
+projection validation, structured choice IDs, valid-question-failure bypass
+telemetry, invalid-context fail-closed recovery, exact football-RNG budgets,
+stats-v3 migration/privacy/exactly-once behavior, mastery/coach-report behavior,
+deterministic opponent decisions, and pre-snap hint truthfulness. Its primary
+state matrix follows production paths through a six-point player touchdown,
+player conversion, six-point opponent touchdown, opponent conversion, both
+possession transitions, and `finishPossession()` quarter-end, halftime, and
+final routing. A dedicated special-teams path exercises legal fourth-down
+decisions, both normal “go” call counts, and player/opponent punt and field-goal
+questions/results.
 
-Each project archives these 14 required game states:
+Each project preserves the original 20 release artifacts:
 
-1. start
-2. offense call
-3. offense question
-4. offense feedback
-5. player touchdown
-6. defense transition
-7. defense call
-8. defense question
-9. defense feedback
-10. opponent touchdown
-11. offense transition
-12. quarter-end
-13. halftime
-14. final
+```text
+01-start
+02-offense-call
+03-offense-question
+03b-offense-retry
+04-offense-feedback
+05-player-td
+06-defense-transition
+07-defense-call
+08-defense-question
+08b-defense-retry
+08c-defense-explanation
+09-defense-feedback
+10-opponent-td
+11-offense-transition
+12-quarter-end
+13-halftime
+14-final
+15-reduced-motion
+16-wake-forest-start
+17-wake-forest-read
+```
 
-Six additional screenshots record offense retry, defense retry, the blocking explanation/Continue state, reduced motion, the longest-label Wake Forest start preview, and its defensive pre-snap read. The post-test gate requires all 120 PNGs (20 screenshots × 6 projects) to exist and be non-empty. Missing states, clipped or undersized controls, horizontal overflow, uncaught browser errors, failed behavior contracts, or missing artifacts make the command exit nonzero.
+The v1.25.0 path adds these 18 explicit artifacts:
+
+```text
+05a-player-conversion-decision
+05b-player-conversion-question
+05c-player-conversion-feedback
+10a-opponent-conversion-question
+10b-opponent-conversion-retry
+10c-opponent-conversion-explanation
+10d-opponent-conversion-feedback
+18-offense-fourth-down-decision
+19-offense-fourth-down-go-call
+20-offense-punt-question
+20a-offense-punt-feedback
+21-offense-field-goal-question
+21a-offense-field-goal-feedback
+22-defense-punt-question
+22a-defense-punt-feedback
+23-defense-field-goal-question
+23a-defense-field-goal-feedback
+24-defense-fourth-down-go-call
+```
+
+The post-test gate therefore requires all 228 PNGs (38 screenshots × 6
+projects) to exist and be non-empty. Missing states, clipped or undersized
+controls, horizontal overflow, uncaught browser errors, failed behavior
+contracts, or missing artifacts make the command exit nonzero.
 
 Canonical screenshots are retained at:
 
@@ -128,7 +222,7 @@ release matrix. The Coach Report spec verifies that the card and replay CTA fit
 the viewport, the CTA remains at least `44x44`, and the page has no horizontal
 overflow. Its attached `compact-final-overlay.png` stays under Playwright's
 temporary artifact tree and is intentionally not part of the canonical
-120-image gate.
+228-image gate.
 
 ### Quick measurement snippet
 

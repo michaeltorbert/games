@@ -7,6 +7,9 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
   const SCHEMA_VERSION = 1;
   const CURRENT_COMPLETED_PAGE = 145;
   const INCLUDED_THROUGH_PAGE = 179;
+  const PLAY_TYPES = Object.freeze(['scrimmage', 'punt', 'fieldGoal', 'conversion']);
+  const MATCH_KEYS = Object.freeze(['schemaVersion', 'player', 'opponent']);
+  const TEAM_IDENTITY_KEYS = Object.freeze(['id', 'displayName', 'shortName', 'endZoneName']);
 
   const OPERATION_TYPES = Object.freeze([
     'read',
@@ -27,6 +30,8 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
     'driveDistancePlusGain',
     'ruleValue',
     'compare',
+    'conversionValue',
+    'tryMarkerForDirection',
   ]);
 
   const ANSWER_EXPOSURE_POLICIES = Object.freeze([
@@ -43,7 +48,55 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
   const RULES = deepFreeze({
     'field.goal.left': 0,
     'field.goal.right': 100,
-    'game.touchdownPoints': 7,
+    'field.try.left': 2,
+    'field.try.right': 98,
+    'game.fieldGoalExtraDistance': 17,
+    'game.touchdownBasePoints': 6,
+    'game.patPoints': 1,
+    'game.twoPointPoints': 2,
+    'game.fieldGoalPoints': 3,
+  });
+
+  const SPECIAL_CONTEXT_KEYS = deepFreeze({
+    punt: ['schemaVersion', 'playType', 'contextId', 'match', 'possession', 'direction', 'quarter', 'yardLine', 'scores'],
+    fieldGoal: ['schemaVersion', 'playType', 'contextId', 'match', 'possession', 'direction', 'quarter', 'yardLine', 'attemptDistance', 'scores'],
+    conversion: ['schemaVersion', 'playType', 'contextId', 'match', 'possession', 'direction', 'quarter', 'tryYardLine', 'attemptType', 'attemptValue', 'scores'],
+  });
+
+  const SPECIAL_PROJECTION_KEYS = deepFreeze({
+    punt: [
+      'contextId', 'playType', 'possession', 'direction', 'startYardLine', 'mode',
+      'requestedTravelYards', 'appliedTravelYards', 'rawLandingYardLine',
+      'landingYardLine', 'resultKind', 'nextPossession', 'nextStartYardLine',
+      'restartReason',
+    ],
+    fieldGoal: [
+      'contextId', 'playType', 'possession', 'direction', 'startYardLine',
+      'attemptDistance', 'made', 'resultKind', 'points', 'nextPossession',
+      'nextStartYardLine', 'restartReason',
+    ],
+    conversion: [
+      'contextId', 'playType', 'possession', 'direction', 'tryYardLine',
+      'attemptType', 'attemptValue', 'made', 'resultKind', 'points',
+      'nextPossession', 'nextStartYardLine', 'restartReason',
+    ],
+  });
+
+  const SPECIAL_BINDING_PATHS = deepFreeze({
+    conversion: [
+      '/context/scores/player', '/context/scores/opponent',
+      '/context/attemptType', '/context/attemptValue',
+      '/context/direction', '/context/tryYardLine',
+    ],
+    fieldGoal: [
+      '/context/scores/player', '/context/scores/opponent',
+      '/context/attemptDistance',
+    ],
+    punt: [
+      '/context/direction', '/proposal/startYardLine',
+      '/proposal/rawLandingYardLine', '/proposal/appliedTravelYards',
+      '/proposal/landingYardLine',
+    ],
   });
 
   const CALL_AFFINITY_MULTIPLIER = 1.75;
@@ -53,13 +106,13 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
   const CALL_AFFINITIES = deepFreeze({
     'offense:shortRun': ['yards-to-go-read', 'line-to-gain-missing-part', 'line-to-gain-exact', 'line-to-gain-surplus', 'line-to-gain-fact-family', 'gain-vs-needed-comparison', 'team-yards-past-100'],
     'offense:shortPass': ['yards-to-go-read', 'line-to-gain-missing-part', 'line-to-gain-exact', 'line-to-gain-surplus', 'line-to-gain-fact-family', 'gain-vs-needed-comparison', 'next-down'],
-    'offense:longRun': ['gain-vs-needed-comparison', 'goal-distance-read', 'drive-distance-scaffolded', 'next-down', 'touchdown-points'],
-    'offense:mediumPass': ['gain-vs-needed-comparison', 'goal-distance-read', 'goal-distance-tens', 'goal-distance-ones', 'next-down', 'touchdown-points'],
-    'offense:longPass': ['gain-vs-needed-comparison', 'goal-distance-read', 'goal-distance-tens', 'goal-distance-ones', 'goal-distance-minus-whole-tens', 'drive-distance-plus-whole-tens', 'touchdown-points'],
+    'offense:longRun': ['gain-vs-needed-comparison', 'goal-distance-read', 'drive-distance-scaffolded', 'next-down', 'touchdown-base-points'],
+    'offense:mediumPass': ['gain-vs-needed-comparison', 'goal-distance-read', 'goal-distance-tens', 'goal-distance-ones', 'next-down', 'touchdown-base-points'],
+    'offense:longPass': ['gain-vs-needed-comparison', 'goal-distance-read', 'goal-distance-tens', 'goal-distance-ones', 'goal-distance-minus-whole-tens', 'drive-distance-plus-whole-tens', 'touchdown-base-points'],
     'defense:run': ['yards-to-go-read', 'line-to-gain-missing-part', 'line-to-gain-exact', 'line-to-gain-surplus', 'line-to-gain-fact-family', 'gain-vs-needed-comparison'],
     'defense:shortPass': ['yards-to-go-read', 'line-to-gain-missing-part', 'line-to-gain-exact', 'line-to-gain-surplus', 'gain-vs-needed-comparison', 'next-down'],
     'defense:mediumPass': ['gain-vs-needed-comparison', 'goal-distance-read', 'next-down'],
-    'defense:deepPass': ['goal-distance-read', 'goal-distance-tens', 'goal-distance-ones', 'touchdown-points'],
+    'defense:deepPass': ['goal-distance-read', 'goal-distance-tens', 'goal-distance-ones', 'touchdown-base-points'],
   });
 
   const DEFAULT_PROFILE = deepFreeze({
@@ -246,23 +299,193 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
     return snap.proposal.appliedGain;
   }
 
-  function baseShapeReason(snap) {
+  function sourcePlayType(source) {
+    if (isRecord(source) && source.playType !== undefined) {
+      return PLAY_TYPES.includes(source.playType) ? source.playType : null;
+    }
+    return 'scrimmage';
+  }
+
+  function exactKeys(value, expected) {
+    if (!isRecord(value)) return false;
+    const actual = Object.keys(value).sort();
+    const wanted = [...expected].sort();
+    return actual.length === wanted.length && actual.every((key, index) => key === wanted[index]);
+  }
+
+  function validContextId(value) {
+    return (Number.isInteger(value) && value >= 1)
+      || (typeof value === 'string' && value.trim() !== '');
+  }
+
+  function nonEmptyString(value) {
+    return typeof value === 'string' && value.trim() !== '';
+  }
+
+  function validMatch(match) {
+    return exactKeys(match, MATCH_KEYS) && match.schemaVersion === 1
+      && exactKeys(match.player, TEAM_IDENTITY_KEYS)
+      && exactKeys(match.opponent, TEAM_IDENTITY_KEYS)
+      && TEAM_IDENTITY_KEYS.every((key) => nonEmptyString(match.player[key]))
+      && TEAM_IDENTITY_KEYS.every((key) => nonEmptyString(match.opponent[key]));
+  }
+
+  function oppositePossession(possession) {
+    return possession === 'offense' ? 'defense' : 'offense';
+  }
+
+  function startingYardFor(possession) {
+    return possession === 'offense' ? 20 : 80;
+  }
+
+  function specialShapeReason(play, playType) {
+    if (!isRecord(play)) return decline('invalid-play', 'Expected one active play object.');
+    if (!exactKeys(play, ['schemaVersion', 'playType', 'gameId', 'possessionId', 'playId', 'contextId', 'context', 'proposal'])) {
+      return decline('invalid-active-play-shape', 'Special-team active play must use the exact public tagged shape.');
+    }
+    if (play.schemaVersion !== 1 || play.playType !== playType) {
+      return decline('invalid-play-type', 'Active play type or schema is invalid.');
+    }
+    if (![play.gameId, play.possessionId, play.playId].every((id) => typeof id === 'string' && id.trim())) {
+      return decline('invalid-play-identity', 'Special-team play identity fields must be non-empty strings.');
+    }
+    const c = play.context;
+    const p = play.proposal;
+    if (!exactKeys(c, SPECIAL_CONTEXT_KEYS[playType])) {
+      return decline('invalid-context-shape', `${playType} context contains missing, extra, or private fields.`);
+    }
+    if (!exactKeys(p, SPECIAL_PROJECTION_KEYS[playType])) {
+      return decline('invalid-proposal-shape', `${playType} proposal contains missing, extra, or private fields.`);
+    }
+    if (![play.contextId, c.contextId, p.contextId].every(validContextId)) {
+      return decline('invalid-context-identity', 'Play, context, and proposal context IDs must be positive integers or nonempty strings.');
+    }
+    if (c.schemaVersion !== 1 || c.playType !== playType || p.playType !== playType
+      || play.contextId !== c.contextId || p.contextId !== c.contextId) {
+      return decline('inconsistent-play-identity', 'Play, context, and proposal tags must agree.');
+    }
+    if (!validMatch(c.match)) return decline('invalid-match', 'Special-team context must include one complete public match descriptor.');
+    if (!['offense', 'defense'].includes(c.possession) || p.possession !== c.possession) {
+      return decline('invalid-possession', 'Special-team possession must be offense or defense and agree with the proposal.');
+    }
+    const expectedDirection = c.possession === 'offense' ? 1 : -1;
+    if (c.direction !== expectedDirection || p.direction !== c.direction) {
+      return decline('invalid-direction', 'Special-team direction must agree with possession and proposal.');
+    }
+    if (!Number.isInteger(c.quarter) || c.quarter < 1 || c.quarter > 4) {
+      return decline('invalid-quarter', 'Quarter must be 1 through 4.');
+    }
+    if (!isRecord(c.scores) || !exactKeys(c.scores, ['player', 'opponent'])
+      || !Number.isInteger(c.scores.player) || c.scores.player < 0
+      || !Number.isInteger(c.scores.opponent) || c.scores.opponent < 0) {
+      return decline('invalid-scores', 'Committed scores must contain two nonnegative integers.');
+    }
+
+    const nextPossession = oppositePossession(c.possession);
+    if (p.nextPossession !== nextPossession) return decline('invalid-next-possession', 'Proposal must hand the ball to the other possession.');
+
+    if (playType === 'conversion') {
+      const expectedTry = c.direction === 1 ? RULES['field.try.right'] : RULES['field.try.left'];
+      const expectedValue = c.attemptType === 'pat' ? RULES['game.patPoints']
+        : c.attemptType === 'twoPoint' ? RULES['game.twoPointPoints'] : null;
+      if (c.tryYardLine !== expectedTry || c.attemptValue !== expectedValue
+        || p.tryYardLine !== c.tryYardLine || p.attemptType !== c.attemptType
+        || p.attemptValue !== c.attemptValue || typeof p.made !== 'boolean') {
+        return decline('invalid-conversion', 'Conversion facts contradict the public try context.');
+      }
+      const expectedKind = p.made ? 'conversionMade' : 'conversionMissed';
+      if (p.resultKind !== expectedKind || p.points !== (p.made ? c.attemptValue : 0)
+        || p.nextStartYardLine !== startingYardFor(nextPossession)
+        || p.restartReason !== 'automaticTouchback') {
+        return decline('invalid-conversion-proposal', 'Conversion proposal contradicts canonical scoring or placement.');
+      }
+      if (!p.made) return decline(
+        'alternate-initial-proposal',
+        'A missed conversion is a resolution reprojection, not an initial question source.',
+      );
+      return null;
+    }
+
+    if (!Number.isInteger(c.yardLine) || c.yardLine < 1 || c.yardLine > 99 || p.startYardLine !== c.yardLine) {
+      return decline('invalid-yard-line', 'Special-team yard line must be 1 through 99 and match the proposal start.');
+    }
+
+    if (playType === 'fieldGoal') {
+      const goalLine = c.direction === 1 ? RULES['field.goal.right'] : RULES['field.goal.left'];
+      const expectedDistance = Math.abs(goalLine - c.yardLine) + RULES['game.fieldGoalExtraDistance'];
+      if (c.attemptDistance !== expectedDistance || expectedDistance > 57
+        || p.attemptDistance !== c.attemptDistance || typeof p.made !== 'boolean') {
+        return decline('invalid-field-goal', 'Field-goal facts contradict the public attempt context.');
+      }
+      const expectedKind = p.made ? 'fieldGoalMade'
+        : p.restartReason === 'blockedFieldGoal' ? 'fieldGoalBlocked' : 'fieldGoalMissed';
+      const expectedRestart = p.made ? 'automaticTouchback'
+        : expectedKind === 'fieldGoalBlocked' ? 'blockedFieldGoal' : 'missedFieldGoal';
+      const expectedStart = p.made ? startingYardFor(nextPossession) : c.yardLine;
+      if (p.resultKind !== expectedKind || p.points !== (p.made ? RULES['game.fieldGoalPoints'] : 0)
+        || p.nextStartYardLine !== expectedStart || p.restartReason !== expectedRestart) {
+        return decline('invalid-field-goal-proposal', 'Field-goal proposal contradicts canonical scoring or placement.');
+      }
+      if (!p.made) return decline(
+        'alternate-initial-proposal',
+        'A missed or blocked field goal is a resolution reprojection, not an initial question source.',
+      );
+      return null;
+    }
+
+    if (!['normal', 'receiverFavorable'].includes(p.mode)
+      || !Number.isInteger(p.requestedTravelYards)
+      || (p.mode === 'normal' && (p.requestedTravelYards < 35 || p.requestedTravelYards > 50))
+      || (p.mode === 'receiverFavorable' && p.requestedTravelYards !== 20)) {
+      return decline('invalid-punt-travel', 'Punt travel must match its frozen normal or receiver-favorable mode.');
+    }
+    const receivingOwn20 = startingYardFor(nextPossession);
+    const unbounded = c.yardLine + (c.direction * p.requestedTravelYards);
+    const crossedGoal = c.direction === 1 ? unbounded >= 100 : unbounded <= 0;
+    const rawLanding = Math.max(0, Math.min(100, unbounded));
+    let landing;
+    let expectedKind;
+    if (crossedGoal) {
+      landing = receivingOwn20;
+      expectedKind = 'puntTouchback';
+    } else if (p.mode === 'receiverFavorable') {
+      landing = c.direction === 1
+        ? Math.min(rawLanding, receivingOwn20)
+        : Math.max(rawLanding, receivingOwn20);
+      expectedKind = 'punt';
+    } else {
+      landing = rawLanding;
+      expectedKind = 'punt';
+    }
+    const expectedRaw = rawLanding;
+    const expectedApplied = Math.abs(expectedRaw - c.yardLine);
+    if (p.rawLandingYardLine !== expectedRaw || p.landingYardLine !== landing
+      || p.appliedTravelYards !== expectedApplied || p.resultKind !== expectedKind
+      || p.nextStartYardLine !== landing
+      || p.restartReason !== (expectedKind === 'puntTouchback' ? 'puntTouchback' : 'punt')) {
+      return decline('invalid-punt-proposal', 'Punt proposal contradicts canonical travel or receiving placement.');
+    }
+    if (p.mode !== 'normal') return decline(
+      'alternate-initial-proposal',
+      'A receiver-favorable punt is a resolution reprojection, not an initial question source.',
+    );
+    return null;
+  }
+
+  function scrimmageShapeReason(snap) {
     if (!isRecord(snap)) return decline('invalid-snap', 'Expected one snap object.');
     if (!isRecord(snap.context)) return decline('invalid-context', 'Snap context is missing.');
     if (!isRecord(snap.proposal)) return decline('invalid-proposal', 'Snap proposal is missing.');
     const c = snap.context;
     const p = snap.proposal;
-    if (!isRecord(c.match) || c.match.schemaVersion !== 1
-      || !isRecord(c.match.player) || !isRecord(c.match.opponent)
-      || typeof c.match.player.id !== 'string' || !c.match.player.id
-      || typeof c.match.player.displayName !== 'string' || !c.match.player.displayName
-      || typeof c.match.player.shortName !== 'string' || !c.match.player.shortName
-      || typeof c.match.player.endZoneName !== 'string' || !c.match.player.endZoneName
-      || typeof c.match.opponent.id !== 'string' || !c.match.opponent.id
-      || typeof c.match.opponent.displayName !== 'string' || !c.match.opponent.displayName
-      || typeof c.match.opponent.shortName !== 'string' || !c.match.opponent.shortName
-      || typeof c.match.opponent.endZoneName !== 'string' || !c.match.opponent.endZoneName) {
+    if (!validMatch(c.match)) {
       return decline('invalid-match', 'Snap context must include one complete public match descriptor.');
+    }
+    if (![snap.contextId, c.contextId, p.contextId].every(validContextId)) {
+      return decline('invalid-context-identity', 'Snap, context, and proposal context IDs must be positive integers or nonempty strings.');
+    }
+    if (snap.contextId !== c.contextId || p.contextId !== c.contextId) {
+      return decline('inconsistent-play-identity', 'Snap, context, and proposal context IDs must agree.');
     }
     if (!['offense', 'defense'].includes(c.possession)) return decline('invalid-possession', 'Possession must be offense or defense.');
     if (![1, -1].includes(c.direction)) return decline('invalid-direction', 'Direction must be 1 or -1.');
@@ -295,6 +518,14 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
     return null;
   }
 
+  function sourceShapeReason(source) {
+    const playType = sourcePlayType(source);
+    if (!playType) return decline('invalid-play-type', 'Question source uses an unknown play type.');
+    return playType === 'scrimmage'
+      ? scrimmageShapeReason(source)
+      : specialShapeReason(source, playType);
+  }
+
   function decline(code, detail, paths = []) {
     return { code, detail, paths: [...paths] };
   }
@@ -322,7 +553,9 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
     answerExposure,
     curriculumSource,
     introducedOnPage = null,
+    playType = 'scrimmage',
   }) {
+    if (!PLAY_TYPES.includes(playType)) throw new Error(`Unknown play type ${playType}.`);
     if (!OPERATION_TYPES.includes(operationType)) throw new Error(`Unknown operation type ${operationType}.`);
     if (!ANSWER_EXPOSURE_POLICIES.includes(answerExposure)) throw new Error(`Unknown answer-exposure policy ${answerExposure}.`);
     if (!CURRICULUM_SOURCES.includes(curriculumSource)) throw new Error(`Unknown curriculum source ${curriculumSource}.`);
@@ -345,6 +578,7 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
       weight,
       operationType,
       answerExposure,
+      playType,
     });
   }
 
@@ -860,40 +1094,210 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
       },
     },
     {
-      meta: makeMeta({ familyId: 'touchdown-points', skill: 'football-number-sense', concept: 'scoring-rule', purpose: 'coreReview', tier: 'football-context', weight: 0.7, operationType: 'ruleValue', answerExposure: 'hidden-until-worked', curriculumSource: 'football-only' }),
+      meta: makeMeta({ familyId: 'touchdown-base-points', skill: 'football-number-sense', concept: 'touchdown-base-scoring', purpose: 'coreReview', tier: 'football-context', weight: 0.7, operationType: 'ruleValue', answerExposure: 'hidden-until-worked', curriculumSource: 'football-only' }),
       derive(snap) {
         if (snap.proposal.resultKind !== 'touchdown') return { decline: decline('not-touchdown-proposal', 'The scoring constant is contextual only for a touchdown proposal.', ['/proposal/resultKind']) };
-        const answer = RULES['game.touchdownPoints'];
+        const answer = RULES['game.touchdownBasePoints'];
         return eligible(makeSemantic({
-          bindings: [contextBinding(snap, 'resultKind', '/proposal/resultKind'), ruleBinding('touchdownPoints', 'game.touchdownPoints')],
-          operationType: 'ruleValue', operandIds: ['touchdownPoints'], answer,
-          prompt: 'If this play reaches the end zone, how many points does this game award for the touchdown and automatic extra point?',
-          hint: 'Use the scoring rule for this game, not the projected scoreboard.',
-          explanation: `This game awards ${answer} points for a touchdown with its automatic extra point.`,
+          bindings: [contextBinding(snap, 'resultKind', '/proposal/resultKind'), ruleBinding('touchdownBasePoints', 'game.touchdownBasePoints')],
+          operationType: 'ruleValue', operandIds: ['touchdownBasePoints'], answer,
+          prompt: 'If this play reaches the end zone, how many points is the touchdown itself worth?',
+          hint: 'Count only the touchdown. The conversion is a separate play afterward.',
+          explanation: `The touchdown itself is worth ${answer} points. A separate conversion play comes next.`,
           choiceSpec: numericChoiceSpec(0, 10), visualType: 'touchdown-rule',
           visualData: { resultKind: 'touchdown', points: null },
-          initialAriaLabel: 'A touchdown scoring badge with its point value hidden.',
-          guidedAriaLabel: 'Think of the fixed touchdown scoring rule; the point value remains hidden.',
-          workedAriaLabel: `The touchdown scoring rule awards ${answer} points.`,
+          initialAriaLabel: 'A touchdown badge with the touchdown-only point value hidden.',
+          guidedAriaLabel: 'Think only about the touchdown before its separate conversion; the point value remains hidden.',
+          workedAriaLabel: `The touchdown itself awards ${answer} points.`,
+        }));
+      },
+    },
+    {
+      meta: makeMeta({ familyId: 'conversion-attempt-value', skill: 'football-number-sense', concept: 'conversion-scoring', purpose: 'coreReview', tier: 'football-context', weight: 1.4, operationType: 'conversionValue', answerExposure: 'hidden-until-worked', curriculumSource: 'football-only', playType: 'conversion' }),
+      derive(play) {
+        const c = play.context;
+        const teamRole = c.possession === 'offense' ? 'player' : 'opponent';
+        const labels = publicTeamLabels(play);
+        const team = labels[teamRole];
+        const scorePath = teamRole === 'player' ? '/context/scores/player' : '/context/scores/opponent';
+        const attemptName = c.attemptType === 'pat' ? 'PAT' : 'two-point try';
+        const answer = c.attemptValue;
+        return eligible(makeSemantic({
+          bindings: [
+            contextBinding(play, 'possessingTeamScore', scorePath),
+            contextBinding(play, 'attemptType', '/context/attemptType'),
+            contextBinding(play, 'attemptValue', '/context/attemptValue'),
+          ],
+          operationType: 'conversionValue', operandIds: ['attemptType'], answer,
+          prompt: `${team} has ${c.scores[teamRole]} points and chose a ${attemptName}. How many points is this try worth if it succeeds?`,
+          hint: c.attemptType === 'pat' ? 'A PAT adds one point after a touchdown.' : 'A two-point try can add two points after a touchdown.',
+          explanation: `A ${attemptName} is worth ${answer} ${answer === 1 ? 'point' : 'points'} if it succeeds.`,
+          choiceSpec: numericChoiceSpec(0, 6), visualType: 'conversion-value',
+          visualData: { team, teamRole, score: c.scores[teamRole], attemptType: c.attemptType },
+          initialAriaLabel: `${team} score ${c.scores[teamRole]}; ${attemptName} value hidden.`,
+          guidedAriaLabel: `${attemptName} after a touchdown; its point value remains hidden.`,
+          workedAriaLabel: `${attemptName} is worth ${answer} ${answer === 1 ? 'point' : 'points'}.`,
+        }));
+      },
+    },
+    {
+      meta: makeMeta({ familyId: 'conversion-try-marker', skill: 'football-number-sense', concept: 'conversion-placement', purpose: 'coreReview', tier: 'football-context', weight: 1, operationType: 'tryMarkerForDirection', answerExposure: 'modeled-with-result-hidden', curriculumSource: 'football-only', playType: 'conversion' }),
+      derive(play) {
+        const c = play.context;
+        const answer = c.tryYardLine;
+        return eligible(makeSemantic({
+          bindings: [
+            contextBinding(play, 'direction', '/context/direction'),
+            contextBinding(play, 'tryYardLine', '/context/tryYardLine'),
+          ],
+          operationType: 'tryMarkerForDirection', operandIds: ['direction'], answer,
+          prompt: `The offense is moving ${c.direction === 1 ? 'toward the 100 end' : 'toward the 0 end'}. At which field marker is this conversion tried?`,
+          hint: `A conversion is tried two yards from the ${c.direction === 1 ? '100' : '0'} end.`,
+          explanation: `Two yards from the ${c.direction === 1 ? '100' : '0'} end is field marker ${answer}.`,
+          choiceSpec: numericChoiceSpec(0, 100), visualType: 'conversion-marker',
+          visualData: { direction: c.direction, goalLine: c.direction === 1 ? 100 : 0 },
+          initialAriaLabel: `Conversion direction ${c.direction === 1 ? 'toward 100' : 'toward 0'}; try marker hidden.`,
+          guidedAriaLabel: `Move two yards back from the ${c.direction === 1 ? '100' : '0'} end; the marker remains hidden.`,
+          workedAriaLabel: `The conversion marker is ${answer}.`,
+        }));
+      },
+    },
+    {
+      meta: makeMeta({ familyId: 'field-goal-attempt-distance', skill: 'football-number-sense', concept: 'field-goal-distance', purpose: 'coreReview', tier: 'football-context', weight: 1.5, operationType: 'read', answerExposure: 'source-visible', curriculumSource: 'football-only', playType: 'fieldGoal' }),
+      derive(play) {
+        const c = play.context;
+        const answer = c.attemptDistance;
+        return eligible(makeSemantic({
+          bindings: [
+            contextBinding(play, 'attemptDistance', '/context/attemptDistance'),
+          ],
+          operationType: 'read', operandIds: ['attemptDistance'], answer,
+          prompt: `The kick card shows a ${answer}-yard field goal. How long is this field-goal try?`,
+          hint: 'Read the field-goal distance on the kick card.',
+          explanation: `The kick card says ${answer} yards, so this is a ${answer}-yard field-goal try.`,
+          choiceSpec: numericChoiceSpec(18, 57), visualType: 'field-goal-distance',
+          visualData: { attemptDistance: answer },
+          initialAriaLabel: `Kick card says ${answer}-yard field goal.`,
+          guidedAriaLabel: `Read ${answer} yards on the kick card.`,
+          workedAriaLabel: `The field-goal attempt is ${answer} yards.`,
+        }));
+      },
+    },
+    {
+      meta: makeMeta({ familyId: 'field-goal-point-value', skill: 'football-number-sense', concept: 'field-goal-scoring', purpose: 'coreReview', tier: 'football-context', weight: 1, operationType: 'ruleValue', answerExposure: 'hidden-until-worked', curriculumSource: 'football-only', playType: 'fieldGoal' }),
+      derive(play) {
+        const c = play.context;
+        const teamRole = c.possession === 'offense' ? 'player' : 'opponent';
+        const labels = publicTeamLabels(play);
+        const team = labels[teamRole];
+        const scorePath = teamRole === 'player' ? '/context/scores/player' : '/context/scores/opponent';
+        const answer = RULES['game.fieldGoalPoints'];
+        return eligible(makeSemantic({
+          bindings: [
+            contextBinding(play, 'possessingTeamScore', scorePath),
+            contextBinding(play, 'attemptDistance', '/context/attemptDistance'),
+            ruleBinding('fieldGoalPoints', 'game.fieldGoalPoints'),
+          ],
+          operationType: 'ruleValue', operandIds: ['fieldGoalPoints'], answer,
+          prompt: `${team} has ${c.scores[teamRole]} points and is trying a ${c.attemptDistance}-yard field goal. How many points is a made field goal worth?`,
+          hint: 'Use the field-goal scoring rule, not the current scoreboard total.',
+          explanation: `A made field goal is worth ${answer} points.`,
+          choiceSpec: numericChoiceSpec(0, 6), visualType: 'field-goal-value',
+          visualData: { team, teamRole, score: c.scores[teamRole], attemptDistance: c.attemptDistance },
+          initialAriaLabel: `${team} score ${c.scores[teamRole]}; field-goal point value hidden.`,
+          guidedAriaLabel: 'Think of the fixed field-goal scoring rule; the value remains hidden.',
+          workedAriaLabel: `A made field goal awards ${answer} points.`,
+        }));
+      },
+    },
+    {
+      meta: makeMeta({ familyId: 'punt-travel-distance', skill: 'football-number-sense', concept: 'punt-distance', purpose: 'coreReview', tier: 'football-context', weight: 1.5, operationType: 'read', answerExposure: 'source-visible', curriculumSource: 'football-only', playType: 'punt' }),
+      derive(play) {
+        const p = play.proposal;
+        const answer = p.appliedTravelYards;
+        return eligible(makeSemantic({
+          bindings: [
+            contextBinding(play, 'direction', '/context/direction'),
+            contextBinding(play, 'puntStartYardLine', '/proposal/startYardLine'),
+            contextBinding(play, 'rawLandingYardLine', '/proposal/rawLandingYardLine'),
+            contextBinding(play, 'appliedTravelYards', '/proposal/appliedTravelYards'),
+          ],
+          operationType: 'read', operandIds: ['appliedTravelYards'], answer,
+          prompt: `The punt preview shows ${answer} ${answer === 1 ? 'yard' : 'yards'} of travel from field marker ${p.startYardLine}. How far does the ball travel?`,
+          hint: 'Read the travel distance on the punt preview.',
+          explanation: `The punt preview says ${answer} ${answer === 1 ? 'yard' : 'yards'}, so the ball travels ${answer} ${answer === 1 ? 'yard' : 'yards'}.`,
+          choiceSpec: numericChoiceSpec(0, 50), visualType: 'punt-travel',
+          visualData: { startYardLine: p.startYardLine, rawLandingYardLine: p.rawLandingYardLine, direction: p.direction, travelYards: answer },
+          initialAriaLabel: `Punt preview from marker ${p.startYardLine} shows ${answer} ${answer === 1 ? 'yard' : 'yards'} of travel.`,
+          guidedAriaLabel: `Read ${answer} ${answer === 1 ? 'yard' : 'yards'} on the punt preview.`,
+          workedAriaLabel: `The punt travels ${answer} ${answer === 1 ? 'yard' : 'yards'}.`,
+        }));
+      },
+    },
+    {
+      meta: makeMeta({ familyId: 'punt-landing-spot', skill: 'football-number-sense', concept: 'punt-placement', purpose: 'coreReview', tier: 'football-context', weight: 1, operationType: 'read', answerExposure: 'source-visible', curriculumSource: 'football-only', playType: 'punt' }),
+      derive(play) {
+        const p = play.proposal;
+        if (p.resultKind === 'puntTouchback') {
+          return { decline: decline('punt-touchback-placement', 'Touchbacks use a receiving reset rather than a direct directional move.') };
+        }
+        if (p.landingYardLine !== p.rawLandingYardLine) {
+          return { decline: decline('punt-capped-placement', 'A receiver-favorable cap is a receiving placement, not a direct kick landing.') };
+        }
+        const answer = p.landingYardLine;
+        return eligible(makeSemantic({
+          bindings: [
+            contextBinding(play, 'puntStartYardLine', '/proposal/startYardLine'),
+            contextBinding(play, 'direction', '/context/direction'),
+            contextBinding(play, 'appliedTravelYards', '/proposal/appliedTravelYards'),
+            contextBinding(play, 'landingYardLine', '/proposal/landingYardLine'),
+          ],
+          operationType: 'read', operandIds: ['landingYardLine'], answer,
+          prompt: `The punt preview points ${p.direction === 1 ? 'toward 100' : 'toward 0'} and marks field marker ${answer}. At which marker does the punt land?`,
+          hint: 'Read the marked landing spot on the punt preview.',
+          explanation: `The punt preview marks field marker ${answer}, so the punt lands there.`,
+          choiceSpec: numericChoiceSpec(0, 100), visualType: 'punt-landing',
+          visualData: { startYardLine: p.startYardLine, travelYards: p.appliedTravelYards, direction: p.direction, landingYardLine: answer },
+          initialAriaLabel: `Punt preview points ${p.direction === 1 ? 'toward 100' : 'toward 0'} and marks landing spot ${answer}.`,
+          guidedAriaLabel: `Read landing marker ${answer} on the punt preview.`,
+          workedAriaLabel: `The punt lands at field marker ${answer}.`,
         }));
       },
     },
   ];
 
   const FAMILY_BY_ID = new Map(FAMILY_DEFINITIONS.map((definition) => [definition.meta.familyId, definition]));
+  if (FAMILY_BY_ID.size !== FAMILY_DEFINITIONS.length) throw new Error('Contextual family IDs must be unique.');
+  const FAMILY_REGISTRY = deepFreeze(Object.fromEntries(PLAY_TYPES.map((playType) => [
+    playType,
+    FAMILY_DEFINITIONS
+      .filter((definition) => definition.meta.playType === playType)
+      .map((definition) => ({ ...definition.meta })),
+  ])));
 
   for (const familyIds of Object.values(CALL_AFFINITIES)) {
     for (const familyId of familyIds) {
       if (!FAMILY_BY_ID.has(familyId)) throw new Error(`Call affinity references unknown family ${familyId}.`);
+      if (FAMILY_BY_ID.get(familyId).meta.playType !== 'scrimmage') {
+        throw new Error(`Call affinity references non-scrimmage family ${familyId}.`);
+      }
     }
   }
 
-  function selectionFor(snap, familyId) {
-    const role = snap?.context?.possession;
+  function selectionFor(source, familyId) {
+    const role = source?.context?.possession;
+    if (sourcePlayType(source) !== 'scrimmage') {
+      return deepFreeze({
+        strategy: 'play-type-neutral-v1',
+        role: role === 'offense' || role === 'defense' ? role : null,
+        selectedCallId: null,
+        multiplier: 1,
+      });
+    }
     const callKey = role === 'offense'
-      ? snap?.context?.calls?.offense
+      ? source?.context?.calls?.offense
       : role === 'defense'
-        ? snap?.context?.calls?.defense
+        ? source?.context?.calls?.defense
         : null;
     const selectedCallId = typeof callKey === 'string' ? `${role}:${callKey}` : null;
     const multiplier = selectedCallId && CALL_AFFINITIES[selectedCallId]?.includes(familyId)
@@ -907,14 +1311,16 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
     });
   }
 
-  function inspect(snap, profileInput = DEFAULT_PROFILE) {
+  function inspect(source, profileInput = DEFAULT_PROFILE) {
     const profile = normalizeProfile(profileInput);
-    const commonReason = baseShapeReason(snap);
+    const playType = sourcePlayType(source);
+    const commonReason = sourceShapeReason(source);
     const eligibleCandidates = [];
     const declined = [];
 
     for (const definition of FAMILY_DEFINITIONS) {
       const meta = definition.meta;
+      if (playType && meta.playType !== playType) continue;
       let reason = commonReason;
       let result = null;
       if (!reason && meta.curriculumSource === 'workbook' && meta.introducedOnPage > profile.includedThroughPage) {
@@ -922,7 +1328,7 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
       }
       if (!reason) {
         try {
-          result = definition.derive(snap, profile);
+          result = definition.derive(source, profile);
           reason = result.decline || null;
           if (!reason && !result.semantic) reason = decline('invalid-family-result', 'Family returned neither a semantic candidate nor a decline.');
         } catch (error) {
@@ -939,6 +1345,7 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
 
     return deepFreeze({
       schemaVersion: SCHEMA_VERSION,
+      playType,
       profile,
       eligible: eligibleCandidates,
       declined,
@@ -1028,18 +1435,22 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
     return { text, ariaLabel: ariaLabel || text.replace(/\n/g, ' '), bindingIds: [...bindingIds], answerId };
   }
 
-  function build(snap, familyId, options = {}) {
+  function build(source, familyId, options = {}) {
     const definition = FAMILY_BY_ID.get(familyId);
     if (!definition) throw contractError('unknown-family', `Unknown contextual question family ${familyId}.`);
-    const commonReason = baseShapeReason(snap);
+    const commonReason = sourceShapeReason(source);
     if (commonReason) throw contractError(commonReason.code, commonReason.detail);
+    const playType = sourcePlayType(source);
+    if (definition.meta.playType !== playType) {
+      throw contractError('family-play-type-mismatch', `${familyId} belongs to ${definition.meta.playType}, not ${playType}.`);
+    }
 
     const profile = normalizeProfile(options.profile || DEFAULT_PROFILE);
     if (definition.meta.curriculumSource === 'workbook' && definition.meta.introducedOnPage > profile.includedThroughPage) {
       throw contractError('curriculum-not-included', `${familyId} comes from page ${definition.meta.introducedOnPage}, beyond the approved question ceiling of page ${profile.includedThroughPage}.`);
     }
 
-    const result = definition.derive(snap, profile);
+    const result = definition.derive(source, profile);
     if (result.decline || !result.semantic) {
       const reason = result.decline || decline('invalid-family-result', 'Family did not produce a semantic question.');
       throw contractError('family-not-eligible', `${familyId}: ${reason.code}: ${reason.detail}`);
@@ -1090,7 +1501,7 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
       support,
       math: { ...visuals[support], support },
       grounding: { bindingIds, answerId },
-      selection: selectionFor(snap, familyId),
+      selection: selectionFor(source, familyId),
     };
     const frozen = deepFreeze(question);
     // Preserve an intentional alias so consumers cannot let premises and
@@ -1103,11 +1514,14 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
     SCHEMA_VERSION,
     CURRENT_COMPLETED_PAGE,
     INCLUDED_THROUGH_PAGE,
+    PLAY_TYPES,
     DEFAULT_PROFILE,
     OPERATION_TYPES,
     ANSWER_EXPOSURE_POLICIES,
     CURRICULUM_SOURCES,
     RULES,
+    SPECIAL_BINDING_PATHS,
+    FAMILY_REGISTRY,
     CALL_AFFINITY_MULTIPLIER,
     CALL_AFFINITIES,
     selectionFor,

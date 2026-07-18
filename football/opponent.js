@@ -8,6 +8,8 @@ const FOOTBALL_OPPONENT = (() => {
     'mediumPass',
     'longPass',
   ]);
+  const FOURTH_DOWN_ACTIONS = Object.freeze(['go', 'punt', 'fieldGoal']);
+  const CONVERSION_ACTIONS = Object.freeze(['pat', 'twoPoint']);
 
   function freeze(value) {
     if (!value || typeof value !== 'object' || Object.isFrozen(value)) return value;
@@ -330,6 +332,142 @@ const FOOTBALL_OPPONENT = (() => {
     return 'leading';
   }
 
+  function decisionInteger(value, label, min, max) {
+    if (!Number.isInteger(value) || value < min || value > max) {
+      throw new RangeError(`${label} must be an integer from ${min} through ${max}`);
+    }
+    return value;
+  }
+
+  function decisionBasis(gameState = {}, needsFieldPosition = false) {
+    if (!gameState || typeof gameState !== 'object' || Array.isArray(gameState)) {
+      throw new TypeError('Opponent decision state must be a plain object');
+    }
+    const possession = gameState.possession;
+    if (!['offense', 'defense'].includes(possession)) {
+      throw new RangeError('Opponent decision possession must be offense or defense');
+    }
+    const expectedDirection = possession === 'offense' ? 1 : -1;
+    const direction = gameState.direction ?? expectedDirection;
+    if (direction !== expectedDirection) {
+      throw new RangeError('Opponent decision direction must match possession');
+    }
+    const quarter = decisionInteger(gameState.quarter, 'quarter', 1, 4);
+    const possessionsPerQuarter = decisionInteger(
+      gameState.possessionsPerQuarter,
+      'possessionsPerQuarter',
+      1,
+      Number.MAX_SAFE_INTEGER,
+    );
+    const quarterPossessions = decisionInteger(
+      gameState.quarterPossessions,
+      'quarterPossessions',
+      0,
+      possessionsPerQuarter - 1,
+    );
+    const score = gameState.scores || gameState.score || {};
+    const playerScore = decisionInteger(
+      score.player ?? gameState.playerScore,
+      'playerScore',
+      0,
+      Number.MAX_SAFE_INTEGER,
+    );
+    const opponentScore = decisionInteger(
+      score.opponent ?? gameState.opponentScore,
+      'opponentScore',
+      0,
+      Number.MAX_SAFE_INTEGER,
+    );
+    const offenseScore = possession === 'offense' ? playerScore : opponentScore;
+    const defenseScore = possession === 'offense' ? opponentScore : playerScore;
+    const basis = {
+      possession,
+      direction,
+      quarter,
+      quarterPossessions,
+      possessionsPerQuarter,
+      scores: { player: playerScore, opponent: opponentScore },
+      offenseScore,
+      defenseScore,
+      offenseScoreMargin: offenseScore - defenseScore,
+      trailing: offenseScore < defenseScore,
+      lastScheduledQ4Possession: quarter === 4
+        && quarterPossessions === possessionsPerQuarter - 1,
+    };
+
+    if (!needsFieldPosition) return basis;
+    const yardLine = decisionInteger(
+      gameState.yardLine ?? gameState.yd ?? gameState.absoluteYard,
+      'yardLine',
+      1,
+      99,
+    );
+    const yardsToGo = decisionInteger(
+      gameState.yardsToGo ?? gameState.ytg ?? gameState.distance,
+      'yardsToGo',
+      1,
+      99,
+    );
+    const yardsToGoal = direction === 1 ? 100 - yardLine : yardLine;
+    const fieldGoalDistance = yardsToGoal + 17;
+    return {
+      ...basis,
+      yardLine,
+      yardsToGo,
+      yardsToGoal,
+      fieldGoalDistance,
+      fieldGoalLegal: fieldGoalDistance <= 57,
+      beyondMidfield: yardsToGoal < 50,
+    };
+  }
+
+  // These decisions are deliberately pure and consume no RNG. For a go
+  // decision, ordinary private call planning remains a separate later step.
+  function decideFourthDown(gameState = {}) {
+    const basis = decisionBasis(gameState, true);
+    let action;
+    if (basis.lastScheduledQ4Possession
+      && basis.fieldGoalLegal
+      && basis.offenseScore + 3 >= basis.defenseScore) {
+      action = 'fieldGoal';
+    } else if (basis.lastScheduledQ4Possession && basis.trailing) {
+      action = 'go';
+    } else if (!basis.lastScheduledQ4Possession && basis.fieldGoalLegal) {
+      action = 'fieldGoal';
+    } else if (basis.beyondMidfield && basis.yardsToGo <= 2) {
+      action = 'go';
+    } else {
+      action = 'punt';
+    }
+    return freeze({
+      schemaVersion: 1,
+      decisionType: 'fourthDown',
+      action,
+      basis,
+    });
+  }
+
+  function decideConversion(gameState = {}) {
+    const basis = decisionBasis(gameState, false);
+    const patWouldTieOrLead = basis.offenseScore + 1 >= basis.defenseScore;
+    const twoWouldTieOrLead = basis.offenseScore + 2 >= basis.defenseScore;
+    const action = basis.lastScheduledQ4Possession
+      && twoWouldTieOrLead
+      && !patWouldTieOrLead
+      ? 'twoPoint'
+      : 'pat';
+    return freeze({
+      schemaVersion: 1,
+      decisionType: 'conversion',
+      action,
+      basis: {
+        ...basis,
+        patWouldTieOrLead,
+        twoWouldTieOrLead,
+      },
+    });
+  }
+
   function normalize(rawWeights) {
     const positive = {};
     let total = 0;
@@ -490,6 +628,8 @@ const FOOTBALL_OPPONENT = (() => {
 
   return freeze({
     CALL_KEYS,
+    FOURTH_DOWN_ACTIONS,
+    CONVERSION_ACTIONS,
     PROFILES,
     RIVALS,
     RIVAL_ORDER,
@@ -500,5 +640,7 @@ const FOOTBALL_OPPONENT = (() => {
     getTendency,
     pickCall,
     planSnap,
+    decideFourthDown,
+    decideConversion,
   });
 })();
