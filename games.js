@@ -29,4 +29,14 @@ const GAMES = [
     url: 'prague/',
     version: '1.4.0',
   },
+  {
+    id: 'place-value-practice',
+    title: 'Place by Place',
+    subtitle: 'Read hundreds, tens, and ones',
+    emoji: '🔢',
+    color: '#315f7d',
+    accent: '#d9e5ec',
+    url: 'place-value-practice/',
+    version: '1.0.0',
+  },
 ];
