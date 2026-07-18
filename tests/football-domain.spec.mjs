@@ -81,6 +81,67 @@ function defenseContext(overrides = {}) {
   });
 }
 
+function specialContext(playType, overrides = {}) {
+  const possession = overrides.possession ?? 'offense';
+  const direction = overrides.direction ?? (possession === 'offense' ? 1 : -1);
+  return {
+    schemaVersion: 1,
+    playType,
+    contextId: `${playType}-context`,
+    match: match(),
+    possession,
+    direction,
+    quarter: 2,
+    scores: { player: 13, opponent: 10 },
+  };
+}
+
+function puntContext(overrides = {}) {
+  return {
+    ...specialContext('punt', overrides),
+    yardLine: overrides.yardLine ?? 30,
+    ...overrides,
+  };
+}
+
+function fieldGoalContext(overrides = {}) {
+  const possession = overrides.possession ?? 'offense';
+  const direction = overrides.direction ?? (possession === 'offense' ? 1 : -1);
+  const yardLine = overrides.yardLine ?? (direction === 1 ? 60 : 40);
+  return {
+    ...specialContext('fieldGoal', { ...overrides, possession, direction }),
+    yardLine,
+    attemptDistance: overrides.attemptDistance ?? (direction === 1 ? 100 - yardLine : yardLine) + 17,
+    ...overrides,
+  };
+}
+
+function conversionContext(overrides = {}) {
+  const possession = overrides.possession ?? 'offense';
+  const direction = overrides.direction ?? (possession === 'offense' ? 1 : -1);
+  const attemptType = overrides.attemptType ?? 'pat';
+  return {
+    ...specialContext('conversion', { ...overrides, possession, direction }),
+    tryYardLine: overrides.tryYardLine ?? (direction === 1 ? 98 : 2),
+    attemptType,
+    attemptValue: overrides.attemptValue ?? (attemptType === 'pat' ? 1 : 2),
+    ...overrides,
+  };
+}
+
+function specialActiveInput(playType, specialContextValue, proposal, overrides = {}) {
+  return {
+    schemaVersion: 1,
+    playType,
+    gameId: overrides.gameId ?? 'game-special',
+    possessionId: overrides.possessionId ?? 'possession-special',
+    playId: overrides.playId ?? `play-${playType}`,
+    contextId: specialContextValue.contextId,
+    context: specialContextValue,
+    proposal,
+  };
+}
+
 test('exports one frozen plain-global API in a Node/vm realm', () => {
   const domain = loadDomain();
   assert.ok(domain);
@@ -88,9 +149,17 @@ test('exports one frozen plain-global API in a Node/vm realm', () => {
   assert.deepEqual(plain(domain.RESULT_KINDS), [
     'touchdown', 'firstDown', 'turnoverOnDowns', 'turnover', 'advance',
   ]);
+  assert.deepEqual(plain(domain.PLAY_TYPES), [
+    'scrimmage', 'punt', 'fieldGoal', 'conversion',
+  ]);
   for (const method of [
     'clone', 'deepFreeze', 'normalizeContext', 'validateContext', 'projectGain',
     'createSnap', 'reprojectGain', 'validateTransition', 'assertValidTransition',
+    'normalizeSpecialContext', 'validateSpecialContext', 'projectPunt',
+    'reprojectPunt', 'validatePuntTransition', 'projectFieldGoal',
+    'reprojectFieldGoal', 'validateFieldGoalTransition', 'projectConversion',
+    'reprojectConversion', 'validateConversionTransition', 'createActivePlay',
+    'activeSnapFromPlay', 'validatePlayTransition', 'terminalPlacementForScrimmage',
   ]) assert.equal(typeof domain[method], 'function', method);
 });
 
@@ -166,6 +235,40 @@ test('clone is recursive and snapshots do not retain caller-owned references', (
   assert.equal(Object.isFrozen(snap.call), true);
   assert.throws(() => { snap.context.yardLine = 90; }, TypeError);
   assert.throws(() => { snap.proposal.endYardLine = 90; }, TypeError);
+});
+
+test('scrimmage construction rejects call keys that disagree with the frozen context', () => {
+  const domain = loadDomain();
+  assert.throws(
+    () => domain.createSnap(context(), { gain: 4, callKey: 'longRun', label: 'Long run' }),
+    (error) => error.name === 'FootballDomainError'
+      && error.code === 'INVALID_PROPOSAL'
+      && error.diagnostics.some(item => item.code === 'MISMATCHED_CALL_KEY'
+        && item.path === '/proposal/callKey')
+      && !JSON.stringify(error.diagnostics).includes('shortRun')
+      && !JSON.stringify(error.diagnostics).includes('longRun'),
+  );
+
+  const snap = domain.createSnap(context(), { gain: 4, callKey: 'shortRun', label: 'Short run' });
+  assert.throws(
+    () => domain.createActivePlay({
+      schemaVersion: 1,
+      playType: 'scrimmage',
+      gameId: 'game-call-mismatch',
+      possessionId: 'possession-call-mismatch',
+      playId: 'play-call-mismatch',
+      contextId: snap.contextId,
+      context: snap.context,
+      proposal: snap.proposal,
+      call: { key: 'longRun', label: 'Long run' },
+    }),
+    (error) => error.name === 'FootballDomainError'
+      && error.code === 'INVALID_ACTIVE_PLAY'
+      && error.diagnostics.some(item => item.code === 'MISMATCHED_CALL_KEY'
+        && item.path === '/call/key')
+      && !JSON.stringify(error.diagnostics).includes('shortRun')
+      && !JSON.stringify(error.diagnostics).includes('longRun'),
+  );
 });
 
 test('a completed defensive snap owns one private frozen copy of the exact opponent plan', () => {
@@ -394,7 +497,9 @@ test('validates transitions by independent reprojection and rejects tampering', 
 
 test('a snap accepts an alternate gain only when the caller supplies that exact expectation', () => {
   const domain = loadDomain();
-  const snap = domain.createSnap(context(), { gain: 8, callKey: 'longRun' });
+  const snap = domain.createSnap(context({
+    calls: { offense: 'longRun', defense: null, matchup: null },
+  }), { gain: 8, callKey: 'longRun' });
   const capped = domain.reprojectGain(snap, 3);
   const stopped = domain.reprojectGain(snap, 0);
 
@@ -431,8 +536,12 @@ test('returns structured diagnostics for malformed and contradictory contexts', 
   const cases = [
     [context({ match: null }), '/match'],
     [context({ match: { ...match(), schemaVersion: 2 } }), '/match/schemaVersion'],
+    [context({ match: { ...match(), privateProfile: 'balanced' } }), '/match/privateProfile'],
+    [context({ match: { ...match(), opponent: { ...match().opponent, profileKey: 'balanced' } } }), '/match/opponent/profileKey'],
     [context({ match: { ...match(), opponent: { ...match().opponent, shortName: '' } } }), '/match/opponent/shortName'],
+    [context({ contextId: null }), '/contextId'],
     [context({ contextId: 0 }), '/contextId'],
+    [context({ contextId: '   ' }), '/contextId'],
     [context({ possession: 'specialTeams' }), '/possession'],
     [context({ direction: -1 }), '/direction'],
     [context({ quarter: 5 }), '/quarter'],
@@ -480,7 +589,9 @@ test('negative outcomes clip at the offense own 1 and keep directional drive tot
 
 test('fumbles are independently validated as generic turnovers', () => {
   const domain = loadDomain();
-  const snap = domain.createSnap(context(), { gain: 8, callKey: 'longRun' });
+  const snap = domain.createSnap(context({
+    calls: { offense: 'longRun', defense: null, matchup: null },
+  }), { gain: 8, callKey: 'longRun' });
   const turnover = domain.reprojectGain(snap, -2, { resultKind: 'turnover', resultReason: 'fumble' });
   assert.equal(turnover.resultKind, 'turnover');
   assert.equal(turnover.resultReason, 'fumble');
@@ -514,7 +625,10 @@ test('zero-distance drive totals normalize negative zero in the reverse directio
 
 test('a fourth-down safe loss stays turnover on downs while a forced disaster is a turnover', () => {
   const domain = loadDomain();
-  const snap = domain.createSnap(context({ down: 4 }), { gain: 8, callKey: 'mediumPass' });
+  const snap = domain.createSnap(context({
+    down: 4,
+    calls: { offense: 'mediumPass', defense: null, matchup: null },
+  }), { gain: 8, callKey: 'mediumPass' });
   const safeLoss = domain.reprojectGain(snap, -3, { resultReason: 'sack' });
   const disaster = domain.reprojectGain(snap, -2, { resultKind: 'turnover', resultReason: 'fumble' });
   assert.equal(safeLoss.resultKind, 'turnoverOnDowns');
@@ -565,4 +679,466 @@ test('projection is deterministic and exposes exactly one exclusive result kind'
     assert.equal(Object.hasOwn(first, 'gotFirstDown'), false);
     assert.equal(Object.hasOwn(first, 'isTurnoverOnDowns'), false);
   }
+});
+
+test('special-team contexts are frozen closed contracts with type-specific facts', () => {
+  const domain = loadDomain();
+  const inputs = {
+    punt: puntContext(),
+    fieldGoal: fieldGoalContext(),
+    conversion: conversionContext(),
+  };
+
+  for (const [playType, input] of Object.entries(inputs)) {
+    const normalized = domain.normalizeSpecialContext(playType, input);
+    assert.equal(Object.isFrozen(normalized), true, playType);
+    assert.equal(Object.isFrozen(normalized.scores), true, `${playType}:scores`);
+    assert.deepEqual(
+      Object.keys(normalized).sort(),
+      plain(domain.SPECIAL_CONTEXT_KEYS[playType]).sort(),
+      playType,
+    );
+
+    const extra = domain.validateSpecialContext(playType, { ...input, down: 4 });
+    assert.equal(extra.ok, false, `${playType}:extra`);
+    assert.ok(extra.diagnostics.some(item => item.code === 'UNKNOWN_CONTEXT_FIELD' && item.path === '/down'));
+
+    const missingInput = { ...input };
+    delete missingInput.quarter;
+    const missing = domain.validateSpecialContext(playType, missingInput);
+    assert.equal(missing.ok, false, `${playType}:missing`);
+    assert.ok(missing.diagnostics.some(item => item.code === 'MISSING_CONTEXT_FIELD' && item.path === '/quarter'));
+  }
+
+  const contradictoryDistance = domain.validateSpecialContext('fieldGoal', fieldGoalContext({
+    attemptDistance: 56,
+  }));
+  assert.equal(contradictoryDistance.ok, false);
+  assert.ok(contradictoryDistance.diagnostics.some(item => item.code === 'CONTRADICTORY_ATTEMPT_DISTANCE'));
+
+  const contradictoryTry = domain.validateSpecialContext('conversion', conversionContext({
+    tryYardLine: 2,
+  }));
+  assert.equal(contradictoryTry.ok, false);
+  assert.ok(contradictoryTry.diagnostics.some(item => item.code === 'CONTRADICTORY_TRY_MARKER'));
+
+  for (const [input, path] of [
+    [puntContext({ match: { ...match(), privateProfile: 'balanced' } }), '/match/privateProfile'],
+    [puntContext({ match: { ...match(), player: { ...match().player, privateRating: 99 } } }), '/match/player/privateRating'],
+    [puntContext({ match: { ...match(), opponent: { ...match().opponent, profileKey: 'balanced' } } }), '/match/opponent/profileKey'],
+    [puntContext({ contextId: null }), '/contextId'],
+    [puntContext({ contextId: 0 }), '/contextId'],
+    [puntContext({ contextId: '   ' }), '/contextId'],
+  ]) {
+    const result = domain.validateSpecialContext('punt', input);
+    assert.equal(result.ok, false, path);
+    assert.ok(result.diagnostics.some(item => item.path === path), path);
+  }
+});
+
+test('field-goal distance and legality honor the 57-yard edge in both directions', () => {
+  const domain = loadDomain();
+  assert.deepEqual([
+    domain.fieldGoalDistance(60, 1),
+    domain.isFieldGoalLegal(60, 1),
+    domain.fieldGoalDistance(59, 1),
+    domain.isFieldGoalLegal(59, 1),
+  ], [57, true, 58, false]);
+  assert.deepEqual([
+    domain.fieldGoalDistance(40, -1),
+    domain.isFieldGoalLegal(40, -1),
+    domain.fieldGoalDistance(41, -1),
+    domain.isFieldGoalLegal(41, -1),
+  ], [57, true, 58, false]);
+
+  assert.equal(domain.validateSpecialContext('fieldGoal', fieldGoalContext({ yardLine: 60 })).ok, true);
+  assert.equal(domain.validateSpecialContext('fieldGoal', fieldGoalContext({
+    possession: 'defense', direction: -1, yardLine: 40,
+  })).ok, true);
+  for (const input of [
+    fieldGoalContext({ yardLine: 59 }),
+    fieldGoalContext({ possession: 'defense', direction: -1, yardLine: 41 }),
+  ]) {
+    const result = domain.validateSpecialContext('fieldGoal', input);
+    assert.equal(result.ok, false);
+    assert.ok(result.diagnostics.some(item => item.code === 'ILLEGAL_FIELD_GOAL'));
+  }
+});
+
+test('punt projection mirrors normal landings, touchbacks, and receiver-favorable caps', () => {
+  const domain = loadDomain();
+  const forward = domain.projectPunt(puntContext({ yardLine: 30 }), 35);
+  const reverse = domain.projectPunt(puntContext({
+    possession: 'defense', direction: -1, yardLine: 70,
+  }), 35);
+  assert.deepEqual(
+    [forward.landingYardLine, forward.nextPossession, forward.nextStartYardLine, forward.restartReason],
+    [65, 'defense', 65, 'punt'],
+  );
+  assert.deepEqual(
+    [reverse.landingYardLine, reverse.nextPossession, reverse.nextStartYardLine, reverse.restartReason],
+    [35, 'offense', 35, 'punt'],
+  );
+
+  const forwardTouchback = domain.projectPunt(puntContext({ yardLine: 65 }), 35);
+  const reverseTouchback = domain.projectPunt(puntContext({
+    possession: 'defense', direction: -1, yardLine: 35,
+  }), 35);
+  assert.deepEqual(
+    [forwardTouchback.rawLandingYardLine, forwardTouchback.nextStartYardLine, forwardTouchback.restartReason],
+    [100, 80, 'puntTouchback'],
+  );
+  assert.deepEqual(
+    [reverseTouchback.rawLandingYardLine, reverseTouchback.nextStartYardLine, reverseTouchback.restartReason],
+    [0, 20, 'puntTouchback'],
+  );
+
+  const favorable = [
+    domain.projectPunt(puntContext({ yardLine: 70 }), 20, { mode: 'receiverFavorable' }),
+    domain.projectPunt(puntContext({ possession: 'defense', direction: -1, yardLine: 30 }), 20, { mode: 'receiverFavorable' }),
+    domain.projectPunt(puntContext({ yardLine: 85 }), 20, { mode: 'receiverFavorable' }),
+    domain.projectPunt(puntContext({ possession: 'defense', direction: -1, yardLine: 15 }), 20, { mode: 'receiverFavorable' }),
+  ];
+  assert.deepEqual(favorable.map(item => item.requestedTravelYards), [20, 20, 20, 20]);
+  assert.deepEqual(favorable.map(item => item.rawLandingYardLine), [90, 10, 100, 0]);
+  assert.deepEqual(favorable.map(item => item.nextStartYardLine), [80, 20, 80, 20]);
+  assert.deepEqual(favorable.map(item => item.resultKind), [
+    'punt', 'punt', 'puntTouchback', 'puntTouchback',
+  ]);
+  assert.deepEqual(favorable.map(item => item.restartReason), [
+    'punt', 'punt', 'puntTouchback', 'puntTouchback',
+  ]);
+});
+
+test('initial special plays reject alternate proposals while valid threats accept resolution reprojections', () => {
+  const domain = loadDomain();
+
+  const puntSource = puntContext({ yardLine: 70 });
+  const normalPunt = domain.projectPunt(puntSource, 35);
+  const activePunt = domain.createActivePlay(specialActiveInput('punt', puntSource, normalPunt));
+  const favorablePunt = domain.reprojectPunt(activePunt, 'receiverFavorable');
+  assert.equal(domain.validatePlayTransition(activePunt, favorablePunt, {
+    expectedMode: 'receiverFavorable',
+  }).ok, true);
+  assert.throws(
+    () => domain.createActivePlay(specialActiveInput('punt', puntSource, favorablePunt)),
+    error => error.name === 'FootballDomainError'
+      && error.code === 'INVALID_ACTIVE_PLAY'
+      && error.diagnostics.some(item => item.code === 'INVALID_INITIAL_SPECIAL_PROPOSAL'),
+  );
+
+  const fieldGoalSource = fieldGoalContext();
+  const madeFieldGoal = domain.projectFieldGoal(fieldGoalSource, 'made');
+  const activeFieldGoal = domain.createActivePlay(specialActiveInput('fieldGoal', fieldGoalSource, madeFieldGoal));
+  for (const outcome of ['missed', 'blocked']) {
+    const alternate = domain.reprojectFieldGoal(activeFieldGoal, outcome);
+    assert.equal(domain.validatePlayTransition(activeFieldGoal, alternate, {
+      expectedResultKind: alternate.resultKind,
+    }).ok, true, outcome);
+    assert.throws(
+      () => domain.createActivePlay(specialActiveInput('fieldGoal', fieldGoalSource, alternate, {
+        playId: `play-fieldGoal-${outcome}`,
+      })),
+      error => error.name === 'FootballDomainError'
+        && error.code === 'INVALID_ACTIVE_PLAY'
+        && error.diagnostics.some(item => item.code === 'INVALID_INITIAL_SPECIAL_PROPOSAL'),
+      outcome,
+    );
+  }
+
+  const conversionSource = conversionContext();
+  const madeConversion = domain.projectConversion(conversionSource, 'made');
+  const activeConversion = domain.createActivePlay(specialActiveInput('conversion', conversionSource, madeConversion));
+  const missedConversion = domain.reprojectConversion(activeConversion, 'missed');
+  assert.equal(domain.validatePlayTransition(activeConversion, missedConversion, {
+    expectedResultKind: 'conversionMissed',
+  }).ok, true);
+  assert.throws(
+    () => domain.createActivePlay(specialActiveInput('conversion', conversionSource, missedConversion)),
+    error => error.name === 'FootballDomainError'
+      && error.code === 'INVALID_ACTIVE_PLAY'
+      && error.diagnostics.some(item => item.code === 'INVALID_INITIAL_SPECIAL_PROPOSAL'),
+  );
+});
+
+test('field-goal and conversion projections preserve scoring and handoff polarity', () => {
+  const domain = loadDomain();
+  const madeForward = domain.projectFieldGoal(fieldGoalContext(), 'made');
+  const missedForward = domain.projectFieldGoal(fieldGoalContext(), 'missed');
+  const blockedForward = domain.projectFieldGoal(fieldGoalContext(), 'blocked');
+  assert.deepEqual(
+    [madeForward.points, madeForward.nextPossession, madeForward.nextStartYardLine, madeForward.restartReason],
+    [3, 'defense', 80, 'automaticTouchback'],
+  );
+  assert.deepEqual(
+    [missedForward.points, missedForward.nextStartYardLine, missedForward.restartReason],
+    [0, 60, 'missedFieldGoal'],
+  );
+  assert.deepEqual(
+    [blockedForward.points, blockedForward.nextStartYardLine, blockedForward.restartReason],
+    [0, 60, 'blockedFieldGoal'],
+  );
+
+  const reverseContext = fieldGoalContext({
+    possession: 'defense', direction: -1, yardLine: 40,
+  });
+  const madeReverse = domain.projectFieldGoal(reverseContext, 'made');
+  const missedReverse = domain.projectFieldGoal(reverseContext, 'missed');
+  assert.deepEqual(
+    [madeReverse.points, madeReverse.nextPossession, madeReverse.nextStartYardLine],
+    [3, 'offense', 20],
+  );
+  assert.deepEqual(
+    [missedReverse.points, missedReverse.nextPossession, missedReverse.nextStartYardLine],
+    [0, 'offense', 40],
+  );
+
+  const pat = domain.projectConversion(conversionContext(), 'made');
+  const two = domain.projectConversion(conversionContext({
+    possession: 'defense', direction: -1, attemptType: 'twoPoint', attemptValue: 2,
+  }), 'made');
+  const missedTwo = domain.projectConversion(conversionContext({
+    attemptType: 'twoPoint', attemptValue: 2,
+  }), 'missed');
+  assert.deepEqual(
+    [pat.tryYardLine, pat.points, pat.nextPossession, pat.nextStartYardLine, pat.restartReason],
+    [98, 1, 'defense', 80, 'automaticTouchback'],
+  );
+  assert.deepEqual(
+    [two.tryYardLine, two.points, two.nextPossession, two.nextStartYardLine],
+    [2, 2, 'offense', 20],
+  );
+  assert.deepEqual([missedTwo.points, missedTwo.resultKind], [0, 'conversionMissed']);
+});
+
+test('special projections reject missing, extra, and tampered fields by independent reprojection', () => {
+  const domain = loadDomain();
+  const cases = [
+    {
+      projection: domain.projectPunt(puntContext(), 40),
+      validate: candidate => domain.validatePuntTransition(puntContext(), candidate),
+      tamper: ['landingYardLine', 99],
+    },
+    {
+      projection: domain.projectFieldGoal(fieldGoalContext(), 'made'),
+      validate: candidate => domain.validateFieldGoalTransition(fieldGoalContext(), candidate, {
+        expectedResultKind: 'fieldGoalMade',
+      }),
+      tamper: ['points', 0],
+    },
+    {
+      projection: domain.projectConversion(conversionContext(), 'made'),
+      validate: candidate => domain.validateConversionTransition(conversionContext(), candidate, {
+        expectedResultKind: 'conversionMade',
+      }),
+      tamper: ['nextStartYardLine', 20],
+    },
+  ];
+
+  for (const { projection, validate, tamper } of cases) {
+    assert.equal(validate(projection).ok, true, projection.playType);
+
+    const extra = validate({ ...plain(projection), secret: true });
+    assert.equal(extra.ok, false, `${projection.playType}:extra`);
+    assert.ok(extra.diagnostics.some(item => item.code === 'UNKNOWN_TRANSITION_FIELD'));
+
+    const missingCandidate = plain(projection);
+    delete missingCandidate.resultKind;
+    const missing = validate(missingCandidate);
+    assert.equal(missing.ok, false, `${projection.playType}:missing`);
+    assert.ok(missing.diagnostics.some(item => item.code === 'MISSING_TRANSITION_FIELD'));
+
+    const contradictory = validate({ ...plain(projection), [tamper[0]]: tamper[1] });
+    assert.equal(contradictory.ok, false, `${projection.playType}:tampered`);
+    assert.ok(contradictory.diagnostics.some(item => (
+      item.code === 'CONTRADICTORY_TRANSITION' && item.path === `/${tamper[0]}`
+    )));
+  }
+});
+
+test('special transition validators reject unknown expected discriminants', () => {
+  const domain = loadDomain();
+  const cases = [
+    {
+      validation: domain.validatePuntTransition(
+        puntContext(),
+        domain.projectPunt(puntContext(), 40),
+        { expectedMode: 'unknown' },
+      ),
+      code: 'INVALID_PUNT_MODE',
+      path: '/expectedMode',
+    },
+    {
+      validation: domain.validateFieldGoalTransition(
+        fieldGoalContext(),
+        domain.projectFieldGoal(fieldGoalContext(), 'missed'),
+        { expectedResultKind: 'unknown' },
+      ),
+      code: 'INVALID_FIELD_GOAL_RESULT_KIND',
+      path: '/expectedResultKind',
+    },
+    {
+      validation: domain.validateConversionTransition(
+        conversionContext(),
+        domain.projectConversion(conversionContext(), 'missed'),
+        { expectedResultKind: 'unknown' },
+      ),
+      code: 'INVALID_CONVERSION_RESULT_KIND',
+      path: '/expectedResultKind',
+    },
+  ];
+
+  for (const { validation, code, path } of cases) {
+    assert.equal(validation.ok, false, code);
+    assert.equal(validation.value, null, code);
+    assert.ok(validation.diagnostics.some(item => item.code === code && item.path === path), code);
+  }
+});
+
+test('special transition validators retain explicit null expectations and identify candidate paths', () => {
+  const domain = loadDomain();
+  const punt = domain.projectPunt(puntContext(), 40);
+  const nullTravel = domain.validatePuntTransition(puntContext(), punt, {
+    expectedTravelYards: null,
+  });
+  assert.equal(nullTravel.ok, false);
+  assert.ok(nullTravel.diagnostics.some(item => item.code === 'INVALID_PUNT_TRAVEL'));
+
+  const cases = [
+    {
+      validation: domain.validatePuntTransition(puntContext(), { ...plain(punt), mode: 'unknown' }),
+      code: 'INVALID_PUNT_MODE',
+      path: '/mode',
+    },
+    {
+      validation: domain.validateFieldGoalTransition(fieldGoalContext(), {
+        ...plain(domain.projectFieldGoal(fieldGoalContext(), 'missed')),
+        resultKind: 'unknown',
+      }),
+      code: 'INVALID_FIELD_GOAL_RESULT_KIND',
+      path: '/resultKind',
+    },
+    {
+      validation: domain.validateConversionTransition(conversionContext(), {
+        ...plain(domain.projectConversion(conversionContext(), 'missed')),
+        resultKind: 'unknown',
+      }),
+      code: 'INVALID_CONVERSION_RESULT_KIND',
+      path: '/resultKind',
+    },
+  ];
+
+  for (const { validation, code, path } of cases) {
+    assert.equal(validation.ok, false, code);
+    assert.ok(validation.diagnostics.some(item => item.code === code && item.path === path), code);
+  }
+});
+
+test('tagged active plays validate type-specific proposals and derive only scrimmage snapshots', () => {
+  const domain = loadDomain();
+  const fgContext = fieldGoalContext();
+  const proposal = domain.projectFieldGoal(fgContext, 'made');
+  const activeFieldGoal = domain.createActivePlay({
+    schemaVersion: 1,
+    playType: 'fieldGoal',
+    gameId: 'game-1',
+    possessionId: 'possession-2',
+    playId: 'play-3',
+    contextId: fgContext.contextId,
+    context: fgContext,
+    proposal,
+  });
+  assert.equal(Object.isFrozen(activeFieldGoal), true);
+  assert.equal(Object.isFrozen(activeFieldGoal.context), true);
+  assert.equal(Object.isFrozen(activeFieldGoal.proposal), true);
+  assert.equal(domain.activeSnapFromPlay(activeFieldGoal), null);
+  assert.equal(domain.validatePlayTransition(activeFieldGoal, proposal).ok, true);
+  assert.throws(
+    () => domain.createActivePlay({ ...plain(activeFieldGoal), extraAuthority: true }),
+    error => error.name === 'FootballDomainError' && error.code === 'INVALID_ACTIVE_PLAY',
+  );
+
+  const scrimmage = domain.createSnap(context(), { gain: 6, callKey: 'shortRun', label: 'Short run' });
+  const activeScrimmage = domain.createActivePlay({
+    schemaVersion: 1,
+    playType: 'scrimmage',
+    gameId: 'game-1',
+    possessionId: 'possession-2',
+    playId: 'play-4',
+    contextId: scrimmage.contextId,
+    context: scrimmage.context,
+    proposal: scrimmage.proposal,
+    call: scrimmage.call,
+  });
+  const derivedSnap = domain.activeSnapFromPlay(activeScrimmage);
+  assert.deepEqual(plain(derivedSnap), plain(scrimmage));
+  assert.equal(derivedSnap.context, activeScrimmage.context);
+  assert.equal(derivedSnap.proposal, activeScrimmage.proposal);
+  assert.equal(derivedSnap.call, activeScrimmage.call);
+  assert.equal(Object.isFrozen(derivedSnap), true);
+  assert.equal(domain.validatePlayTransition(activeScrimmage, scrimmage.proposal).ok, true);
+});
+
+test('scrimmage terminal placement is explicit without changing the closed projection keys', () => {
+  const domain = loadDomain();
+  assert.deepEqual(plain(domain.PROJECTION_KEYS), [
+    'contextId', 'requestedGain', 'appliedGain', 'startYardLine', 'endYardLine',
+    'direction', 'possession', 'oldDown', 'newDown', 'oldYardsToGo',
+    'newYardsToGo', 'oldFirstDownLine', 'newFirstDownLine', 'resultKind',
+    'resultReason', 'crossedMidfield', 'driveTotal', 'distanceToGoalBefore',
+    'distanceToGoalAfter',
+  ]);
+
+  const failed = domain.createSnap(context({ down: 4 }), { gain: 4, callKey: 'shortRun' });
+  assert.deepEqual(plain(domain.terminalPlacementForScrimmage(failed, failed.proposal)), {
+    nextPossession: 'defense',
+    nextStartYardLine: 34,
+    restartReason: 'turnoverOnDowns',
+  });
+
+  const defensive = domain.createSnap(defenseContext({ down: 4 }), {
+    gain: 4, callKey: 'shortPass',
+  });
+  assert.deepEqual(plain(domain.terminalPlacementForScrimmage(defensive, defensive.proposal)), {
+    nextPossession: 'offense',
+    nextStartYardLine: 66,
+    restartReason: 'turnoverOnDowns',
+  });
+
+  const fumble = domain.reprojectGain(failed, -2, {
+    resultKind: 'turnover',
+    resultReason: 'fumble',
+  });
+  assert.throws(
+    () => domain.terminalPlacementForScrimmage(failed, fumble),
+    error => error.name === 'FootballDomainError' && error.code === 'INVALID_TRANSITION',
+  );
+  assert.deepEqual(plain(domain.terminalPlacementForScrimmage(failed, fumble, {
+    expectedRequestedGain: -2,
+    expectedResultKind: 'turnover',
+    expectedResultReason: 'fumble',
+  })), {
+    nextPossession: 'defense',
+    nextStartYardLine: 80,
+    restartReason: 'turnoverReset',
+  });
+
+  const interception = domain.reprojectGain(defensive, 0, {
+    resultKind: 'turnover',
+    resultReason: 'interception',
+  });
+  assert.deepEqual(plain(domain.terminalPlacementForScrimmage(defensive, interception, {
+    expectedRequestedGain: 0,
+    expectedResultKind: 'turnover',
+    expectedResultReason: 'interception',
+  })), {
+    nextPossession: 'offense',
+    nextStartYardLine: 20,
+    restartReason: 'turnoverReset',
+  });
+
+  assert.equal(domain.terminalPlacementForScrimmage(
+    domain.createSnap(context(), { gain: 4, callKey: 'shortRun' }),
+    domain.projectGain(context(), 4),
+  ), null);
 });

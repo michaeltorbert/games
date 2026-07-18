@@ -74,7 +74,13 @@ Any UI change to football must be verified against the primary targets before me
 | iPhone 15 | portrait (393×852) | full offense cycle + call grid above fold (no scroll) |
 | iPhone 17 Pro Max | portrait (440×956) | full offense cycle + call grid above fold (no scroll) |
 
-Each full playthrough must exercise all overlay states: start, player-TD, defense transition, offense transition, quarter-end, halftime, final — plus offense call/question/feedback and defense call/question/feedback.
+Each full playthrough must exercise all overlay states: start, player-TD,
+defense transition, offense transition, quarter-end, halftime, final — plus
+offense call/question/feedback and defense call/question/feedback. It must also
+cover a legal three-card fourth-down decision, the two-card conversion decision,
+player and opponent conversion questions/results, and player/opponent punt or
+field-goal questions/results. Choosing “go” must still render exactly five
+offensive calls; ordinary defense must still render exactly four calls.
 
 ## Local Development
 
@@ -124,15 +130,20 @@ instructional authority are split across ordered plain-global scripts:
 `copy.js` → `learning.js` → `stats.js` → `opponent.js` →
 `football-domain.js` → `contextual-questions.js` → `football.js`
 
-- `football-domain.js` owns immutable snap contexts and independently validated
-  transition projection/reprojection.
-- `contextual-questions.js` owns DOM-free, snap-grounded question families and
-  structured stable choices.
+- `football-domain.js` owns the immutable tagged `activePlay` union
+  (`scrimmage`, `punt`, `fieldGoal`, `conversion`) and independently validated,
+  type-specific transition projection/reprojection. `activeSnap` is only the
+  derived scrimmage compatibility view.
+- `contextual-questions.js` owns DOM-free, play-grounded question families and
+  structured stable choices. Scrimmage and special-team pools consume only
+  their closed public context shapes.
 - `learning.js`, `stats.js`, and `opponent.js` own scheduling/support,
   privacy-safe linked history, and the exact frozen opponent plan respectively.
-- `football.js` orchestrates the UI around authoritative `activeSnap`,
-  `questionInstance`, and `pendingResolution` contracts and commits each snap
-  atomically after instruction resolves.
+- `football.js` orchestrates the UI around authoritative `activePlay`,
+  `questionInstance`, and `pendingResolution` contracts and commits each play
+  atomically after instruction resolves. A six-point touchdown and its later
+  conversion are distinct plays with distinct IDs; the conversion closes the
+  possession.
 
 ### Kayak
 

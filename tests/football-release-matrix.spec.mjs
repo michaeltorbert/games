@@ -130,6 +130,22 @@ async function pauseClockBeforeAnswer(page) {
   await page.clock.pauseAt(new Date(now + 100));
 }
 
+async function expectQuestionPlayType(page, playType, label) {
+  const actual = await page.evaluate(() => {
+    const contracts = window.__footballTest.activeContracts();
+    return {
+      activePlay: contracts.activePlay?.playType || null,
+      question: contracts.questionInstance?.playType || null,
+      pending: contracts.pendingResolution?.playType || null,
+    };
+  });
+  expect(actual, `${label}: tagged play/question/pending types`).toEqual({
+    activePlay: playType,
+    question: playType,
+    pending: playType,
+  });
+}
+
 test('full football state matrix follows production transitions', async ({ page }, testInfo) => {
   await page.addInitScript(() => {
     let seed = 0x36f00d;
@@ -183,7 +199,7 @@ test('full football state matrix follows production transitions', async ({ page 
 
   await answerChoice(page, await liveChoiceId(page, 'correct'));
   game = await renderedState(page);
-  expect(game.score).toEqual({ player: 7, opponent: 0 });
+  expect(game.score).toEqual({ player: 6, opponent: 0 });
   expect(game.playerTouchdowns).toBe(1);
   expect(game.plays).toBe(1);
   expect(game.correctAnswers).toBe(1);
@@ -191,10 +207,28 @@ test('full football state matrix follows production transitions', async ({ page 
 
   await page.clock.runFor(950);
   await assertOverlay(page, testInfo, 'ov-td', 'touchdown', '05-player-td');
-  await page.clock.resume();
   await page.locator('#ov-td .ov-btn').click();
+  await expect(page.locator('#decision-grid .decision-btn')).toHaveCount(2);
+  await expect(page.locator('#decision-grid .decision-btn').first()).toBeFocused();
+  await expect(page.locator('#s-down')).toHaveText('TRY');
+  await expect(page.locator('#s-yd-label')).toHaveText('Try Spot');
+  await expect(page.locator('#s-yd')).toHaveText('2-yard line');
+  await assertPhaseAndShot(page, testInfo, 'conversion-decision', '05a-player-conversion-decision');
+
+  await page.locator('#decision-grid .decision-btn[data-action="pat"]').click();
+  await expectQuestionPlayType(page, 'conversion', 'player conversion');
+  await expect(page.locator('#special-action-live')).toContainText('PAT');
+  await assertPhaseAndShot(page, testInfo, 'question', '05b-player-conversion-question');
+
+  await answerChoice(page, await liveChoiceId(page, 'correct'));
   game = await renderedState(page);
+  expect(game.score).toEqual({ player: 7, opponent: 0 });
+  expect(game.correctAnswers).toBe(2);
+  expect(game.gradedQuestions).toBe(2);
   expect(game.quarterPossessions).toBe(1);
+  await assertPhaseAndShot(page, testInfo, 'feedback', '05c-player-conversion-feedback');
+
+  await page.clock.runFor(1450);
   await assertOverlay(page, testInfo, 'ov-defense', 'transition', '06-defense-transition');
 
   await page.locator('#ov-defense .ov-btn').click();
@@ -225,8 +259,8 @@ test('full football state matrix follows production transitions', async ({ page 
     quarterPossessions: 1,
     tds: 1,
     opponentTds: 0,
-    correctAnswers: 1,
-    gradedQuestions: 1,
+    correctAnswers: 2,
+    gradedQuestions: 2,
   }));
   await page.locator('#call-grid .call-btn').first().click();
   expect((await renderedState(page)).playIsTouchdown, 'seeded opponent play reaches the end zone').toBe(true);
@@ -252,18 +286,39 @@ test('full football state matrix follows production transitions', async ({ page 
 
   await page.locator('#question-continue').click();
   game = await renderedState(page);
-  expect(game.score).toEqual({ player: 7, opponent: 7 });
+  expect(game.score).toEqual({ player: 7, opponent: 6 });
   expect(game.opponentTouchdowns).toBe(1);
   expect(game.plays).toBe(2);
-  expect(game.correctAnswers).toBe(1);
+  expect(game.correctAnswers).toBe(2);
+  expect(game.gradedQuestions).toBe(3);
   await assertPhaseAndShot(page, testInfo, 'feedback', '09-defense-feedback');
 
   await page.clock.runFor(950);
   await assertOverlay(page, testInfo, 'ov-td', 'touchdown', '10-opponent-td');
-  await page.clock.resume();
   await page.locator('#ov-td .ov-btn').click();
+  await expectQuestionPlayType(page, 'conversion', 'opponent conversion');
+  await expect(page.locator('#special-action-live')).toContainText('PAT');
+  await assertPhaseAndShot(page, testInfo, 'question', '10a-opponent-conversion-question');
+
+  const conversionWrongOne = await liveChoiceId(page, 'wrong');
+  await answerChoice(page, conversionWrongOne);
+  await assertPhaseAndShot(page, testInfo, 'question', '10b-opponent-conversion-retry');
+
+  await answerChoice(page, await liveChoiceId(page, 'wrong', [conversionWrongOne]));
   game = await renderedState(page);
+  expect(game.continueRequired).toBe(true);
+  expect(game.outcomeCommitted).toBe(false);
+  await assertPhaseAndShot(page, testInfo, 'explanation', '10c-opponent-conversion-explanation');
+
+  await page.locator('#question-continue').click();
+  game = await renderedState(page);
+  expect(game.score).toEqual({ player: 7, opponent: 7 });
+  expect(game.correctAnswers).toBe(2);
+  expect(game.gradedQuestions).toBe(4);
   expect(game.quarterPossessions).toBe(2);
+  await assertPhaseAndShot(page, testInfo, 'feedback', '10d-opponent-conversion-feedback');
+
+  await page.clock.runFor(1450);
   await assertOverlay(page, testInfo, 'ov-offense', 'transition', '11-offense-transition');
 
   await page.locator('#ov-offense .ov-btn').click();
@@ -283,8 +338,8 @@ test('full football state matrix follows production transitions', async ({ page 
       quarterPossessions: POSSESSIONS_PER_QUARTER - 1,
       tds: 1,
       opponentTds: 1,
-      correctAnswers: 1,
-      gradedQuestions: 2,
+      correctAnswers: 2,
+      gradedQuestions: 4,
     });
     finishPossession('Quarter complete.');
   });
@@ -311,8 +366,8 @@ test('full football state matrix follows production transitions', async ({ page 
       quarterPossessions: POSSESSIONS_PER_QUARTER - 1,
       tds: 1,
       opponentTds: 1,
-      correctAnswers: 1,
-      gradedQuestions: 2,
+      correctAnswers: 2,
+      gradedQuestions: 4,
     });
     finishPossession('First half complete.');
   });
@@ -339,8 +394,8 @@ test('full football state matrix follows production transitions', async ({ page 
       quarterPossessions: POSSESSIONS_PER_QUARTER - 1,
       tds: 1,
       opponentTds: 1,
-      correctAnswers: 1,
-      gradedQuestions: 2,
+      correctAnswers: 2,
+      gradedQuestions: 4,
     });
     finishPossession('Game complete.');
   });
@@ -348,7 +403,7 @@ test('full football state matrix follows production transitions', async ({ page 
   expect(game.quarter).toBe(4);
   expect(game.score).toEqual({ player: 7, opponent: 7 });
   await assertOverlay(page, testInfo, 'ov-end', 'final', '14-final');
-  await expect(page.locator('#ov-end-stats')).toContainText('1 / 2');
+  await expect(page.locator('#ov-end-stats')).toContainText('2 / 4');
   await expect(page.locator('#ov-end-stats')).toContainText('50%');
 
   await page.evaluate(() => restart());
@@ -394,6 +449,150 @@ test('full football state matrix follows production transitions', async ({ page 
   }));
   await expect(page.locator('#defense-read')).toContainText('WAKE FOREST shows');
   await assertPhaseAndShot(page, testInfo, 'call', '17-wake-forest-read');
+});
+
+test('fourth-down and special-team states preserve decision and normal-call contracts', async ({ page }, testInfo) => {
+  await page.addInitScript(() => {
+    let seed = 0x25f00d;
+    Math.random = () => {
+      seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+      return seed / 0x100000000;
+    };
+  });
+  await page.clock.install({ time: new Date('2026-01-02T12:00:00Z') });
+  await page.goto('/football/?boot=offense-call');
+  await pauseClockBeforeAnswer(page);
+
+  await page.evaluate(() => window.__footballTest.seedDriveState({
+    possession: 'offense',
+    direction: 1,
+    quarter: 1,
+    down: 4,
+    yardsToGo: 2,
+    yardLine: 60,
+    firstDownLine: 62,
+    driveStart: 20,
+    scores: { player: 0, opponent: 0 },
+  }));
+  await expect(page.locator('#decision-grid .decision-btn')).toHaveCount(3);
+  await expect(page.locator('#decision-grid .decision-btn').first()).toBeFocused();
+  await expect(page.locator('#decision-grid .decision-btn[data-action="go"]')).toBeVisible();
+  await expect(page.locator('#decision-grid .decision-btn[data-action="punt"]')).toBeVisible();
+  await expect(page.locator('#decision-grid .decision-btn[data-action="fieldGoal"]')).toContainText('57-yard attempt');
+  await expect(page.locator('#call-grid .call-btn')).toHaveCount(0);
+  await assertPhaseAndShot(page, testInfo, 'fourth-down-decision', '18-offense-fourth-down-decision');
+
+  await page.locator('#decision-grid .decision-btn[data-action="go"]').click();
+  await expect(page.locator('#call-grid .call-btn')).toHaveCount(5);
+  await expect(page.locator('#decision-grid .decision-btn')).toHaveCount(0);
+  await assertPhaseAndShot(page, testInfo, 'call', '19-offense-fourth-down-go-call');
+
+  await page.evaluate(() => window.__footballTest.seedDriveState({
+    possession: 'offense',
+    direction: 1,
+    quarter: 1,
+    down: 4,
+    yardsToGo: 10,
+    yardLine: 50,
+    firstDownLine: 60,
+    driveStart: 20,
+    scores: { player: 0, opponent: 0 },
+  }));
+  await expect(page.locator('#decision-grid .decision-btn')).toHaveCount(2);
+  await page.locator('#decision-grid .decision-btn[data-action="punt"]').click();
+  await expectQuestionPlayType(page, 'punt', 'player punt');
+  await expect(page.locator('#call-grid .call-btn')).toHaveCount(0);
+  await expect(page.locator('#special-action-live')).toContainText('punt');
+  await assertPhaseAndShot(page, testInfo, 'question', '20-offense-punt-question');
+
+  await answerChoice(page, await liveChoiceId(page, 'correct'));
+  let game = await renderedState(page);
+  expect(game.quarterPossessions).toBe(1);
+  await expect(page.locator('#feedback')).toContainText(/punt|touchback/i);
+  await assertPhaseAndShot(page, testInfo, 'feedback', '20a-offense-punt-feedback');
+
+  await page.evaluate(() => window.__footballTest.seedDriveState({
+    possession: 'offense',
+    direction: 1,
+    quarter: 1,
+    down: 4,
+    yardsToGo: 2,
+    yardLine: 60,
+    firstDownLine: 62,
+    driveStart: 20,
+    scores: { player: 0, opponent: 0 },
+  }));
+  await page.locator('#decision-grid .decision-btn[data-action="fieldGoal"]').click();
+  await expectQuestionPlayType(page, 'fieldGoal', 'player field goal');
+  await expect(page.locator('#special-action-live')).toContainText('57-yard field goal');
+  await assertPhaseAndShot(page, testInfo, 'question', '21-offense-field-goal-question');
+
+  await answerChoice(page, await liveChoiceId(page, 'correct'));
+  game = await renderedState(page);
+  expect(game.score).toEqual({ player: 3, opponent: 0 });
+  expect(game.quarterPossessions).toBe(1);
+  await expect(page.locator('#feedback')).toContainText('Three points');
+  await assertPhaseAndShot(page, testInfo, 'feedback', '21a-offense-field-goal-feedback');
+
+  await page.evaluate(() => window.__footballTest.seedDriveState({
+    possession: 'defense',
+    direction: -1,
+    quarter: 1,
+    down: 4,
+    yardsToGo: 10,
+    yardLine: 80,
+    firstDownLine: 70,
+    driveStart: 80,
+    scores: { player: 0, opponent: 0 },
+  }));
+  await expectQuestionPlayType(page, 'punt', 'opponent punt');
+  await expect(page.locator('#call-grid .call-btn')).toHaveCount(0);
+  await expect(page.locator('#special-action-live')).toContainText('chooses to punt');
+  await assertPhaseAndShot(page, testInfo, 'question', '22-defense-punt-question');
+
+  await answerChoice(page, await liveChoiceId(page, 'correct'));
+  game = await renderedState(page);
+  expect(game.quarterPossessions).toBe(1);
+  await expect(page.locator('#feedback')).toContainText(/punt|touchback/i);
+  await assertPhaseAndShot(page, testInfo, 'feedback', '22a-defense-punt-feedback');
+
+  await page.evaluate(() => window.__footballTest.seedDriveState({
+    possession: 'defense',
+    direction: -1,
+    quarter: 1,
+    down: 4,
+    yardsToGo: 10,
+    yardLine: 40,
+    firstDownLine: 30,
+    driveStart: 80,
+    scores: { player: 0, opponent: 0 },
+  }));
+  await expectQuestionPlayType(page, 'fieldGoal', 'opponent field goal');
+  await expect(page.locator('#special-action-live')).toContainText('chooses a field goal');
+  await assertPhaseAndShot(page, testInfo, 'question', '23-defense-field-goal-question');
+
+  await answerChoice(page, await liveChoiceId(page, 'correct'));
+  game = await renderedState(page);
+  expect(game.score).toEqual({ player: 0, opponent: 0 });
+  expect(game.quarterPossessions).toBe(1);
+  await expect(page.locator('#feedback')).toContainText('blocked');
+  await assertPhaseAndShot(page, testInfo, 'feedback', '23a-defense-field-goal-feedback');
+
+  await page.evaluate(() => window.__footballTest.seedDriveState({
+    possession: 'defense',
+    direction: -1,
+    quarter: 1,
+    down: 4,
+    yardsToGo: 2,
+    yardLine: 45,
+    firstDownLine: 43,
+    driveStart: 80,
+    scores: { player: 0, opponent: 0 },
+  }));
+  await expect(page.locator('#call-grid .call-btn')).toHaveCount(4);
+  await expect(page.locator('#decision-grid .decision-btn')).toHaveCount(0);
+  await expect(page.locator('#defense-read')).toBeVisible();
+  await assertPhaseAndShot(page, testInfo, 'call', '24-defense-fourth-down-go-call');
 });
 
 test('post-game accuracy counts wrong offense and defense answers', async ({ page }) => {

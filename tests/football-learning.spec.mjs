@@ -46,9 +46,14 @@ async function beginSnap(page, possession = 'offense', overrides = {}) {
   expect(active.activeSnap).not.toBeNull();
   expect(active.questionInstance).not.toBeNull();
   expect(active.pendingResolution).toEqual({
-    schemaVersion: 1,
+    schemaVersion: 2,
     policy: 'awaitingAnswer',
+    gameId: active.activePlay.gameId,
+    possessionId: active.activePlay.possessionId,
+    playId: active.activePlay.playId,
+    playType: 'scrimmage',
     contextId: active.activeSnap.contextId,
+    familyId: active.questionInstance.familyId,
     questionInstanceId: active.questionInstance.questionInstanceId,
     transitionToCommit: null,
   });
@@ -530,6 +535,10 @@ test('first miss keeps one frozen question and retry correct commits the full pr
   expect(events.every((event) => event.familyId === question.familyId)).toBe(true);
   expect(events.every((event) => event.contextId === question.contextId)).toBe(true);
   expect(events.every((event) => event.questionInstanceId === question.questionInstanceId)).toBe(true);
+  expect(events.every((event) => event.gameId === beforeContracts.activePlay.gameId)).toBe(true);
+  expect(events.every((event) => event.possessionId === beforeContracts.activePlay.possessionId)).toBe(true);
+  expect(events.every((event) => event.playId === beforeContracts.activePlay.playId)).toBe(true);
+  expect(events.every((event) => event.playType === 'scrimmage')).toBe(true);
   expect(events.every((event) => JSON.stringify(event.selection) === JSON.stringify(question.selection))).toBe(true);
   expect(events.every((event) => !JSON.stringify(event).includes('privateOpponentSnapshot'))).toBe(true);
   expect(events[1].selectedChoiceId).toBe(wrongId);
@@ -626,7 +635,7 @@ test('a production snap exposes only approved, grounded, graded contextual conte
   await page.goto('/football/?boot=offense-call');
   await page.evaluate(() => window.__footballTest.setRootSeed(0xc011ab1e));
   const active = await beginSnap(page, 'offense', {
-    quarter: 4, down: 4, yardsToGo: 7, yardLine: 43, firstDownLine: 50,
+    quarter: 4, down: 3, yardsToGo: 7, yardLine: 43, firstDownLine: 50,
     driveStart: 40, scores: { player: 7, opponent: 7 },
   });
   const question = active.questionInstance;

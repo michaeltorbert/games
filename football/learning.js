@@ -93,7 +93,11 @@ const FOOTBALL_LEARNING = (() => {
     session.events.push(event);
     if (session.events.length > PROFILE.maxEvents) session.events.shift();
     if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
-      window.dispatchEvent(new CustomEvent('football:learning', { detail: copy(event) }));
+      try {
+        window.dispatchEvent(new CustomEvent('football:learning', { detail: copy(event) }));
+      } catch (error) {
+        // Observer delivery is non-authoritative and must not interrupt learning or gameplay.
+      }
     }
     return event;
   }
@@ -117,6 +121,12 @@ const FOOTBALL_LEARNING = (() => {
     return { selection: copy(selection) };
   }
 
+  function eventPlayScope(context = {}) {
+    return Object.fromEntries(['gameId', 'possessionId', 'playId', 'playType'].flatMap((key) => (
+      typeof context[key] === 'string' && context[key] ? [[key, context[key]]] : []
+    )));
+  }
+
   function recordPresented(session, question, context = {}) {
     session.presented++;
     skillState(session, question.skill).presented++;
@@ -125,6 +135,7 @@ const FOOTBALL_LEARNING = (() => {
     session.recentFamilyIds = session.recentFamilyIds.slice(-PROFILE.recencyWindow);
     addEvent(session, 'presented', {
       ...identity,
+      ...eventPlayScope(context),
       skill: question.skill,
       concept: question.concept || question.skill,
       purpose: question.purpose,
@@ -138,6 +149,7 @@ const FOOTBALL_LEARNING = (() => {
   function recordAttempt(session, question, context = {}) {
     addEvent(session, 'attempt', {
       ...questionIdentity(question),
+      ...eventPlayScope(context),
       skill: question.skill,
       concept: question.concept || question.skill,
       purpose: question.purpose,
@@ -163,6 +175,7 @@ const FOOTBALL_LEARNING = (() => {
     }
     addEvent(session, 'resolved', {
       ...questionIdentity(question),
+      ...eventPlayScope(context),
       skill: question.skill,
       concept: question.concept || question.skill,
       purpose: question.purpose,

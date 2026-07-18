@@ -41,6 +41,175 @@ test.beforeEach(async ({ page }) => {
   await page.goto('/football/');
 });
 
+test('fourth-down decisions follow the exact pure table in both possession directions', async ({ page }) => {
+  const result = await page.evaluate(() => {
+    const state = (overrides = {}) => ({
+      possession: 'defense',
+      direction: -1,
+      quarter: 2,
+      quarterPossessions: 1,
+      possessionsPerQuarter: 4,
+      yardLine: 50,
+      yardsToGo: 6,
+      scores: { player: 14, opponent: 14 },
+      ...overrides,
+    });
+    const cases = [
+      ['ordinary legal field goal', state({ yardLine: 40 }), 'fieldGoal'],
+      ['last-Q4 field goal can tie', state({
+        quarter: 4, quarterPossessions: 3, yardLine: 40,
+        scores: { player: 14, opponent: 11 },
+      }), 'fieldGoal'],
+      ['last-Q4 field goal can lead', state({
+        quarter: 4, quarterPossessions: 3, yardLine: 40,
+        scores: { player: 14, opponent: 13 },
+      }), 'fieldGoal'],
+      ['last-Q4 legal field goal still leaves offense behind', state({
+        quarter: 4, quarterPossessions: 3, yardLine: 40,
+        scores: { player: 21, opponent: 14 },
+      }), 'go'],
+      ['last-Q4 illegal field goal while trailing', state({
+        quarter: 4, quarterPossessions: 3, yardLine: 50,
+        scores: { player: 17, opponent: 14 },
+      }), 'go'],
+      ['ordinary beyond-midfield fourth and two', state({ yardLine: 49, yardsToGo: 2 }), 'go'],
+      ['midfield is not beyond midfield', state({ yardLine: 50, yardsToGo: 2 }), 'punt'],
+      ['beyond midfield fourth and three', state({ yardLine: 49, yardsToGo: 3 }), 'punt'],
+      ['own territory punts', state({ yardLine: 60, yardsToGo: 1 }), 'punt'],
+      ['forward direction mirrors short-yardage go', state({
+        possession: 'offense', direction: 1, yardLine: 51, yardsToGo: 2,
+      }), 'go'],
+      ['forward midfield remains a punt', state({
+        possession: 'offense', direction: 1, yardLine: 50, yardsToGo: 2,
+      }), 'punt'],
+      ['forward legal field goal mirrors range', state({
+        possession: 'offense', direction: 1, yardLine: 60,
+      }), 'fieldGoal'],
+    ];
+    return cases.map(([label, input, expected]) => {
+      const decision = FOOTBALL_OPPONENT.decideFourthDown(input);
+      return {
+        label,
+        expected,
+        action: decision.action,
+        decision,
+        frozen: Object.isFrozen(decision)
+          && Object.isFrozen(decision.basis)
+          && Object.isFrozen(decision.basis.scores),
+      };
+    });
+  });
+
+  for (const item of result) {
+    expect(item.action, item.label).toBe(item.expected);
+    expect(item.decision).toMatchObject({ schemaVersion: 1, decisionType: 'fourthDown' });
+    expect(item.frozen, item.label).toBe(true);
+  }
+  expect(result.find(item => item.label === 'ordinary legal field goal').decision.basis)
+    .toMatchObject({ fieldGoalDistance: 57, fieldGoalLegal: true });
+  expect(result.find(item => item.label === 'ordinary beyond-midfield fourth and two').decision.basis)
+    .toMatchObject({ fieldGoalDistance: 66, fieldGoalLegal: false, beyondMidfield: true });
+});
+
+test('conversion decisions choose two only for the last-Q4 exact two-point need', async ({ page }) => {
+  const result = await page.evaluate(() => {
+    const state = (overrides = {}) => ({
+      possession: 'defense',
+      direction: -1,
+      quarter: 4,
+      quarterPossessions: 3,
+      possessionsPerQuarter: 4,
+      scores: { player: 14, opponent: 12 },
+      ...overrides,
+    });
+    const cases = [
+      ['opponent trails by two on last Q4 possession', state(), 'twoPoint'],
+      ['opponent trails by one', state({ scores: { player: 14, opponent: 13 } }), 'pat'],
+      ['opponent trails by three', state({ scores: { player: 15, opponent: 12 } }), 'pat'],
+      ['not the last scheduled possession', state({ quarterPossessions: 2 }), 'pat'],
+      ['player-possession score polarity mirrors', state({
+        possession: 'offense', direction: 1, scores: { player: 12, opponent: 14 },
+      }), 'twoPoint'],
+      ['possessing team already leads', state({ scores: { player: 12, opponent: 14 } }), 'pat'],
+    ];
+    return cases.map(([label, input, expected]) => {
+      const decision = FOOTBALL_OPPONENT.decideConversion(input);
+      return {
+        label,
+        expected,
+        action: decision.action,
+        decision,
+        frozen: Object.isFrozen(decision)
+          && Object.isFrozen(decision.basis)
+          && Object.isFrozen(decision.basis.scores),
+      };
+    });
+  });
+
+  for (const item of result) {
+    expect(item.action, item.label).toBe(item.expected);
+    expect(item.decision).toMatchObject({ schemaVersion: 1, decisionType: 'conversion' });
+    expect(item.frozen, item.label).toBe(true);
+  }
+  expect(result[0].decision.basis).toMatchObject({
+    patWouldTieOrLead: false,
+    twoWouldTieOrLead: true,
+    lastScheduledQ4Possession: true,
+  });
+});
+
+test('decision APIs consume zero RNG and leave five-call planSnap sampling unchanged', async ({ page }) => {
+  const result = await page.evaluate(() => {
+    const decisionState = {
+      possession: 'defense', direction: -1,
+      quarter: 4, quarterPossessions: 3, possessionsPerQuarter: 4,
+      yardLine: 40, yardsToGo: 4,
+      scores: { player: 14, opponent: 11 },
+    };
+    const stateBefore = JSON.stringify(decisionState);
+    const originalRandom = Math.random;
+    let globalDraws = 0;
+    Math.random = () => {
+      globalDraws++;
+      throw new Error('Decision API consumed global RNG');
+    };
+    let fourthDown;
+    let conversion;
+    try {
+      fourthDown = FOOTBALL_OPPONENT.decideFourthDown(decisionState);
+      conversion = FOOTBALL_OPPONENT.decideConversion(decisionState);
+    } finally {
+      Math.random = originalRandom;
+    }
+
+    let planDraws = 0;
+    const plan = FOOTBALL_OPPONENT.planSnap(decisionState, 'balanced', () => {
+      planDraws++;
+      return 0.5;
+    }, 'unc');
+    return {
+      fourthDown,
+      conversion,
+      globalDraws,
+      planDraws,
+      plannedCallKey: plan.plannedCallKey,
+      stateBefore,
+      stateAfter: JSON.stringify(decisionState),
+      callKeys: FOOTBALL_OPPONENT.CALL_KEYS,
+      fourthDownActions: FOOTBALL_OPPONENT.FOURTH_DOWN_ACTIONS,
+      conversionActions: FOOTBALL_OPPONENT.CONVERSION_ACTIONS,
+    };
+  });
+
+  expect(result.globalDraws).toBe(0);
+  expect(result.stateAfter).toBe(result.stateBefore);
+  expect(result.planDraws).toBe(1);
+  expect(result.plannedCallKey).toBe('mediumPass');
+  expect(result.callKeys).toEqual(['shortRun', 'shortPass', 'longRun', 'mediumPass', 'longPass']);
+  expect(result.fourthDownActions).toEqual(['go', 'punt', 'fieldGoal']);
+  expect(result.conversionActions).toEqual(['pat', 'twoPoint']);
+});
+
 test('tendency derivation is pure, inspectable, positive, and normalized', async ({ page }) => {
   const result = await page.evaluate((input) => {
     const frozen = Object.freeze({ ...input });
