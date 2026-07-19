@@ -113,6 +113,19 @@ Run these on both iPhone sizes:
 - public render state, persisted rows, diagnostics, and result telemetry contain
   stable public IDs/facts only—never the private opponent decision or planned
   call snapshot
+- Quick Game leaves `footballMathSeason:v1` byte-for-byte unchanged; Season
+  stores one fixed UNC → NC State → Wake Forest schedule and advances on every
+  win, loss, or tie while deriving the worded record from raw scores
+- a missing/malformed/future/failed season write never blocks Quick Game;
+  malformed data requires Start Fresh Season and future-schema bytes are never
+  replaced
+- a failed final season result shows the final plus the persistent not-saved
+  warning and Retry Saving / Play Quick Game controls; reload reopens that rung
+  because pending result memory is intentionally not persisted
+- the production `commitPendingResolution()` path is the only season-settlement
+  origin: a last-Q4 touchdown and its overlay store nothing, its conversion
+  stores exactly one result, and direct final/routing/legacy presentation seams
+  store zero results
 
 ## Verification Notes
 
@@ -203,9 +216,28 @@ The v1.25.0 path adds these 18 explicit artifacts:
 24-defense-fourth-down-go-call
 ```
 
-The post-test gate therefore requires all 228 PNGs (38 screenshots × 6
-projects) to exist and be non-empty. Missing states, clipped or undersized
-controls, horizontal overflow, uncaught browser errors, failed behavior
+The v1.26.0 season path adds five compact state artifacts:
+
+```text
+25-season-start
+26-season-final
+27-season-complete
+28-season-pending
+29-season-unconfirmed
+```
+
+The two phone projects add production pending-result recovery artifacts for
+both incompatible durable-store states:
+
+```text
+30-season-pending-corrupt
+31-season-pending-future
+```
+
+The post-test gate therefore requires all 262 PNGs (43 shared screenshots × 6
+projects, plus 2 recovery screenshots × 2 phone projects) to exist and be
+non-empty. Missing states, clipped or undersized controls, overlay-card
+overflow, horizontal overflow, uncaught browser errors, failed behavior
 contracts, or missing artifacts make the command exit nonzero.
 
 Canonical screenshots are retained at:
@@ -222,7 +254,7 @@ release matrix. The Coach Report spec verifies that the card and replay CTA fit
 the viewport, the CTA remains at least `44x44`, and the page has no horizontal
 overflow. Its attached `compact-final-overlay.png` stays under Playwright's
 temporary artifact tree and is intentionally not part of the canonical
-228-image gate.
+262-image gate.
 
 ### Quick measurement snippet
 

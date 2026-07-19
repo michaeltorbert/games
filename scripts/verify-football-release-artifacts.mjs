@@ -9,6 +9,7 @@ const projects = [
   'ipad-pro-13-landscape',
   'ipad-11-landscape',
 ];
+const phoneProjects = new Set(['iphone-15-portrait', 'iphone-17-pro-max-portrait']);
 
 const labels = [
   '01-start',
@@ -49,6 +50,15 @@ const labels = [
   '23-defense-field-goal-question',
   '23a-defense-field-goal-feedback',
   '24-defense-fourth-down-go-call',
+  '25-season-start',
+  '26-season-final',
+  '27-season-complete',
+  '28-season-pending',
+  '29-season-unconfirmed',
+];
+const phoneLabels = [
+  '30-season-pending-corrupt',
+  '31-season-pending-future',
 ];
 
 const matrixDir = path.join(process.cwd(), 'tests', 'artifacts', 'release-matrix');
@@ -62,9 +72,12 @@ if (JSON.stringify(actualProjects) !== JSON.stringify(expectedProjects)) {
   throw new Error(`Release artifact projects differ. Expected ${expectedProjects.join(', ')}; got ${actualProjects.join(', ') || 'none'}.`);
 }
 
-const expectedFiles = labels.map(label => `${label}.png`).sort();
 for (const project of projects) {
   const projectDir = path.join(matrixDir, project);
+  const expectedFiles = [
+    ...labels,
+    ...(phoneProjects.has(project) ? phoneLabels : []),
+  ].map(label => `${label}.png`).sort();
   const actualFiles = (await fs.readdir(projectDir, { withFileTypes: true }))
     .filter(entry => entry.isFile())
     .map(entry => entry.name)
@@ -80,4 +93,8 @@ for (const project of projects) {
   }
 }
 
-console.log(`Verified ${projects.length * labels.length} Football release screenshots across ${projects.length} projects.`);
+const expectedCount = projects.reduce(
+  (count, project) => count + labels.length + (phoneProjects.has(project) ? phoneLabels.length : 0),
+  0,
+);
+console.log(`Verified ${expectedCount} Football release screenshots across ${projects.length} projects.`);

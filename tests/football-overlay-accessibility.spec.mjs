@@ -71,8 +71,10 @@ test('all overlays expose one modal dialog and contain keyboard focus', async ({
   }
 });
 
-test('start overlay traps focus around the selected native radio tab stop', async ({ page }) => {
+test('start overlay traps focus across the selected mode and visible rival radio tab stops', async ({ page }) => {
   await page.goto('/football/');
+  const quickMode = page.getByRole('radio', { name: /Quick Game/ });
+  const seasonMode = page.getByRole('radio', { name: /3-Game Season/ });
   const wakeForest = page.locator('input[name="rival"][value="wake-forest"]');
   const start = page.locator('#start-game-btn');
 
@@ -81,9 +83,21 @@ test('start overlay traps focus around the selected native radio tab stop', asyn
   await expect(wakeForest).toBeFocused();
 
   await page.keyboard.press('Shift+Tab');
+  await expect(quickMode).toBeFocused();
+  await page.keyboard.press('Shift+Tab');
   await expect(start).toBeFocused();
   await page.keyboard.press('Tab');
+  await expect(quickMode).toBeFocused();
+  await page.keyboard.press('Tab');
   await expect(wakeForest).toBeFocused();
+
+  await seasonMode.check();
+  await expect(seasonMode).toBeFocused();
+  expect(await wakeForest.evaluate(element => element.getClientRects().length)).toBe(0);
+  await page.keyboard.press('Tab');
+  await expect(start).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(seasonMode).toBeFocused();
 });
 
 test('closing an overlay restores the game UI and focuses the next control', async ({ page }) => {

@@ -93,7 +93,7 @@ test('coach report uses this game only and keeps the final CTA above the fold', 
   await expect(report).toContainText('Finding the difference');
   await expect(report).not.toContainText('Tens and ones');
 
-  const cta = page.locator('#ov-end .ov-btn');
+  const cta = page.locator('#ov-end-btn');
   await expect(cta).toBeVisible();
   const box = await cta.boundingBox();
   expect(box, `${testInfo.project.name} CTA has a box`).not.toBeNull();
@@ -133,12 +133,12 @@ test('compact final-overlay compatibility rule stays usable at 1180x740', async 
 
   expect(await page.evaluate(() => matchMedia('(max-height: 760px) and (min-width: 700px)').matches)).toBe(true);
   const card = page.locator('#ov-end .overlay-card');
-  const cta = page.locator('#ov-end .ov-btn');
+  const cta = page.locator('#ov-end-btn');
   await expect(card).toBeVisible();
   await expect(cta).toBeVisible();
   const geometry = await page.evaluate(() => {
     const cardBox = document.querySelector('#ov-end .overlay-card').getBoundingClientRect();
-    const ctaBox = document.querySelector('#ov-end .ov-btn').getBoundingClientRect();
+    const ctaBox = document.getElementById('ov-end-btn').getBoundingClientRect();
     return {
       cardTop: cardBox.top,
       cardBottom: cardBox.bottom,

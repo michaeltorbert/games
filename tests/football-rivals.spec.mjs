@@ -40,6 +40,8 @@ test('catalog, profiles, and default UNC sampling form one deeply frozen closed 
     try { FOOTBALL_OPPONENT.createMatch(undefined); } catch (error) { invalidExplicit = error.name; }
     return {
       order: FOOTBALL_OPPONENT.RIVAL_ORDER,
+      seasonOrder: FOOTBALL_SEASON.SCHEDULE,
+      seasonOrderFrozen: Object.isFrozen(FOOTBALL_SEASON.SCHEDULE),
       rivalKeys: Object.keys(FOOTBALL_OPPONENT.RIVALS),
       profileKeys: Object.keys(FOOTBALL_OPPONENT.PROFILES),
       profileCallKeys: Object.fromEntries(Object.entries(FOOTBALL_OPPONENT.PROFILES)
@@ -74,6 +76,8 @@ test('catalog, profiles, and default UNC sampling form one deeply frozen closed 
   });
 
   expect(result.order).toEqual(['unc', 'nc-state', 'wake-forest']);
+  expect(result.seasonOrder).toEqual(result.order);
+  expect(result.seasonOrderFrozen).toBe(true);
   expect(result.rivalKeys).toEqual(result.order);
   expect(result.profileKeys).toEqual(['balanced', 'powerRun', 'quickPass']);
   for (const callKeys of Object.values(result.profileCallKeys)) {
@@ -197,7 +201,7 @@ test('picker previews without RNG, commits only on Start, and rematches the sele
   expect(committed.stateMatchAfterSwitch).toEqual(committed.stateMatch);
 
   await page.evaluate(() => showGameOver());
-  await page.locator('#ov-end .ov-btn').click();
+  await page.locator('#ov-end-btn').click();
   await expect(page.locator('#ov-start')).toHaveClass(/show/);
   await expect(group.getByRole('radio').nth(2)).toBeChecked();
   expect(await page.evaluate(() => JSON.parse(render_game_to_text()).match.opponent.id)).toBe('wake-forest');

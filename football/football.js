@@ -1,4 +1,4 @@
-const GAME_VERSION = '1.25.0';
+const GAME_VERSION = '1.26.0';
 let prevPlayerScore = -1, prevOpponentScore = -1;
 let playerRunTimer = 0, playerCelebrateTimer = 0, playerCelebrateDelayTimer = 0;
 const EZ = 5;
@@ -163,6 +163,11 @@ let possessionSequence = 1;
 let playSequence = 1;
 let questionFaultMode = null;
 let selectedRivalId = FOOTBALL_OPPONENT.DEFAULT_RIVAL_ID;
+let selectedPlayMode = 'quick';
+let activeSeasonBinding = null;
+let seasonSettlementPromise = null;
+let seasonActionBusy = false;
+let seasonEndActionBusy = false;
 
 function mixSeed(seed, salt) {
   let value = (seed ^ salt) >>> 0;
@@ -362,7 +367,7 @@ function updateRivalPreview(match) {
 }
 
 function selectRivalPreview(rivalId) {
-  if (state.phase !== 'start') return false;
+  if (state.phase !== 'start' || selectedPlayMode !== 'quick') return false;
   const match = FOOTBALL_OPPONENT.createMatch(rivalId);
   selectedRivalId = rivalId;
   state = { ...state, match };
@@ -406,6 +411,158 @@ function renderRivalPicker() {
   updateRivalPreview(FOOTBALL_OPPONENT.createMatch(selectedRivalId));
 }
 
+function countLabel(count, singular, plural = `${singular}s`) {
+  return `${count} ${count === 1 ? singular : plural}`;
+}
+
+function seasonRecordText(record) {
+  return [
+    countLabel(record.wins, 'win'),
+    countLabel(record.losses, 'loss', 'losses'),
+    countLabel(record.ties, 'tie'),
+  ].join(' · ');
+}
+
+function seasonRungLabel(status) {
+  return {
+    win: 'Win',
+    loss: 'Loss',
+    tie: 'Tie',
+    next: 'Next',
+    pending: 'Not saved',
+    open: 'Upcoming',
+  }[status] || 'Upcoming';
+}
+
+function seasonStatusText(snapshot) {
+  if (snapshot.saveState === 'pending') {
+    if (FOOTBALL_SEASON.pendingKind() === 'result') {
+      const warning = 'Not saved—closing or reloading will lose this game’s season result.';
+      if (snapshot.status === 'future') {
+        return `${warning} A newer game version saved this season. Retry Saving or use Quick Game. Reloading loses this result.`;
+      }
+      if (snapshot.status === 'corrupt') {
+        return `${warning} Saved progress is damaged or changed. Retry Saving or use Quick Game. Start Fresh after reloading only if needed; this result will be lost.`;
+      }
+      return warning;
+    }
+    return 'Season could not be saved yet. Retry saving or play a Quick Game.';
+  }
+  if (snapshot.saveState === 'conflict') {
+    return 'Another tab updated this season. The saved season was kept.';
+  }
+  if (snapshot.status === 'future') {
+    return 'This season was made by a newer game version. Quick Game still works.';
+  }
+  if (snapshot.status === 'corrupt') {
+    return 'Season progress needs a fresh start. Quick Game still works.';
+  }
+  if (snapshot.status === 'unavailable') {
+    return 'Season saving is not available right now. Quick Game still works.';
+  }
+  if (snapshot.status === 'complete') return 'Season complete and saved on this device.';
+  if (snapshot.status === 'active') return 'Season progress is saved on this device.';
+  return '';
+}
+
+function renderSeasonPanel(snapshot = FOOTBALL_SEASON.snapshot()) {
+  const progress = document.getElementById('season-progress');
+  const record = document.getElementById('season-record');
+  const rungs = document.getElementById('season-rungs');
+  const next = document.getElementById('season-next');
+  const status = document.getElementById('season-status');
+  if (progress) {
+    progress.textContent = snapshot.complete
+      ? 'Season complete'
+      : Number.isInteger(snapshot.gameNumber)
+        ? `Game ${snapshot.gameNumber} of ${snapshot.schedule.length}`
+        : 'Season unavailable';
+  }
+  if (record) record.textContent = seasonRecordText(snapshot.record);
+  if (rungs) {
+    rungs.replaceChildren();
+    for (const rung of snapshot.schedule) {
+      const rival = FOOTBALL_OPPONENT.resolveRival(rung.rivalId);
+      const item = document.createElement('li');
+      item.className = 'season-rung';
+      item.dataset.status = rung.status;
+      item.setAttribute('aria-label', `Game ${rung.gameNumber}, ${rival.displayName}: ${seasonRungLabel(rung.status)}`);
+      const number = document.createElement('span');
+      number.className = 'season-rung-number';
+      number.textContent = String(rung.gameNumber);
+      const copy = document.createElement('span');
+      copy.className = 'season-rung-copy';
+      const team = document.createElement('span');
+      team.className = 'season-rung-team';
+      team.textContent = rival.shortName;
+      const result = document.createElement('span');
+      result.className = 'season-rung-result';
+      result.textContent = seasonRungLabel(rung.status);
+      copy.append(team, result);
+      item.append(number, copy);
+      rungs.appendChild(item);
+    }
+  }
+  if (next) {
+    next.textContent = snapshot.complete
+      ? 'All three games are in the books.'
+      : snapshot.nextRivalId
+        ? `Next up: ${FOOTBALL_OPPONENT.resolveRival(snapshot.nextRivalId).displayName}`
+        : 'Choose Quick Game while season saving is unavailable.';
+  }
+  if (status) status.textContent = seasonStatusText(snapshot);
+}
+
+function seasonActionLabel(snapshot) {
+  if (seasonActionBusy) return 'Saving…';
+  if (snapshot.action === 'retry') return 'Retry Saving';
+  if (snapshot.action === 'fresh') return 'Start Fresh Season';
+  if (snapshot.action === 'new') return 'Start New Season';
+  if (snapshot.action === 'play') return `Play Game ${snapshot.gameNumber}`;
+  if (snapshot.action === 'start') return 'Start Season';
+  return 'Season Unavailable';
+}
+
+function renderStartMode() {
+  const quickPanel = document.getElementById('quick-game-panel');
+  const seasonPanel = document.getElementById('season-panel');
+  const startButton = document.getElementById('start-game-btn');
+  for (const input of document.querySelectorAll('input[name="play-mode"]')) {
+    input.checked = input.value === selectedPlayMode;
+  }
+  if (quickPanel) quickPanel.hidden = selectedPlayMode !== 'quick';
+  if (seasonPanel) seasonPanel.hidden = selectedPlayMode !== 'season';
+
+  if (selectedPlayMode === 'quick') {
+    renderRivalPicker();
+    if (startButton) {
+      startButton.textContent = 'Start Game';
+      startButton.disabled = Boolean(sessionInitialized);
+    }
+    return;
+  }
+
+  const snapshot = FOOTBALL_SEASON.snapshot();
+  renderSeasonPanel(snapshot);
+  if (snapshot.nextRivalId) {
+    const match = FOOTBALL_OPPONENT.createMatch(snapshot.nextRivalId);
+    state = { ...state, match };
+    applyMatchPresentation(match);
+    updatePromptContext(`SEASON / GAME ${snapshot.gameNumber || 1} OF 3 / NEXT ${match.opponent.shortName}`);
+  }
+  if (startButton) {
+    startButton.textContent = seasonActionLabel(snapshot);
+    startButton.disabled = seasonActionBusy || snapshot.action === 'unavailable';
+  }
+}
+
+function selectPlayMode(mode) {
+  if (state.phase !== 'start' || !['quick', 'season'].includes(mode)) return false;
+  selectedPlayMode = mode;
+  renderStartMode();
+  return true;
+}
+
 function riskLabelText(risk) {
   return String(risk || 'medium').replace(/-/g, ' ').toUpperCase();
 }
@@ -417,6 +574,12 @@ function syncUiState() {
   if (desk) {
     desk.dataset.phase = state.phase || 'start';
     desk.dataset.possession = state.possession || 'offense';
+  }
+  const stageCopy = document.getElementById('stage-mode-copy');
+  if (stageCopy) {
+    stageCopy.textContent = activeSeasonBinding
+      ? `Season game ${activeSeasonBinding.gameNumber} of ${FOOTBALL_SEASON.SCHEDULE.length}`
+      : 'Broadcast view';
   }
   if (!['question', 'explanation'].includes(state.phase)) hideMathVisual();
   updatePromptContext();
@@ -2916,6 +3079,32 @@ function handleInvalidCommittedPlay(error, activePlay) {
     state.opponentDecisionSnapshot);
 }
 
+function settleSeasonGameOnce() {
+  if (!activeSeasonBinding || seasonSettlementPromise) return seasonSettlementPromise;
+  const bindingMatches = activeSeasonBinding.gameId === state.gameId
+    && activeSeasonBinding.rivalId === state.match.opponent.id;
+  if (!bindingMatches) {
+    reportFootballDiagnostic('season-binding-mismatch', {
+      message: 'The season game binding no longer matches the completed public match.',
+      gameNumber: activeSeasonBinding.gameNumber,
+    });
+    return null;
+  }
+  const finalScores = FOOTBALL_DOMAIN.deepFreeze({
+    playerScore: state.playerScore,
+    opponentScore: state.opponentScore,
+  });
+  seasonSettlementPromise = FOOTBALL_SEASON.settleGame(activeSeasonBinding, finalScores)
+    .then(result => {
+      if (state.phase === 'final') renderEndSeason();
+      return result;
+    }, () => {
+      if (state.phase === 'final') renderEndSeason();
+      return { status: 'pending' };
+    });
+  return seasonSettlementPromise;
+}
+
 function commitPendingResolution({ focusNextCall = false } = {}) {
   const pending = state.pendingResolution;
   const activePlay = state.activePlay;
@@ -2959,7 +3148,9 @@ function commitPendingResolution({ focusNextCall = false } = {}) {
   state.committedPlayIds = [...(state.committedPlayIds || []), activePlay.playId];
   state.questionUi.outcomeCommitted = true;
   const placement = terminalPlacement(activePlay, validation.value, pending.policy);
-  if (placement) finalizePossessionState(activePlay.possessionId, placement);
+  const possessionFinalized = placement
+    ? finalizePossessionState(activePlay.possessionId, placement)
+    : false;
   const outcome = outcomeForTransition(activePlay, validation.value, pending.policy);
   applyCommittedOutcomeBookkeeping(activePlay, outcome);
   if (pending.policy !== 'questionBypass') recordQuestionResolution(pending.policy);
@@ -2987,6 +3178,11 @@ function commitPendingResolution({ focusNextCall = false } = {}) {
     transition: validation.value,
     placement: settledPlacement,
   });
+  if (possessionFinalized
+    && state.quarter >= 4
+    && state.quarterPossessions >= POSSESSIONS_PER_QUARTER) {
+    settleSeasonGameOnce();
+  }
   if (activePlay.playType === 'scrimmage' || activePlay.playType === 'punt') updateField(true);
   updateStatus();
   syncUiState();
@@ -3203,7 +3399,11 @@ function overlayFocusableElements(overlay) {
 function focusActiveOverlay(overlay) {
   requestAnimationFrame(() => {
     if (!overlay.classList.contains('show')) return;
-    const startChoice = overlay.id === 'ov-start' ? overlay.querySelector('input[name="rival"]:checked') : null;
+    const quickPanel = document.getElementById('quick-game-panel');
+    const startChoice = overlay.id !== 'ov-start' ? null
+      : selectedPlayMode === 'quick' && !quickPanel?.hidden
+        ? overlay.querySelector('input[name="rival"]:checked')
+        : overlay.querySelector('input[name="play-mode"]:checked');
     const target = startChoice || overlay.querySelector('.ov-btn:not([disabled])') || overlayFocusableElements(overlay)[0] || overlay;
     if (target === overlay && !overlay.hasAttribute('tabindex')) overlay.setAttribute('tabindex', '-1');
     target.focus({ preventScroll: true });
@@ -3285,9 +3485,9 @@ function showStart() {
   hideOverlays();
   resetPlayerAnimations();
   state.phase = 'start';
-  renderRivalPicker();
+  renderStartMode();
   activateOverlay('ov-start');
-  updateRivalPreview(state.match);
+  if (selectedPlayMode === 'quick') updateRivalPreview(state.match);
   document.getElementById('play-label').textContent = 'Get ready…';
   document.getElementById('question').textContent = '';
   applyDeskHeader('start');
@@ -3297,15 +3497,59 @@ function showStart() {
   syncUiState();
 }
 
-function startGame() {
+function startQuickGame() {
   clearTimeout(advTimer);
-  if (sessionInitialized) return;
+  if (sessionInitialized) return false;
   const match = FOOTBALL_OPPONENT.createMatch(selectedRivalId);
+  activeSeasonBinding = null;
+  seasonSettlementPromise = null;
   initGameSession();
   state = createGameState(match);
   applyMatchPresentation(match);
   hideOverlays();
   startDrive('offense');
+  return true;
+}
+
+async function startSeasonGame() {
+  clearTimeout(advTimer);
+  if (sessionInitialized || seasonActionBusy) return false;
+  seasonActionBusy = true;
+  renderStartMode();
+  let snapshot = FOOTBALL_SEASON.snapshot();
+  const requestedAction = snapshot.action;
+  try {
+    if (snapshot.action === 'start') await FOOTBALL_SEASON.startSeason();
+    else if (snapshot.action === 'fresh') await FOOTBALL_SEASON.startFreshSeason();
+    else if (snapshot.action === 'new') await FOOTBALL_SEASON.startNewSeason();
+    else if (snapshot.action === 'retry') await FOOTBALL_SEASON.retryPending();
+    snapshot = FOOTBALL_SEASON.snapshot();
+    if (requestedAction === 'retry') return false;
+    if (sessionInitialized || selectedPlayMode !== 'season') return false;
+    if (snapshot.status !== 'active' || snapshot.saveState === 'pending' || !snapshot.nextRivalId) return false;
+
+    const match = FOOTBALL_OPPONENT.createMatch(snapshot.nextRivalId);
+    initGameSession();
+    const binding = FOOTBALL_SEASON.bindNextGame(statsSession.gameId);
+    if (!binding || binding.rivalId !== match.opponent.id) {
+      clearGameSessionInitialization();
+      return false;
+    }
+    activeSeasonBinding = binding;
+    seasonSettlementPromise = null;
+    state = createGameState(match);
+    applyMatchPresentation(match);
+    hideOverlays();
+    startDrive('offense');
+    return true;
+  } finally {
+    seasonActionBusy = false;
+    if (state.phase === 'start') renderStartMode();
+  }
+}
+
+function startGame() {
+  return selectedPlayMode === 'season' ? startSeasonGame() : startQuickGame();
 }
 
 function showTD(side = 'offense') {
@@ -3619,6 +3863,73 @@ function buildCoachReport() {
   return rows.slice(0, 2);
 }
 
+function renderEndSeason() {
+  const container = document.getElementById('ov-end-season');
+  const primary = document.getElementById('ov-end-btn');
+  const quick = document.getElementById('ov-end-quick-btn');
+  const overlay = document.getElementById('ov-end');
+  if (!container || !primary || !quick) return;
+  if (!activeSeasonBinding) {
+    if (overlay) overlay.classList.remove('season-save-pending');
+    container.hidden = true;
+    container.textContent = '';
+    primary.textContent = 'Play Again!';
+    primary.disabled = false;
+    quick.hidden = true;
+    quick.disabled = false;
+    return;
+  }
+
+  const snapshot = FOOTBALL_SEASON.snapshot();
+  const pendingResult = snapshot.saveState === 'pending' && FOOTBALL_SEASON.pendingKind() === 'result';
+  if (overlay) overlay.classList.toggle('season-save-pending', pendingResult);
+  container.hidden = false;
+  quick.hidden = true;
+  primary.disabled = seasonEndActionBusy;
+  quick.disabled = seasonEndActionBusy;
+  if (pendingResult) {
+    container.textContent = `Season game ${activeSeasonBinding.gameNumber} is final. ${seasonStatusText(snapshot)}`;
+    primary.textContent = seasonEndActionBusy ? 'Saving…' : 'Retry Saving';
+    quick.hidden = false;
+    return;
+  }
+  const exactSavedResult = FOOTBALL_SEASON.hasExactSavedResult(activeSeasonBinding, {
+    playerScore: state.playerScore,
+    opponentScore: state.opponentScore,
+  });
+  if (snapshot.saveState === 'conflict') {
+    container.textContent = `${seasonStatusText(snapshot)} ${seasonRecordText(snapshot.record)}.`;
+  } else if (!exactSavedResult) {
+    container.textContent = 'This game’s Season result could not be confirmed. This device’s saved Season is unchanged by this game.';
+  } else if (snapshot.complete) {
+    container.textContent = `Season complete: ${seasonRecordText(snapshot.record)}.`;
+  } else {
+    const nextRival = snapshot.nextRivalId
+      ? FOOTBALL_OPPONENT.resolveRival(snapshot.nextRivalId).displayName
+      : 'the next rival';
+    container.textContent = `Game ${activeSeasonBinding.gameNumber} saved. ${seasonRecordText(snapshot.record)}. Next: ${nextRival}.`;
+  }
+  primary.textContent = 'Continue Season';
+}
+
+async function handleEndPrimaryAction() {
+  if (seasonEndActionBusy) return false;
+  seasonEndActionBusy = true;
+  renderEndSeason();
+  try {
+    if (activeSeasonBinding && FOOTBALL_SEASON.pendingKind() === 'result') {
+      await FOOTBALL_SEASON.retryPending();
+      if (state.phase === 'final') renderEndSeason();
+      if (FOOTBALL_SEASON.pendingKind() === 'result') return false;
+    }
+    restart(activeSeasonBinding ? 'season' : null);
+    return true;
+  } finally {
+    seasonEndActionBusy = false;
+    if (state.phase === 'final') renderEndSeason();
+  }
+}
+
 function showGameOver() {
   const diff = state.playerScore - state.opponentScore;
   const title = diff > 0 ? 'You Win!' : diff < 0 ? 'Final Score' : 'Tie Game!';
@@ -3652,6 +3963,7 @@ function showGameOver() {
   document.getElementById('ov-end-sub').textContent =
     `${detail} ${state.match.player.displayName} vs ${state.match.opponent.displayName}. Player TDs: ${state.tds}.`;
   populateEndStats();
+  renderEndSeason();
   clearConfetti('ov-end-confetti');
   activateOverlay('ov-end');
   if (diff > 0) {
@@ -3660,14 +3972,18 @@ function showGameOver() {
   }
 }
 
-function restart() {
+function restart(preferredMode = null) {
   const rematchRivalId = state.match.opponent.id;
+  const returningFromSeason = Boolean(activeSeasonBinding);
   clearConfetti('ov-td-confetti');
   clearConfetti('ov-end-confetti');
   resetPlayerAnimations();
   clearGameSessionInitialization();
   pendingStatsPlay = null;
   selectedRivalId = rematchRivalId;
+  selectedPlayMode = preferredMode || (returningFromSeason ? 'season' : 'quick');
+  activeSeasonBinding = null;
+  seasonSettlementPromise = null;
   state = createGameState(FOOTBALL_OPPONENT.createMatch(selectedRivalId));
   prevPlayerScore = -1;
   prevOpponentScore = -1;
@@ -3718,6 +4034,23 @@ function conversionRenderState() {
   };
 }
 
+function publicSeasonDiagnostics() {
+  const snapshot = FOOTBALL_SEASON.snapshot();
+  return {
+    mode: activeSeasonBinding || selectedPlayMode === 'season' ? 'season' : 'quick',
+    gameNumber: activeSeasonBinding?.gameNumber ?? snapshot.gameNumber,
+    rungStatuses: snapshot.schedule.map(rung => rung.status),
+    record: {
+      wins: snapshot.record.wins,
+      losses: snapshot.record.losses,
+      ties: snapshot.record.ties,
+    },
+    nextRivalId: snapshot.nextRivalId,
+    complete: snapshot.complete,
+    saveState: snapshot.saveState,
+  };
+}
+
 function renderGameToText() {
   const learning = learningSession || {
     presented: 0,
@@ -3728,6 +4061,8 @@ function renderGameToText() {
   const conversion = conversionRenderState();
   return JSON.stringify({
     mode: state.phase,
+    playMode: activeSeasonBinding || selectedPlayMode === 'season' ? 'season' : 'quick',
+    season: publicSeasonDiagnostics(),
     match: state.match,
     quarter: state.quarter,
     half: halfLabel(state.quarter || 1),
@@ -3959,6 +4294,15 @@ window.__footballTest = {
   opponentProfiles() { return FOOTBALL_OPPONENT.PROFILES; },
   rivals() { return FOOTBALL_OPPONENT.RIVALS; },
   rivalOrder() { return FOOTBALL_OPPONENT.RIVAL_ORDER; },
+  seasonSnapshot() { return FOOTBALL_SEASON.snapshot(); },
+  playMode() { return selectedPlayMode; },
+  activeSeasonGame() {
+    return activeSeasonBinding ? FOOTBALL_DOMAIN.deepFreeze({
+      gameNumber: activeSeasonBinding.gameNumber,
+      rivalId: activeSeasonBinding.rivalId,
+      gameId: activeSeasonBinding.gameId,
+    }) : null;
+  },
   createMatch(rivalId) {
     return arguments.length === 0
       ? FOOTBALL_OPPONENT.createMatch()
@@ -4032,6 +4376,7 @@ function applyBootMode() {
   const boot = params.get('boot');
   const rivalId = params.get('rival');
   if (rivalId !== null) {
+    selectedPlayMode = 'quick';
     let match;
     try {
       match = FOOTBALL_OPPONENT.createMatch(rivalId);
@@ -4044,8 +4389,13 @@ function applyBootMode() {
     selectedRivalId = match.opponent.id;
     state = createGameState(match);
   }
-  if (boot === 'offense-call') { startGame(); return true; }
+  if (boot === 'offense-call') {
+    selectedPlayMode = 'quick';
+    startQuickGame();
+    return true;
+  }
   if (boot === 'defense-call') {
+    selectedPlayMode = 'quick';
     const match = FOOTBALL_OPPONENT.createMatch(selectedRivalId);
     initGameSession();
     state = createGameState(match);
@@ -4056,5 +4406,12 @@ function applyBootMode() {
   }
   return false;
 }
+
+const initialSeasonSnapshot = FOOTBALL_SEASON.snapshot();
+if (!['missing', 'unavailable'].includes(initialSeasonSnapshot.status)) selectedPlayMode = 'season';
+FOOTBALL_SEASON.subscribe(() => {
+  if (state.phase === 'start') renderStartMode();
+  else if (state.phase === 'final') renderEndSeason();
+});
 
 if (!applyBootMode()) showStart();

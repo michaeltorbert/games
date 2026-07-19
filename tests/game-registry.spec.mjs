@@ -446,7 +446,7 @@ test('release-base comparison rejects deletion, non-target drift, and stale chec
       id: 'football',
       title: 'Football Math',
       url: 'football/',
-      version: '1.25.0',
+      version: '1.26.0',
     },
     {
       id: 'place-value-practice',
@@ -457,7 +457,7 @@ test('release-base comparison rejects deletion, non-target drift, and stale chec
     },
   ];
   const baselineVersionManifest = {
-    football: '1.25.0',
+    football: '1.26.0',
     'place-value-practice': '1.1.0',
   };
   const comparisonInput = {
@@ -471,7 +471,7 @@ test('release-base comparison rejects deletion, non-target drift, and stale chec
     () => assertReleaseBasePreserved({
       ...comparisonInput,
       currentGames: [cloneJson(baselineGames[0])],
-      currentVersionManifest: { football: '1.25.0' },
+      currentVersionManifest: { football: '1.26.0' },
     }),
     /baseline game "place-value-practice".*is missing from the current checkout/,
     'Coordinated registry and manifest removal must not evade baseline preservation.',

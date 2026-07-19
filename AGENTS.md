@@ -165,7 +165,7 @@ or bundlers. Preserve each `index.html` load order.
 Football is DOM-based and keeps one UI `state` object, but its football and
 instructional authority are split across ordered plain-global scripts:
 
-`copy.js` → `learning.js` → `stats.js` → `opponent.js` →
+`copy.js` → `learning.js` → `stats.js` → `opponent.js` → `season.js` →
 `football-domain.js` → `contextual-questions.js` → `football.js`
 
 - `football-domain.js` owns the immutable tagged `activePlay` union
@@ -177,11 +177,17 @@ instructional authority are split across ordered plain-global scripts:
   their closed public context shapes.
 - `learning.js`, `stats.js`, and `opponent.js` own scheduling/support,
   privacy-safe linked history, and the exact frozen opponent plan respectively.
+- `season.js` owns the DOM-free, browser-local three-game season store. Its
+  fixed schedule snapshots the public rival order; all mutations serialize
+  through a dedicated Web Lock and a single callback-time fresh read/write.
+  The live scheduled-game binding remains outside canonical match state.
 - `football.js` orchestrates the UI around authoritative `activePlay`,
   `questionInstance`, and `pendingResolution` contracts and commits each play
   atomically after instruction resolves. A six-point touchdown and its later
   conversion are distinct plays with distinct IDs; the conversion closes the
-  possession.
+  possession. A season result can originate only from that production commit
+  path after the last Q4 possession is newly finalized and after stats and the
+  public result event, never from final-overlay presentation helpers.
 
 ### Kayak
 
