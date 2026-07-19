@@ -319,3 +319,79 @@ Original prompt: Repair the validated Football issue #23 release blockers and lo
 - Added a compact private `archivedPlayIndex` so replay protection survives the 200-row journal cap, plus private `lastResolvedByConcept` evidence so a delayed older row cannot replace newer learning evidence even when the journal cap displaces that newer row. Deterministic regressions cover concurrent tabs, stale tabs, cap eviction, transitional archive migration, exact fallback IDs, and permanently retired production sequence gaps.
 - Closed the final review delta with fresh Sol Ultra and three independent specialist/broad reviewers all reporting no P0-P3 findings; the archive test specialist explicitly confirmed its prior P3 coverage debt resolved. Opus hit its monthly-spend 429, Gemini authentication expired, Grok reached its turn cap, and the single quota-controlled Fable planning call had already exhausted its hard turn cap, so no unsupported five-model final consensus is claimed.
 - The superseding complete `npm run test:football:release` gate passed: 82/82 DOM-free checks, 263 Playwright passes, 415 intentional project-scope skips, and all 228 canonical screenshots verified across all six required device projects.
+
+---
+
+## Football v1.25.0 issue #23 release-record correction
+
+This append-only correction supersedes only the final reviewer-availability and
+release-gate bullets in the preceding contract-repair pass. Earlier counts
+remain a truthful record of intermediate runs.
+
+- The final PR #85 head `94b5cf766db7ccf2eba4b472105a31f2d6153096` passed
+  `npm run test:football:release`: 84/84 DOM-free, 265 Playwright, 425
+  intentional skips, and 228/228 screenshots across all six projects.
+- The current-session review ledger records Opus 4.8, GPT-5.6 Sol Ultra,
+  Gemini 3.1 Pro (High) through Antigravity, and Grok 4.5 approving the same
+  post-Fable corrected implementation working tree with no unresolved P0-P3
+  findings. It was then cleanly rebased onto Place by Place main; the exact
+  rebased PR head passed the full release gate and received separate exact-head
+  Opus approval.
+- The single authorized Fable 5 audit found a real observer-delivery problem.
+  It was fixed and reviewed by the normal lanes, but Fable did not re-review,
+  so no five-model consensus is claimed.
+- Exact-head approval and bot attribution are recorded in the bot-attributed PR
+  record; merge and Pages-deployment evidence is recorded in GitHub PR metadata
+  and Actions; the current live version is externally verifiable but is not
+  recorded in a bot-attributed PR/issue comment. None of those earlier
+  implementation reviewers approved this later documentation/test safeguard
+  patch.
+
+---
+
+## Football workflow documentation/test safeguard verification
+
+- Added concurrent-release/worktree rules and a two-test registry, manifest,
+  and folder-parity gate. The folder scan uses Git ignore classification so
+  generated ignored index folders do not masquerade as games, while tracked and
+  untracked non-ignored folders remain visible. The preserved prototypes are
+  explicit; Place by Place remains v1.1.0, and all runtime and version surfaces
+  remain unchanged.
+- Orchestrator-run focused evidence: `npm run test:registry` passed 2/2; a
+  physical ignored `playwright-report/index.html` mutation remained excluded
+  and passed 2/2; a physical non-ignored unexpected top-level index folder
+  failed the exact folder-parity assertion as intended.
+- The orchestrator-run complete gate on this safeguard implementation passed:
+  `npm run test:football:release` recorded 86/86 DOM-free checks, 265 Playwright
+  passes, 425 intentional project-scope skips, and 228/228 verified screenshots
+  across six projects.
+- Those commands were run by the orchestrator, not by the earlier issue #23
+  implementation reviewers. None of those reviewers approved this later
+  safeguard patch; Fable did not re-review, and no five-model consensus is
+  claimed.
+
+---
+
+## Football registry exact-base preservation safeguard
+
+- Closed PRJ-001 by resolving `REGISTRY_RELEASE_BASE` once to an exact commit
+  (default `origin/main`) and limiting baseline changes to
+  `REGISTRY_RELEASE_TARGET` (default `football`). Every baseline game must
+  remain; each non-target registry descriptor and manifest version must match
+  exactly, while target-only changes and genuinely new games remain allowed.
+- Added deterministic baseline regressions proving coordinated
+  registry/manifest removal, synchronized non-target descriptor/version drift,
+  and a stale checkout missing a baseline game all fail. Separate
+  current-registry, manifest, folder-parity, preserved-prototype, and Git-ignore
+  checks remain.
+- The real comparison resolved `origin/main` to
+  `d591a6c87a0820126313327723091e62dd3cf539`; Place by Place remains v1.1.0,
+  and all runtime, registry, manifest, and cache/version surfaces remain
+  unchanged.
+- Final authoritative-worktree verification passed after this entry:
+  `npm run test:registry` passed 4/4, and `npm run test:football:release` passed
+  88/88 DOM-free checks, 265 Playwright passes, 425 intentional project-scope
+  skips, and 228/228 verified screenshots across six projects.
+- These checks belong to this later documentation/test safeguard patch, not the
+  earlier issue #23 implementation review. No other model or Fable re-reviewed
+  this patch, and no five-model consensus is claimed.
