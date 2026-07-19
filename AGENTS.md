@@ -36,6 +36,27 @@ Keep this identity block within the first 180 lines. The Claude PR-review helper
 injects that prefix into its review prompt and marks longer instruction files as
 truncated.
 
+## Release and Concurrent-Worktree Safety
+
+- Before release work, fetch `origin` and record `HEAD`, `origin/main`, status,
+  and `git worktree list --porcelain` evidence.
+- The current task worktree is the sole authoritative writable checkout. Never
+  mutate, switch, reset, clean, prune, delete, or write into sibling worktrees or
+  their branches. Rebase only the current task branch onto current `origin/main`.
+- `games.js` and `version.json` are shared merge surfaces. Preserve every
+  non-target game and run `npm run test:registry`.
+- For Football releases, synchronize `GAME_VERSION` in `football/football.js`,
+  every cache key in `football/index.html`, `games.js`, and `version.json`, then
+  finish `football/progress.md` with a superseding release entry.
+- `npm run test:football:release` is writeful because it recreates release
+  artifacts. Run it only in the authoritative writable checkout, and give
+  read-only reviewers the exact-head SHA and test/artifact evidence.
+- Reviews and approvals must cover the exact final PR-head SHA. Any rebase or fix
+  invalidates prior verdicts; a truncated or metadata-only review cannot approve.
+- After merge, wait for the Pages deployment tied to the merge SHA, verify the
+  live target version and unaffected registered games, then clean only this
+  task's branch, ref, and temporary artifacts.
+
 ## Device Targets
 
 Design and test against these devices in this priority order. When choices trade off between devices, favor the higher-priority one.
@@ -90,8 +111,9 @@ There is no build step. From the repository root, run:
 python3 -m http.server 8080
 ```
 
-Use `http://localhost:8080/`, `/football/`, `/kayak/`, or `/prague/`. Serving
-from the root preserves each game's `../shared/` paths.
+Use `http://localhost:8080/`, `/football/`, `/kayak/`, `/prague/`, or
+`/place-value-practice/`. Serving from the root preserves each game's
+`../shared/` paths.
 
 Install the pinned test dependency with `npm install`, then run:
 
@@ -111,11 +133,16 @@ games/
 ├── shared/                    # reset, fonts, and portal CSS
 ├── football/                  # DOM-based math quiz
 ├── kayak/                     # canvas kayak game
+├── place-value-practice/      # place-value reading practice
 └── prague/                    # canvas endless runner
 ```
 
+The `place-value/`, `place-value-v5/`, and `place-value-v6/` folders are
+intentionally preserved unregistered prototypes.
+
 The portal renders entries from the global `GAMES` array in `games.js`. Add a
-game by adding one registry entry and a folder containing `index.html`.
+game by adding its `games.js` registry entry, a matching `version.json` key with
+the exact same version, and its folder containing `index.html`.
 
 ## Architecture
 
