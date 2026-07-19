@@ -369,3 +369,29 @@ remain a truthful record of intermediate runs.
   implementation reviewers. None of those reviewers approved this later
   safeguard patch; Fable did not re-review, and no five-model consensus is
   claimed.
+
+---
+
+## Football registry exact-base preservation safeguard
+
+- Closed PRJ-001 by resolving `REGISTRY_RELEASE_BASE` once to an exact commit
+  (default `origin/main`) and limiting baseline changes to
+  `REGISTRY_RELEASE_TARGET` (default `football`). Every baseline game must
+  remain; each non-target registry descriptor and manifest version must match
+  exactly, while target-only changes and genuinely new games remain allowed.
+- Added deterministic baseline regressions proving coordinated
+  registry/manifest removal, synchronized non-target descriptor/version drift,
+  and a stale checkout missing a baseline game all fail. Separate
+  current-registry, manifest, folder-parity, preserved-prototype, and Git-ignore
+  checks remain.
+- The real comparison resolved `origin/main` to
+  `d591a6c87a0820126313327723091e62dd3cf539`; Place by Place remains v1.1.0,
+  and all runtime, registry, manifest, and cache/version surfaces remain
+  unchanged.
+- Final authoritative-worktree verification passed after this entry:
+  `npm run test:registry` passed 4/4, and `npm run test:football:release` passed
+  88/88 DOM-free checks, 265 Playwright passes, 425 intentional project-scope
+  skips, and 228/228 verified screenshots across six projects.
+- These checks belong to this later documentation/test safeguard patch, not the
+  earlier issue #23 implementation review. No other model or Fable re-reviewed
+  this patch, and no five-model consensus is claimed.

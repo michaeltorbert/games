@@ -43,8 +43,9 @@ truncated.
 - The current task worktree is the sole authoritative writable checkout. Never
   mutate, switch, reset, clean, prune, delete, or write into sibling worktrees or
   their branches. Rebase only the current task branch onto current `origin/main`.
-- `games.js` and `version.json` are shared merge surfaces. Preserve every
-  non-target game and run `npm run test:registry`.
+- `games.js` and `version.json` are shared merge surfaces. Preserve every game
+  from the declared exact release base and each non-target game's complete
+  descriptor and version, then run `npm run test:registry`.
 - For Football releases, synchronize `GAME_VERSION` in `football/football.js`,
   every cache key in `football/index.html`, `games.js`, and `version.json`, then
   finish `football/progress.md` with a superseding release entry.
@@ -118,12 +119,22 @@ Use `http://localhost:8080/`, `/football/`, `/kayak/`, `/prague/`, or
 Install the pinned test dependency with `npm install`, then run:
 
 ```bash
+npm run test:registry
 npm run test:football
 npm run test:football:release
 ```
 
 Use `test:football` for the focused layout suite and
 `test:football:release` for the complete football release matrix.
+
+The registry gate resolves `REGISTRY_RELEASE_BASE` once to an exact commit
+(default `origin/main`) and permits baseline changes only for
+`REGISTRY_RELEASE_TARGET` (default `football`), while allowing genuinely new
+games. Override both explicitly when validating another release target:
+
+```bash
+REGISTRY_RELEASE_BASE=<git-revision> REGISTRY_RELEASE_TARGET=<game-id> npm run test:registry
+```
 
 ## Repository Structure
 
