@@ -665,7 +665,6 @@
     }
 
     .number-input,
-    .place-input,
     select {
       width: 100%;
       min-height: 52px;
@@ -682,20 +681,17 @@
       letter-spacing: 0.04em;
     }
 
-    .number-input::placeholder,
-    .place-input::placeholder {
+    .number-input::placeholder {
       color: #9a9d9f;
       opacity: 1;
     }
 
     .number-input:hover,
-    .place-input:hover,
     select:hover {
       border-color: #8a969d;
     }
 
-    .number-input:user-invalid,
-    .place-input:user-invalid {
+    .number-input:user-invalid {
       border-color: var(--danger);
       background: #fff8f7;
     }
@@ -755,39 +751,6 @@
     .button--danger:hover {
       border-color: var(--danger);
       background: #f9e8e6;
-    }
-
-    .place-fields {
-      display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 10px;
-    }
-
-    .place-field {
-      display: block;
-      min-width: 0;
-    }
-
-    .place-field span {
-      display: block;
-      margin-bottom: 6px;
-      color: var(--ink-soft);
-      font-size: 0.8rem;
-      font-weight: 760;
-      text-align: center;
-    }
-
-    .place-input {
-      padding: 7px;
-      font-size: 1.4rem;
-      font-weight: 800;
-      text-align: center;
-    }
-
-    .place-form-actions {
-      display: flex;
-      justify-content: flex-end;
-      margin-top: 12px;
     }
 
     .feedback {
@@ -935,13 +898,6 @@
     .workspace-actions #next-button {
       min-width: 180px;
       margin-left: auto;
-    }
-
-    .place-field.is-emphasized span {
-      color: var(--blue-dark);
-      text-decoration: underline;
-      text-decoration-thickness: 2px;
-      text-underline-offset: 4px;
     }
 
     .check-row + .check-row {
@@ -1217,10 +1173,6 @@
       grid-template-columns: repeat(3, minmax(0, 1fr));
     }
 
-    .radio-grid--four {
-      grid-template-columns: repeat(4, minmax(0, 1fr));
-    }
-
     .radio-grid--five {
       grid-template-columns: repeat(5, minmax(0, 1fr));
     }
@@ -1489,7 +1441,6 @@
       }
 
       .radio-grid--three,
-      .radio-grid--four,
       .radio-grid--five {
         grid-template-columns: repeat(2, minmax(0, 1fr));
       }
@@ -1619,30 +1570,6 @@
                   <p class="field-help" id="number-help">Use digits only, with no extra zero at the front.</p>
                 </div>
                 <button class="button button--primary" id="check-number-button" type="submit">Check answer</button>
-              </div>
-            </fieldset>
-          </form>
-
-          <form class="answer-panel" id="number-to-places-form" novalidate hidden>
-            <fieldset>
-              <legend class="answer-legend" id="places-prompt"></legend>
-              <p class="field-help" id="places-help">Write one digit in each box.</p>
-              <div class="place-fields" role="group" aria-labelledby="places-prompt" aria-describedby="places-help answer-feedback">
-                <label class="place-field" for="hundreds-answer">
-                  <span>Hundreds</span>
-                  <input class="place-input" id="hundreds-answer" name="hundreds" type="text" inputmode="numeric" autocomplete="off" pattern="[0-9]" maxlength="1" required>
-                </label>
-                <label class="place-field" for="tens-answer">
-                  <span>Tens</span>
-                  <input class="place-input" id="tens-answer" name="tens" type="text" inputmode="numeric" autocomplete="off" pattern="[0-9]" maxlength="1" required>
-                </label>
-                <label class="place-field" for="ones-answer">
-                  <span>Ones</span>
-                  <input class="place-input" id="ones-answer" name="ones" type="text" inputmode="numeric" autocomplete="off" pattern="[0-9]" maxlength="1" required>
-                </label>
-              </div>
-              <div class="place-form-actions">
-                <button class="button button--primary" id="check-places-button" type="submit">Check answer</button>
               </div>
             </fieldset>
           </form>
@@ -1778,15 +1705,11 @@
 
         <fieldset class="setting-group">
           <legend>Question format</legend>
-          <p class="setting-note">Mix pictures, place-value digits, and number words—or focus on one.</p>
-          <div class="radio-grid radio-grid--four">
+          <p class="setting-note">Mix base-ten pictures and number words—or focus on one.</p>
+          <div class="radio-grid radio-grid--three">
             <label class="radio-tile">
               <input type="radio" name="question-type" value="blocks-to-number">
               <span>Blocks to Number</span>
-            </label>
-            <label class="radio-tile">
-              <input type="radio" name="question-type" value="number-to-places">
-              <span>Number to Place Values</span>
             </label>
             <label class="radio-tile">
               <input type="radio" name="question-type" value="number-words">
@@ -1891,10 +1814,12 @@
       const MAX_QUEUE = 6;
       const MAX_RECENT = 10;
       const MAX_TRANSFER_QUEUE = 3;
-      const REVIEW_KINDS = ["ordinary", "retention", "category", "exact", "transfer"];
+      const GATE_OPPORTUNITY_DELAY = 2;
+      const GATE_SERVICE_GAP = 2;
+      const REVIEW_KINDS = ["ordinary", "retention", "category", "exact", "transfer", "gate"];
       const PHASES = ["asking", "hint-labels", "hint-expanded", "reveal-retype", "correct-await-next"];
       const OUTCOMES = ["firstTry", "afterHelp", "revealed"];
-      const QUESTION_FORMATS = ["blocks-to-number", "number-to-places", "number-words"];
+      const QUESTION_FORMATS = ["blocks-to-number", "number-words"];
       const TRANSFER_CATEGORIES = ["zeroTens", "zeroOnes", "bothZeroTensAndOnes"];
       const CATEGORY_ORDER = [
         "individualBlockValue",
@@ -2192,9 +2117,13 @@
       function blankTransferEvidence() {
         return Object.fromEntries(TRANSFER_CATEGORIES.map((category) => [category, {
           blocksToNumber: [],
-          numberToPlaces: [],
-          unlocked: false
+          unlocked: false,
+          probeCleared: false
         }]));
+      }
+
+      function blankGateOpportunities() {
+        return Object.fromEntries(TRANSFER_CATEGORIES.map((category) => [category, null]));
       }
 
       function normalizeSettings(candidate) {
@@ -2231,7 +2160,7 @@
           misses: 0,
           completed: false,
           outcome: null,
-          draft: { number: "", hundreds: "", tens: "", ones: "" },
+          draft: { number: "" },
           selectedWordChoices: [],
           feedback: "Ready when you are. Take your time.",
           feedbackState: "neutral"
@@ -2248,6 +2177,8 @@
           aggregate: { attempted: 0, firstTry: 0, afterHelp: 0, revealed: 0 },
           categoryStats: blankCategoryStats(),
           transferEvidence: blankTransferEvidence(),
+          gateOpportunities: blankGateOpportunities(),
+          gateOpportunityCooldownUntil: 0,
           reviewQueues: { exact: [], category: [], transfer: [] },
           recentValues: [],
           streaks: { current: 0, best: 0 },
@@ -2317,19 +2248,75 @@
             : [];
           result[category] = {
             blocksToNumber: cleanValues(source.blocksToNumber),
-            numberToPlaces: cleanValues(source.numberToPlaces),
-            unlocked: false
+            unlocked: false,
+            probeCleared: false
           };
-          // Unlocked is derived solely from a valid different-value pair; the stored boolean is
-          // ignored so a hand-edited or stale flag cannot open a gate without genuine evidence.
-          result[category].unlocked = result[category].blocksToNumber.some((blocksValue) =>
-            result[category].numberToPlaces.some((placesValue) => placesValue !== blocksValue));
+          // Unlocked is derived solely from two distinct valid fixed blocks-to-number values.
+          // Stored flags and evidence from removed formats are ignored during migration.
+          result[category].unlocked = result[category].blocksToNumber.length >= 2;
+          // Probe completion is an independent durable fact. Never infer it from fixed evidence
+          // or a stored unlocked flag; only a previously persisted boolean marker survives.
+          result[category].probeCleared = result[category].unlocked
+            && source.probeCleared === true;
+        }
+        return result;
+      }
+
+      function normalizeGateOpportunities(candidate, transferEvidence, completed) {
+        const result = blankGateOpportunities();
+        const source = isObject(candidate) ? candidate : {};
+        for (const category of TRANSFER_CATEGORIES) {
+          const evidence = transferEvidence[category];
+          if (!evidence || evidence.unlocked || evidence.blocksToNumber.length !== 1) continue;
+          const evidenceValue = evidence.blocksToNumber[0];
+          const stored = isObject(source[category]) ? source[category] : null;
+          if (stored && stored.evidenceValue === evidenceValue && stored.status === "consumed") {
+            // Consumption is permanent even when a damaged aggregate counter makes the saved
+            // timestamps impossible. Clamp the history; never re-arm the one-shot opportunity.
+            const latestArmedAt = Math.max(0, completed - GATE_OPPORTUNITY_DELAY);
+            const armedAt = Math.min(
+              nonnegative(stored.armedAt, latestArmedAt),
+              latestArmedAt
+            );
+            const dueAt = Math.min(completed, armedAt + GATE_OPPORTUNITY_DELAY);
+            result[category] = {
+              status: "consumed",
+              evidenceValue,
+              armedAt,
+              dueAt,
+              servedAt: Math.min(completed, Math.max(dueAt, nonnegative(stored.servedAt, completed)))
+            };
+            continue;
+          }
+          if (stored && stored.evidenceValue === evidenceValue && stored.status === "pending") {
+            const armedAt = Math.min(nonnegative(stored.armedAt, completed), completed);
+            result[category] = {
+              status: "pending",
+              evidenceValue,
+              armedAt,
+              // Pending opportunities are always due after exactly two later completions.
+              // The durable armedAt preserves their original age across reloads and settings.
+              dueAt: armedAt + GATE_OPPORTUNITY_DELAY
+            };
+            continue;
+          }
+          // A legacy one-value record has no lifecycle marker. Give it one durable opportunity
+          // from the migration point; once served, the consumed marker above prevents re-arming.
+          result[category] = {
+            status: "pending",
+            evidenceValue,
+            armedAt: completed,
+            dueAt: completed + GATE_OPPORTUNITY_DELAY
+          };
         }
         return result;
       }
 
       function normalizeTicket(ticket, kind, fallbackIndex) {
         if (!isObject(ticket)) return null;
+        // Tickets created by the removed format must be discarded, not converted to a legacy
+        // null-format wildcard that could later surface in an unrelated focus.
+        if (ticket.format === "number-to-places") return null;
         const dueAt = nonnegative(ticket.dueAt, 0);
         const id = typeof ticket.id === "string" && ticket.id ? ticket.id : `${kind}-${fallbackIndex}`;
         const format = QUESTION_FORMATS.includes(ticket.format) ? ticket.format : null;
@@ -2385,6 +2372,44 @@
         return result;
       }
 
+      function hasTransferTicket(model, category) {
+        return Boolean(model.reviewQueues
+          && Array.isArray(model.reviewQueues.transfer)
+          && model.reviewQueues.transfer.some((ticket) => ticket.category === category));
+      }
+
+      function transferFamilyReadyForOrganicFree(model, category) {
+        if (!TRANSFER_CATEGORIES.includes(category)) return false;
+        const evidence = model.transferEvidence[category];
+        return Boolean(evidence
+          && evidence.unlocked
+          && evidence.probeCleared
+          && !hasTransferTicket(model, category));
+      }
+
+      function ensureInitialTransferTicket(model, category, question = null) {
+        if (!TRANSFER_CATEGORIES.includes(category)) return false;
+        const evidence = model.transferEvidence[category];
+        if (!evidence || !evidence.unlocked || evidence.probeCleared
+          || hasTransferTicket(model, category)
+          || model.reviewQueues.transfer.length >= MAX_TRANSFER_QUEUE) return false;
+        const evidenceValue = evidence.blocksToNumber[evidence.blocksToNumber.length - 1];
+        const questionMatches = question && question.transferCategory === category;
+        model.reviewQueues.transfer.push({
+          id: questionMatches
+            ? `transfer-initial-${question.id}-${category}`
+            : `transfer-initial-migrated-${category}`,
+          category,
+          missedValue: questionMatches ? question.value : evidenceValue,
+          stage: questionMatches ? question.stage : 5,
+          // The probe is deliberately not immediate: one other completed question can occur,
+          // but organic free layout stays suppressed until this ticket is cleared cleanly.
+          dueAt: model.aggregate.attempted + 1,
+          postponements: 0
+        });
+        return true;
+      }
+
       function normalizeQuestion(candidate) {
         if (!isObject(candidate) || typeof candidate.id !== "string") return null;
         if (!Number.isInteger(candidate.value) || candidate.value < 0 || candidate.value > 999) return null;
@@ -2426,10 +2451,7 @@
         attempt.outcome = OUTCOMES.includes(candidate.outcome) ? candidate.outcome : null;
         const draft = isObject(candidate.draft) ? candidate.draft : {};
         attempt.draft = {
-          number: typeof draft.number === "string" ? draft.number.slice(0, 16) : "",
-          hundreds: typeof draft.hundreds === "string" ? draft.hundreds.slice(0, 4) : "",
-          tens: typeof draft.tens === "string" ? draft.tens.slice(0, 4) : "",
-          ones: typeof draft.ones === "string" ? draft.ones.slice(0, 4) : ""
+          number: typeof draft.number === "string" ? draft.number.slice(0, 16) : ""
         };
         attempt.feedback = typeof candidate.feedback === "string" ? candidate.feedback.slice(0, 500) : attempt.feedback;
         attempt.feedbackState = ["neutral", "error", "correct"].includes(candidate.feedbackState)
@@ -2524,6 +2546,11 @@
       function normalizeState(candidate) {
         const defaults = createDefaultState();
         if (!isObject(candidate) || candidate.schemaVersion !== SCHEMA_VERSION) return defaults;
+        const removedFormatCompletion = isObject(candidate.activeQuestion)
+          && candidate.activeQuestion.format === "number-to-places"
+          && isObject(candidate.activeAttempt)
+          && candidate.activeAttempt.completed === true
+          && OUTCOMES.includes(candidate.activeAttempt.outcome);
         const normalized = defaults;
         normalized.stage = integerIn(candidate.stage, 1, 7, 2);
         if (isObject(candidate.stageMastery)) {
@@ -2540,6 +2567,21 @@
         };
         normalized.categoryStats = normalizeCategoryStats(candidate.categoryStats);
         normalized.transferEvidence = normalizeTransferEvidence(candidate.transferEvidence);
+        normalized.gateOpportunities = normalizeGateOpportunities(
+          candidate.gateOpportunities,
+          normalized.transferEvidence,
+          normalized.aggregate.attempted
+        );
+        const consumedCooldownBoundary = Math.max(0, ...TRANSFER_CATEGORIES.map((category) => {
+          const opportunity = normalized.gateOpportunities[category];
+          return opportunity && opportunity.status === "consumed"
+            ? opportunity.servedAt + GATE_SERVICE_GAP + 1
+            : 0;
+        }));
+        normalized.gateOpportunityCooldownUntil = Math.min(
+          normalized.aggregate.attempted + GATE_SERVICE_GAP + 1,
+          Math.max(nonnegative(candidate.gateOpportunityCooldownUntil), consumedCooldownBoundary)
+        );
         const queues = isObject(candidate.reviewQueues) ? candidate.reviewQueues : {};
         normalized.reviewQueues = {
           exact: normalizeQueue(queues.exact, "exact"),
@@ -2552,6 +2594,11 @@
         normalized.reviewQueues.transfer = normalized.reviewQueues.transfer.filter((ticket) =>
           normalized.transferEvidence[ticket.category]
           && normalized.transferEvidence[ticket.category].unlocked);
+        // An unlocked family without durable proof of a clean transfer probe is not ready for
+        // organic free layout. Conservatively restore exactly one delayed initial probe ticket.
+        for (const category of TRANSFER_CATEGORIES) {
+          ensureInitialTransferTicket(normalized, category);
+        }
         normalized.recentValues = Array.isArray(candidate.recentValues)
           ? candidate.recentValues.filter((value) => Number.isInteger(value) && value >= 0 && value <= 999).slice(-MAX_RECENT)
           : [];
@@ -2578,17 +2625,29 @@
         normalized.activeTicket = isObject(candidate.activeTicket) && ["exact", "category", "transfer"].includes(candidate.activeTicket.kind)
           ? { kind: candidate.activeTicket.kind, id: String(candidate.activeTicket.id) }
           : null;
-        normalized.pendingAttempt = isObject(candidate.pendingAttempt) ? clone(candidate.pendingAttempt) : null;
+        normalized.pendingAttempt = normalized.activeQuestion && isObject(candidate.pendingAttempt)
+          ? clone(candidate.pendingAttempt)
+          : null;
         if (normalized.activeQuestion && normalized.activeAttempt) {
           const question = normalized.activeQuestion;
           const category = question.transferCategory;
-          const gateOpen = TRANSFER_CATEGORIES.includes(category)
+          const transferUnlocked = TRANSFER_CATEGORIES.includes(category)
             && normalized.transferEvidence[category]
             && normalized.transferEvidence[category].unlocked;
-          if (!normalized.activeAttempt.completed && question.layout === "free"
-            && question.reviewKind !== "transfer" && !gateOpen) {
-            // An incomplete ordinary/exact/category free question without its learned gate falls
-            // back to the fixed H-T-O scaffold. Completed presentations stay visually stable.
+          const completedOrganicFreePresentation = question.reviewKind !== "transfer"
+            && normalized.activeAttempt.completed
+            && transferUnlocked
+            && normalized.transferEvidence[category].probeCleared;
+          const freePresentationAllowed = question.reviewKind === "transfer"
+            ? transferUnlocked
+            : (completedOrganicFreePresentation
+                || transferFamilyReadyForOrganicFree(normalized, category));
+          if (question.layout === "free" && !freePresentationAllowed) {
+            // Before the initial transfer probe is cleared, or while a later family retest is
+            // pending, new non-transfer work stays in fixed H-T-O columns. A completed organic
+            // free presentation remains visually truthful across reload even though its miss has
+            // just queued that retest. Incomplete transfer reviews are subsequently validated
+            // against their exact normalized ticket.
             question.layout = "fixed";
           }
           if (!normalized.activeAttempt.completed && ["exact", "category", "transfer"].includes(question.reviewKind)) {
@@ -2602,6 +2661,26 @@
               // Incomplete review work must be backed by the exact normalized ticket it is meant
               // to resolve. Keep the queue obligation, but discard malformed presentation state so
               // chooseQuestion can regenerate a fresh, correctly backed review.
+              normalized.activeQuestion = null;
+              normalized.activeAttempt = null;
+              normalized.activeTicket = null;
+              normalized.pendingAttempt = null;
+            }
+          }
+          if (normalized.activeQuestion && !normalized.activeAttempt.completed && question.reviewKind === "gate") {
+            const evidence = normalized.transferEvidence[category];
+            const opportunity = normalized.gateOpportunities[category];
+            const gateQuestionValid = question.format === "blocks-to-number"
+              && question.layout === "fixed"
+              && TRANSFER_CATEGORIES.includes(category)
+              && evidence
+              && !evidence.unlocked
+              && evidence.blocksToNumber.length === 1
+              && question.value !== evidence.blocksToNumber[0]
+              && opportunity
+              && opportunity.status === "consumed"
+              && opportunity.evidenceValue === evidence.blocksToNumber[0];
+            if (!gateQuestionValid) {
               normalized.activeQuestion = null;
               normalized.activeAttempt = null;
               normalized.activeTicket = null;
@@ -2644,6 +2723,25 @@
         normalized.stage7NonzeroStreak = nonnegative(candidate.stage7NonzeroStreak);
         normalized.questionSerial = nonnegative(candidate.questionSerial);
         normalized.screen = candidate.screen === "summary" ? "summary" : "practice";
+        if (removedFormatCompletion) {
+          const sessionFinished = normalized.session.target !== null
+            && normalized.session.completed >= normalized.session.target;
+          const restartAtBoundary = Boolean(normalized.pendingSettings) && normalized.pendingFreshSession;
+          if (normalized.pendingSettings) normalized.settings = normalized.pendingSettings;
+          normalized.pendingSettings = null;
+          normalized.pendingFreshSession = false;
+          if (sessionFinished) {
+            normalized.session.recorded = true;
+            if (!normalized.completedSessions.some((session) => session.id === normalized.session.id)) {
+              normalized.completedSessions.push(clone(normalized.session));
+              normalized.completedSessions = normalized.completedSessions.slice(-20);
+            }
+            normalized.screen = "summary";
+          } else {
+            if (restartAtBoundary) normalized.session = makeSession(normalized.settings);
+            normalized.screen = "practice";
+          }
+        }
         return normalized;
       }
 
@@ -2816,18 +2914,24 @@
       function chooseFormat(settings, rng = currentRandom) {
         if (settings.format === "mixed") {
           return weightedChoice([
-            { value: "blocks-to-number", weight: 36 },
-            { value: "number-to-places", weight: 32 },
-            { value: "number-words", weight: 32 }
+            { value: "blocks-to-number", weight: 52 },
+            { value: "number-words", weight: 48 }
           ], rng);
         }
         return settings.format;
       }
 
-      function dueTicket(queue, completed) {
+      function dueTickets(queue, completed) {
         return queue
-          .filter((ticket) => ticket.dueAt <= completed)
-          .sort((left, right) => left.dueAt - right.dueAt)[0] || null;
+          .map((ticket, order) => ({ ticket, order }))
+          .filter((entry) => entry.ticket.dueAt <= completed)
+          .sort((left, right) => left.ticket.dueAt - right.ticket.dueAt
+            || left.order - right.order)
+          .map((entry) => entry.ticket);
+      }
+
+      function dueTicket(queue, completed) {
+        return dueTickets(queue, completed)[0] || null;
       }
 
       function categoryCandidates(category, unlockedStage) {
@@ -2837,6 +2941,15 @@
             if (category !== "numberWords" && !categoriesFor(value, stage).includes(category)) continue;
             if (!byValue.has(value)) byValue.set(value, { value, stage });
           }
+        }
+        return [...byValue.values()];
+      }
+
+      function categoryCandidatesAtStage(category, stage) {
+        const byValue = new Map();
+        for (const value of stageDomain(stage, true)) {
+          if (category !== "numberWords" && !categoriesFor(value, stage).includes(category)) continue;
+          if (!byValue.has(value)) byValue.set(value, { value, stage });
         }
         return [...byValue.values()];
       }
@@ -2862,6 +2975,48 @@
         return leastRecentChoice(eligible, recent, rng);
       }
 
+      function chooseGateOpportunity(model, stage, rng = currentRandom) {
+        const completed = model.aggregate.attempted;
+        const focusEligible = model.settings.format === "mixed" || model.settings.format === "blocks-to-number";
+        if (!focusEligible || completed < model.gateOpportunityCooldownUntil) return null;
+        const eligible = [];
+        for (const category of TRANSFER_CATEGORIES) {
+          const opportunity = model.gateOpportunities[category];
+          const evidence = model.transferEvidence[category];
+          if (!opportunity || opportunity.status !== "pending" || opportunity.dueAt > completed) continue;
+          if (!evidence || evidence.unlocked || evidence.blocksToNumber.length !== 1) continue;
+          const candidates = transferCandidates(category, stage, stage)
+            .filter((candidate) => candidate.value !== evidence.blocksToNumber[0]);
+          if (!candidates.length) continue;
+          eligible.push({ category, opportunity, evidence, candidates });
+        }
+        eligible.sort((left, right) => left.opportunity.dueAt - right.opportunity.dueAt
+          || left.opportunity.armedAt - right.opportunity.armedAt
+          || TRANSFER_CATEGORIES.indexOf(left.category) - TRANSFER_CATEGORIES.indexOf(right.category));
+        const selected = eligible[0];
+        if (!selected) return null;
+        const unblocked = selected.candidates.filter((candidate) => !model.recentValues.includes(candidate.value));
+        const candidate = unblocked.length
+          ? unblocked[randomInt(0, unblocked.length - 1, rng)]
+          : leastRecentChoice(selected.candidates, model.recentValues, rng);
+        selected.opportunity.status = "consumed";
+        selected.opportunity.servedAt = completed;
+        // The served question completes next; two additional completed questions must then pass
+        // before another opportunity can be served, so the aggregate boundary is C + 3.
+        model.gateOpportunityCooldownUntil = Math.max(
+          model.gateOpportunityCooldownUntil,
+          completed + GATE_SERVICE_GAP + 1
+        );
+        model.activeTicket = null;
+        return createSelectedQuestion(model, {
+          value: candidate.value,
+          stage: candidate.stage,
+          format: "blocks-to-number",
+          layout: "fixed",
+          reviewKind: "gate"
+        }, rng);
+      }
+
       function chooseCategoryCandidate(ticket, unlockedStage, recent, rng = currentRandom) {
         const eligible = categoryCandidates(ticket.category, unlockedStage)
           .filter((candidate) => candidate.value !== ticket.missedValue);
@@ -2872,8 +3027,8 @@
       }
 
       function chooseCategoryCandidateAtStage(ticket, stage, recent, rng = currentRandom) {
-        const eligible = categoryCandidates(ticket.category, stage)
-          .filter((candidate) => candidate.stage === stage && candidate.value !== ticket.missedValue);
+        const eligible = categoryCandidatesAtStage(ticket.category, stage)
+          .filter((candidate) => candidate.value !== ticket.missedValue);
         if (!eligible.length) return null;
         const unblocked = eligible.filter((candidate) => !recent.includes(candidate.value));
         if (unblocked.length) return unblocked[randomInt(0, unblocked.length - 1, rng)];
@@ -2894,17 +3049,25 @@
         const format = QUESTION_FORMATS.includes(selection.format) ? selection.format : chooseFormat(model.settings, rng);
         const transferCategory = transferCategoryFor(selection.value, selection.stage);
         const transferUnlocked = transferCategory && model.transferEvidence[transferCategory].unlocked;
+        const organicFreeReady = transferFamilyReadyForOrganicFree(model, transferCategory);
         const requestedFree = selection.layout === "free";
         const ordinaryFree = !selection.layout
           && format === "blocks-to-number"
-          && transferUnlocked
+          && ["ordinary", "retention"].includes(selection.reviewKind)
+          && organicFreeReady
           && rng() < 0.42;
+        const requestedFreeAllowed = selection.reviewKind === "transfer"
+          ? transferUnlocked
+          : organicFreeReady;
         const question = makeQuestion({
           id: nextQuestionId(model),
           value: selection.value,
           stage: selection.stage,
           format,
-          layout: format === "blocks-to-number" && transferUnlocked && (requestedFree || ordinaryFree) ? "free" : "fixed",
+          layout: format === "blocks-to-number"
+            && ((requestedFree && requestedFreeAllowed) || ordinaryFree)
+            ? "free"
+            : "fixed",
           isDedicatedZero: selection.value === 0 && selection.stage === 7,
           reviewKind: selection.reviewKind
         });
@@ -2941,8 +3104,8 @@
           }, rng);
         }
 
-        const transfer = transferEligible ? dueTicket(model.reviewQueues.transfer, completed) : null;
-        if (transfer) {
+        const transfers = transferEligible ? dueTickets(model.reviewQueues.transfer, completed) : [];
+        for (const transfer of transfers) {
           const candidate = chooseTransferCandidate(
             transfer,
             unlockedStage,
@@ -2960,11 +3123,13 @@
               reviewKind: "transfer"
             }, rng);
           }
+          // This due ticket is incompatible with the current chosen stage. Postpone it exactly
+          // once in this pass, then keep looking so a later overdue transfer can still be served.
           transfer.dueAt = completed + 2;
         }
 
-        const category = dueTicket(model.reviewQueues.category.filter(formatMatches), completed);
-        if (category) {
+        const categories = dueTickets(model.reviewQueues.category.filter(formatMatches), completed);
+        for (const category of categories) {
           const candidate = chosenMode
             ? chooseCategoryCandidateAtStage(category, unlockedStage, model.recentValues, rng)
             : chooseCategoryCandidate(category, unlockedStage, model.recentValues, rng);
@@ -2992,6 +3157,9 @@
             }
           }
         }
+
+        const gateOpportunity = chooseGateOpportunity(model, unlockedStage, rng);
+        if (gateOpportunity) return gateOpportunity;
 
         model.activeTicket = null;
         const masteredBelow = [];
@@ -3056,22 +3224,43 @@
       }
 
       function recordTransferEvidence(model, question, outcome) {
-        if (outcome !== "firstTry" || !question.transferCategory || question.layout === "free") return false;
+        if (outcome !== "firstTry"
+          || question.format !== "blocks-to-number"
+          || !question.transferCategory
+          || question.layout !== "fixed") return false;
         const evidence = model.transferEvidence[question.transferCategory];
-        const key = question.format === "blocks-to-number"
-          ? "blocksToNumber"
-          : (question.format === "number-to-places" ? "numberToPlaces" : null);
-        if (!key) return false;
-        if (!evidence[key].includes(question.value)) evidence[key].push(question.value);
-        evidence[key] = evidence[key].slice(-4);
-        const distinctPair = evidence.blocksToNumber.some((blocksValue) =>
-          evidence.numberToPlaces.some((placesValue) => placesValue !== blocksValue));
-        if (!evidence.unlocked && distinctPair) {
+        evidence.probeCleared = evidence.probeCleared === true;
+        if (!evidence.blocksToNumber.includes(question.value)) evidence.blocksToNumber.push(question.value);
+        evidence.blocksToNumber = evidence.blocksToNumber.slice(-4);
+        const newlyUnlocked = !evidence.unlocked && evidence.blocksToNumber.length >= 2;
+        if (evidence.blocksToNumber.length >= 2) {
           evidence.unlocked = true;
-          enqueueTransferRetest(model, question, 1, 1);
-          return true;
+          model.gateOpportunities[question.transferCategory] = null;
+          ensureInitialTransferTicket(model, question.transferCategory, question);
+          return newlyUnlocked;
+        }
+        if (!evidence.unlocked && evidence.blocksToNumber.length === 1
+          && !model.gateOpportunities[question.transferCategory]) {
+          model.gateOpportunities[question.transferCategory] = {
+            status: "pending",
+            evidenceValue: evidence.blocksToNumber[0],
+            armedAt: model.aggregate.attempted,
+            dueAt: model.aggregate.attempted + GATE_OPPORTUNITY_DELAY
+          };
         }
         return false;
+      }
+
+      function recordTransferProbeCompletion(model, question, outcome) {
+        if (outcome !== "firstTry"
+          || question.reviewKind !== "transfer"
+          || question.format !== "blocks-to-number"
+          || question.layout !== "free"
+          || !TRANSFER_CATEGORIES.includes(question.transferCategory)) return false;
+        const evidence = model.transferEvidence[question.transferCategory];
+        if (!evidence || !evidence.unlocked) return false;
+        evidence.probeCleared = true;
+        return true;
       }
 
       function evictExactForNewTicket(queue, model) {
@@ -3202,16 +3391,10 @@
         blockGroups: document.getElementById("block-groups"),
         blocksCaption: document.getElementById("blocks-caption"),
         numberForm: document.getElementById("blocks-to-number-form"),
-        placesForm: document.getElementById("number-to-places-form"),
         wordsForm: document.getElementById("number-words-form"),
         wordChoiceGrid: document.getElementById("word-choice-grid"),
         numberAnswer: document.getElementById("number-answer"),
-        hundredsAnswer: document.getElementById("hundreds-answer"),
-        tensAnswer: document.getElementById("tens-answer"),
-        onesAnswer: document.getElementById("ones-answer"),
         checkNumber: document.getElementById("check-number-button"),
-        checkPlaces: document.getElementById("check-places-button"),
-        placesPrompt: document.getElementById("places-prompt"),
         feedback: document.getElementById("answer-feedback"),
         hintPanel: document.getElementById("hint-panel"),
         hintTitle: document.getElementById("hint-title"),
@@ -3396,9 +3579,7 @@
         numeral.textContent = String(question.value);
         numeral.setAttribute("aria-label", `Number ${question.value}`);
         dom.blockGroups.appendChild(numeral);
-        dom.blocksCaption.textContent = question.format === "number-words"
-          ? `The numeral shown is ${question.value}. Choose the matching number words.`
-          : `The number shown is ${question.value}. Write its hundreds, tens, and ones digits.`;
+        dom.blocksCaption.textContent = `The numeral shown is ${question.value}. Choose the matching number words.`;
       }
 
       function renderWordChoices(question, attempt) {
@@ -3468,9 +3649,7 @@
         }
         if (attempt.phase === "hint-labels") {
           dom.hintTitle.textContent = "Look at each place";
-          intro.textContent = question.format === "blocks-to-number"
-            ? "Count the hundred blocks, then the ten rods, then the one cubes."
-            : "Read one digit at a time: hundreds, tens, then ones.";
+          intro.textContent = "Count the hundred blocks, then the ten rods, then the one cubes.";
           ["Hundreds first", "Tens next", "Ones last"].forEach((text) => {
             const item = document.createElement("li");
             item.textContent = text;
@@ -3497,13 +3676,8 @@
           }
         } else {
           dom.hintTitle.textContent = "Now type the shown answer";
-          intro.textContent = question.format === "blocks-to-number"
-            ? `${placeExplanation(question, true)} Type ${question.value} to finish this question.`
-            : `The digits are ${question.hundreds} hundreds, ${question.tens} tens, and ${question.ones} ones. Type those digits to finish.`;
-          const values = question.format === "blocks-to-number"
-            ? [expandedExpression(question, true)]
-            : [`Hundreds: ${question.hundreds}`, `Tens: ${question.tens}`, `Ones: ${question.ones}`];
-          values.forEach((text) => {
+          intro.textContent = `${placeExplanation(question, true)} Type ${question.value} to finish this question.`;
+          [expandedExpression(question, true)].forEach((text) => {
             const item = document.createElement("li");
             item.textContent = text;
             list.appendChild(item);
@@ -3536,19 +3710,13 @@
         if (!question || !attempt) return;
         dom.problemCount.textContent = `Question ${state.session.completed + (attempt.completed ? 0 : 1)}`;
         const blocksMode = question.format === "blocks-to-number";
-        const placesMode = question.format === "number-to-places";
         const wordsMode = question.format === "number-words";
         dom.problemTitle.textContent = blocksMode
           ? (question.stage === 1 ? "What is this block worth?" : "What number do these blocks show?")
-          : (placesMode ? `Show ${question.value} in each place` : `Which words name ${question.value}?`);
+          : `Which words name ${question.value}?`;
         dom.problemInstruction.textContent = blocksMode
           ? (question.layout === "free" ? "Recognize each block type, wherever it appears." : "Count each place from left to right.")
-          : (placesMode
-              ? "Write one digit for hundreds, tens, and ones—even when a digit is zero."
-              : "Choose the word name that matches the numeral.");
-        // Keep the hidden number-to-places prompt empty in blocks mode so it never exposes
-        // the answer through a stale DOM read or the accessibility tree.
-        dom.placesPrompt.textContent = placesMode ? `Show ${question.value} in each place` : "";
+          : "Choose the word name that matches the numeral.";
         // A miss emphasizes the place labels; numeric count badges/caption only surface at the
         // second wrong hint and remain for reveal/correct.
         const emphasize = attempt.phase !== "asking";
@@ -3558,37 +3726,19 @@
         if (blocksMode) renderBlocks(question, emphasize, showCounts);
         else renderNumeral(question);
         dom.numberForm.hidden = !blocksMode;
-        dom.placesForm.hidden = !placesMode;
         dom.wordsForm.hidden = !wordsMode;
         if (wordsMode) renderWordChoices(question, attempt);
-        // Number-to-Places: visibly emphasize the three field labels after the first miss.
-        const emphasizeFields = placesMode && attempt.misses > 0;
-        dom.placesForm.querySelectorAll(".place-field").forEach((field) => {
-          field.classList.toggle("is-emphasized", emphasizeFields);
-        });
         dom.numberAnswer.value = attempt.draft.number;
-        dom.hundredsAnswer.value = attempt.draft.hundreds;
-        dom.tensAnswer.value = attempt.draft.tens;
-        dom.onesAnswer.value = attempt.draft.ones;
         dom.feedback.textContent = attempt.feedback;
         dom.feedback.dataset.state = attempt.feedbackState;
         // Reflect validation/answer errors on the relevant inputs; correct/new questions clear it.
         const invalid = attempt.feedbackState === "error";
-        if (blocksMode) {
-          setFieldInvalid([dom.numberAnswer], invalid);
-          setFieldInvalid([dom.hundredsAnswer, dom.tensAnswer, dom.onesAnswer], false);
-        } else if (placesMode) {
-          setFieldInvalid([dom.hundredsAnswer, dom.tensAnswer, dom.onesAnswer], invalid);
-          setFieldInvalid([dom.numberAnswer], false);
-        } else {
-          setFieldInvalid([dom.numberAnswer, dom.hundredsAnswer, dom.tensAnswer, dom.onesAnswer], false);
-        }
+        setFieldInvalid([dom.numberAnswer], blocksMode && invalid);
         // The Check button's disabled state tracks only attempt.completed. submitGuard.locked is
         // submitCurrent's synchronous reentry guard; letting it disable the button here would
         // strand it disabled after a wrong answer (the guard clears without a re-render).
-        [dom.numberAnswer, dom.hundredsAnswer, dom.tensAnswer, dom.onesAnswer].forEach((input) => { input.disabled = attempt.completed; });
+        dom.numberAnswer.disabled = attempt.completed;
         dom.checkNumber.disabled = attempt.completed;
-        dom.checkPlaces.disabled = attempt.completed;
         dom.next.hidden = !attempt.completed;
         renderHint(question, attempt);
         if (attempt.completed && blocksMode) {
@@ -3647,9 +3797,7 @@
         if (!question || state.screen !== "practice" || state.activeAttempt.completed) return;
         const input = question.format === "blocks-to-number"
           ? dom.numberAnswer
-          : (question.format === "number-to-places"
-              ? dom.hundredsAnswer
-              : dom.wordChoiceGrid.querySelector(".word-choice:not(:disabled)"));
+          : dom.wordChoiceGrid.querySelector(".word-choice:not(:disabled)");
         if (!input) return;
         window.setTimeout(() => {
           input.focus();
@@ -3663,14 +3811,6 @@
         if (!/^(0|[1-9]\d{0,2})$/.test(value)) return { ok: false, message: "Use digits from 0 to 999, with no extra zero at the front." };
         const number = Number(value);
         return number <= 999 ? { ok: true, value: number } : { ok: false, message: "Use a number from 0 to 999." };
-      }
-
-      function validatePlaces(values) {
-        const cleaned = values.map((value) => String(value).trim());
-        if (cleaned.some((value) => !/^[0-9]$/.test(value))) {
-          return { ok: false, message: "Type one digit in every place, including any zeros." };
-        }
-        return { ok: true, value: cleaned.map(Number) };
       }
 
       function setInvalidFeedback(message) {
@@ -3706,6 +3846,7 @@
         state.session[outcome] += 1;
         updateCategoryStats(question, outcome);
         recordTransferEvidence(state, question, outcome);
+        recordTransferProbeCompletion(state, question, outcome);
         if (outcome === "firstTry") {
           state.streaks.current += 1;
           state.streaks.best = Math.max(state.streaks.best, state.streaks.current);
@@ -3715,12 +3856,16 @@
           // also creates a pair so every wrong word tap has a durable later review; active
           // category/exact reviews simply reschedule their existing ticket below.
           if (question.reviewKind === "ordinary"
+            || question.reviewKind === "gate"
             || (question.format === "number-words" && question.reviewKind === "retention")) {
             enqueueOrdinaryReviews(state, question);
           }
           // A missed position-free prompt always comes back position-free later. Transfer review
           // misses already own a ticket, so resolveReviewTicket below reschedules that one.
-          if (question.layout === "free" && question.reviewKind !== "transfer") {
+          const transferEvidence = state.transferEvidence[question.transferCategory];
+          if (question.layout === "free"
+            && question.reviewKind !== "transfer"
+            && transferEvidence) {
             enqueueTransferRetest(state, question);
           }
         }
@@ -3847,21 +3992,6 @@
             }
             if (validation.value === question.value) handleCorrect();
             else handleWrong();
-          } else if (question.format === "number-to-places") {
-            const validation = validatePlaces([dom.hundredsAnswer.value, dom.tensAnswer.value, dom.onesAnswer.value]);
-            state.activeAttempt.draft = {
-              number: "",
-              hundreds: dom.hundredsAnswer.value,
-              tens: dom.tensAnswer.value,
-              ones: dom.onesAnswer.value
-            };
-            if (!validation.ok) {
-              setInvalidFeedback(validation.message);
-              return false;
-            }
-            const expected = [question.hundreds, question.tens, question.ones];
-            if (validation.value.every((value, index) => value === expected[index])) handleCorrect();
-            else handleWrong();
           } else {
             return false;
           }
@@ -3889,7 +4019,7 @@
       }
 
       function createQuestionIfNeeded() {
-        if (state.activeQuestion && state.activeAttempt) return;
+        if (state.screen !== "practice" || (state.activeQuestion && state.activeAttempt)) return;
         state.activeQuestion = chooseQuestion(state);
         state.activeAttempt = makeAttempt();
         state.activePresentation = {
@@ -4051,6 +4181,32 @@
         };
       }
 
+      function transferGateSnapshot() {
+        const completed = state.aggregate.attempted;
+        return {
+          completedQuestions: completed,
+          cooldownUntil: state.gateOpportunityCooldownUntil,
+          cooldownRemaining: Math.max(0, state.gateOpportunityCooldownUntil - completed),
+          families: Object.fromEntries(TRANSFER_CATEGORIES.map((category) => {
+            const evidence = state.transferEvidence[category];
+            const opportunity = state.gateOpportunities[category];
+            return [category, {
+              fixedValues: evidence.blocksToNumber.slice(),
+              unlocked: evidence.unlocked,
+              probeCleared: evidence.probeCleared === true,
+              transferTicketPending: hasTransferTicket(state, category),
+              organicFreeReady: transferFamilyReadyForOrganicFree(state, category),
+              opportunity: opportunity ? {
+                status: opportunity.status,
+                dueAt: opportunity.dueAt,
+                dueIn: opportunity.status === "pending" ? opportunity.dueAt - completed : null,
+                servedAt: opportunity.status === "consumed" ? opportunity.servedAt : null
+              } : null
+            }];
+          }))
+        };
+      }
+
       function textSnapshot() {
         const question = state.activeQuestion;
         return {
@@ -4058,10 +4214,12 @@
           version: GAME_VERSION,
           representation: "DOM workspace; reading order is top-to-bottom and left-to-right.",
           screen: state.screen,
+          focus: state.settings.format,
           stage: question ? question.stage : currentCurriculumStage(state),
           question: question ? {
             id: question.id,
             format: question.format,
+            reviewKind: question.reviewKind,
             layout: question.layout,
             transferCategory: question.transferCategory,
             columnsRestored: question.layout === "free" && state.activeAttempt.misses >= 2,
@@ -4082,7 +4240,7 @@
           phase: state.activeAttempt ? state.activeAttempt.phase : null,
           misses: state.activeAttempt ? state.activeAttempt.misses : 0,
           feedback: state.activeAttempt ? state.activeAttempt.feedback : "",
-          transferEvidence: clone(state.transferEvidence),
+          transferGates: transferGateSnapshot(),
           session: clone(state.session)
         };
       }
@@ -4170,7 +4328,25 @@
           applyAdaptiveObservation(demoted, makeQuestion({ id: "d", value: 110, stage: 3, format: "blocks-to-number" }), "afterHelp");
           check("adaptive demotes at 5 of 8", demoted.stage === 2);
           check("whole input rules", validateWhole("").ok === false && validateWhole("004").ok === false && validateWhole(" 108 ").value === 108 && validateWhole("1000").ok === false);
-          check("place input rules", validatePlaces(["3", "0", "5"]).ok && !validatePlaces(["3", "", "5"]).ok);
+          const formatControls = Array.from(dom.settingsForm.elements.namedItem("question-type"))
+            .map((control) => control.value);
+          check("removed format has no form, fields, control, or runtime format",
+            !document.getElementById("number-to-places-form")
+            && !document.getElementById("hundreds-answer")
+            && !document.getElementById("tens-answer")
+            && !document.getElementById("ones-answer")
+            && JSON.stringify(formatControls) === JSON.stringify(["blocks-to-number", "number-words", "mixed"])
+            && JSON.stringify(QUESTION_FORMATS) === JSON.stringify(["blocks-to-number", "number-words"]));
+          const mixedRng = mulberry32(20260718);
+          const mixedFormats = Array.from({ length: 10000 }, () => chooseFormat(DEFAULT_SETTINGS, mixedRng));
+          const mixedBlocks = mixedFormats.filter((format) => format === "blocks-to-number").length;
+          const mixedWords = mixedFormats.filter((format) => format === "number-words").length;
+          check("Mixed contains only blocks and words with blocks slightly more common",
+            mixedBlocks + mixedWords === mixedFormats.length
+            && mixedBlocks > mixedWords
+            && mixedBlocks / mixedFormats.length > 0.5
+            && mixedBlocks / mixedFormats.length < 0.55,
+            JSON.stringify({ mixedBlocks, mixedWords }));
           const reviewModel = createDefaultState();
           reviewModel.session.target = 20;
           reviewModel.aggregate.attempted = 1;
@@ -4242,20 +4418,20 @@
           state.activeAttempt = makeAttempt();
           state.activePresentation = clone(DEFAULT_SETTINGS);
           fillSettings(state.settings);
-          dom.settingsForm.elements.namedItem("question-type").value = "number-to-places";
+          dom.settingsForm.elements.namedItem("question-type").value = "number-words";
           saveSettingsFromDialog();
           check("save defers settings and preserves active problem",
             state.settings.format === DEFAULT_SETTINGS.format
-            && state.pendingSettings && state.pendingSettings.format === "number-to-places"
+            && state.pendingSettings && state.pendingSettings.format === "number-words"
             && state.activeQuestion.id === "active");
           // Item 4: deferred intent persists across reload.
           const deferred = normalizeState({
             schemaVersion: SCHEMA_VERSION,
-            pendingSettings: { format: "number-to-places", sessionLength: 20 },
+            pendingSettings: { format: "number-words", sessionLength: 20 },
             pendingFreshSession: true
           });
           check("deferred settings persist across reload",
-            deferred.pendingSettings && deferred.pendingSettings.format === "number-to-places"
+            deferred.pendingSettings && deferred.pendingSettings.format === "number-words"
             && deferred.pendingFreshSession === true);
           // Item 4: pending settings apply at the next-problem boundary.
           state = createDefaultState();
@@ -4264,11 +4440,20 @@
           state.activeAttempt.completed = true;
           state.activeAttempt.outcome = "firstTry";
           state.activePresentation = clone(DEFAULT_SETTINGS);
-          state.pendingSettings = normalizeSettings({ ...DEFAULT_SETTINGS, format: "number-to-places" });
+          state.pendingSettings = normalizeSettings({ ...DEFAULT_SETTINGS, format: "number-words" });
           state.pendingFreshSession = false;
           nextQuestion();
           check("deferred settings applied at boundary",
-            state.settings.format === "number-to-places" && state.pendingSettings === null && state.pendingFreshSession === false);
+            state.settings.format === "number-words" && state.pendingSettings === null && state.pendingFreshSession === false);
+
+          const legacySettings = normalizeState({
+            schemaVersion: SCHEMA_VERSION,
+            settings: { ...DEFAULT_SETTINGS, format: "number-to-places" },
+            pendingSettings: { ...DEFAULT_SETTINGS, format: "number-to-places" }
+          });
+          check("legacy removed-format settings migrate to Mixed",
+            legacySettings.settings.format === "mixed"
+            && legacySettings.pendingSettings.format === "mixed");
 
           // Item 5: first wrong answer shows no numeric count badges; second wrong reveals them.
           forceQuestion(305, { stage: 6 });
@@ -4377,7 +4562,7 @@
             schemaVersion: SCHEMA_VERSION,
             settings: { ...DEFAULT_SETTINGS, showPlaceLabels: false, showExpandedHelp: false },
             activeQuestion: { id: "f1", value: 305, stage: 6, format: "blocks-to-number", reviewKind: "ordinary" },
-            activeAttempt: { phase: "asking", misses: 0, draft: { number: "", hundreds: "", tens: "", ones: "" } }
+            activeAttempt: { phase: "asking", misses: 0, draft: { number: "" } }
           });
           check("F1 presentation derived from settings when missing",
             missingPresentation.activeQuestion !== null
@@ -4485,17 +4670,19 @@
             && state.session.target === 5
             && state.activeQuestion !== null);
 
-          // F4: the hidden number-to-places prompt must not leak the answer in blocks mode,
-          // but must show it in number-to-places mode.
+          // F4: the only numeral-led path is Number Words; Blocks keeps the answer hidden.
           forceQuestion(462, { stage: 6, format: "blocks-to-number" });
-          check("F4 hidden places prompt empty in blocks mode",
-            dom.placesForm.hidden === true
-            && dom.placesPrompt.textContent === ""
-            && !dom.placesPrompt.textContent.includes("462"));
-          forceQuestion(462, { stage: 6, format: "number-to-places" });
-          check("F4 number-to-places prompt shows the number",
-            dom.placesForm.hidden === false
-            && dom.placesPrompt.textContent.includes("462"));
+          check("F4 blocks mode hides its answer from visible prompt text",
+            dom.numberForm.hidden === false
+            && dom.wordsForm.hidden === true
+            && !dom.problemTitle.textContent.includes("462")
+            && !dom.problemInstruction.textContent.includes("462"));
+          forceQuestion(462, { stage: 6, format: "number-words" });
+          check("F4 number-words is the only numeral-led answer path",
+            dom.numberForm.hidden === true
+            && dom.wordsForm.hidden === false
+            && dom.problemTitle.textContent.includes("462")
+            && dom.blockGroups.querySelector(".numeral-display").textContent === "462");
 
           // A: a full mixed exact queue at chosen stage 6 must prefer evicting the ineligible
           // (off-stage) ticket even though it is due nearer than an eligible ticket that is due
@@ -4631,53 +4818,958 @@
             && state.aggregate.firstTry === 0
             && state.reviewQueues.exact.some((ticket) => ticket.value === 305 && ticket.format === "number-words"));
 
-          // Each zero-pattern transfer gate requires distinct first-try evidence in both
-          // directions. Unlocking creates a near-term position-free transfer ticket.
-          state = createDefaultState();
-          forceQuestion(305, { id: "transfer-blocks", stage: 5, format: "blocks-to-number", layout: "fixed" });
-          dom.numberAnswer.value = "305";
-          submitCurrent();
-          forceQuestion(405, { id: "transfer-places", stage: 5, format: "number-to-places" });
-          [dom.hundredsAnswer.value, dom.tensAnswer.value, dom.onesAnswer.value] = ["4", "0", "5"];
-          submitCurrent();
-          check("distinct bidirectional evidence unlocks zero-tens transfer",
-            state.transferEvidence.zeroTens.unlocked === true
-            && state.transferEvidence.zeroTens.blocksToNumber.includes(305)
-            && state.transferEvidence.zeroTens.numberToPlaces.includes(405)
-            && state.reviewQueues.transfer.some((ticket) => ticket.category === "zeroTens"));
+          // Every transfer family independently unlocks from two distinct first-try FIXED
+          // blocks-to-number values. The first value arms one durable gate opportunity.
+          const transferPairs = {
+            zeroTens: [305, 405],
+            zeroOnes: [250, 360],
+            bothZeroTensAndOnes: [300, 500]
+          };
+          for (const [category, values] of Object.entries(transferPairs)) {
+            const evidenceModel = createDefaultState();
+            evidenceModel.aggregate.attempted = 1;
+            recordTransferEvidence(evidenceModel, makeQuestion({
+              id: `${category}-first`, value: values[0], stage: 5,
+              format: "blocks-to-number", layout: "fixed"
+            }), "firstTry");
+            const armed = evidenceModel.gateOpportunities[category];
+            check(`${category} first fixed success arms one opportunity`,
+              evidenceModel.transferEvidence[category].blocksToNumber.length === 1
+              && evidenceModel.transferEvidence[category].unlocked === false
+              && armed && armed.status === "pending" && armed.dueAt === 3);
+            evidenceModel.aggregate.attempted = 2;
+            recordTransferEvidence(evidenceModel, makeQuestion({
+              id: `${category}-second`, value: values[1], stage: 5,
+              format: "blocks-to-number", layout: "fixed"
+            }), "firstTry");
+            check(`${category} two distinct fixed successes unlock independently`,
+              evidenceModel.transferEvidence[category].unlocked === true
+              && evidenceModel.transferEvidence[category].probeCleared === false
+              && JSON.stringify(evidenceModel.transferEvidence[category].blocksToNumber) === JSON.stringify(values)
+              && evidenceModel.gateOpportunities[category] === null
+              && evidenceModel.reviewQueues.transfer.filter((ticket) => ticket.category === category).length === 1
+              && evidenceModel.reviewQueues.transfer.find((ticket) => ticket.category === category).dueAt === 3);
+            const initialProbeTicket = clone(evidenceModel.reviewQueues.transfer.find((ticket) => ticket.category === category));
+            evidenceModel.aggregate.attempted = 3;
+            recordTransferEvidence(evidenceModel, makeQuestion({
+              id: `${category}-idempotent`, value: values[1], stage: 5,
+              format: "blocks-to-number", layout: "fixed", reviewKind: "category"
+            }), "firstTry");
+            check(`${category} unlocked state keeps exactly one initial probe ticket`,
+              evidenceModel.reviewQueues.transfer.filter((ticket) => ticket.category === category).length === 1
+              && JSON.stringify(evidenceModel.reviewQueues.transfer.find((ticket) => ticket.category === category)) === JSON.stringify(initialProbeTicket)
+              && evidenceModel.transferEvidence[category].probeCleared === false);
+          }
 
           const sameValueEvidence = createDefaultState();
-          sameValueEvidence.transferEvidence.zeroTens.blocksToNumber = [305];
-          state = sameValueEvidence;
-          forceQuestion(305, { id: "same-value-reverse", stage: 5, format: "number-to-places" });
-          [dom.hundredsAnswer.value, dom.tensAnswer.value, dom.onesAnswer.value] = ["3", "0", "5"];
-          submitCurrent();
-          check("same value in both directions does not unlock transfer",
-            state.transferEvidence.zeroTens.unlocked === false);
+          sameValueEvidence.aggregate.attempted = 1;
+          const sameValueQuestion = makeQuestion({ id: "same-value-one", value: 305, stage: 5, format: "blocks-to-number", layout: "fixed" });
+          recordTransferEvidence(sameValueEvidence, sameValueQuestion, "firstTry");
+          sameValueEvidence.aggregate.attempted = 2;
+          recordTransferEvidence(sameValueEvidence, { ...sameValueQuestion, id: "same-value-two" }, "firstTry");
+          check("repeating one fixed value stays locked and keeps the original opportunity age",
+            JSON.stringify(sameValueEvidence.transferEvidence.zeroTens.blocksToNumber) === JSON.stringify([305])
+            && sameValueEvidence.transferEvidence.zeroTens.unlocked === false
+            && sameValueEvidence.gateOpportunities.zeroTens.dueAt === 3);
 
-          // A free miss stays unscaffolded with a type cue once, restores columns on the second
-          // miss, and schedules a later free re-test after completion.
+          const excludedEvidence = createDefaultState();
+          excludedEvidence.aggregate.attempted = 4;
+          recordTransferEvidence(excludedEvidence, makeQuestion({ id: "free-no-evidence", value: 305, stage: 5, format: "blocks-to-number", layout: "free" }), "firstTry");
+          recordTransferEvidence(excludedEvidence, makeQuestion({ id: "help-no-evidence", value: 405, stage: 5, format: "blocks-to-number", layout: "fixed" }), "afterHelp");
+          recordTransferEvidence(excludedEvidence, makeQuestion({ id: "reveal-no-evidence", value: 505, stage: 5, format: "blocks-to-number", layout: "fixed" }), "revealed");
+          recordTransferEvidence(excludedEvidence, makeQuestion({ id: "words-no-evidence", value: 605, stage: 5, format: "number-words", layout: "fixed" }), "firstTry");
+          check("free, helped, revealed, and number-word outcomes never add transfer evidence",
+            TRANSFER_CATEGORIES.every((category) => excludedEvidence.transferEvidence[category].blocksToNumber.length === 0)
+            && TRANSFER_CATEGORIES.every((category) => excludedEvidence.gateOpportunities[category] === null));
+
+          const pendingExcludedEvidence = createDefaultState();
+          pendingExcludedEvidence.aggregate.attempted = 4;
+          recordTransferEvidence(pendingExcludedEvidence, makeQuestion({
+            id: "pending-excluded-first", value: 305, stage: 5,
+            format: "blocks-to-number", layout: "fixed"
+          }), "firstTry");
+          const pendingExcludedBefore = JSON.stringify({
+            evidence: pendingExcludedEvidence.transferEvidence.zeroTens,
+            opportunity: pendingExcludedEvidence.gateOpportunities.zeroTens
+          });
+          recordTransferEvidence(pendingExcludedEvidence, makeQuestion({
+            id: "pending-excluded-free", value: 405, stage: 5,
+            format: "blocks-to-number", layout: "free"
+          }), "firstTry");
+          recordTransferEvidence(pendingExcludedEvidence, makeQuestion({
+            id: "pending-excluded-help", value: 405, stage: 5,
+            format: "blocks-to-number", layout: "fixed"
+          }), "afterHelp");
+          recordTransferEvidence(pendingExcludedEvidence, makeQuestion({
+            id: "pending-excluded-reveal", value: 405, stage: 5,
+            format: "blocks-to-number", layout: "fixed"
+          }), "revealed");
+          recordTransferEvidence(pendingExcludedEvidence, makeQuestion({
+            id: "pending-excluded-words", value: 405, stage: 5,
+            format: "number-words", layout: "fixed"
+          }), "firstTry");
+          check("nonqualifying outcomes preserve existing evidence and pending opportunity byte-for-byte",
+            JSON.stringify({
+              evidence: pendingExcludedEvidence.transferEvidence.zeroTens,
+              opportunity: pendingExcludedEvidence.gateOpportunities.zeroTens
+            }) === pendingExcludedBefore);
+
           state = createDefaultState();
-          state.transferEvidence.zeroTens = {
-            blocksToNumber: [305], numberToPlaces: [405], unlocked: true
+          state.settings.format = "mixed";
+          forceQuestion(305, { id: "natural-first", stage: 5, format: "blocks-to-number", layout: "fixed" });
+          dom.numberAnswer.value = "305";
+          submitCurrent();
+          const naturalDueAt = state.gateOpportunities.zeroTens.dueAt;
+          state.settings.format = "blocks-to-number";
+          forceQuestion(405, { id: "natural-second", stage: 5, format: "blocks-to-number", layout: "fixed" });
+          dom.numberAnswer.value = "405";
+          submitCurrent();
+          check("natural consecutive successes share evidence across Mixed and Blocks and unlock immediately",
+            naturalDueAt === 3
+            && state.aggregate.attempted === 2
+            && state.transferEvidence.zeroTens.unlocked === true
+            && state.transferEvidence.zeroTens.probeCleared === false
+            && state.reviewQueues.transfer.filter((ticket) => ticket.category === "zeroTens").length === 1
+            && state.gateOpportunities.zeroTens === null);
+
+          const fixedReviewEvidence = createDefaultState();
+          fixedReviewEvidence.aggregate.attempted = 1;
+          recordTransferEvidence(fixedReviewEvidence, makeQuestion({
+            id: "fixed-review-first", value: 305, stage: 5,
+            format: "blocks-to-number", layout: "fixed", reviewKind: "ordinary"
+          }), "firstTry");
+          fixedReviewEvidence.aggregate.attempted = 2;
+          recordTransferEvidence(fixedReviewEvidence, makeQuestion({
+            id: "fixed-review-second", value: 405, stage: 5,
+            format: "blocks-to-number", layout: "fixed", reviewKind: "exact"
+          }), "firstTry");
+          check("qualifying fixed review evidence unlocks but never clears the transfer probe",
+            fixedReviewEvidence.transferEvidence.zeroTens.unlocked === true
+            && fixedReviewEvidence.transferEvidence.zeroTens.probeCleared === false
+            && fixedReviewEvidence.reviewQueues.transfer.filter((ticket) => ticket.category === "zeroTens").length === 1);
+
+          const preProbeLayout = createDefaultState();
+          preProbeLayout.transferEvidence.zeroTens = {
+            blocksToNumber: [305, 405], unlocked: true, probeCleared: false
           };
-          forceQuestion(605, { id: "free-remediation", stage: 6, format: "blocks-to-number", layout: "free" });
-          dom.numberAnswer.value = "600";
+          preProbeLayout.reviewQueues.transfer = [{
+            id: "initial-probe-pending", category: "zeroTens", missedValue: 405,
+            stage: 5, dueAt: 8, postponements: 0
+          }];
+          const preProbeOrdinary = createSelectedQuestion(preProbeLayout, {
+            value: 505, stage: 5, format: "blocks-to-number", reviewKind: "ordinary"
+          }, () => 0);
+          const preProbeRetention = createSelectedQuestion(preProbeLayout, {
+            value: 605, stage: 5, format: "blocks-to-number", reviewKind: "retention"
+          }, () => 0);
+          const clearedButTicketPending = clone(preProbeLayout);
+          clearedButTicketPending.transferEvidence.zeroTens.probeCleared = true;
+          const pendingTicketOrdinary = createSelectedQuestion(clearedButTicketPending, {
+            value: 705, stage: 5, format: "blocks-to-number", reviewKind: "ordinary"
+          }, () => 0);
+          const preProbeAdaptiveBefore = JSON.stringify(preProbeLayout.adaptiveWindow);
+          applyAdaptiveObservation(preProbeLayout, makeQuestion({
+            id: "pre-probe-transfer-no-adaptive", value: 705, stage: preProbeLayout.stage,
+            format: "blocks-to-number", layout: "free", reviewKind: "transfer"
+          }), "firstTry");
+          check("pre-probe ordinary and retention stay fixed and transfer work earns no adaptive credit",
+            preProbeOrdinary.layout === "fixed"
+            && preProbeRetention.layout === "fixed"
+            && pendingTicketOrdinary.layout === "fixed"
+            && JSON.stringify(preProbeLayout.adaptiveWindow) === preProbeAdaptiveBefore);
+
+          const migratedPreProbe = normalizeState({
+            schemaVersion: SCHEMA_VERSION,
+            aggregate: { attempted: 10 },
+            transferEvidence: {
+              zeroTens: { blocksToNumber: [305, 405], unlocked: true }
+            },
+            reviewQueues: { transfer: [] },
+            activeQuestion: {
+              id: "migrated-pre-probe-free", value: 605, stage: 6,
+              format: "blocks-to-number", layout: "free", reviewKind: "ordinary"
+            },
+            activeAttempt: { phase: "asking", misses: 0, draft: { number: "" } }
+          });
+          const migratedPreProbeReload = normalizeState(clone(migratedPreProbe));
+          const migratedPostProbe = normalizeState({
+            schemaVersion: SCHEMA_VERSION,
+            transferEvidence: {
+              zeroTens: { blocksToNumber: [305, 405], unlocked: true, probeCleared: true }
+            },
+            reviewQueues: { transfer: [] }
+          });
+          check("migration re-arms one delayed pre-probe ticket and reload preserves pre/post readiness",
+            migratedPreProbe.transferEvidence.zeroTens.probeCleared === false
+            && migratedPreProbe.reviewQueues.transfer.length === 1
+            && migratedPreProbe.reviewQueues.transfer[0].dueAt === 11
+            && migratedPreProbe.activeQuestion.layout === "fixed"
+            && migratedPreProbeReload.reviewQueues.transfer.length === 1
+            && migratedPreProbeReload.reviewQueues.transfer[0].id === migratedPreProbe.reviewQueues.transfer[0].id
+            && migratedPreProbeReload.reviewQueues.transfer[0].dueAt === 11
+            && transferFamilyReadyForOrganicFree(migratedPreProbeReload, "zeroTens") === false
+            && migratedPostProbe.transferEvidence.zeroTens.probeCleared === true
+            && migratedPostProbe.reviewQueues.transfer.length === 0
+            && transferFamilyReadyForOrganicFree(migratedPostProbe, "zeroTens") === true);
+
+          const independentProbeFamilies = normalizeState({
+            schemaVersion: SCHEMA_VERSION,
+            transferEvidence: {
+              zeroTens: { blocksToNumber: [305, 405], probeCleared: true },
+              zeroOnes: { blocksToNumber: [250, 360], probeCleared: false },
+              bothZeroTensAndOnes: { blocksToNumber: [300, 500], probeCleared: true }
+            },
+            reviewQueues: { transfer: [] }
+          });
+          check("initial transfer completion is independent for H0O, HT0, and H00",
+            transferFamilyReadyForOrganicFree(independentProbeFamilies, "zeroTens") === true
+            && transferFamilyReadyForOrganicFree(independentProbeFamilies, "zeroOnes") === false
+            && transferFamilyReadyForOrganicFree(independentProbeFamilies, "bothZeroTensAndOnes") === true
+            && independentProbeFamilies.reviewQueues.transfer.filter((ticket) => ticket.category === "zeroOnes").length === 1
+            && independentProbeFamilies.reviewQueues.transfer.every((ticket) => ticket.category === "zeroOnes"));
+
+          // The first free layout is a transfer probe. Its first miss stays unscaffolded with a
+          // type cue, its second miss restores columns, and the same ticket returns later.
+          state = createDefaultState();
+          state.settings.plan = "chosen";
+          state.settings.chosenStage = 6;
+          state.settings.format = "blocks-to-number";
+          state.transferEvidence.zeroTens = {
+            blocksToNumber: [305, 405], unlocked: true, probeCleared: false
+          };
+          state.reviewQueues.transfer = [{
+            id: "initial-free-remediation", category: "zeroTens", missedValue: 405,
+            stage: 5, dueAt: 0, postponements: 0
+          }];
+          state.activeQuestion = chooseQuestion(state, mulberry32(880));
+          state.activeAttempt = makeAttempt();
+          state.activePresentation = clone(DEFAULT_SETTINGS);
+          const firstProbeValue = state.activeQuestion.value;
+          const firstProbeWrong = firstProbeValue === 999 ? 998 : firstProbeValue + 1;
+          const secondProbeWrong = firstProbeValue >= 998 ? firstProbeValue - 2 : firstProbeValue + 2;
+          dom.numberAnswer.value = String(firstProbeWrong);
           submitCurrent();
           const firstFreeHint = dom.blockGroups.classList.contains("is-free")
             && dom.blockGroups.querySelectorAll(".free-layout-key").length === 1
             && dom.blockGroups.querySelectorAll(".place-group").length === 0;
-          dom.numberAnswer.value = "650";
+          dom.numberAnswer.value = String(secondProbeWrong);
           submitCurrent();
           const restoredOnSecond = dom.blockGroups.querySelectorAll(".place-group").length === 3
             && dom.blockGroups.querySelectorAll(".restored-columns-note").length === 1;
-          dom.numberAnswer.value = "605";
+          dom.numberAnswer.value = String(firstProbeValue);
           submitCurrent();
-          check("free remediation keeps cue then restores columns and re-tests later",
-            firstFreeHint
+          const firstProbeTicket = state.reviewQueues.transfer.find((ticket) => ticket.category === "zeroTens");
+          check("missed initial probe keeps cue, restores columns, and remains incomplete for retest",
+            state.activeQuestion.reviewKind === "transfer"
+            && firstFreeHint
             && restoredOnSecond
             && state.activeAttempt.outcome === "afterHelp"
+            && state.transferEvidence.zeroTens.probeCleared === false
+            && Boolean(firstProbeTicket)
+            && firstProbeTicket.dueAt > state.aggregate.attempted);
+
+          firstProbeTicket.dueAt = state.aggregate.attempted;
+          state.activeQuestion = null;
+          state.activeAttempt = null;
+          state.activePresentation = null;
+          state.activeTicket = null;
+          state.settings.plan = "adaptive";
+          state.stage = 6;
+          const adaptiveBeforeCleanProbe = JSON.stringify(state.adaptiveWindow);
+          state.activeQuestion = chooseQuestion(state, mulberry32(881));
+          state.activeAttempt = makeAttempt();
+          state.activePresentation = clone(DEFAULT_SETTINGS);
+          const cleanProbeValue = state.activeQuestion.value;
+          dom.numberAnswer.value = String(cleanProbeValue);
+          submitCurrent();
+          check("clean transfer retest durably clears the probe without adaptive credit",
+            state.activeQuestion.reviewKind === "transfer"
+            && state.activeQuestion.layout === "free"
+            && state.activeAttempt.outcome === "firstTry"
+            && state.transferEvidence.zeroTens.probeCleared === true
+            && !hasTransferTicket(state, "zeroTens")
+            && JSON.stringify(state.adaptiveWindow) === adaptiveBeforeCleanProbe
+            && transferFamilyReadyForOrganicFree(state, "zeroTens") === true);
+
+          state.activeQuestion = createSelectedQuestion(state, {
+            value: 805, stage: 6, format: "blocks-to-number", reviewKind: "ordinary"
+          }, () => 0);
+          state.activeAttempt = makeAttempt();
+          state.activePresentation = clone(DEFAULT_SETTINGS);
+          state.activeTicket = null;
+          dom.numberAnswer.value = "804";
+          submitCurrent();
+          dom.numberAnswer.value = "805";
+          submitCurrent();
+          const organicOrdinaryTicket = state.reviewQueues.transfer.find((ticket) => ticket.category === "zeroTens");
+          const organicOrdinaryTicketIdentity = organicOrdinaryTicket
+            ? { id: organicOrdinaryTicket.id, dueAt: organicOrdinaryTicket.dueAt }
+            : null;
+          check("post-probe ordinary free after-help queues one family retest and suspends readiness",
+            state.activeQuestion.reviewKind === "ordinary"
+            && state.activeQuestion.layout === "free"
+            && state.activeAttempt.outcome === "afterHelp"
+            && state.transferEvidence.zeroTens.probeCleared === true
+            && state.reviewQueues.transfer.filter((ticket) => ticket.category === "zeroTens").length === 1
+            && Boolean(organicOrdinaryTicket)
+            && state.activeTicket === null
+            && transferFamilyReadyForOrganicFree(state, "zeroTens") === false);
+
+          const completedOrganicReload = normalizeState(clone(state));
+          const completedOrganicReloadAgain = normalizeState(clone(completedOrganicReload));
+          const twiceReloadedOrganicTicket = completedOrganicReloadAgain.reviewQueues.transfer
+            .find((ticket) => ticket.category === "zeroTens");
+          check("completed corrected organic free presentation survives reload without binding its new ticket",
+            completedOrganicReload.activeQuestion
+            && completedOrganicReload.activeQuestion.reviewKind === "ordinary"
+            && completedOrganicReload.activeQuestion.layout === "free"
+            && completedOrganicReload.activeAttempt.completed === true
+            && completedOrganicReload.activeAttempt.outcome === "afterHelp"
+            && completedOrganicReload.activeTicket === null
+            && completedOrganicReload.activePresentation !== null
+            && Boolean(completedOrganicReload.reviewQueues.transfer.find((ticket) =>
+              ticket.category === "zeroTens")));
+          check("repeated normalization preserves one organic retest ticket without re-aging it",
+            completedOrganicReloadAgain.reviewQueues.transfer.filter((ticket) =>
+              ticket.category === "zeroTens").length === 1
+            && Boolean(twiceReloadedOrganicTicket)
+            && twiceReloadedOrganicTicket.id === organicOrdinaryTicketIdentity.id
+            && twiceReloadedOrganicTicket.dueAt === organicOrdinaryTicketIdentity.dueAt
+            && completedOrganicReloadAgain.activeQuestion.layout === "free"
+            && completedOrganicReloadAgain.activeTicket === null);
+
+          const pendingFamilyWork = clone(completedOrganicReloadAgain);
+          pendingFamilyWork.activeQuestion = null;
+          pendingFamilyWork.activeAttempt = null;
+          pendingFamilyWork.activePresentation = null;
+          pendingFamilyWork.activeTicket = null;
+          const pendingFamilyOrdinary = createSelectedQuestion(pendingFamilyWork, {
+            value: 705, stage: 6, format: "blocks-to-number", reviewKind: "ordinary"
+          }, () => 0);
+          const pendingFamilyRetention = createSelectedQuestion(pendingFamilyWork, {
+            value: 905, stage: 6, format: "blocks-to-number", reviewKind: "retention"
+          }, () => 0);
+          check("new ordinary and retention family work stays fixed while organic retest is pending",
+            pendingFamilyOrdinary.layout === "fixed"
+            && pendingFamilyRetention.layout === "fixed");
+
+          state = completedOrganicReloadAgain;
+          const dueOrganicRetest = state.reviewQueues.transfer.find((ticket) => ticket.category === "zeroTens");
+          dueOrganicRetest.dueAt = state.aggregate.attempted;
+          state.activeQuestion = null;
+          state.activeAttempt = null;
+          state.activePresentation = null;
+          state.activeTicket = null;
+          state.activeQuestion = chooseQuestion(state, mulberry32(882));
+          state.activeAttempt = makeAttempt();
+          state.activePresentation = clone(DEFAULT_SETTINGS);
+          const organicRetestValue = state.activeQuestion.value;
+          check("due organic retest is free and backed by the same family ticket",
+            state.activeQuestion.reviewKind === "transfer"
+            && state.activeQuestion.layout === "free"
+            && Boolean(state.activeTicket)
+            && state.activeTicket.kind === "transfer"
+            && state.activeTicket.id === organicOrdinaryTicketIdentity.id);
+          dom.numberAnswer.value = String(organicRetestValue === 999 ? 998 : organicRetestValue + 1);
+          submitCurrent();
+          dom.numberAnswer.value = String(organicRetestValue);
+          submitCurrent();
+          const rescheduledOrganicRetest = state.reviewQueues.transfer.find((ticket) => ticket.category === "zeroTens");
+          check("missed organic retest reschedules the same ticket without duplication or marker reset",
+            state.activeAttempt.outcome === "afterHelp"
+            && state.transferEvidence.zeroTens.probeCleared === true
+            && state.reviewQueues.transfer.filter((ticket) => ticket.category === "zeroTens").length === 1
+            && Boolean(rescheduledOrganicRetest)
+            && rescheduledOrganicRetest.id === organicOrdinaryTicketIdentity.id
+            && rescheduledOrganicRetest.dueAt > state.aggregate.attempted
+            && transferFamilyReadyForOrganicFree(state, "zeroTens") === false);
+
+          rescheduledOrganicRetest.dueAt = state.aggregate.attempted;
+          state.activeQuestion = null;
+          state.activeAttempt = null;
+          state.activePresentation = null;
+          state.activeTicket = null;
+          state.activeQuestion = chooseQuestion(state, mulberry32(883));
+          state.activeAttempt = makeAttempt();
+          state.activePresentation = clone(DEFAULT_SETTINGS);
+          dom.numberAnswer.value = String(state.activeQuestion.value);
+          submitCurrent();
+          const cleanOrganicRetestReload = normalizeState(clone(state));
+          check("clean organic retest consumes its ticket with no replacement and restores readiness",
+            state.activeQuestion.reviewKind === "transfer"
+            && state.activeQuestion.layout === "free"
+            && state.activeAttempt.outcome === "firstTry"
+            && state.transferEvidence.zeroTens.probeCleared === true
+            && !hasTransferTicket(state, "zeroTens")
+            && cleanOrganicRetestReload.activeTicket === null
+            && !hasTransferTicket(cleanOrganicRetestReload, "zeroTens")
+            && transferFamilyReadyForOrganicFree(cleanOrganicRetestReload, "zeroTens") === true);
+
+          state = createDefaultState();
+          state.transferEvidence.zeroTens = {
+            blocksToNumber: [305, 405], unlocked: true, probeCleared: true
+          };
+          state.activeQuestion = createSelectedQuestion(state, {
+            value: 605, stage: 6, format: "blocks-to-number", reviewKind: "retention"
+          }, () => 0);
+          state.activeAttempt = makeAttempt();
+          state.activePresentation = clone(DEFAULT_SETTINGS);
+          dom.numberAnswer.value = "604";
+          submitCurrent();
+          dom.numberAnswer.value = "605";
+          submitCurrent();
+          check("post-probe retention free after-help queues exactly one family retest",
+            state.activeQuestion.reviewKind === "retention"
+            && state.activeQuestion.layout === "free"
+            && state.activeAttempt.outcome === "afterHelp"
+            && state.transferEvidence.zeroTens.probeCleared === true
+            && state.reviewQueues.transfer.filter((ticket) => ticket.category === "zeroTens").length === 1
+            && transferFamilyReadyForOrganicFree(state, "zeroTens") === false);
+
+          state = createDefaultState();
+          state.transferEvidence.zeroTens = {
+            blocksToNumber: [305, 405], unlocked: true, probeCleared: true
+          };
+          state.activeQuestion = createSelectedQuestion(state, {
+            value: 705, stage: 6, format: "blocks-to-number", reviewKind: "ordinary"
+          }, () => 0);
+          state.activeAttempt = makeAttempt();
+          state.activePresentation = clone(DEFAULT_SETTINGS);
+          state.activeAttempt.misses = 1;
+          state.activeAttempt.phase = "hint-labels";
+          state.pendingAttempt = { questionId: state.activeQuestion.id, outcome: "afterHelp" };
+          state = normalizeState(clone(state));
+          recoverPendingAttempt();
+          const recoveredOrganicTicket = state.reviewQueues.transfer.find((ticket) => ticket.category === "zeroTens");
+          const recoveredOrganicIdentity = recoveredOrganicTicket
+            ? { id: recoveredOrganicTicket.id, dueAt: recoveredOrganicTicket.dueAt }
+            : null;
+          recoverPendingAttempt();
+          const recoveredOrganicReload = normalizeState(clone(state));
+          const recoveredOrganicReloadAgain = normalizeState(clone(recoveredOrganicReload));
+          const repeatedlyRecoveredTicket = recoveredOrganicReloadAgain.reviewQueues.transfer
+            .find((ticket) => ticket.category === "zeroTens");
+          check("organic free pending-write recovery stays exactly once across repeated recovery and reload",
+            state.aggregate.attempted === 1
+            && state.activeAttempt.completed === true
+            && state.activeAttempt.outcome === "afterHelp"
+            && state.pendingAttempt === null
+            && state.reviewQueues.transfer.filter((ticket) => ticket.category === "zeroTens").length === 1
+            && Boolean(recoveredOrganicIdentity)
+            && Boolean(repeatedlyRecoveredTicket)
+            && repeatedlyRecoveredTicket.id === recoveredOrganicIdentity.id
+            && repeatedlyRecoveredTicket.dueAt === recoveredOrganicIdentity.dueAt
+            && recoveredOrganicReloadAgain.activeQuestion.layout === "free"
+            && recoveredOrganicReloadAgain.activeTicket === null);
+
+          state = createDefaultState();
+          state.transferEvidence.zeroTens = {
+            blocksToNumber: [305, 405], unlocked: true, probeCleared: true
+          };
+          state.activeQuestion = createSelectedQuestion(state, {
+            value: 805, stage: 6, format: "blocks-to-number", reviewKind: "ordinary"
+          }, () => 0);
+          state.activeAttempt = makeAttempt();
+          state.activePresentation = clone(DEFAULT_SETTINGS);
+          dom.numberAnswer.value = "805";
+          submitCurrent();
+          check("successful post-probe organic free work creates no transfer ticket",
+            state.activeQuestion.layout === "free"
+            && state.activeAttempt.outcome === "firstTry"
+            && state.transferEvidence.zeroTens.probeCleared === true
+            && !hasTransferTicket(state, "zeroTens")
+            && transferFamilyReadyForOrganicFree(state, "zeroTens") === true);
+
+          state = createDefaultState();
+          state.transferEvidence.zeroTens = {
+            blocksToNumber: [305, 405], unlocked: true, probeCleared: true
+          };
+          forceQuestion(905, {
+            id: "organic-free-revealed", stage: 6, format: "blocks-to-number",
+            layout: "free", reviewKind: "ordinary"
+          });
+          dom.numberAnswer.value = "904";
+          submitCurrent();
+          dom.numberAnswer.value = "903";
+          submitCurrent();
+          dom.numberAnswer.value = "902";
+          submitCurrent();
+          dom.numberAnswer.value = "905";
+          submitCurrent();
+          check("post-probe organic free revealed outcome also queues one family retest",
+            state.activeAttempt.outcome === "revealed"
+            && state.reviewQueues.transfer.filter((ticket) => ticket.category === "zeroTens").length === 1
+            && state.transferEvidence.zeroTens.probeCleared === true);
+
+          const makePendingGateModel = ({
+            category = "zeroTens",
+            evidenceValue = 305,
+            completed = 10,
+            dueAt = 0,
+            armedAt = 0,
+            stage = 5,
+            format = "blocks-to-number"
+          } = {}) => {
+            const model = createDefaultState();
+            model.settings.plan = "chosen";
+            model.settings.chosenStage = stage;
+            model.settings.format = format;
+            model.aggregate.attempted = completed;
+            model.transferEvidence[category] = { blocksToNumber: [evidenceValue], unlocked: false };
+            model.gateOpportunities[category] = {
+              status: "pending", evidenceValue, armedAt, dueAt
+            };
+            return model;
+          };
+
+          const timingBase = makePendingGateModel({ completed: 1, dueAt: 3, armedAt: 1 });
+          const timingEarly = clone(timingBase);
+          timingEarly.aggregate.attempted = 2;
+          const earlyPick = chooseQuestion(timingEarly, mulberry32(901));
+          check("gate opportunity waits for two additional completions",
+            earlyPick.reviewKind !== "gate"
+            && timingEarly.gateOpportunities.zeroTens.status === "pending"
+            && timingEarly.gateOpportunities.zeroTens.dueAt === 3);
+          const timingDue = clone(timingBase);
+          timingDue.aggregate.attempted = 3;
+          timingDue.recentValues = [205, 305, 405, 505, 605, 705, 805, 905];
+          const duePick = chooseQuestion(timingDue, mulberry32(902));
+          check("due gate serves fixed different same-family blocks and consumes immediately",
+            duePick.reviewKind === "gate"
+            && duePick.format === "blocks-to-number"
+            && duePick.layout === "fixed"
+            && duePick.transferCategory === "zeroTens"
+            && duePick.value !== 305
+            && !timingDue.recentValues.slice(0, -1).includes(duePick.value)
+            && timingDue.gateOpportunities.zeroTens.status === "consumed"
+            && timingDue.gateOpportunities.zeroTens.servedAt === 3
+            && timingDue.gateOpportunityCooldownUntil === 6);
+          const recentAvoidance = makePendingGateModel({
+            category: "zeroTens", evidenceValue: 101, completed: 5,
+            dueAt: 0, armedAt: 0, stage: 2
+          });
+          recentAvoidance.recentValues = [102, 103, 104, 105, 106, 107, 108];
+          const recentAvoidancePick = chooseQuestion(recentAvoidance, mulberry32(9021));
+          check("gate candidate honors recent-value avoidance before least-recent fallback",
+            recentAvoidancePick.reviewKind === "gate"
+            && recentAvoidancePick.value === 109);
+
+          const pendingReload = normalizeState({
+            ...clone(timingBase),
+            aggregate: { attempted: 3, firstTry: 0, afterHelp: 0, revealed: 0 },
+            settings: { ...DEFAULT_SETTINGS, plan: "chosen", chosenStage: 5, format: "number-words" }
+          });
+          check("reload and ineligible focus preserve pending opportunity age",
+            pendingReload.gateOpportunities.zeroTens.status === "pending"
+            && pendingReload.gateOpportunities.zeroTens.armedAt === 1
+            && pendingReload.gateOpportunities.zeroTens.dueAt === 3);
+          const pendingBeforeFocusSkip = JSON.stringify(pendingReload.gateOpportunities);
+          const focusSkipPick = chooseQuestion(pendingReload, mulberry32(903));
+          check("Number Words focus skips a due gate without mutation",
+            focusSkipPick.reviewKind !== "gate"
+            && focusSkipPick.format === "number-words"
+            && JSON.stringify(pendingReload.gateOpportunities) === pendingBeforeFocusSkip);
+          const mixedPositive = clone(pendingReload);
+          mixedPositive.settings.format = "mixed";
+          const mixedGatePick = chooseQuestion(mixedPositive, mulberry32(9031));
+          check("Mixed focus serves the still-due opportunity at its original age",
+            mixedGatePick.reviewKind === "gate"
+            && mixedGatePick.transferCategory === "zeroTens"
+            && mixedPositive.gateOpportunities.zeroTens.servedAt === 3);
+
+          const exactPriority = makePendingGateModel();
+          exactPriority.reviewQueues.exact = [{
+            id: "gate-priority-exact", value: 250, stage: 5,
+            format: "blocks-to-number", layout: "fixed", dueAt: 0, postponements: 0
+          }];
+          const exactPriorityPick = chooseQuestion(exactPriority, mulberry32(904));
+          check("due exact remediation outranks a due gate",
+            exactPriorityPick.reviewKind === "exact"
+            && exactPriority.gateOpportunities.zeroTens.status === "pending");
+
+          const transferPriority = makePendingGateModel();
+          transferPriority.transferEvidence.zeroOnes = { blocksToNumber: [250, 360], unlocked: true };
+          transferPriority.reviewQueues.transfer = [{
+            id: "gate-priority-transfer", category: "zeroOnes", missedValue: 250,
+            stage: 5, dueAt: 0, postponements: 0
+          }];
+          const transferPriorityPick = chooseQuestion(transferPriority, mulberry32(905));
+          check("due free-transfer remediation outranks a due gate",
+            transferPriorityPick.reviewKind === "transfer"
+            && transferPriorityPick.layout === "free"
+            && transferPriority.gateOpportunities.zeroTens.status === "pending");
+
+          const categoryPriority = makePendingGateModel();
+          categoryPriority.reviewQueues.category = [{
+            id: "gate-priority-category", category: "zeroOnes", missedValue: 250,
+            format: "blocks-to-number", layout: "fixed", dueAt: 0, postponements: 0
+          }];
+          const categoryPriorityPick = chooseQuestion(categoryPriority, mulberry32(906));
+          check("due category remediation outranks a due gate",
+            categoryPriorityPick.reviewKind === "category"
+            && categoryPriority.gateOpportunities.zeroTens.status === "pending");
+
+          const exhaustiveCategory = createDefaultState();
+          exhaustiveCategory.settings.plan = "chosen";
+          exhaustiveCategory.settings.chosenStage = 2;
+          exhaustiveCategory.settings.format = "blocks-to-number";
+          exhaustiveCategory.aggregate.attempted = 10;
+          exhaustiveCategory.reviewQueues.category = [
+            {
+              id: "category-old-incompatible", category: "zeroOnes", missedValue: 250,
+              format: "blocks-to-number", layout: "fixed", dueAt: 0, postponements: 0
+            },
+            {
+              id: "category-later-compatible", category: "zeroTens", missedValue: 101,
+              format: "blocks-to-number", layout: "fixed", dueAt: 1, postponements: 0
+            }
+          ];
+          const exhaustiveCategoryPick = chooseQuestion(exhaustiveCategory, mulberry32(9061));
+          check("category scheduling postpones an older incompatible ticket then serves a later overdue one",
+            exhaustiveCategoryPick.reviewKind === "category"
+            && exhaustiveCategoryPick.stage === 2
+            && exhaustiveCategoryPick.transferCategory === "zeroTens"
+            && exhaustiveCategory.activeTicket.id === "category-later-compatible"
+            && exhaustiveCategory.reviewQueues.category.find((ticket) => ticket.id === "category-old-incompatible").dueAt === 12
+            && exhaustiveCategory.reviewQueues.category.find((ticket) => ticket.id === "category-old-incompatible").postponements === 0);
+
+          const exhaustiveTransfer = createDefaultState();
+          exhaustiveTransfer.settings.plan = "chosen";
+          exhaustiveTransfer.settings.chosenStage = 2;
+          exhaustiveTransfer.settings.format = "blocks-to-number";
+          exhaustiveTransfer.aggregate.attempted = 10;
+          exhaustiveTransfer.transferEvidence.zeroOnes = {
+            blocksToNumber: [250, 360], unlocked: true, probeCleared: false
+          };
+          exhaustiveTransfer.transferEvidence.zeroTens = {
+            blocksToNumber: [305, 405], unlocked: true, probeCleared: false
+          };
+          exhaustiveTransfer.reviewQueues.transfer = [
+            {
+              id: "transfer-old-incompatible", category: "zeroOnes", missedValue: 250,
+              stage: 5, dueAt: 0, postponements: 0
+            },
+            {
+              id: "transfer-later-compatible", category: "zeroTens", missedValue: 101,
+              stage: 5, dueAt: 1, postponements: 0
+            }
+          ];
+          const exhaustiveTransferPick = chooseQuestion(exhaustiveTransfer, mulberry32(9062));
+          check("transfer scheduling postpones an older incompatible ticket then serves a later overdue one",
+            exhaustiveTransferPick.reviewKind === "transfer"
+            && exhaustiveTransferPick.stage === 2
+            && exhaustiveTransferPick.transferCategory === "zeroTens"
+            && exhaustiveTransfer.activeTicket.id === "transfer-later-compatible"
+            && exhaustiveTransfer.reviewQueues.transfer.find((ticket) => ticket.id === "transfer-old-incompatible").dueAt === 12);
+
+          const allReviewTicketsIneligible = createDefaultState();
+          allReviewTicketsIneligible.settings.plan = "chosen";
+          allReviewTicketsIneligible.settings.chosenStage = 4;
+          allReviewTicketsIneligible.settings.format = "blocks-to-number";
+          allReviewTicketsIneligible.aggregate.attempted = 10;
+          allReviewTicketsIneligible.transferEvidence.zeroTens = {
+            blocksToNumber: [305, 405], unlocked: true, probeCleared: false
+          };
+          allReviewTicketsIneligible.transferEvidence.zeroOnes = {
+            blocksToNumber: [250, 360], unlocked: true, probeCleared: false
+          };
+          allReviewTicketsIneligible.transferEvidence.bothZeroTensAndOnes = {
+            blocksToNumber: [300, 500], unlocked: true, probeCleared: false
+          };
+          allReviewTicketsIneligible.reviewQueues.transfer = TRANSFER_CATEGORIES.map((category, index) => ({
+            id: `all-ineligible-transfer-${category}`,
+            category,
+            missedValue: allReviewTicketsIneligible.transferEvidence[category].blocksToNumber[0],
+            stage: 5,
+            dueAt: index,
+            postponements: 0
+          }));
+          allReviewTicketsIneligible.reviewQueues.category = [
+            "zeroTens", "zeroOnes", "bothZeroTensAndOnes"
+          ].map((category, index) => ({
+            id: `all-ineligible-category-${category}`,
+            category,
+            missedValue: 0,
+            format: "blocks-to-number",
+            layout: "fixed",
+            dueAt: index,
+            postponements: 0
+          }));
+          const allReviewTicketsIneligiblePick = chooseQuestion(allReviewTicketsIneligible, mulberry32(9063));
+          check("all-ineligible category and transfer queues postpone every due ticket once before ordinary work",
+            allReviewTicketsIneligiblePick.reviewKind === "ordinary"
+            && allReviewTicketsIneligiblePick.stage === 4
+            && allReviewTicketsIneligible.reviewQueues.transfer.every((ticket) => ticket.dueAt === 12)
+            && allReviewTicketsIneligible.reviewQueues.category.every((ticket) => ticket.dueAt === 12)
+            && allReviewTicketsIneligible.reviewQueues.category.every((ticket) => ticket.postponements === 0));
+
+          const gateAfterIncompatibleReviews = makePendingGateModel({
+            category: "zeroTens", evidenceValue: 305, completed: 10,
+            dueAt: 0, armedAt: 0, stage: 2
+          });
+          gateAfterIncompatibleReviews.transferEvidence.zeroOnes = {
+            blocksToNumber: [250, 360], unlocked: true, probeCleared: false
+          };
+          gateAfterIncompatibleReviews.reviewQueues.transfer = [{
+            id: "gate-after-transfer-skip", category: "zeroOnes", missedValue: 250,
+            stage: 5, dueAt: 0, postponements: 0
+          }];
+          gateAfterIncompatibleReviews.reviewQueues.category = [{
+            id: "gate-after-category-skip", category: "zeroOnes", missedValue: 250,
+            format: "blocks-to-number", layout: "fixed", dueAt: 0, postponements: 0
+          }];
+          const gateAfterIncompatiblePick = chooseQuestion(gateAfterIncompatibleReviews, mulberry32(9064));
+          check("gate runs only after every due category and transfer ticket proves ineligible",
+            gateAfterIncompatiblePick.reviewKind === "gate"
+            && gateAfterIncompatibleReviews.reviewQueues.transfer[0].dueAt === 12
+            && gateAfterIncompatibleReviews.reviewQueues.category[0].dueAt === 12);
+
+          const stage7CategoryPools = Object.fromEntries([
+            "bothZeroTensAndOnes", "zeroTens", "zeroOnes",
+            "multipleHundreds", "allThreeNonzero", "numberWords"
+          ].map((category) => [category, categoryCandidatesAtStage(category, 7)]));
+          check("chosen Stage 7 candidate pools are built at Stage 7 without cross-stage starvation",
+            stage7CategoryPools.bothZeroTensAndOnes.some((candidate) => candidate.value === 800 && candidate.stage === 7)
+            && stage7CategoryPools.zeroTens.some((candidate) => candidate.value === 805 && candidate.stage === 7)
+            && stage7CategoryPools.zeroOnes.some((candidate) => candidate.value === 720 && candidate.stage === 7)
+            && stage7CategoryPools.multipleHundreds.some((candidate) => candidate.value === 800 && candidate.stage === 7)
+            && stage7CategoryPools.allThreeNonzero.some((candidate) => candidate.value === 729 && candidate.stage === 7)
+            && stage7CategoryPools.numberWords.some((candidate) => candidate.value === 729 && candidate.stage === 7)
+            && categoryCandidatesAtStage("individualBlockValue", 7).length === 0);
+          for (const [index, category] of [
+            "bothZeroTensAndOnes", "zeroTens", "zeroOnes",
+            "multipleHundreds", "allThreeNonzero", "numberWords"
+          ].entries()) {
+            const stage7CategoryModel = createDefaultState();
+            stage7CategoryModel.settings.plan = "chosen";
+            stage7CategoryModel.settings.chosenStage = 7;
+            stage7CategoryModel.settings.format = "mixed";
+            stage7CategoryModel.aggregate.attempted = 10;
+            stage7CategoryModel.reviewQueues.category = [{
+              id: `stage7-category-${category}`,
+              category,
+              missedValue: 0,
+              format: category === "numberWords" ? "number-words" : "blocks-to-number",
+              layout: "fixed",
+              dueAt: 0,
+              postponements: 0
+            }];
+            const stage7CategoryPick = chooseQuestion(stage7CategoryModel, mulberry32(940 + index));
+            check(`chosen Stage 7 serves ${category} from its own domain`,
+              stage7CategoryPick.reviewKind === "category"
+              && stage7CategoryPick.stage === 7
+              && stage7CategoryPick.categories.includes(category)
+              && stage7CategoryModel.activeTicket.id === `stage7-category-${category}`);
+          }
+
+          check("a due gate outranks ordinary selection", duePick.reviewKind === "gate");
+          const retentionPriority = makePendingGateModel();
+          retentionPriority.settings.plan = "adaptive";
+          retentionPriority.stage = 5;
+          retentionPriority.stageMastery = { 1: true, 2: true, 3: true, 4: true, 5: false, 6: false, 7: false };
+          const retentionPriorityPick = chooseQuestion(retentionPriority, () => 0);
+          check("a due gate outranks an otherwise selected adaptive retention question",
+            retentionPriorityPick.reviewKind === "gate");
+
+          const stageEligibility = makePendingGateModel({
+            category: "zeroOnes", evidenceValue: 250, completed: 10, dueAt: 0, armedAt: 0, stage: 2
+          });
+          stageEligibility.transferEvidence.zeroTens = { blocksToNumber: [305], unlocked: false };
+          stageEligibility.gateOpportunities.zeroTens = {
+            status: "pending", evidenceValue: 305, armedAt: 2, dueAt: 2
+          };
+          const oldIneligibleBefore = JSON.stringify(stageEligibility.gateOpportunities.zeroOnes);
+          const eligibleBehindOld = chooseQuestion(stageEligibility, mulberry32(907));
+          check("older ineligible family stays pending and does not block an eligible family",
+            eligibleBehindOld.reviewKind === "gate"
+            && eligibleBehindOld.transferCategory === "zeroTens"
+            && JSON.stringify(stageEligibility.gateOpportunities.zeroOnes) === oldIneligibleBefore
+            && stageEligibility.gateOpportunities.zeroTens.status === "consumed");
+
+          const allIneligible = makePendingGateModel({
+            category: "zeroOnes", evidenceValue: 250, completed: 10, dueAt: 0, armedAt: 0, stage: 4
+          });
+          const allIneligibleBefore = JSON.stringify(allIneligible.gateOpportunities);
+          const allIneligiblePick = chooseQuestion(allIneligible, mulberry32(908));
+          check("an all-ineligible current stage skips gates without mutation",
+            allIneligiblePick.reviewKind !== "gate"
+            && JSON.stringify(allIneligible.gateOpportunities) === allIneligibleBefore);
+
+          const longestWaiting = makePendingGateModel({ completed: 12, dueAt: 3, armedAt: 1 });
+          longestWaiting.transferEvidence.zeroOnes = { blocksToNumber: [250], unlocked: false };
+          longestWaiting.gateOpportunities.zeroOnes = {
+            status: "pending", evidenceValue: 250, armedAt: 0, dueAt: 5
+          };
+          const longestPick = chooseQuestion(longestWaiting, mulberry32(909));
+          check("longest-waiting eligible due family is served first",
+            longestPick.reviewKind === "gate"
+            && longestPick.transferCategory === "zeroTens"
+            && longestWaiting.gateOpportunities.zeroOnes.status === "pending");
+          for (const familyCase of [
+            { category: "zeroOnes", evidenceValue: 250, stage: 3, seed: 9091 },
+            { category: "bothZeroTensAndOnes", evidenceValue: 300, stage: 5, seed: 9092 }
+          ]) {
+            const familyGateModel = makePendingGateModel({
+              ...familyCase, completed: 10, dueAt: 0, armedAt: 0
+            });
+            const familyGatePick = chooseQuestion(familyGateModel, mulberry32(familyCase.seed));
+            check(`${familyCase.category} due opportunity serves from its current-stage family`,
+              familyGatePick.reviewKind === "gate"
+              && familyGatePick.transferCategory === familyCase.category
+              && familyGatePick.value !== familyCase.evidenceValue
+              && familyGateModel.gateOpportunities[familyCase.category].status === "consumed");
+          }
+
+          const successModel = makePendingGateModel({ completed: 5, dueAt: 5, armedAt: 3 });
+          state = successModel;
+          state.activeQuestion = chooseQuestion(state, mulberry32(910));
+          state.activeAttempt = makeAttempt();
+          state.activePresentation = clone(DEFAULT_SETTINGS);
+          const servedSuccessValue = state.activeQuestion.value;
+          dom.numberAnswer.value = String(servedSuccessValue);
+          submitCurrent();
+          check("served gate success unlocks and schedules the free transfer try",
+            state.activeAttempt.outcome === "firstTry"
+            && state.transferEvidence.zeroTens.unlocked === true
+            && state.transferEvidence.zeroTens.probeCleared === false
+            && state.transferEvidence.zeroTens.blocksToNumber.includes(servedSuccessValue)
+            && state.gateOpportunities.zeroTens === null
+            && state.reviewQueues.exact.length === 0
+            && state.reviewQueues.category.length === 0
             && state.reviewQueues.transfer.some((ticket) => ticket.category === "zeroTens"));
+
+          const missModel = makePendingGateModel({ completed: 5, dueAt: 5, armedAt: 3 });
+          state = missModel;
+          state.activeQuestion = chooseQuestion(state, mulberry32(911));
+          state.activeAttempt = makeAttempt();
+          state.activePresentation = clone(DEFAULT_SETTINGS);
+          const servedMissValue = state.activeQuestion.value;
+          dom.numberAnswer.value = String(servedMissValue === 999 ? 998 : servedMissValue + 1);
+          submitCurrent();
+          dom.numberAnswer.value = String(servedMissValue);
+          submitCurrent();
+          check("served gate miss is consumed and uses ordinary remediation",
+            state.activeAttempt.outcome === "afterHelp"
+            && state.transferEvidence.zeroTens.unlocked === false
+            && JSON.stringify(state.transferEvidence.zeroTens.blocksToNumber) === JSON.stringify([305])
+            && state.gateOpportunities.zeroTens.status === "consumed"
+            && state.reviewQueues.exact.some((ticket) => ticket.value === servedMissValue)
+            && state.reviewQueues.category.length === 1);
+          const consumedReload = normalizeState(clone(state));
+          consumedReload.aggregate.attempted += 20;
+          consumedReload.reviewQueues.exact = [];
+          consumedReload.reviewQueues.category = [];
+          consumedReload.reviewQueues.transfer = [];
+          consumedReload.activeQuestion = null;
+          consumedReload.activeAttempt = null;
+          consumedReload.activePresentation = null;
+          recordTransferEvidence(consumedReload, makeQuestion({
+            id: "same-value-after-consumed", value: 305, stage: 5,
+            format: "blocks-to-number", layout: "fixed"
+          }), "firstTry");
+          const consumedReloadPick = chooseQuestion(consumedReload, mulberry32(912));
+          check("served miss never auto-rearms after reload or later completions",
+            consumedReload.gateOpportunities.zeroTens.status === "consumed"
+            && consumedReload.gateOpportunities.zeroTens.servedAt === 5
+            && consumedReloadPick.reviewKind !== "gate");
+
+          const spacingModel = makePendingGateModel({ completed: 10, dueAt: 0, armedAt: 0 });
+          spacingModel.transferEvidence.zeroOnes = { blocksToNumber: [250], unlocked: false };
+          spacingModel.gateOpportunities.zeroOnes = { status: "pending", evidenceValue: 250, armedAt: 1, dueAt: 1 };
+          spacingModel.transferEvidence.bothZeroTensAndOnes = { blocksToNumber: [300], unlocked: false };
+          spacingModel.gateOpportunities.bothZeroTensAndOnes = { status: "pending", evidenceValue: 300, armedAt: 2, dueAt: 2 };
+          state = spacingModel;
+          state.activeQuestion = chooseQuestion(state, mulberry32(913));
+          state.activeAttempt = makeAttempt();
+          state.activePresentation = clone(DEFAULT_SETTINGS);
+          dom.numberAnswer.value = String(state.activeQuestion.value);
+          submitCurrent();
+          const spacingBase = clone(state);
+          const spacingPendingBefore = JSON.stringify({
+            zeroOnes: spacingBase.gateOpportunities.zeroOnes,
+            bothZeroTensAndOnes: spacingBase.gateOpportunities.bothZeroTensAndOnes
+          });
+          const spacingPickAt = (completed, seed) => {
+            const model = clone(spacingBase);
+            model.aggregate.attempted = completed;
+            model.reviewQueues.transfer = [];
+            model.activeQuestion = null;
+            model.activeAttempt = null;
+            model.activePresentation = null;
+            return { pick: chooseQuestion(model, mulberry32(seed)), model };
+          };
+          const spacingAtCompletion = spacingPickAt(11, 914);
+          const spacingAfterOne = spacingPickAt(12, 915);
+          const spacingAfterTwo = spacingPickAt(13, 916);
+          check("global service spacing requires two completed questions after the served gate",
+            spacingBase.gateOpportunityCooldownUntil === 13
+            && spacingAtCompletion.pick.reviewKind !== "gate"
+            && spacingAfterOne.pick.reviewKind !== "gate"
+            && JSON.stringify({
+              zeroOnes: spacingAtCompletion.model.gateOpportunities.zeroOnes,
+              bothZeroTensAndOnes: spacingAtCompletion.model.gateOpportunities.bothZeroTensAndOnes
+            }) === spacingPendingBefore
+            && JSON.stringify({
+              zeroOnes: spacingAfterOne.model.gateOpportunities.zeroOnes,
+              bothZeroTensAndOnes: spacingAfterOne.model.gateOpportunities.bothZeroTensAndOnes
+            }) === spacingPendingBefore
+            && spacingAfterTwo.pick.reviewKind === "gate"
+            && spacingAfterTwo.pick.transferCategory === "zeroOnes"
+            && spacingAfterTwo.model.gateOpportunities.zeroOnes.status === "consumed"
+            && spacingAfterTwo.model.gateOpportunities.bothZeroTensAndOnes.status === "pending");
+
+          const organicDuringCooldown = makePendingGateModel({ completed: 8, dueAt: 20, armedAt: 6 });
+          organicDuringCooldown.gateOpportunityCooldownUntil = 50;
+          organicDuringCooldown.aggregate.attempted = 9;
+          recordTransferEvidence(organicDuringCooldown, makeQuestion({
+            id: "organic-during-cooldown", value: 405, stage: 5,
+            format: "blocks-to-number", layout: "fixed"
+          }), "firstTry");
+          check("organic qualifying success unlocks during the global spacing window",
+            organicDuringCooldown.transferEvidence.zeroTens.unlocked === true
+            && organicDuringCooldown.gateOpportunities.zeroTens === null
+            && organicDuringCooldown.gateOpportunityCooldownUntil === 50);
+
+          state = makePendingGateModel({ completed: 8, dueAt: 10, armedAt: 8 });
+          state.gateOpportunityCooldownUntil = 9;
+          const gateText = textSnapshot();
+          const gateTextJson = JSON.stringify(gateText);
+          check("render_game_to_text exposes concise evidence, opportunity, and cooldown state",
+            gateText.transferGates.completedQuestions === 8
+            && gateText.transferGates.cooldownUntil === 9
+            && gateText.transferGates.cooldownRemaining === 1
+            && JSON.stringify(gateText.transferGates.families.zeroTens.fixedValues) === JSON.stringify([305])
+            && gateText.transferGates.families.zeroTens.organicFreeReady === false
+            && gateText.transferGates.families.zeroTens.opportunity.status === "pending"
+            && gateText.transferGates.families.zeroTens.opportunity.dueIn === 2
+            && !Object.prototype.hasOwnProperty.call(gateText, "transferEvidence")
+            && !gateTextJson.includes("numberToPlaces"));
+
+          const freeRetestModel = createDefaultState();
+          freeRetestModel.settings.plan = "chosen";
+          freeRetestModel.settings.chosenStage = 5;
+          freeRetestModel.settings.format = "blocks-to-number";
+          freeRetestModel.transferEvidence.zeroTens = {
+            blocksToNumber: [305, 405], unlocked: true, probeCleared: false
+          };
+          freeRetestModel.reviewQueues.transfer = [{
+            id: "free-retest-success", category: "zeroTens", missedValue: 305,
+            stage: 5, dueAt: 0, postponements: 0
+          }];
+          state = freeRetestModel;
+          state.activeQuestion = chooseQuestion(state, mulberry32(917));
+          state.activeAttempt = makeAttempt();
+          state.activePresentation = clone(DEFAULT_SETTINGS);
+          const evidenceBeforeFreeRetest = JSON.stringify(state.transferEvidence.zeroTens.blocksToNumber);
+          dom.numberAnswer.value = String(state.activeQuestion.value);
+          submitCurrent();
+          check("successful free retest consumes its ticket without adding fixed evidence",
+            state.activeQuestion.layout === "free"
+            && state.activeAttempt.outcome === "firstTry"
+            && state.reviewQueues.transfer.length === 0
+            && state.transferEvidence.zeroTens.probeCleared === true
+            && transferFamilyReadyForOrganicFree(state, "zeroTens") === true
+            && JSON.stringify(state.transferEvidence.zeroTens.blocksToNumber) === evidenceBeforeFreeRetest);
 
           // The visible outer geometry uses one shared unit: cube u × u, rod u × 10u,
           // flat 10u × 10u. Compare rendered dimensions rather than CSS declarations.
@@ -4701,6 +5793,16 @@
             applyAdaptiveObservation(fiveStreak, makeQuestion({ id: `five-${index}`, value: 101 + index, stage: 2, format: "blocks-to-number" }), "firstTry");
           }
           check("no five-streak auto-promotion", fiveStreak.stage === 2 && fiveStreak.adaptiveWindow.length === 5);
+          const gateAdaptive = createDefaultState();
+          gateAdaptive.stage = 5;
+          gateAdaptive.adaptiveWindow = [true, false, true];
+          applyAdaptiveObservation(gateAdaptive, makeQuestion({
+            id: "gate-not-adaptive", value: 305, stage: 5,
+            format: "blocks-to-number", layout: "fixed", reviewKind: "gate"
+          }), "firstTry");
+          check("gate opportunities do not alter the adaptive scheduler window",
+            gateAdaptive.stage === 5
+            && JSON.stringify(gateAdaptive.adaptiveWindow) === JSON.stringify([true, false, true]));
 
           // A: phone (<=720px) block densities use exactly representable pairs so a flat is ten
           // rods and a rod is ten cubes in rendered geometry. Read the declared custom properties
@@ -4763,7 +5865,7 @@
 
           const transferFocusModel = createDefaultState();
           transferFocusModel.settings.format = "number-words";
-          transferFocusModel.transferEvidence.zeroTens = { blocksToNumber: [305], numberToPlaces: [405], unlocked: true };
+          transferFocusModel.transferEvidence.zeroTens = { blocksToNumber: [305, 405], unlocked: true };
           transferFocusModel.aggregate.attempted = 20;
           transferFocusModel.reviewQueues.transfer = [{ id: "t-zt", category: "zeroTens", missedValue: 305, stage: 5, dueAt: 0, postponements: 0 }];
           state = transferFocusModel;
@@ -4774,7 +5876,7 @@
 
           const transferBlocksModel = createDefaultState();
           transferBlocksModel.settings.format = "blocks-to-number";
-          transferBlocksModel.transferEvidence.zeroTens = { blocksToNumber: [305], numberToPlaces: [405], unlocked: true };
+          transferBlocksModel.transferEvidence.zeroTens = { blocksToNumber: [305, 405], unlocked: true };
           transferBlocksModel.aggregate.attempted = 20;
           transferBlocksModel.reviewQueues.transfer = [{ id: "t-ztb", category: "zeroTens", missedValue: 305, stage: 5, dueAt: 0, postponements: 0 }];
           state = transferBlocksModel;
@@ -4823,39 +5925,43 @@
             && hintText(40).includes("only when")
             && hintText(47).includes("only when"));
 
-          // D: malformed transfer persistence keeps only digit-matching evidence, derives unlocked
-          // from a genuine different-value pair, prunes tickets for locked categories, coerces a
-          // gateless restored free question to fixed, and discards a stale transfer question.
+          // D: malformed transfer persistence keeps only digit-matching fixed-block evidence,
+          // ignores removed-format evidence, and repairs free questions and tickets to the gate.
           const teDirty = normalizeTransferEvidence({
-            zeroTens: { blocksToNumber: [305, 250, 999], numberToPlaces: [405], unlocked: false },
-            zeroOnes: { blocksToNumber: [250], numberToPlaces: [250], unlocked: true },
-            bothZeroTensAndOnes: { blocksToNumber: [300], numberToPlaces: [500], unlocked: false }
+            zeroTens: { blocksToNumber: [305, 405, 250, 999], numberToPlaces: [505], unlocked: false },
+            zeroOnes: { blocksToNumber: [250], numberToPlaces: [360], unlocked: true },
+            bothZeroTensAndOnes: { blocksToNumber: [300], numberToPlaces: [500], unlocked: true }
           });
-          check("D transfer evidence retains only matching values and derives unlocked from a real pair",
+          check("D transfer evidence retains only valid blocks values and ignores legacy evidence",
             teDirty.zeroTens.blocksToNumber.includes(305)
+            && teDirty.zeroTens.blocksToNumber.includes(405)
             && !teDirty.zeroTens.blocksToNumber.includes(250)
             && !teDirty.zeroTens.blocksToNumber.includes(999)
             && teDirty.zeroTens.unlocked === true
             && teDirty.zeroOnes.unlocked === false
-            && teDirty.bothZeroTensAndOnes.unlocked === true,
+            && teDirty.bothZeroTensAndOnes.unlocked === false
+            && !Object.prototype.hasOwnProperty.call(teDirty.zeroTens, "numberToPlaces"),
             JSON.stringify(teDirty));
           const lockedTicketState = normalizeState({
             schemaVersion: SCHEMA_VERSION,
-            transferEvidence: { zeroTens: { blocksToNumber: [305], numberToPlaces: [305], unlocked: true } },
+            aggregate: { attempted: 12 },
+            transferEvidence: { zeroTens: { blocksToNumber: [305], numberToPlaces: [405], unlocked: true } },
             reviewQueues: { transfer: [{ id: "t-locked", category: "zeroTens", missedValue: 305, stage: 5, dueAt: 0, postponements: 0 }] },
             activeQuestion: { id: "free-nogate", value: 305, stage: 6, format: "blocks-to-number", layout: "free", reviewKind: "ordinary" },
-            activeAttempt: { phase: "asking", misses: 0, draft: { number: "", hundreds: "", tens: "", ones: "" } }
+            activeAttempt: { phase: "asking", misses: 0, draft: { number: "" } }
           });
-          check("D locked category prunes transfer ticket and coerces restored free question to fixed",
+          check("D legacy one-block family relocks, arms once, prunes ticket, and fixes free layout",
             lockedTicketState.transferEvidence.zeroTens.unlocked === false
+            && lockedTicketState.gateOpportunities.zeroTens.status === "pending"
+            && lockedTicketState.gateOpportunities.zeroTens.dueAt === 14
             && lockedTicketState.reviewQueues.transfer.length === 0
             && lockedTicketState.activeQuestion.layout === "fixed");
           const staleTransferState = normalizeState({
             schemaVersion: SCHEMA_VERSION,
-            transferEvidence: { zeroTens: { blocksToNumber: [305], numberToPlaces: [305], unlocked: true } },
+            transferEvidence: { zeroTens: { blocksToNumber: [305], numberToPlaces: [405], unlocked: true } },
             reviewQueues: { transfer: [] },
             activeQuestion: { id: "stale-transfer", value: 405, stage: 6, format: "blocks-to-number", layout: "free", reviewKind: "transfer" },
-            activeAttempt: { phase: "asking", misses: 0, draft: { number: "", hundreds: "", tens: "", ones: "" } },
+            activeAttempt: { phase: "asking", misses: 0, draft: { number: "" } },
             activeTicket: { kind: "transfer", id: "t-gone" }
           });
           check("D stale transfer question without a valid gate and ticket is discarded",
@@ -4864,10 +5970,10 @@
             && staleTransferState.activeTicket === null);
           const validTransferState = normalizeState({
             schemaVersion: SCHEMA_VERSION,
-            transferEvidence: { zeroTens: { blocksToNumber: [305], numberToPlaces: [405], unlocked: true } },
+            transferEvidence: { zeroTens: { blocksToNumber: [305, 405], unlocked: true } },
             reviewQueues: { transfer: [{ id: "t-valid", category: "zeroTens", missedValue: 205, stage: 5, dueAt: 0, postponements: 0 }] },
             activeQuestion: { id: "valid-transfer", value: 605, stage: 6, format: "blocks-to-number", layout: "free", reviewKind: "transfer" },
-            activeAttempt: { phase: "asking", misses: 0, draft: { number: "", hundreds: "", tens: "", ones: "" } },
+            activeAttempt: { phase: "asking", misses: 0, draft: { number: "" } },
             activeTicket: { kind: "transfer", id: "t-valid" }
           });
           check("D valid unlocked transfer question, ticket, and activeTicket survive normalization",
@@ -4881,11 +5987,11 @@
             phase: "asking",
             misses: 0,
             completed: false,
-            draft: { number: "", hundreds: "", tens: "", ones: "" }
+            draft: { number: "" }
           });
           const staleIdTransferState = normalizeState({
             schemaVersion: SCHEMA_VERSION,
-            transferEvidence: { zeroTens: { blocksToNumber: [305], numberToPlaces: [405], unlocked: true } },
+            transferEvidence: { zeroTens: { blocksToNumber: [305, 405], unlocked: true } },
             reviewQueues: { transfer: [{ id: "t-current", category: "zeroTens", missedValue: 205, stage: 5, dueAt: 0, postponements: 0 }] },
             activeQuestion: { id: "transfer-stale-id", value: 605, stage: 6, format: "blocks-to-number", layout: "free", reviewKind: "transfer" },
             activeAttempt: askingAttempt(),
@@ -4898,6 +6004,178 @@
             && staleIdTransferState.activeTicket === null
             && staleIdTransferState.pendingAttempt === null
             && staleIdTransferState.reviewQueues.transfer.some((ticket) => ticket.id === "t-current"));
+
+          const legacyRemovedState = normalizeState({
+            schemaVersion: SCHEMA_VERSION,
+            aggregate: { attempted: 7 },
+            settings: { ...DEFAULT_SETTINGS, format: "number-to-places" },
+            pendingSettings: { ...DEFAULT_SETTINGS, format: "number-to-places" },
+            transferEvidence: {
+              zeroTens: { blocksToNumber: [305], numberToPlaces: [405], unlocked: true }
+            },
+            reviewQueues: {
+              exact: [{ id: "legacy-places-exact", value: 305, stage: 5, format: "number-to-places", layout: "fixed", dueAt: 0 }],
+              category: [{ id: "legacy-places-category", category: "zeroTens", missedValue: 305, format: "number-to-places", layout: "fixed", dueAt: 0 }]
+            },
+            activeQuestion: { id: "legacy-places-active", value: 305, stage: 5, format: "number-to-places", layout: "fixed", reviewKind: "exact" },
+            activeAttempt: { ...askingAttempt(), draft: { number: "", hundreds: "3", tens: "0", ones: "5" } },
+            activeTicket: { kind: "exact", id: "legacy-places-exact" },
+            pendingAttempt: { questionId: "legacy-places-active", outcome: "firstTry" }
+          });
+          const legacyRemovedJson = JSON.stringify(legacyRemovedState);
+          check("D legacy removed-format settings, question, attempt, tickets, evidence, and pending write are purged",
+            legacyRemovedState.settings.format === "mixed"
+            && legacyRemovedState.pendingSettings.format === "mixed"
+            && legacyRemovedState.activeQuestion === null
+            && legacyRemovedState.activeAttempt === null
+            && legacyRemovedState.activeTicket === null
+            && legacyRemovedState.pendingAttempt === null
+            && legacyRemovedState.reviewQueues.exact.length === 0
+            && legacyRemovedState.reviewQueues.category.length === 0
+            && legacyRemovedState.transferEvidence.zeroTens.blocksToNumber.length === 1
+            && legacyRemovedState.transferEvidence.zeroTens.unlocked === false
+            && legacyRemovedState.gateOpportunities.zeroTens.status === "pending"
+            && !legacyRemovedJson.includes("number-to-places")
+            && !legacyRemovedJson.includes("numberToPlaces"));
+
+          const legacyCompletedFinal = normalizeState({
+            schemaVersion: SCHEMA_VERSION,
+            settings: DEFAULT_SETTINGS,
+            pendingSettings: { ...DEFAULT_SETTINGS, format: "number-words" },
+            pendingFreshSession: false,
+            session: {
+              id: "legacy-final-session", target: 5, completed: 5,
+              firstTry: 5, afterHelp: 0, revealed: 0, startedAt: 1, recorded: false
+            },
+            activeQuestion: { id: "legacy-final-question", value: 305, stage: 5, format: "number-to-places", layout: "fixed", reviewKind: "ordinary" },
+            activeAttempt: {
+              phase: "correct-await-next", misses: 0, completed: true, outcome: "firstTry",
+              draft: { number: "" }, feedback: "Correct.", feedbackState: "correct"
+            }
+          });
+          state = legacyCompletedFinal;
+          createQuestionIfNeeded();
+          check("D completed legacy final question reaches recorded summary without an extra question",
+            state.screen === "summary"
+            && state.session.recorded === true
+            && state.completedSessions.some((session) => session.id === "legacy-final-session")
+            && state.settings.format === "number-words"
+            && state.pendingSettings === null
+            && state.activeQuestion === null
+            && state.activeAttempt === null);
+
+          const legacyCompletedMidRestart = normalizeState({
+            schemaVersion: SCHEMA_VERSION,
+            settings: DEFAULT_SETTINGS,
+            pendingSettings: { ...DEFAULT_SETTINGS, format: "number-words", sessionLength: 5 },
+            pendingFreshSession: true,
+            session: {
+              id: "legacy-mid-session", target: 10, completed: 4,
+              firstTry: 4, afterHelp: 0, revealed: 0, startedAt: 1, recorded: false
+            },
+            activeQuestion: { id: "legacy-mid-question", value: 305, stage: 5, format: "number-to-places", layout: "fixed", reviewKind: "ordinary" },
+            activeAttempt: { phase: "correct-await-next", misses: 0, completed: true, outcome: "firstTry", draft: { number: "" } }
+          });
+          check("D completed legacy mid-session question applies deferred fresh-session settings at its boundary",
+            legacyCompletedMidRestart.screen === "practice"
+            && legacyCompletedMidRestart.settings.format === "number-words"
+            && legacyCompletedMidRestart.session.id !== "legacy-mid-session"
+            && legacyCompletedMidRestart.session.target === 5
+            && legacyCompletedMidRestart.session.completed === 0
+            && legacyCompletedMidRestart.pendingSettings === null
+            && legacyCompletedMidRestart.pendingFreshSession === false);
+
+          const restoredGateState = normalizeState({
+            schemaVersion: SCHEMA_VERSION,
+            aggregate: { attempted: 5 },
+            transferEvidence: { zeroTens: { blocksToNumber: [305], unlocked: false } },
+            gateOpportunities: {
+              zeroTens: { status: "consumed", evidenceValue: 305, armedAt: 3, dueAt: 5, servedAt: 5 }
+            },
+            gateOpportunityCooldownUntil: 8,
+            activeQuestion: { id: "restored-gate", value: 405, stage: 5, format: "blocks-to-number", layout: "fixed", reviewKind: "gate" },
+            activeAttempt: askingAttempt()
+          });
+          const staleRestoredGateState = normalizeState({
+            schemaVersion: SCHEMA_VERSION,
+            aggregate: { attempted: 5 },
+            transferEvidence: { zeroTens: { blocksToNumber: [305], unlocked: false } },
+            gateOpportunities: {
+              zeroTens: { status: "pending", evidenceValue: 305, armedAt: 3, dueAt: 5 }
+            },
+            activeQuestion: { id: "stale-restored-gate", value: 405, stage: 5, format: "blocks-to-number", layout: "fixed", reviewKind: "gate" },
+            activeAttempt: askingAttempt()
+          });
+          check("D consumed gate question restores, while an unconsumed stale gate question is discarded",
+            restoredGateState.activeQuestion && restoredGateState.activeQuestion.reviewKind === "gate"
+            && restoredGateState.gateOpportunities.zeroTens.status === "consumed"
+            && restoredGateState.gateOpportunityCooldownUntil === 8
+            && staleRestoredGateState.activeQuestion === null
+            && staleRestoredGateState.activeAttempt === null);
+
+          const malformedPendingTiming = normalizeState({
+            schemaVersion: SCHEMA_VERSION,
+            aggregate: { attempted: 10 },
+            settings: { ...DEFAULT_SETTINGS, plan: "chosen", chosenStage: 5, format: "blocks-to-number" },
+            transferEvidence: { zeroTens: { blocksToNumber: [305], unlocked: false } },
+            gateOpportunities: {
+              zeroTens: { status: "pending", evidenceValue: 305, armedAt: 9, dueAt: 9 }
+            }
+          });
+          const repairedPendingPick = chooseQuestion(malformedPendingTiming, mulberry32(930));
+          check("D pending gate timing is repaired to exactly two completions after its durable age",
+            malformedPendingTiming.gateOpportunities.zeroTens.status === "pending"
+            && malformedPendingTiming.gateOpportunities.zeroTens.armedAt === 9
+            && malformedPendingTiming.gateOpportunities.zeroTens.dueAt === 11
+            && repairedPendingPick.reviewKind !== "gate");
+
+          const malformedConsumedTiming = normalizeState({
+            schemaVersion: SCHEMA_VERSION,
+            aggregate: { attempted: 0 },
+            settings: { ...DEFAULT_SETTINGS, plan: "chosen", chosenStage: 5, format: "blocks-to-number" },
+            transferEvidence: { zeroTens: { blocksToNumber: [305], unlocked: false } },
+            gateOpportunities: {
+              zeroTens: { status: "consumed", evidenceValue: 305, armedAt: 99, dueAt: 99, servedAt: 99 }
+            },
+            gateOpportunityCooldownUntil: 999999
+          });
+          malformedConsumedTiming.aggregate.attempted = 20;
+          const malformedConsumedPick = chooseQuestion(malformedConsumedTiming, mulberry32(931));
+          check("D malformed low-counter consumption stays consumed and future cooldown is bounded",
+            malformedConsumedTiming.gateOpportunities.zeroTens.status === "consumed"
+            && malformedConsumedTiming.gateOpportunities.zeroTens.armedAt === 0
+            && malformedConsumedTiming.gateOpportunities.zeroTens.dueAt === 0
+            && malformedConsumedTiming.gateOpportunities.zeroTens.servedAt === 0
+            && malformedConsumedTiming.gateOpportunityCooldownUntil === 3
+            && malformedConsumedPick.reviewKind !== "gate");
+
+          state = normalizeState({
+            schemaVersion: SCHEMA_VERSION,
+            aggregate: { attempted: 5 },
+            settings: { ...DEFAULT_SETTINGS, plan: "chosen", chosenStage: 5, format: "blocks-to-number" },
+            transferEvidence: { zeroTens: { blocksToNumber: [305], unlocked: false } },
+            gateOpportunities: {
+              zeroTens: { status: "consumed", evidenceValue: 305, armedAt: 3, dueAt: 5, servedAt: 5 }
+            },
+            gateOpportunityCooldownUntil: 8,
+            activeQuestion: { id: "gate-crash-recovery", value: 405, stage: 5, format: "blocks-to-number", layout: "fixed", reviewKind: "gate" },
+            activeAttempt: askingAttempt(),
+            pendingAttempt: { questionId: "gate-crash-recovery", outcome: "firstTry" }
+          });
+          recoverPendingAttempt();
+          const gateRecoveryAttempted = state.aggregate.attempted;
+          recoverPendingAttempt();
+          check("D consumed gate pending-write recovery unlocks exactly once and preserves spacing",
+            gateRecoveryAttempted === 6
+            && state.aggregate.attempted === 6
+            && state.activeAttempt.completed === true
+            && state.activeAttempt.outcome === "firstTry"
+            && state.pendingAttempt === null
+            && state.transferEvidence.zeroTens.unlocked === true
+            && JSON.stringify(state.transferEvidence.zeroTens.blocksToNumber) === JSON.stringify([305, 405])
+            && state.gateOpportunities.zeroTens === null
+            && state.gateOpportunityCooldownUntil === 8
+            && state.reviewQueues.transfer.some((ticket) => ticket.category === "zeroTens"));
 
           const exactMismatchState = normalizeState({
             schemaVersion: SCHEMA_VERSION,
@@ -4946,7 +6224,7 @@
             misses,
             completed: true,
             outcome,
-            draft: { number: "", hundreds: "", tens: "", ones: "" },
+            draft: { number: "" },
             feedback: "Correct.",
             feedbackState: "correct"
           });
@@ -4966,7 +6244,7 @@
           });
           const completedTransfer = normalizeState({
             schemaVersion: SCHEMA_VERSION,
-            transferEvidence: { zeroTens: { blocksToNumber: [305], numberToPlaces: [405], unlocked: true } },
+            transferEvidence: { zeroTens: { blocksToNumber: [305, 405], unlocked: true } },
             reviewQueues: { transfer: [] },
             activeQuestion: { id: "completed-transfer", value: 605, stage: 6, format: "blocks-to-number", layout: "free", reviewKind: "transfer" },
             activeAttempt: completedAttempt("firstTry", 0),
@@ -4979,7 +6257,7 @@
 
           const completedAfterHelpTransfer = normalizeState({
             schemaVersion: SCHEMA_VERSION,
-            transferEvidence: { zeroTens: { blocksToNumber: [305], numberToPlaces: [405], unlocked: true } },
+            transferEvidence: { zeroTens: { blocksToNumber: [305, 405], unlocked: true } },
             reviewQueues: { transfer: [{ id: "transfer-rescheduled", category: "zeroTens", missedValue: 205, stage: 5, dueAt: 12, postponements: 0 }] },
             activeQuestion: { id: "completed-transfer-help", value: 605, stage: 6, format: "blocks-to-number", layout: "free", reviewKind: "transfer" },
             activeAttempt: completedAttempt("afterHelp", 1),
@@ -5039,7 +6317,7 @@
               misses,
               completed: false,
               selectedWordChoices,
-              draft: { number: "", hundreds: "", tens: "", ones: "" },
+              draft: { number: "" },
               feedback,
               feedbackState: phase === "asking" ? "neutral" : "error"
             }
@@ -5171,7 +6449,6 @@
       }
 
       dom.numberForm.addEventListener("submit", (event) => { event.preventDefault(); submitCurrent(); });
-      dom.placesForm.addEventListener("submit", (event) => { event.preventDefault(); submitCurrent(); });
       dom.next.addEventListener("click", nextQuestion);
       dom.practiceAgain.addEventListener("click", startFreshSession);
       dom.settingsButton.addEventListener("click", () => openSettings(dom.settingsButton));
@@ -5190,15 +6467,12 @@
           nextQuestion();
         }
       });
-      [dom.numberAnswer, dom.hundredsAnswer, dom.tensAnswer, dom.onesAnswer].forEach((input) => {
-        input.addEventListener("input", () => {
-          if (!state.activeAttempt || state.activeAttempt.completed) return;
-          input.value = input.value.replace(/[^0-9]/g, "").slice(0, input === dom.numberAnswer ? 3 : 1);
-          input.setAttribute("aria-invalid", "false");
-          if (input === dom.numberAnswer) state.activeAttempt.draft.number = input.value;
-          else state.activeAttempt.draft[input.name] = input.value;
-          saveState();
-        });
+      dom.numberAnswer.addEventListener("input", () => {
+        if (!state.activeAttempt || state.activeAttempt.completed) return;
+        dom.numberAnswer.value = dom.numberAnswer.value.replace(/[^0-9]/g, "").slice(0, 3);
+        dom.numberAnswer.setAttribute("aria-invalid", "false");
+        state.activeAttempt.draft.number = dom.numberAnswer.value;
+        saveState();
       });
 
       window.render_game_to_text = () => JSON.stringify(textSnapshot());
@@ -5231,10 +6505,6 @@
         submit(answer) {
           if (state.activeQuestion.format === "blocks-to-number") {
             dom.numberAnswer.value = String(answer);
-            submitCurrent();
-          } else if (state.activeQuestion.format === "number-to-places") {
-            const values = Array.isArray(answer) ? answer : [answer.hundreds, answer.tens, answer.ones];
-            [dom.hundredsAnswer.value, dom.tensAnswer.value, dom.onesAnswer.value] = values.map(String);
             submitCurrent();
           } else {
             const index = Number.isInteger(answer) && answer >= 0 && answer < state.activeQuestion.wordChoices.length
