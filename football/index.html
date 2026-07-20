@@ -4,14 +4,14 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <title>Football Math!</title>
-<link rel="apple-touch-icon" href="apple-touch-icon.png?v=1.25.0">
-<link rel="icon" type="image/png" href="apple-touch-icon.png?v=1.25.0">
+<link rel="apple-touch-icon" href="apple-touch-icon.png?v=1.26.0">
+<link rel="icon" type="image/png" href="apple-touch-icon.png?v=1.26.0">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow+Condensed:wght@600;700;800&display=swap">
-<link rel="stylesheet" href="../shared/fonts.css?v=1.25.0">
-<link rel="stylesheet" href="../shared/reset.css?v=1.25.0">
-<link rel="stylesheet" href="football.css?v=1.25.0">
+<link rel="stylesheet" href="../shared/fonts.css?v=1.26.0">
+<link rel="stylesheet" href="../shared/reset.css?v=1.26.0">
+<link rel="stylesheet" href="football.css?v=1.26.0">
 </head>
 <body>
 <div id="broadcast-shell">
@@ -42,7 +42,7 @@
       <div class="stage-head">
         <div class="stage-brand">
           <span class="stage-chip" id="stage-rivalry-label">Tobacco Road</span>
-          <span class="stage-copy">Broadcast view</span>
+          <span class="stage-copy" id="stage-mode-copy">Broadcast view</span>
         </div>
         <div id="stage-possession">Duke on offense</div>
       </div>
@@ -123,13 +123,37 @@
     <span class="ov-broadcast-badge ov-badge-info">KICKOFF</span>
     <div class="ov-title" id="ov-start-title">Football Math!</div>
     <div class="ov-sub" id="ov-start-sub">Call plays, answer math, and win the rivalry over 4 quarters.</div>
-    <fieldset class="rival-picker" id="rival-picker">
-      <legend>Choose the visiting rival</legend>
-      <div class="rival-options" id="rival-options"></div>
+    <fieldset class="play-mode-picker" id="play-mode-picker">
+      <legend>Choose how to play</legend>
+      <div class="play-mode-options">
+        <label class="play-mode-option">
+          <input type="radio" name="play-mode" value="quick" checked onchange="selectPlayMode('quick')">
+          <span><strong>Quick Game</strong><small>Choose any rival</small></span>
+        </label>
+        <label class="play-mode-option">
+          <input type="radio" name="play-mode" value="season" onchange="selectPlayMode('season')">
+          <span><strong>3-Game Season</strong><small>Play every rival</small></span>
+        </label>
+      </div>
     </fieldset>
-    <div class="rival-preview" id="rival-preview" aria-live="polite" aria-atomic="true">
-      <span class="rival-preview-matchup" id="rival-preview-matchup">DUKE VS UNC</span>
-      <span class="rival-preview-style" id="rival-preview-style">Balanced attack · ready for any down</span>
+    <div id="quick-game-panel">
+      <fieldset class="rival-picker" id="rival-picker">
+        <legend>Choose the visiting rival</legend>
+        <div class="rival-options" id="rival-options"></div>
+      </fieldset>
+      <div class="rival-preview" id="rival-preview" aria-live="polite" aria-atomic="true">
+        <span class="rival-preview-matchup" id="rival-preview-matchup">DUKE VS UNC</span>
+        <span class="rival-preview-style" id="rival-preview-style">Balanced attack · ready for any down</span>
+      </div>
+    </div>
+    <div class="season-panel" id="season-panel" hidden>
+      <div class="season-summary-head">
+        <span class="season-progress" id="season-progress">Game 1 of 3</span>
+        <span class="season-record" id="season-record">0 wins · 0 losses · 0 ties</span>
+      </div>
+      <ol class="season-rungs" id="season-rungs" aria-label="Season schedule"></ol>
+      <div class="season-next" id="season-next">First up: UNC</div>
+      <div class="season-status" id="season-status" role="status" aria-live="polite" aria-atomic="true"></div>
     </div>
     <button class="ov-btn" id="start-game-btn" type="button" onclick="startGame()">Start Game</button>
   </div>
@@ -236,21 +260,26 @@
     <div class="ov-title" id="ov-end-title">Final Score</div>
     <div class="ov-final-score" id="ov-end-score"></div>
     <div class="ov-sub" id="ov-end-sub"></div>
+    <div class="ov-end-season" id="ov-end-season" role="status" aria-live="polite" aria-atomic="true" hidden></div>
     <div class="ov-stats" id="ov-end-stats"></div>
-    <button class="ov-btn" onclick="restart()">Play Again!</button>
+    <div class="ov-end-actions">
+      <button class="ov-btn" id="ov-end-btn" onclick="handleEndPrimaryAction()">Play Again!</button>
+      <button class="ov-btn ov-btn-secondary" id="ov-end-quick-btn" onclick="restart('quick')" hidden>Play Quick Game</button>
+    </div>
   </div>
 </div>
 
-<script src="copy.js?v=1.25.0"></script>
-<script src="learning.js?v=1.25.0"></script>
-<script src="stats.js?v=1.25.0"></script>
-<script src="opponent.js?v=1.25.0"></script>
-<script src="football-domain.js?v=1.25.0"></script>
-<script src="contextual-questions.js?v=1.25.0"></script>
-<script src="football.js?v=1.25.0"></script>
+<script src="copy.js?v=1.26.0"></script>
+<script src="learning.js?v=1.26.0"></script>
+<script src="stats.js?v=1.26.0"></script>
+<script src="opponent.js?v=1.26.0"></script>
+<script src="season.js?v=1.26.0"></script>
+<script src="football-domain.js?v=1.26.0"></script>
+<script src="contextual-questions.js?v=1.26.0"></script>
+<script src="football.js?v=1.26.0"></script>
 <script>
   document.getElementById('version-display').textContent = `v${GAME_VERSION}`;
 </script>
-<script src="../shared/updater.js?v=1.25.0"></script>
+<script src="../shared/updater.js?v=1.26.0"></script>
 </body>
 </html>

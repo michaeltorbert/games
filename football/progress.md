@@ -395,3 +395,240 @@ remain a truthful record of intermediate runs.
 - These checks belong to this later documentation/test safeguard patch, not the
   earlier issue #23 implementation review. No other model or Fable re-reviewed
   this patch, and no five-model consensus is claimed.
+
+---
+
+Original prompt: Implement Football issue #30 as v1.26.0 with one browser-local fixed three-game UNC, NC State, and Wake Forest season ladder; preserve Quick Game; make season persistence locked, strict, retryable, and concurrency-safe; settle only from the authoritative final production play; add child-facing start/final recovery UI; and ship complete domain, browser, six-device, release, architecture, and progress coverage without committing or publishing.
+
+## Football v1.26.0 issue #30 three-game season ladder
+
+- Added the DOM-free frozen `season.js` authority after `opponent.js`. It owns
+  strict inner-schema-1 validation and derivation for one fixed three-rival
+  season, callback-time fresh reads under a dedicated exclusive Web Lock,
+  first-writer rung semantics, in-tab serialization, one immutable pending
+  mutation, storage-event conflict refresh, and read-only malformed/future
+  recovery behavior. It consumes no football, scheduler, or presentation RNG.
+- Kept the live scheduled-game binding outside canonical game, learning, stats,
+  opponent, and football-domain state. Quick Game remains the existing rival
+  picker and never writes, replaces, or clears season bytes. Abandoned games
+  leave the durable rung open and receive a new live game ID after reload.
+- Reused the start and final overlays for accessible 44pt Quick Game / 3-Game
+  Season controls, the compact three-rung schedule and worded W-L-T record,
+  public next-rival and save status, explicit fresh/new flows, and the degraded
+  Retry Saving / Play Quick Game final. Hidden panels leave keyboard order and
+  all six required device states remain above the fold.
+- Season settlement originates only after `commitPendingResolution()` newly
+  finalizes the last Q4 possession, after stats and result-event work and before
+  delayed presentation. A touchdown and its overlay store nothing; its later
+  conversion settles once. Terminal punts and field goals use the same path,
+  while final overlays, routing helpers, legacy seams, boot modes, and repeated
+  presentation calls settle nothing.
+- Added sanitized semantic season diagnostics containing only mode, game
+  number, rung statuses, W-L-T, next public rival ID, completion, and save
+  state. Raw storage/errors, season IDs, pending payloads, prompts/answers,
+  private opponent plans, and hidden scheduler state remain excluded.
+- Added 12 DOM-free season/store checks and 6 primary production-browser checks
+  covering every W-L-T ordering, strict/future data, exact byte preservation,
+  lock absence/failure, same-tab queues, concurrent starts/slots, one pending
+  create/result, reload, retry/conflict, Quick Game byte isolation, scheduled
+  rivals, abandoned games, completed/new/fresh UI, privacy, focus, and exact
+  touchdown-conversion and terminal-punt settlement timing.
+- Added four release artifacts—Season start, saved final, completed, and
+  pending—to every configured device project and extended the artifact gate to
+  252 PNGs. The prescribed browser client separately rendered the Season start
+  and ordinary gameplay states with matching `render_game_to_text()` output and
+  no console/page errors; visual inspection caught and closed its 1280x720
+  short-landscape CTA clipping before the final gate.
+- Synchronized `GAME_VERSION`, all 14 Football cache/icon URLs, the portal
+  registry, version manifest, load-order/settlement documentation, tests, and
+  artifact manifest at v1.26.0.
+- Writer verification passed: `node --test --test-timeout=5000
+  tests/football-season-domain.spec.mjs` (12/12), the primary new browser suite
+  (6/6), all six new release-state cases (6/6), `npm run test:registry` (4/4),
+  and `npm run test:football` (18/18). The final authoritative
+  `npm run test:football:release` passed 100/100 DOM-free checks, 277 Playwright
+  passes, 455 intentional project-scope skips, and 252/252 verified screenshots
+  across all six projects.
+- No implementation TODO remains. Independent Opus review and all commit,
+  push, PR, merge, deployment, and live-version work remain orchestrator-owned;
+  this writer made no GitHub write and claims no model consensus.
+
+---
+
+## Football v1.26.0 issue #30 review-finding closure
+
+This append-only entry supersedes the season-test counts and completion claim
+in the preceding issue #30 entry. It records the exact fixes made after the
+first independent Opus review; release and cache surfaces remain v1.26.0.
+
+- Tightened season timestamps to exact canonical `Date#toISOString()` strings.
+  Parser-permissive values such as `"1"` and normalized impossible dates now
+  remain corrupt and byte-for-byte untouched until an explicit Fresh Season.
+- Added locked two-tab Fresh Season and New Season races. The first durable
+  reset wins, the other tab resumes it, and exactly one replacement write is
+  made. Added cross-rung game-ID reuse and stale-season binding conflicts with
+  exact durable-byte, write-count, and rung-state assertions.
+- Covered degraded `getItem()` behavior and pending results that encounter
+  malformed or future storage. Season play stays disabled without a write,
+  Quick Game remains usable, and incompatible bytes plus the immutable pending
+  result stay intact across storage refresh and Retry Saving.
+- Added child-facing incompatible-save explanations, a pending-only compact
+  final layout, a guarded single retry action, and keyboard focus-loop coverage
+  for Retry Saving and Play Quick Game. The first browser pass exposed the
+  longer message pushing the retry control below the iPad landscape viewport;
+  concise honest copy and the scoped compact layout closed that issue.
+- Replaced the Quick Game presentation-only byte check with a real terminal
+  punt through production handlers. Added final-game player PAT/two-point and
+  opponent PAT/two-point touchdown-conversion paths with exact final scores,
+  no pre-conversion settlement, one result write, and repeated-presentation
+  idempotence retained.
+- Corrected the manual release-artifact statement from the stale 228-image
+  count to the current 252-image gate.
+- Final writer evidence: 17/17 season domain checks; 9/9 primary season
+  lifecycle checks; 15/15 primary accessibility, copy, and rival checks; and a
+  fresh `npm run test:football:release` with 105/105 DOM-free checks, 280
+  Playwright passes, 470 intentional project-scope skips, and 252/252 verified
+  screenshots across all six projects. The iPad 11 landscape pending-final,
+  iPhone 15 portrait pending-final, and iPad 11 landscape completed-season
+  artifacts were visually inspected with both recovery controls and all season
+  content fully in frame.
+- A fresh exact-artifact Opus re-review, plus every commit, push, PR, merge,
+  deployment, and live-version action, remains orchestrator-owned. This writer
+  performed no GitHub write and claims no consensus.
+
+---
+
+## Football v1.26.0 issue #30 second review-finding closure
+
+This append-only entry supersedes only the browser-test count and final-review
+readiness claim in the preceding review-finding closure. Release and cache
+surfaces remain v1.26.0.
+
+- Revalidated live session authority after every awaited Season create, Fresh
+  Season, or New Season lock callback. If a child starts Quick Game while the
+  Season callback is queued, the durable Season write may finish, but the
+  queued request can no longer replace the active Quick Game.
+- Replaced invented `Game 1` progress for malformed, future, or unreadable
+  Season data with the neutral `Season unavailable` heading. Known missing and
+  retryable creation states continue to say `Game 1 of 3`.
+- Added a production-browser race using the real Web Locks API: it holds the
+  Season lock, queues Start Season, starts Quick Game, releases the lock, drives
+  a real terminal Quick Game punt, and proves both Quick Game authority and
+  exact Season-byte isolation. Pending incompatible finals now also prove that
+  Play Quick Game preserves the immutable pending result until the child
+  returns to Season recovery.
+- The prescribed browser client rendered a clean Season start with semantic
+  state matching the visual (`Game 1`, `next/open/open`, UNC next, saved) and no
+  console/page error artifact. The canonical iPad 11 landscape and iPhone 15
+  portrait Season-start frames were visually inspected with every rung and the
+  Start Season control fully in frame.
+- Final writer evidence: 17/17 Season domain checks; 4/4 targeted R2 browser
+  scenarios; 18/18 primary Season, accessibility, and copy checks; and a fresh
+  `npm run test:football:release` with 105/105 DOM-free checks, 281 Playwright
+  passes, 475 intentional project-scope skips, and 252/252 verified screenshots
+  across all six projects.
+- The existing explicit Retry Saving then Play Game flow remains intentionally
+  two-step, and the existing real terminal-punt regression already proves
+  Game 1 advances to Game 2. Exact-artifact independent re-review, plus every
+  commit, push, PR, merge, deployment, and live-version action, remains
+  orchestrator-owned. This writer performed no GitHub write and claims no
+  consensus.
+
+---
+
+## Football v1.26.0 issue #30 final Fable follow-up
+
+- Added the read-only boolean `hasExactSavedResult()` Season authority. It
+  validates the supported durable store against the exact season, slot, rival,
+  live game ID, and both final scores without writing, consuming RNG, changing
+  pending state, or exposing private persistence facts.
+- Final-overlay success copy now requires that exact durable attestation,
+  including the completed-season branch. Pending and live-conflict recovery
+  remain unchanged; a binding mismatch, invalid/blocked settlement, competing
+  result, or retired conflict notice instead says that this game’s result could
+  not be confirmed and returns the child to the authoritative saved Season.
+- Added DOM-free rejection coverage for different games, scores, rivals,
+  seasons, slots, open/missing storage, malformed/future data, and unavailable
+  reads with exact byte, zero-write, and zero-RNG assertions. Production browser
+  coverage closes a real terminal Q4 punt with a mismatched live game ID and
+  proves a competing Game 3 result cannot attest the local final after its
+  conflict notice clears; presentation-only helpers still settle nothing.
+- Recorded the durable migration boundary: changing rival IDs,
+  `FOOTBALL_OPPONENT.RIVAL_ORDER`, or the three-game schedule requires an
+  intentional schema/format migration decision and must never silently remap or
+  invalidate saved seasons.
+- Added the unconfirmed-final release artifact to all six device projects and
+  raised the exact gate to 258 PNGs. The regenerated iPad 11 landscape and
+  iPhone 15 portrait frames were visually inspected with honest copy, complete
+  stats, and the Continue Season action fully in frame. The prescribed browser
+  client also rendered ordinary Quick Game play with matching semantic state
+  and no console/page error artifact.
+- Final writer evidence: 18/18 Season domain checks; 11/11 primary Season
+  lifecycle checks; 13/13 directly affected release, accessibility, and copy
+  checks; and `npm run test:football:release` with 106/106 DOM-free checks, 282
+  Playwright passes, 480 intentional project-scope skips, and 258/258 verified
+  screenshots across all six projects.
+- Pinned Opus review and the four-seat current-artifact reconciliation remain
+  orchestrator-owned. This writer made no GitHub write and claims no consensus.
+
+---
+
+## Football v1.26.0 issue #30 Opus copy-precision follow-up
+
+- Replaced the ambiguous unconfirmed-final sentence with the exact causal copy:
+  `This game’s Season result could not be confirmed. This device’s saved Season
+  is unchanged by this game.` Pending, conflict, exact-saved, completion,
+  action, focus, privacy, and no-write behavior remain unchanged.
+- Extended the real competing-Game-3 browser regression through the harder
+  replacement case. A second tab now saves the competing final, starts a new
+  Season while the local final overlay remains open, and creates the new
+  durable Game 1. The local overlay never claims its Game 3 was saved or the
+  Season was completed; Continue Season returns to that new Game 1 without
+  overwriting it or resurrecting the completed Season.
+- Tightened the binding-mismatch, competing-tab, and release assertions to the
+  exact causal sentence. Regenerated all six canonical
+  `29-season-unconfirmed` artifacts and visually inspected iPad 11 landscape
+  and iPhone 15 portrait; the longer copy and Continue Season action remain
+  fully in frame.
+- The prescribed browser client rendered ordinary Quick Game play with
+  matching semantic state and no console/page error artifact. Final writer
+  evidence remains 18/18 Season domain checks, 11/11 primary Season lifecycle
+  checks, 13/13 directly affected release/accessibility/copy checks, the
+  additional iPhone 15 release scenario, and a fresh
+  `npm run test:football:release` with 106/106 DOM-free checks, 282 Playwright
+  passes, 480 intentional project-scope skips, and 258/258 verified screenshots
+  across all six projects.
+- Exact-artifact independent review and reconciliation remain
+  orchestrator-owned. This writer made no GitHub write and claims no consensus.
+
+---
+
+## Football v1.26.0 issue #30 SOL-FINAL-01 phone recovery closure
+
+- Added a pending-result-only compact final-overlay layout for phone widths.
+  The final heading stays on one line, spacing and type scale down without
+  removing content, and Retry Saving plus Play Quick Game share the action row
+  as two independently focusable touch targets of at least `44x44`. Normal
+  finals and every non-phone layout remain unchanged.
+- Added production-shaped iPhone 15 and iPhone 17 Pro Max coverage that starts
+  a real Season game, drives a terminal fourth-down punt through its correct
+  instructional answer, blocks the result write, then installs corrupt and
+  future-version durable bytes through storage events. Both states retain the
+  exact warning and recovery copy, the immutable pending result, and both
+  actions while asserting viewport, overlay-card, internal-content, and touch
+  target bounds.
+- Added canonical `30-season-pending-corrupt` and
+  `31-season-pending-future` screenshots to both phone projects. The artifact
+  verifier and manual now describe the heterogeneous 262-image gate: 43 shared
+  states across six projects plus two recovery states on two phones.
+- Visually inspected all four regenerated recovery frames at `393x852` and
+  `440x956`; every line of truthful copy, all stats and Coach Report content,
+  and both recovery controls are visible without clipping. The prescribed
+  browser client also rendered ordinary production play with matching semantic
+  state and no console/page error artifact.
+- Final writer evidence: 2/2 focused phone recovery scenarios; 12/12 complete
+  phone release-matrix scenarios; and `npm run test:football:release` with
+  106/106 DOM-free checks, 284 Playwright passes, 484 intentional project-scope
+  skips, and 262/262 verified screenshots across all six projects.
+- Exact-artifact independent review and reconciliation remain
+  orchestrator-owned. This writer made no GitHub write and claims no consensus.

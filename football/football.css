@@ -2182,6 +2182,7 @@ body::after {
 #ov-start .overlay-card {
   justify-content: center;
   min-height: min(82vh, 680px);
+  padding: 48px 62px 44px 82px;
 }
 
 #ov-start .ov-title {
@@ -2193,6 +2194,7 @@ body::after {
   max-width: 38ch;
 }
 
+.play-mode-picker,
 .rival-picker {
   width: 100%;
   margin: 22px 0 0;
@@ -2200,6 +2202,7 @@ body::after {
   border: 0;
 }
 
+.play-mode-picker legend,
 .rival-picker legend {
   margin-bottom: 10px;
   color: var(--muted-soft);
@@ -2208,6 +2211,184 @@ body::after {
   font-weight: 800;
   letter-spacing: 0.12em;
   text-transform: uppercase;
+}
+
+.play-mode-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  max-width: 620px;
+}
+
+.play-mode-option {
+  min-width: 0;
+  min-height: 58px;
+  display: grid;
+  grid-template-columns: 26px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  padding: 8px 13px;
+  border: 2px solid rgba(255, 255, 255, 0.18);
+  border-radius: 15px;
+  background: rgba(255, 255, 255, 0.055);
+  cursor: pointer;
+  font-family: 'Barlow Condensed', 'Nunito', sans-serif;
+}
+
+.play-mode-option:has(input:checked) {
+  border-color: var(--gold);
+  background: rgba(255, 215, 0, 0.12);
+  box-shadow: inset 5px 0 0 var(--gold);
+}
+
+.play-mode-option:focus-within {
+  outline: 3px solid #fff;
+  outline-offset: 2px;
+}
+
+.play-mode-option input {
+  width: 23px;
+  height: 23px;
+  margin: 0;
+  accent-color: var(--gold);
+}
+
+.play-mode-option span {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.play-mode-option strong {
+  color: #fff;
+  font-size: 21px;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.play-mode-option small {
+  margin-top: 3px;
+  color: #cdd8ea;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+#quick-game-panel[hidden],
+.season-panel[hidden],
+.ov-btn[hidden] {
+  display: none;
+}
+
+.season-panel {
+  width: 100%;
+  max-width: 760px;
+  margin-top: 18px;
+  font-family: 'Barlow Condensed', 'Nunito', sans-serif;
+}
+
+.season-summary-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.season-progress {
+  color: var(--gold);
+  font-size: 24px;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.season-record {
+  color: #eef4ff;
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.season-rungs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 9px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.season-rung {
+  min-width: 0;
+  min-height: 66px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 9px;
+  padding: 9px 11px;
+  border: 2px solid rgba(255, 255, 255, 0.16);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.055);
+}
+
+.season-rung[data-status="next"],
+.season-rung[data-status="pending"] {
+  border-color: var(--gold);
+  background: rgba(255, 215, 0, 0.1);
+}
+
+.season-rung[data-status="win"] { border-color: #7ee2a8; }
+.season-rung[data-status="loss"] { border-color: #ff9f9f; }
+.season-rung[data-status="tie"] { border-color: #9ec9ff; }
+
+.season-rung-number {
+  width: 30px;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.13);
+  color: #fff;
+  font-size: 18px;
+  font-weight: 900;
+}
+
+.season-rung-copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.season-rung-team {
+  overflow-wrap: anywhere;
+  color: #fff;
+  font-size: 18px;
+  font-weight: 900;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.season-rung-result {
+  margin-top: 3px;
+  color: #cdd8ea;
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.season-next,
+.season-status {
+  margin-top: 9px;
+  color: #eef4ff;
+  font-size: 17px;
+  font-weight: 800;
+  line-height: 1.1;
+}
+
+.season-status {
+  min-height: 19px;
+  color: #ffd98a;
 }
 
 .rival-options {
@@ -2353,6 +2534,41 @@ body::after {
   margin-top: 20px;
 }
 
+.ov-end-season {
+  width: fit-content;
+  max-width: 100%;
+  margin-top: 12px;
+  padding: 8px 13px;
+  border-left: 5px solid var(--gold);
+  background: rgba(255, 255, 255, 0.07);
+  color: #eef4ff;
+  font-family: 'Barlow Condensed', 'Nunito', sans-serif;
+  font-size: 20px;
+  font-weight: 800;
+  line-height: 1.08;
+}
+
+.ov-end-season[hidden] {
+  display: none;
+}
+
+.ov-end-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.ov-end-actions .ov-btn {
+  margin-top: 24px;
+}
+
+.ov-btn-secondary {
+  background: rgba(255, 255, 255, 0.12);
+  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.42);
+  color: #fff;
+}
+
 .ov-stats-title {
   color: var(--gold);
   font-family: 'Bebas Neue', 'Barlow Condensed', sans-serif;
@@ -2435,6 +2651,63 @@ body::after {
 }
 
 @media (max-height: 760px) and (min-width: 700px) {
+  #ov-start .overlay-card {
+    min-height: 0;
+    padding: 24px 48px 22px 68px;
+  }
+
+  #ov-start .ov-title {
+    margin-top: 10px;
+    font-size: 64px;
+  }
+
+  #ov-start .ov-sub {
+    margin-top: 7px;
+    font-size: 22px;
+  }
+
+  #ov-start .play-mode-picker,
+  #ov-start .rival-picker {
+    margin-top: 10px;
+  }
+
+  #ov-start .play-mode-picker legend,
+  #ov-start .rival-picker legend {
+    margin-bottom: 5px;
+    font-size: 14px;
+  }
+
+  #ov-start .play-mode-option {
+    min-height: 48px;
+    padding: 6px 10px;
+  }
+
+  #ov-start .play-mode-option strong { font-size: 18px; }
+  #ov-start .play-mode-option small { font-size: 12px; }
+
+  #ov-start .season-panel { margin-top: 9px; }
+  #ov-start .season-rungs { margin-top: 6px; }
+  #ov-start .season-rung {
+    min-height: 52px;
+    padding: 6px 8px;
+  }
+  #ov-start .season-next,
+  #ov-start .season-status { margin-top: 5px; }
+
+  #ov-start .rival-option {
+    min-height: 58px;
+    padding: 7px 10px;
+  }
+
+  #ov-start .rival-preview { margin-top: 6px; }
+
+  #ov-start .ov-btn {
+    min-height: 44px;
+    margin-top: 10px;
+    padding: 11px 24px 9px;
+    font-size: 28px;
+  }
+
   #ov-end .overlay-card {
     min-height: 0;
     padding: 28px 48px 24px 68px;
@@ -2459,6 +2732,12 @@ body::after {
     margin-top: 12px;
   }
 
+  #ov-end .ov-end-season {
+    margin-top: 8px;
+    padding: 6px 10px;
+    font-size: 17px;
+  }
+
   #ov-end .ov-stats-title {
     font-size: 28px;
   }
@@ -2475,6 +2754,27 @@ body::after {
     margin-top: 14px;
     padding: 13px 24px 11px;
     font-size: 30px;
+  }
+}
+
+@media (max-height: 820px) and (min-width: 700px) {
+  #ov-end.season-save-pending .ov-stats {
+    gap: 8px;
+    margin-top: 12px;
+  }
+
+  #ov-end.season-save-pending .ov-end-season {
+    margin-top: 6px;
+    padding: 6px 10px;
+    font-size: 17px;
+  }
+
+  #ov-end.season-save-pending .ov-coach-report {
+    gap: 8px;
+  }
+
+  #ov-end.season-save-pending .ov-end-actions .ov-btn {
+    margin-top: 12px;
   }
 }
 
@@ -3434,14 +3734,41 @@ body::after {
     font-size: 17px;
   }
 
+  .play-mode-picker,
   .rival-picker {
     margin-top: 12px;
   }
 
+  .play-mode-picker legend,
   .rival-picker legend {
     margin-bottom: 6px;
     font-size: 13px;
   }
+
+  .play-mode-option {
+    min-height: 48px;
+    padding: 6px 9px;
+  }
+
+  .play-mode-option strong { font-size: 17px; }
+  .play-mode-option small { font-size: 11px; }
+
+  .season-panel { margin-top: 11px; }
+  .season-progress { font-size: 19px; }
+  .season-record { font-size: 14px; }
+  .season-rungs { gap: 5px; margin-top: 7px; }
+  .season-rung {
+    min-height: 57px;
+    grid-template-columns: 25px minmax(0, 1fr);
+    gap: 6px;
+    padding: 6px 7px;
+    border-radius: 11px;
+  }
+  .season-rung-number { width: 25px; height: 25px; font-size: 15px; }
+  .season-rung-team { font-size: 15px; }
+  .season-rung-result { font-size: 11px; }
+  .season-next,
+  .season-status { margin-top: 6px; font-size: 14px; }
 
   .rival-options {
     grid-template-columns: 1fr;
@@ -3490,6 +3817,8 @@ body::after {
     padding: 11px 22px 9px;
     font-size: 25px;
   }
+
+  .ov-end-actions .ov-btn { margin-top: 12px; }
 
   .overlay-card::after {
     width: 20px;
@@ -3702,6 +4031,100 @@ body::after {
 
   .ov-final-score {
     font-size: clamp(68px, 20vw, 110px);
+  }
+
+  #ov-end.season-save-pending {
+    padding: 8px;
+  }
+
+  #ov-end.season-save-pending .overlay-card {
+    min-height: 0;
+    padding: 20px 16px 18px 40px;
+  }
+
+  #ov-end.season-save-pending .ov-broadcast-badge {
+    padding: 6px 12px;
+    font-size: 13px;
+  }
+
+  #ov-end.season-save-pending .ov-title {
+    max-width: none;
+    margin-top: 8px;
+    font-size: 50px;
+  }
+
+  #ov-end.season-save-pending .ov-final-score {
+    margin-top: 4px;
+    font-size: 68px;
+  }
+
+  #ov-end.season-save-pending .ov-sub {
+    max-width: none;
+    margin-top: 6px;
+    font-size: 17px;
+    line-height: 1.05;
+  }
+
+  #ov-end.season-save-pending .ov-end-season {
+    margin-top: 6px;
+    padding: 6px 8px;
+    border-left-width: 4px;
+    font-size: 17px;
+    line-height: 1.04;
+  }
+
+  #ov-end.season-save-pending .ov-stats {
+    gap: 8px;
+    margin-top: 10px;
+  }
+
+  #ov-end.season-save-pending .ov-stats-title {
+    font-size: 24px;
+  }
+
+  #ov-end.season-save-pending .ov-stats-grid {
+    gap: 8px;
+  }
+
+  #ov-end.season-save-pending .ov-stat {
+    gap: 4px;
+    padding: 8px 6px 7px;
+  }
+
+  #ov-end.season-save-pending .ov-stat-value {
+    font-size: 28px;
+  }
+
+  #ov-end.season-save-pending .ov-stat-label {
+    font-size: 12px;
+  }
+
+  #ov-end.season-save-pending .ov-coach-report {
+    gap: 6px;
+  }
+
+  #ov-end.season-save-pending .ov-coach-row {
+    gap: 8px;
+    padding: 6px 8px;
+  }
+
+  #ov-end.season-save-pending .ov-coach-label {
+    font-size: 12px;
+  }
+
+  #ov-end.season-save-pending .ov-coach-value {
+    font-size: 14px;
+  }
+
+  #ov-end.season-save-pending .ov-end-actions {
+    gap: 6px;
+  }
+
+  #ov-end.season-save-pending .ov-end-actions .ov-btn {
+    min-height: 44px;
+    margin-top: 8px;
+    padding: 11px 18px 9px;
+    font-size: 22px;
   }
 
   .ov-sb-team { font-size: 18px; }

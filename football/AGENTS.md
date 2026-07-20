@@ -117,6 +117,40 @@ repository-level `AGENTS.md`.
   state may expose only the visible opponent look/tendency; the planned call is
   restricted to the private frozen snapshot and narrow test seams.
 
+## Three-Game Season
+
+- `season.js` is the sole authority for `footballMathSeason:v1` (inner schema
+  1). It snapshots the three public rivals in `FOOTBALL_OPPONENT.RIVAL_ORDER`
+  and stores one current season plus only the contiguous raw score results.
+  Outcome labels, record, next rival, and completion are derived views.
+- Changing rival IDs, `FOOTBALL_OPPONENT.RIVAL_ORDER`, or the three-game Season
+  schedule is a persistence migration. Make an intentional schema/format
+  migration decision; never silently invalidate or remap existing saved
+  seasons.
+- Reads never initialize, repair, migrate, or otherwise write. Malformed
+  supported data requires explicit **Start Fresh Season**; a numeric future
+  schema remains byte-for-byte untouched and disables only Season play.
+- Every create, reset, new-season, or result mutation serializes in-tab and
+  acquires the dedicated origin-wide exclusive Web Lock. The lock callback
+  freshly reads storage, applies first-writer slot semantics, and performs at
+  most one synchronous `localStorage.setItem`. Never add an unlocked fallback.
+- Retain at most one immutable in-memory pending mutation. Creation/reset must
+  save before a scheduled game starts. A failed final result blocks the next
+  season game and offers Retry Saving or Quick Game; reload intentionally loses
+  that pending memory and reopens the durable rung with a new live game ID.
+- Keep the frozen live binding `{seasonId, gameNumber, rivalId, gameId}` outside
+  `createGameState()`, learning, stats, opponent planning, and football-domain
+  state. Quick Games must never write, replace, or clear the season.
+- Only `commitPendingResolution()` may originate settlement, after it newly
+  closes the last Q4 possession, finalizes stats, and dispatches the result
+  event, but before delayed final presentation. A touchdown waits for its
+  separate conversion. `showGameOver()`, routing, legacy release seams, boot
+  modes, and presentation-only test helpers settle nothing.
+- Public semantic output may expose only play mode, game number, rung statuses,
+  worded W-L-T counts, next public rival ID, completion, and save state. Do not
+  expose season IDs, pending payloads, raw storage/errors, prompts/answers,
+  private opponent plans, or scheduler state.
+
 ## Play-History Semantics
 
 - Keep the storage key `footballMathStats:v1`, but write only inner schema 3.

@@ -4,6 +4,14 @@ import path from 'node:path';
 
 const EPS = 1;
 const pageErrors = new WeakMap();
+const PHONE_PROJECTS = new Set(['iphone-15-portrait', 'iphone-17-pro-max-portrait']);
+
+function phonesOnly(testInfo) {
+  test.skip(
+    !PHONE_PROJECTS.has(testInfo.project.name),
+    'Pending-result recovery layouts are canonical on the two phone targets.',
+  );
+}
 
 function watchErrors(page) {
   const errors = [];
@@ -78,6 +86,28 @@ async function assertViewport(page, label) {
   return metrics;
 }
 
+async function assertVisibleOverlayCardBounds(page, label) {
+  const metrics = await assertViewport(page, label);
+  const card = await page.locator('.overlay.show .overlay-card').evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    return {
+      top: rect.top,
+      left: rect.left,
+      right: rect.right,
+      bottom: rect.bottom,
+      clientHeight: element.clientHeight,
+      scrollHeight: element.scrollHeight,
+    };
+  });
+  expect(card.top, `${label}: card clipped above viewport`).toBeGreaterThanOrEqual(-EPS);
+  expect(card.left, `${label}: card clipped left of viewport`).toBeGreaterThanOrEqual(-EPS);
+  expect(card.right, `${label}: card clipped right of viewport`).toBeLessThanOrEqual(metrics.width + EPS);
+  expect(card.bottom, `${label}: card below viewport`).toBeLessThanOrEqual(metrics.height + EPS);
+  expect(card.scrollHeight, `${label}: card content clipped internally`)
+    .toBeLessThanOrEqual(card.clientHeight + EPS);
+  return { ...metrics, card };
+}
+
 async function assertPhaseAndShot(page, testInfo, phase, label) {
   await expect(page.locator('#ui-desk')).toHaveAttribute('data-phase', phase);
   expect((await renderedState(page)).mode, `${label}: rendered phase`).toBe(phase);
@@ -90,13 +120,13 @@ async function assertOverlay(page, testInfo, id, phase, label) {
   const overlay = page.locator(`#${id}`);
   await expect(overlay).toHaveClass(/show/);
   await expect(overlay).toHaveAttribute('aria-hidden', 'false');
-  await expect(overlay.locator('.ov-btn')).toBeVisible();
+  await expect(overlay.locator('.ov-btn:visible').first()).toBeVisible();
   expect((await renderedState(page)).mode, `${label}: rendered phase`).toBe(phase);
   if (id === 'ov-quarter' || id === 'ov-halftime') {
     await page.waitForTimeout(950);
   }
   const metrics = await assertViewport(page, label);
-  const cta = await overlay.locator('.ov-btn').boundingBox();
+  const cta = await overlay.locator('.ov-btn:visible').first().boundingBox();
   expect(cta.y + cta.height, `${label}: CTA below fold`).toBeLessThanOrEqual(metrics.height + EPS);
   await shot(page, testInfo, label);
 }
@@ -593,6 +623,184 @@ test('fourth-down and special-team states preserve decision and normal-call cont
   await expect(page.locator('#decision-grid .decision-btn')).toHaveCount(0);
   await expect(page.locator('#defense-read')).toBeVisible();
   await assertPhaseAndShot(page, testInfo, 'call', '24-defense-fourth-down-go-call');
+});
+
+test('season start, saved final, completed, and pending states remain compact', async ({ page }, testInfo) => {
+  const schedule = ['unc', 'nc-state', 'wake-forest'];
+  const result = (gameNumber, playerScore, opponentScore) => ({
+    gameNumber,
+    gameId: `release-season-game-${gameNumber}`,
+    rivalId: schedule[gameNumber - 1],
+    playerScore,
+    opponentScore,
+    completedAt: `2026-07-${String(18 + gameNumber).padStart(2, '0')}T12:00:00.000Z`,
+  });
+  const store = (results, seasonId) => JSON.stringify({
+    schemaVersion: 1,
+    currentSeason: {
+      seasonId,
+      formatId: 'three-rival-schedule-v1',
+      playerId: 'duke',
+      createdAt: '2026-07-19T12:00:00.000Z',
+      schedule,
+      results,
+    },
+  });
+
+  await page.goto('/football/');
+  await page.evaluate((key) => localStorage.removeItem(key), 'footballMathSeason:v1');
+  await page.reload();
+  await page.getByRole('radio', { name: /3-Game Season/ }).check();
+  await expect(page.locator('#start-game-btn')).toHaveText('Start Season');
+  await assertViewport(page, '25-season-start');
+  await shot(page, testInfo, '25-season-start');
+
+  const oneResult = store([result(1, 7, 0)], 'release-saved-season');
+  await page.evaluate(({ key, raw }) => localStorage.setItem(key, raw), {
+    key: 'footballMathSeason:v1', raw: oneResult,
+  });
+  await page.reload();
+  await page.evaluate(() => {
+    activeSeasonBinding = Object.freeze({
+      seasonId: 'release-saved-season', gameNumber: 1, rivalId: 'unc', gameId: 'release-season-game-1',
+    });
+    state = {
+      ...state,
+      match: FOOTBALL_OPPONENT.createMatch('unc'),
+      playerScore: 7,
+      opponentScore: 0,
+    };
+    showGameOver();
+  });
+  await expect(page.locator('#ov-end-season')).toContainText('Game 1 saved');
+  await assertViewport(page, '26-season-final');
+  await shot(page, testInfo, '26-season-final');
+
+  const complete = store([
+    result(1, 7, 0),
+    result(2, 0, 7),
+    result(3, 3, 3),
+  ], 'release-complete-season');
+  await page.evaluate(({ key, raw }) => localStorage.setItem(key, raw), {
+    key: 'footballMathSeason:v1', raw: complete,
+  });
+  await page.reload();
+  await expect(page.locator('#season-progress')).toHaveText('Season complete');
+  await expect(page.locator('#start-game-btn')).toHaveText('Start New Season');
+  await assertViewport(page, '27-season-complete');
+  await shot(page, testInfo, '27-season-complete');
+
+  const empty = store([], 'release-pending-season');
+  await page.evaluate(({ key, raw }) => localStorage.setItem(key, raw), {
+    key: 'footballMathSeason:v1', raw: empty,
+  });
+  await page.reload();
+  await page.locator('#start-game-btn').click();
+  await page.evaluate(async (key) => {
+    const nativeSetItem = Storage.prototype.setItem;
+    Storage.prototype.setItem = function(name, value) {
+      if (name === key) throw new DOMException('blocked', 'QuotaExceededError');
+      return nativeSetItem.call(this, name, value);
+    };
+    state.playerScore = 10;
+    state.opponentScore = 7;
+    await FOOTBALL_SEASON.settleGame(activeSeasonBinding, {
+      playerScore: state.playerScore,
+      opponentScore: state.opponentScore,
+    });
+    showGameOver();
+  }, 'footballMathSeason:v1');
+  await expect(page.locator('#ov-end-btn')).toHaveText('Retry Saving');
+  await expect(page.locator('#ov-end-quick-btn')).toBeVisible();
+  await assertViewport(page, '28-season-pending');
+  await shot(page, testInfo, '28-season-pending');
+
+  await page.reload();
+  await expect(page.locator('#start-game-btn')).toHaveText('Play Game 1');
+  await page.locator('#start-game-btn').click();
+  await page.evaluate(() => {
+    window.__footballTest.seedDriveState({
+      gameId: 'release-mismatched-live-game',
+      possession: 'offense', direction: 1, quarter: 4,
+      down: 4, yardsToGo: 10, yardLine: 28, firstDownLine: 38, driveStart: 20,
+      scores: { player: 10, opponent: 7 }, quarterPossessions: 3,
+    });
+    showGameOver();
+  });
+  await expect(page.locator('#ov-end-season')).toHaveText(
+    'This game’s Season result could not be confirmed. This device’s saved Season is unchanged by this game.',
+  );
+  await expect(page.locator('#ov-end-btn')).toHaveText('Continue Season');
+  await expect(page.locator('#ov-end-quick-btn')).toBeHidden();
+  expect(await page.evaluate(() => FOOTBALL_SEASON.pendingKind())).toBeNull();
+  expect(await page.evaluate((key) => JSON.parse(localStorage.getItem(key)).currentSeason.results, 'footballMathSeason:v1'))
+    .toEqual([]);
+  await assertViewport(page, '29-season-unconfirmed');
+  await shot(page, testInfo, '29-season-unconfirmed');
+});
+
+test('phone pending-result recovery keeps corrupt and future copy plus both actions fully in frame', async ({ page }, testInfo) => {
+  phonesOnly(testInfo);
+  await page.goto('/football/');
+  await page.evaluate((key) => localStorage.removeItem(key), 'footballMathSeason:v1');
+  await page.reload();
+  await page.getByRole('radio', { name: /3-Game Season/ }).check();
+  await page.locator('#start-game-btn').click();
+  await expect(page.locator('#ui-desk')).toHaveAttribute('data-phase', 'call');
+
+  await page.evaluate((key) => {
+    const nativeSetItem = Storage.prototype.setItem;
+    window.__releaseNativeSeasonSetItem = nativeSetItem;
+    Storage.prototype.setItem = function(name, value) {
+      if (name === key) throw new DOMException('blocked', 'QuotaExceededError');
+      return nativeSetItem.call(this, name, value);
+    };
+    window.__footballTest.seedDriveState({
+      possession: 'offense', direction: 1, quarter: 4,
+      down: 4, yardsToGo: 10, yardLine: 28, firstDownLine: 38, driveStart: 20,
+      scores: { player: 3, opponent: 7 }, quarterPossessions: 3,
+    });
+  }, 'footballMathSeason:v1');
+  await page.locator('#decision-grid .decision-btn[data-action="punt"]').click();
+  await answerChoice(page, await liveChoiceId(page, 'correct'));
+  await expect(page.locator('#ov-end')).toHaveClass(/show/);
+  await expect(page.locator('#ov-end-btn')).toHaveText('Retry Saving');
+  await expect(page.locator('#ov-end-quick-btn')).toHaveText('Play Quick Game');
+
+  const scenarios = [
+    {
+      status: 'corrupt',
+      raw: '{\n  "schemaVersion": 1,\n  "currentSeason": { "broken": true }\n}\n',
+      copy: 'Season game 1 is final. Not saved—closing or reloading will lose this game’s season result. Saved progress is damaged or changed. Retry Saving or use Quick Game. Start Fresh after reloading only if needed; this result will be lost.',
+      label: '30-season-pending-corrupt',
+    },
+    {
+      status: 'future',
+      raw: '{\n  "schemaVersion": 99,\n  "newer": { "preserve": true }\n}\n',
+      copy: 'Season game 1 is final. Not saved—closing or reloading will lose this game’s season result. A newer game version saved this season. Retry Saving or use Quick Game. Reloading loses this result.',
+      label: '31-season-pending-future',
+    },
+  ];
+
+  for (const scenario of scenarios) {
+    await page.evaluate(({ key, raw }) => {
+      window.__releaseNativeSeasonSetItem.call(localStorage, key, raw);
+      window.dispatchEvent(new StorageEvent('storage', {
+        key,
+        newValue: raw,
+        storageArea: localStorage,
+      }));
+    }, { key: 'footballMathSeason:v1', raw: scenario.raw });
+    await expect.poll(() => page.evaluate(() => FOOTBALL_SEASON.snapshot().status)).toBe(scenario.status);
+    await expect.poll(() => page.evaluate(() => FOOTBALL_SEASON.pendingKind())).toBe('result');
+    await expect(page.locator('#ov-end-season')).toHaveText(scenario.copy);
+    await expect(page.locator('#ov-end-btn')).toHaveText('Retry Saving');
+    await expect(page.locator('#ov-end-quick-btn')).toHaveText('Play Quick Game');
+    expect(await page.evaluate((key) => localStorage.getItem(key), 'footballMathSeason:v1')).toBe(scenario.raw);
+    const metrics = await assertVisibleOverlayCardBounds(page, scenario.label);
+    expect(metrics.buttons.map(button => button.text)).toEqual(['Retry Saving', 'Play Quick Game']);
+    await shot(page, testInfo, scenario.label);
+  }
 });
 
 test('post-game accuracy counts wrong offense and defense answers', async ({ page }) => {
