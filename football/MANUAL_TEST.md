@@ -78,7 +78,12 @@ Run these on both iPhone sizes:
 - selecting a rival previews its public matchup and controlled accent without starting or sampling the game; Play Again returns with that rival selected
 - Wake Forest's longest label fits both the start picker and defensive pre-snap read without horizontal overflow on every target
 - every question names or models facts from the exact pending snap (down/distance, field or drive distance, committed score, quarter/down, or a real scoring rule); no unrelated fact interrupts the play
-- first miss keeps the same frozen question and adds guided support; a second miss shows the worked model and blocks the football outcome behind Continue
+- first miss keeps the same frozen question and adds guided support; a second miss shows the concise Film Room summary, offers optional Coach Replay steps, and blocks the football outcome behind Continue
+- the Film Room summary receives focus first; Tab moves to Learn why and then
+  Continue; Coach Replay focuses its heading, while Back and Escape collapse it
+  and restore focus to Learn why without committing the play
+- Learn why, Back, and Continue remain at least `44x44`; expanded phone lessons
+  use ordinary page scrolling without horizontal overflow or a nested scroll trap
 - initial and guided visuals do not announce a hidden answer in either visible copy or the accessible label
 - final overlay shows a compact, supportive current-game coach report without pushing the replay control below the fold
 - scorebug remains readable without clipped LIVE ribbon or possession indicator
@@ -202,7 +207,7 @@ The v1.25.0 path adds these 18 explicit artifacts:
 10a-opponent-conversion-question
 10b-opponent-conversion-retry
 10c-opponent-conversion-explanation
-10d-opponent-conversion-feedback
+10e-opponent-conversion-feedback
 18-offense-fourth-down-decision
 19-offense-fourth-down-go-call
 20-offense-punt-question
@@ -226,6 +231,14 @@ The v1.26.0 season path adds five compact state artifacts:
 29-season-unconfirmed
 ```
 
+The v1.27.0 Film Room path adds the expanded ordinary and special-team review
+states to every device project:
+
+```text
+08d-defense-coach-replay
+10d-opponent-conversion-coach-replay
+```
+
 The two phone projects add production pending-result recovery artifacts for
 both incompatible durable-store states:
 
@@ -234,7 +247,7 @@ both incompatible durable-store states:
 31-season-pending-future
 ```
 
-The post-test gate therefore requires all 262 PNGs (43 shared screenshots × 6
+The post-test gate therefore requires all 274 PNGs (45 shared screenshots × 6
 projects, plus 2 recovery screenshots × 2 phone projects) to exist and be
 non-empty. Missing states, clipped or undersized controls, overlay-card
 overflow, horizontal overflow, uncaught browser errors, failed behavior
@@ -254,7 +267,7 @@ release matrix. The Coach Report spec verifies that the card and replay CTA fit
 the viewport, the CTA remains at least `44x44`, and the page has no horizontal
 overflow. Its attached `compact-final-overlay.png` stays under Playwright's
 temporary artifact tree and is intentionally not part of the canonical
-262-image gate.
+274-image gate.
 
 ### Quick measurement snippet
 

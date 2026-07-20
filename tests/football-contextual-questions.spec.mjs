@@ -232,6 +232,7 @@ function recompute(question) {
 }
 
 function verifyGrounding(questions, snap, question) {
+  assert.equal(question.schemaVersion, 2);
   assert.equal(question.id, question.familyId);
   assert.equal(question.bindings, question.premises, 'premises must alias canonical bindings');
   assert.ok(questions.OPERATION_TYPES.includes(question.operation.type));
@@ -267,6 +268,21 @@ function verifyGrounding(questions, snap, question) {
     assert.ok(copy.text.length > 0);
     assert.ok(copy.ariaLabel.length > 0);
   }
+  const canonicalBindingIds = new Set(question.bindings.map((binding) => binding.id));
+  const review = question.workedReview;
+  assert.equal(review.familyId, question.familyId);
+  assert.equal(review.concept, question.concept);
+  assert.ok(review.title.trim().length > 0);
+  assert.ok([2, 3].includes(review.steps.length));
+  assert.equal(new Set(review.steps.map((step) => step.id)).size, review.steps.length);
+  for (const copy of [review.goal, ...review.steps, review.footballMeaning]) {
+    assert.ok(copy.text.trim().length > 0);
+    assert.ok(copy.ariaLabel.trim().length > 0);
+    assert.equal(copy.answerId, question.answer.id);
+    assert.ok(copy.bindingIds.length > 0);
+    assert.ok(copy.bindingIds.every((bindingId) => canonicalBindingIds.has(bindingId)));
+  }
+  assert.equal(deepFrozen(review), true);
   for (const stage of ['initial', 'guided', 'worked']) {
     const visual = question.visuals[stage];
     assert.equal(visual.stage, stage);
@@ -296,6 +312,7 @@ function expectComparisonChoiceLabels(question) {
 test('exports one deeply frozen plain-global API with a closed contract', () => {
   const { questions } = loadModules();
   assert.ok(questions);
+  assert.equal(questions.SCHEMA_VERSION, 2);
   assert.equal(questions.CURRENT_COMPLETED_PAGE, 145);
   assert.equal(questions.INCLUDED_THROUGH_PAGE, 179);
   assert.equal(deepFrozen(questions), true);
@@ -321,6 +338,7 @@ test('inspect preserves page-145 completion while capping approved question cont
   const first = questions.inspect(snap, { completedThroughPage: 999, includedThroughPage: 999, computationMax: 99, displayMax: 999 });
   const second = questions.inspect(snap, { completedThroughPage: 999, includedThroughPage: 999, computationMax: 99, displayMax: 999 });
   assert.deepEqual(plain(first), plain(second));
+  assert.equal(first.schemaVersion, 2);
   assert.equal(deepFrozen(first), true);
   assert.deepEqual(plain(first.profile), { completedThroughPage: 145, includedThroughPage: 179, computationMax: 10, displayMax: 120 });
   assert.ok(first.eligible.length > 0);
@@ -376,6 +394,86 @@ test('every inspected candidate builds, dereferences, and recomputes across both
     }
   }
   assert.ok(built > 1000, `expected broad property coverage, built ${built}`);
+});
+
+test('every exported family builds one exact, grounded, recursively frozen schema-2 worked review', () => {
+  const { domain, questions } = loadModules();
+  const scenarios = [
+    makeSnap(domain, {
+      quarter: 3, down: 2, yardLine: 30, firstDownLine: 35, yardsToGo: 5,
+      driveStart: 25, scores: { player: 3, opponent: 4 },
+    }, 3),
+    makeSnap(domain, { down: 2, yardLine: 30, firstDownLine: 35, yardsToGo: 5, driveStart: 25 }, 5),
+    makeSnap(domain, { down: 2, yardLine: 30, firstDownLine: 35, yardsToGo: 5, driveStart: 25 }, 7),
+    makeSnap(domain, {
+      down: 2, yardLine: 30, firstDownLine: 35, yardsToGo: 5, driveStart: 25,
+      totalYards: { player: 99, opponent: 71 },
+    }, 2),
+    makeSnap(domain, {
+      quarter: 3, down: 2, yardLine: 30, firstDownLine: 35, yardsToGo: 5,
+      driveStart: 25, scores: { player: 14, opponent: 7 },
+    }, 3),
+    makeSnap(domain, {
+      quarter: 3, down: 2, yardLine: 30, firstDownLine: 35, yardsToGo: 5,
+      driveStart: 20, scores: { player: 3, opponent: 4 },
+    }, 10),
+    makeSnap(domain, {
+      down: 4, yardLine: 95, firstDownLine: 100, yardsToGo: 5,
+      driveStart: 90, scores: { player: 3, opponent: 4 },
+    }, 10),
+    makeSpecialPlay(domain, 'conversion', { possession: 'offense', attemptType: 'pat' }),
+    makeSpecialPlay(domain, 'fieldGoal', { possession: 'offense', yardLine: 60 }),
+    makeSpecialPlay(domain, 'punt', { possession: 'offense', yardLine: 30, travelYards: 40 }),
+  ];
+  const expected = {
+    'yards-to-go-read': ['line-to-gain', 'read', ['yardsToGo']],
+    'line-to-gain-missing-part': ['line-to-gain', 'missingPart', ['yardsToGo', 'proposedGain']],
+    'line-to-gain-exact': ['line-to-gain', 'exactRemainder', ['yardsToGo', 'proposedGain']],
+    'line-to-gain-surplus': ['line-to-gain', 'surplus', ['yardsToGo', 'proposedGain']],
+    'line-to-gain-fact-family': ['line-to-gain', 'factFamilyMissingPart', ['yardsToGo', 'proposedGain']],
+    'gain-vs-needed-comparison': ['line-to-gain-comparison', 'compare', ['proposedGain', 'yardsToGo']],
+    'goal-distance-read': ['field-distance', 'distance', ['ballYardLine', 'goalLine']],
+    'goal-distance-tens': ['place-value', 'tensOfDistance', ['ballYardLine', 'goalLine']],
+    'goal-distance-ones': ['place-value', 'onesOfDistance', ['ballYardLine', 'goalLine']],
+    'team-yards-past-100': ['team-total-yards', 'add', ['teamTotalYards', 'proposedGain']],
+    'drive-distance-scaffolded': ['drive-distance', 'absoluteDifference', ['driveStart', 'ballYardLine']],
+    'committed-score-total': ['committed-score', 'add', ['playerScore', 'opponentScore']],
+    'committed-score-difference': ['committed-score', 'absoluteDifference', ['playerScore', 'opponentScore']],
+    'committed-score-tens': ['teen-place-value', 'tensOfScore', ['committedScore']],
+    'committed-score-ones': ['teen-place-value', 'onesOfScore', ['committedScore']],
+    'quarter-read': ['quarter-read', 'ordinal', ['quarter']],
+    'half-read': ['quarter-half-structure', 'halfFromQuarter', ['quarter']],
+    'next-down': ['down-progression', 'ordinal', ['currentDown', 'yardsToGo', 'proposedGain', 'resultKind', 'nextDown']],
+    'goal-distance-minus-whole-tens': ['field-distance', 'goalDistanceAfterGain', ['ballYardLine', 'goalLine', 'proposedGain']],
+    'drive-distance-plus-whole-tens': ['drive-distance', 'driveDistancePlusGain', ['driveStart', 'ballYardLine', 'proposedGain']],
+    'touchdown-base-points': ['touchdown-base-scoring', 'ruleValue', ['resultKind', 'touchdownBasePoints']],
+    'conversion-attempt-value': ['conversion-scoring', 'conversionValue', ['possessingTeamScore', 'attemptType', 'attemptValue']],
+    'conversion-try-marker': ['conversion-placement', 'tryMarkerForDirection', ['direction', 'tryYardLine']],
+    'field-goal-attempt-distance': ['field-goal-distance', 'read', ['attemptDistance']],
+    'field-goal-point-value': ['field-goal-scoring', 'ruleValue', ['possessingTeamScore', 'attemptDistance', 'fieldGoalPoints']],
+    'punt-travel-distance': ['punt-distance', 'read', ['direction', 'puntStartYardLine', 'rawLandingYardLine', 'appliedTravelYards']],
+    'punt-landing-spot': ['punt-placement', 'read', ['puntStartYardLine', 'direction', 'appliedTravelYards', 'landingYardLine']],
+  };
+  const exportedFamilyIds = Object.values(questions.FAMILY_REGISTRY)
+    .flat()
+    .map((entry) => entry.familyId)
+    .sort();
+  assert.deepEqual(Object.keys(expected).sort(), exportedFamilyIds);
+
+  for (const [familyId, [concept, operation, bindingIds]] of Object.entries(expected)) {
+    const source = scenarios.find((candidate) => questions.inspect(candidate).eligible
+      .some((entry) => entry.familyId === familyId));
+    assert.ok(source, `${familyId}: deterministic representative source`);
+    const question = questions.build(source, familyId, { presentationRng: () => 0.37 });
+    verifyGrounding(questions, source, question);
+    assert.equal(question.schemaVersion, questions.SCHEMA_VERSION, familyId);
+    assert.equal(question.familyId, familyId);
+    assert.equal(question.workedReview.familyId, familyId);
+    assert.equal(question.concept, concept);
+    assert.equal(question.workedReview.concept, concept);
+    assert.equal(question.operation.type, operation);
+    assert.deepEqual(plain(question.bindings.map((binding) => binding.id)), bindingIds);
+  }
 });
 
 test('short, exact, surplus, fact-family, fourth-down, and touchdown facts use the frozen old marker', () => {
@@ -1325,6 +1423,10 @@ test('child-facing contextual copy avoids implementation jargon', () => {
       question.prompt.text,
       question.hint.text,
       question.workedExplanation.text,
+      question.workedReview.title,
+      question.workedReview.goal.text,
+      ...question.workedReview.steps.flatMap((step) => [step.text, step.ariaLabel]),
+      question.workedReview.footballMeaning.text,
       ...Object.values(question.visuals).map(visual => visual.ariaLabel),
     ].join(' ');
     assert.doesNotMatch(copy, jargon, familyId);

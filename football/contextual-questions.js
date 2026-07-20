@@ -4,7 +4,7 @@
 const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
   'use strict';
 
-  const SCHEMA_VERSION = 1;
+  const SCHEMA_VERSION = 2;
   const CURRENT_COMPLETED_PAGE = 145;
   const INCLUDED_THROUGH_PAGE = 179;
   const PLAY_TYPES = Object.freeze(['scrimmage', 'punt', 'fieldGoal', 'conversion']);
@@ -1266,8 +1266,159 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
     },
   ];
 
+  // Film Room copy is authored by family so the UI can render a stable,
+  // play-grounded review without reconstructing teaching language from live
+  // state. The two worked steps reuse each family's guided hint and worked
+  // explanation; the surrounding goal and football meaning make that model
+  // useful without adding another source of numeric truth.
+  const WORKED_REVIEW_SPECS = deepFreeze({
+    'yards-to-go-read': {
+      title: 'Read the Distance',
+      goal: 'Find the yards needed on the scoreboard.',
+      footballMeaning: 'That number tells the offense how far it must go for a new set of downs.',
+    },
+    'line-to-gain-missing-part': {
+      title: 'Find What Is Left',
+      goal: 'Split the needed yards into the play gain and the yards still missing.',
+      footballMeaning: 'The missing part shows how far the offense would remain from the first-down marker.',
+    },
+    'line-to-gain-exact': {
+      title: 'Reach the Marker',
+      goal: 'Match the play gain to every yard needed.',
+      footballMeaning: 'When no yards are left, the play reaches the first-down marker exactly.',
+    },
+    'line-to-gain-surplus': {
+      title: 'Count Past the Marker',
+      goal: 'Use the needed yards first, then count the gain left over.',
+      footballMeaning: 'The leftover yards show how far the play would finish beyond the first-down marker.',
+    },
+    'line-to-gain-fact-family': {
+      title: 'Use the Fact Family',
+      goal: 'Use the total yards needed and the known gain to find the missing part.',
+      footballMeaning: 'The linked addition and subtraction facts show the yards still needed.',
+    },
+    'gain-vs-needed-comparison': {
+      title: 'Compare Play and Need',
+      goal: 'Compare the play gain with the yards needed.',
+      footballMeaning: 'The comparison shows whether the play falls short, reaches, or passes the marker.',
+    },
+    'goal-distance-read': {
+      title: 'Read the Goal Distance',
+      goal: 'Read the labeled distance between the ball and the goal.',
+      footballMeaning: 'That distance shows how far the offense is from the end zone.',
+    },
+    'goal-distance-tens': {
+      title: 'Find the Tens Digit',
+      goal: 'Break the goal distance into tens and ones.',
+      footballMeaning: 'The tens digit counts full groups of ten yards between the ball and the goal.',
+    },
+    'goal-distance-ones': {
+      title: 'Find the Ones Digit',
+      goal: 'Break the goal distance into tens and ones.',
+      footballMeaning: 'The ones digit counts the extra yards after the full groups of ten.',
+    },
+    'team-yards-past-100': {
+      title: 'Count Past 100',
+      goal: 'Add the play gain to the team yard total.',
+      footballMeaning: 'The new total tracks how many offensive yards the team would have.',
+    },
+    'drive-distance-scaffolded': {
+      title: 'Count the Drive',
+      goal: 'Find the distance between the drive start and the current ball spot.',
+      footballMeaning: 'That distance tells how far the offense has moved on this drive.',
+    },
+    'committed-score-total': {
+      title: 'Add the Scores',
+      goal: 'Join the two scoreboard amounts to find the total points.',
+      footballMeaning: 'The sum counts all points already scored by both teams.',
+    },
+    'committed-score-difference': {
+      title: 'Find the Score Gap',
+      goal: 'Compare the two scoreboard amounts and find the difference.',
+      footballMeaning: 'The difference shows how many points separate the teams.',
+    },
+    'committed-score-tens': {
+      title: 'Read Score Tens',
+      goal: 'Break the scoreboard number into tens and ones.',
+      footballMeaning: 'The tens digit counts full groups of ten points in that score.',
+    },
+    'committed-score-ones': {
+      title: 'Read Score Ones',
+      goal: 'Break the scoreboard number into tens and ones.',
+      footballMeaning: 'The ones digit counts the points after the full groups of ten.',
+    },
+    'quarter-read': {
+      title: 'Read the Quarter',
+      goal: 'Read the quarter number shown on the scoreboard.',
+      footballMeaning: 'The quarter tells which part of the game is being played.',
+    },
+    'half-read': {
+      title: 'Find the Half',
+      goal: 'Use the quarter number to decide whether the game is in the first or second half.',
+      footballMeaning: 'Quarters one and two make the first half; quarters three and four make the second.',
+    },
+    'next-down': {
+      title: 'Find the Next Down',
+      goal: 'Compare the play gain with the yards needed, then follow the down rule.',
+      footballMeaning: 'Reaching the marker resets the offense to first down; falling short advances the down.',
+    },
+    'goal-distance-minus-whole-tens': {
+      title: 'Move Closer by Tens',
+      goal: 'Subtract the whole-tens gain from the distance to the goal.',
+      footballMeaning: 'The result shows how many yards would remain between the ball and the end zone.',
+    },
+    'drive-distance-plus-whole-tens': {
+      title: 'Grow the Drive by Tens',
+      goal: 'Add the whole-tens gain to the drive distance.',
+      footballMeaning: 'The result shows how far the drive would have moved after the play.',
+    },
+    'touchdown-base-points': {
+      title: 'Use the Touchdown Rule',
+      goal: 'Recall the fixed point value of a touchdown before any conversion try.',
+      footballMeaning: 'Those points are added when the ball reaches the end zone for a touchdown.',
+    },
+    'conversion-attempt-value': {
+      title: 'Value the Conversion',
+      goal: 'Use the selected conversion type to find its point value.',
+      footballMeaning: 'A made conversion adds that many points after the touchdown.',
+    },
+    'conversion-try-marker': {
+      title: 'Place the Conversion Try',
+      goal: 'Use the offense direction to find the conversion marker.',
+      footballMeaning: 'That marker is where the conversion play begins on this field.',
+    },
+    'field-goal-attempt-distance': {
+      title: 'Read the Kick Distance',
+      goal: 'Read the labeled distance of the field-goal attempt.',
+      footballMeaning: 'That number tells how far the kick must travel for the attempt.',
+    },
+    'field-goal-point-value': {
+      title: 'Use the Field-Goal Rule',
+      goal: 'Recall the fixed point value of a made field goal.',
+      footballMeaning: 'A successful field goal adds that many points to the kicking team score.',
+    },
+    'punt-travel-distance': {
+      title: 'Read the Punt Distance',
+      goal: 'Read the labeled travel distance on the punt preview.',
+      footballMeaning: 'That distance shows how far the ball moves before the next possession.',
+    },
+    'punt-landing-spot': {
+      title: 'Read the Landing Spot',
+      goal: 'Follow the punt direction and read its marked landing position.',
+      footballMeaning: 'The landing marker helps set the other team starting field position.',
+    },
+  });
+
   const FAMILY_BY_ID = new Map(FAMILY_DEFINITIONS.map((definition) => [definition.meta.familyId, definition]));
   if (FAMILY_BY_ID.size !== FAMILY_DEFINITIONS.length) throw new Error('Contextual family IDs must be unique.');
+  for (const familyId of FAMILY_BY_ID.keys()) {
+    if (!Object.prototype.hasOwnProperty.call(WORKED_REVIEW_SPECS, familyId)) {
+      throw new Error(`Contextual family ${familyId} needs an authored worked review.`);
+    }
+  }
+  for (const familyId of Object.keys(WORKED_REVIEW_SPECS)) {
+    if (!FAMILY_BY_ID.has(familyId)) throw new Error(`Worked review references unknown family ${familyId}.`);
+  }
   const FAMILY_REGISTRY = deepFreeze(Object.fromEntries(PLAY_TYPES.map((playType) => [
     playType,
     FAMILY_DEFINITIONS
@@ -1435,6 +1586,27 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
     return { text, ariaLabel: ariaLabel || text.replace(/\n/g, ' '), bindingIds: [...bindingIds], answerId };
   }
 
+  function makeWorkedReview(meta, semantic, bindingIds, answerId) {
+    const spec = WORKED_REVIEW_SPECS[meta.familyId];
+    return {
+      familyId: meta.familyId,
+      concept: meta.concept,
+      title: spec.title,
+      goal: groundedCopy(spec.goal, spec.goal, bindingIds, answerId),
+      steps: [
+        {
+          id: `${meta.familyId}--review-step-1`,
+          ...groundedCopy(semantic.hint, semantic.hint, bindingIds, answerId),
+        },
+        {
+          id: `${meta.familyId}--review-step-2`,
+          ...groundedCopy(semantic.explanation, semantic.explanation, bindingIds, answerId),
+        },
+      ],
+      footballMeaning: groundedCopy(spec.footballMeaning, spec.footballMeaning, bindingIds, answerId),
+    };
+  }
+
   function build(source, familyId, options = {}) {
     const definition = FAMILY_BY_ID.get(familyId);
     if (!definition) throw contractError('unknown-family', `Unknown contextual question family ${familyId}.`);
@@ -1479,6 +1651,7 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
     const prompt = groundedCopy(semantic.prompt, semantic.promptAriaLabel, bindingIds, answerId);
     const hint = groundedCopy(semantic.hint, semantic.hint, bindingIds, answerId);
     const workedExplanation = groundedCopy(semantic.explanation, semantic.explanation, bindingIds, answerId);
+    const workedReview = makeWorkedReview(meta, semantic, bindingIds, answerId);
     const answer = { id: answerId, value: clone(semantic.answer), label: String(semantic.answer) };
     const question = {
       schemaVersion: SCHEMA_VERSION,
@@ -1494,6 +1667,7 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
       prompt,
       hint,
       workedExplanation,
+      workedReview,
       q: prompt.text,
       hintText: hint.text,
       explain: workedExplanation.text,

@@ -513,8 +513,17 @@ test('first miss keeps one frozen question and retry correct commits the full pr
   expect(retry.plays).toBe(before.plays);
   expect(retry.absoluteYard).toBe(before.absoluteYard);
   expect(retry.outcomeCommitted).toBe(false);
+  expect(retry.reviewAvailable).toBe(false);
+  expect(retry.reviewExpanded).toBe(false);
+  expect(retry.reviewFamilyId).toBe(question.familyId);
+  expect(retry.reviewStepCount).toBe(question.workedReview.steps.length);
   await expect(page.locator(`[data-choice-id="${wrongId}"]`)).toBeDisabled();
   await expect(page.locator('#feedback')).toContainText(/Good try/i);
+  await expect(page.locator('#film-room-summary')).toBeHidden();
+  await expect(page.locator('#question-learn-why')).toBeHidden();
+  await expect(page.locator('#question-learn-why')).toBeDisabled();
+  await expect(page.locator('#worked-review')).toBeHidden();
+  await expect(page.locator('#worked-review')).toHaveAttribute('inert', '');
 
   await answerChoice(page, question.correctChoiceId);
   const resolvedContracts = await contracts(page);
@@ -541,6 +550,7 @@ test('first miss keeps one frozen question and retry correct commits the full pr
   expect(events.every((event) => event.playType === 'scrimmage')).toBe(true);
   expect(events.every((event) => JSON.stringify(event.selection) === JSON.stringify(question.selection))).toBe(true);
   expect(events.every((event) => !JSON.stringify(event).includes('privateOpponentSnapshot'))).toBe(true);
+  expect(events.every((event) => !Object.keys(event).some((key) => /review/i.test(key)))).toBe(true);
   expect(events[1].selectedChoiceId).toBe(wrongId);
   expect(events[2].selectedChoiceId).toBe(question.correctChoiceId);
   expect(events[3].result).toBe('retryCorrect');
@@ -601,18 +611,103 @@ test('second defensive miss records learning only after Continue commits one fro
 
   expect(explanation.mode).toBe('explanation');
   expect(explanation.continueRequired).toBe(true);
+  expect(explanation.reviewAvailable).toBe(true);
+  expect(explanation.reviewExpanded).toBe(false);
+  expect(explanation.reviewFamilyId).toBe(question.familyId);
+  expect(explanation.reviewStepCount).toBe(question.workedReview.steps.length);
   expect(explanation.outcomeCommitted).toBe(false);
   expect(explanation.plays).toBe(before.plays);
   expect(explanation.absoluteYard).toBe(before.absoluteYard);
   expect(explanation.learning.resolved).toBe(0);
   expect(explanation.gradedQuestions).toBe(before.gradedQuestions);
   expect(explanationContracts.questionUi.support).toBe('worked');
+  expect(explanationContracts.questionUi.reviewExpanded).toBe(false);
   expect(explanationContracts.questionUi.resolutionRecorded).toBe(false);
+  expect(await page.evaluate(() => Object.isFrozen(state.pendingResolution))).toBe(true);
   expect(explanationContracts.pendingResolution.transitionToCommit.appliedGain).toBe(expectedGain);
   expect(await page.evaluate(() => pendingStatsPlay.resolution)).toBeNull();
   expect(explanationContracts.statsSession.completedPlays).toHaveLength(0);
+  await expect(page.locator('#film-room-summary')).toBeVisible();
+  await expect(page.locator('#film-room-summary')).toContainText(question.workedExplanation.text);
+  await expect(page.locator('#film-room-summary')).toBeFocused();
+  await expect(page.locator('#question-learn-why')).toBeVisible();
+  await expect(page.locator('#question-learn-why')).toBeEnabled();
   await expect(page.locator('#question-continue')).toBeVisible();
+  await expect(page.locator('#question-continue')).toBeEnabled();
+  await expect(page.locator('#worked-review')).toBeHidden();
+  await expect(page.locator('#btn-row')).toHaveCSS('display', 'none');
+  await expect(page.locator('#btn-row .ans-btn.correct')).toHaveCount(0);
+
+  await page.keyboard.press('Tab');
+  await expect(page.locator('#question-learn-why')).toBeFocused();
+  await page.keyboard.press('Tab');
   await expect(page.locator('#question-continue')).toBeFocused();
+
+  const authorityBeforeReview = await page.evaluate(() => {
+    const snapshot = window.__footballTest.activeContracts();
+    window.__workedReviewRngCounts = { football: 0, scheduler: 0, presentation: 0 };
+    window.__footballTest.setRngStreams({
+      football: () => { window.__workedReviewRngCounts.football++; return 0.5; },
+      scheduler: () => { window.__workedReviewRngCounts.scheduler++; return 0.5; },
+      presentation: () => { window.__workedReviewRngCounts.presentation++; return 0.5; },
+    });
+    return {
+      activePlay: snapshot.activePlay,
+      questionInstance: snapshot.questionInstance,
+      pendingResolution: snapshot.pendingResolution,
+      statsSession: snapshot.statsSession,
+      learning: snapshot.learning,
+    };
+  });
+
+  await page.locator('#question-learn-why').focus();
+  await page.locator('#question-learn-why').press('Space');
+  await expect(page.locator('#worked-review')).toBeVisible();
+  await expect(page.locator('#worked-review')).not.toHaveAttribute('inert', '');
+  await expect(page.locator('#worked-review-heading')).toContainText(question.workedReview.title);
+  await expect(page.locator('#worked-review-heading')).toBeFocused();
+  await expect(page.locator('.worked-review-steps > li')).toHaveCount(question.workedReview.steps.length);
+  await expect(page.locator('#question-continue')).toBeVisible();
+  await expect(page.locator('#question-continue')).toBeEnabled();
+  expect((await rendered(page)).reviewExpanded).toBe(true);
+  expect((await rendered(page)).reviewAvailable).toBe(false);
+
+  await page.keyboard.press('Tab');
+  await expect(page.locator('#worked-review-back')).toBeFocused();
+  await page.locator('#worked-review-back').press('Enter');
+  await expect(page.locator('#worked-review')).toBeHidden();
+  await expect(page.locator('#question-learn-why')).toBeFocused();
+  expect((await rendered(page)).reviewExpanded).toBe(false);
+  expect((await rendered(page)).reviewAvailable).toBe(true);
+
+  await page.locator('#question-learn-why').press('Enter');
+  await expect(page.locator('#worked-review-heading')).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#worked-review')).toBeHidden();
+  await expect(page.locator('#question-learn-why')).toBeFocused();
+
+  const authorityAfterReview = await page.evaluate(() => {
+    const snapshot = window.__footballTest.activeContracts();
+    return {
+      activePlay: snapshot.activePlay,
+      questionInstance: snapshot.questionInstance,
+      pendingResolution: snapshot.pendingResolution,
+      statsSession: snapshot.statsSession,
+      learning: snapshot.learning,
+      rngCounts: window.__workedReviewRngCounts,
+    };
+  });
+  expect({
+    activePlay: authorityAfterReview.activePlay,
+    questionInstance: authorityAfterReview.questionInstance,
+    pendingResolution: authorityAfterReview.pendingResolution,
+    statsSession: authorityAfterReview.statsSession,
+    learning: authorityAfterReview.learning,
+  }).toEqual(authorityBeforeReview);
+  expect(authorityAfterReview.rngCounts).toEqual({ football: 0, scheduler: 0, presentation: 0 });
+
+  await page.locator('#question-learn-why').click();
+  await expect(page.locator('#worked-review')).toBeVisible();
 
   await page.locator('#question-continue').click();
   const committed = await rendered(page);
@@ -630,6 +725,74 @@ test('second defensive miss records learning only after Continue commits one fro
   expect(afterDoubleContinue.learning.resolved).toBe(1);
 });
 
+test('Coach Replay rendering failure rolls back to the concise frozen Continue path without prose leakage', async ({ page }, testInfo) => {
+  primaryOnly(testInfo);
+  await page.goto('/football/?boot=offense-call');
+  await page.evaluate(() => {
+    window.__reviewDiagnostics = [];
+    window.__reviewResults = [];
+    window.addEventListener('football:diagnostic', event => window.__reviewDiagnostics.push(event.detail));
+    window.addEventListener('football:result', event => window.__reviewResults.push(event.detail));
+    window.__footballTest.setRootSeed(0xf11f00);
+  });
+
+  const beforeContracts = await beginSnap(page, 'offense');
+  const before = await rendered(page);
+  const question = beforeContracts.questionInstance;
+  const wrongIds = wrongChoiceIds(question);
+  await answerChoice(page, wrongIds[0]);
+  await answerChoice(page, wrongIds[1]);
+
+  const explanationContracts = await contracts(page);
+  expect(explanationContracts.pendingResolution).not.toBeNull();
+  await page.evaluate(() => window.__footballTest.setQuestionFault('review-render-throw'));
+  await page.locator('#question-learn-why').click();
+
+  const rolledBack = await rendered(page);
+  const rolledBackContracts = await contracts(page);
+  expect(rolledBack.mode).toBe('explanation');
+  expect(rolledBack.reviewAvailable).toBe(false);
+  expect(rolledBack.reviewExpanded).toBe(false);
+  expect(rolledBack.continueRequired).toBe(true);
+  expect(rolledBack.outcomeCommitted).toBe(false);
+  expect(rolledBack.plays).toBe(before.plays);
+  expect(rolledBack.learning.resolved).toBe(0);
+  expect(rolledBackContracts.pendingResolution).toEqual(explanationContracts.pendingResolution);
+  expect(rolledBackContracts.questionInstance).toEqual(explanationContracts.questionInstance);
+  await expect(page.locator('#film-room-summary')).toBeVisible();
+  await expect(page.locator('#film-room-summary')).toContainText(question.workedExplanation.text);
+  await expect(page.locator('#worked-review')).toBeHidden();
+  await expect(page.locator('#worked-review')).toHaveAttribute('inert', '');
+  await expect(page.locator('#question-learn-why')).toBeHidden();
+  await expect(page.locator('#question-learn-why')).toBeDisabled();
+  await expect(page.locator('#question-continue')).toBeVisible();
+  await expect(page.locator('#question-continue')).toBeEnabled();
+  await expect(page.locator('#question-continue')).toBeFocused();
+
+  const events = await page.evaluate(() => ({
+    diagnostics: window.__reviewDiagnostics,
+    results: window.__reviewResults,
+  }));
+  expect(events.results).toEqual([]);
+  expect(events.diagnostics).toEqual([{
+    schemaVersion: 1,
+    code: 'worked-review-render-failure',
+    familyId: question.familyId,
+    contextId: question.contextId,
+    questionInstanceId: question.questionInstanceId,
+  }]);
+  const diagnosticText = JSON.stringify(events.diagnostics);
+  expect(diagnosticText).not.toContain(question.prompt.text);
+  expect(diagnosticText).not.toContain(question.workedExplanation.text);
+
+  await page.locator('#question-continue').click();
+  const committed = await rendered(page);
+  expect(committed.mode).toBe('feedback');
+  expect(committed.outcomeCommitted).toBe(true);
+  expect(committed.plays).toBe(before.plays + 1);
+  expect(committed.learning.resolved).toBe(1);
+});
+
 test('a production snap exposes only approved, grounded, graded contextual content', async ({ page }, testInfo) => {
   primaryOnly(testInfo);
   await page.goto('/football/?boot=offense-call');
@@ -640,6 +803,7 @@ test('a production snap exposes only approved, grounded, graded contextual conte
   });
   const question = active.questionInstance;
 
+  expect(question.schemaVersion).toBe(2);
   expect(question.id).toBe(question.familyId);
   expect(question.grading).toBe('gate');
   expect(['workbook', 'football-only']).toContain(question.curriculumSource);
@@ -658,6 +822,10 @@ test('a production snap exposes only approved, grounded, graded contextual conte
   expect(question.visuals.initial.ariaLabel).toBeTruthy();
   expect(question.visuals.guided.ariaLabel).toBeTruthy();
   expect(question.visuals.worked.ariaLabel).toBeTruthy();
+  expect(question.workedReview.familyId).toBe(question.familyId);
+  expect(question.workedReview.concept).toBe(question.concept);
+  expect(question.workedReview.steps.length).toBeGreaterThanOrEqual(2);
+  expect(question.workedReview.steps.length).toBeLessThanOrEqual(3);
   if (question.answerExposure !== 'source-visible') {
     expect(question.visuals.initial.result).toBeNull();
     expect(question.visuals.guided.result).toBeNull();

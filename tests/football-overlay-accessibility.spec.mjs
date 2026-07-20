@@ -207,6 +207,10 @@ test('keyboard Continue returns focus to the next nonterminal call grid', async 
     await page.evaluate((choiceId) => window.__footballTest.answerChoice(choiceId), wrongChoiceIds[0]);
     await page.evaluate((choiceId) => window.__footballTest.answerChoice(choiceId), wrongChoiceIds[1]);
 
+    await expect(page.locator('#film-room-summary')).toBeFocused();
+    await page.keyboard.press('Tab');
+    await expect(page.locator('#question-learn-why')).toBeFocused();
+    await page.keyboard.press('Tab');
     const continueButton = page.locator('#question-continue');
     await expect(continueButton).toBeFocused();
     await continueButton.press('Enter');

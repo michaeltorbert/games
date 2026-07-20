@@ -1393,7 +1393,7 @@ test('an unknown pending policy fails closed and restores the frozen defense pla
   expect(await page.evaluate(() => pendingStatsPlay)).toBeNull();
 });
 
-for (const fault of ['empty-pool', 'build-throw', 'malformed']) {
+for (const fault of ['empty-pool', 'build-throw', 'malformed', 'schema-mismatch']) {
   test(`a valid ${fault} question failure bypasses instruction and commits the exact proposal`, async ({ page }, testInfo) => {
     primaryOnly(testInfo);
     await cleanBoot(page, 0x50554);
@@ -1430,7 +1430,7 @@ for (const fault of ['empty-pool', 'build-throw', 'malformed']) {
     expect(diagnostics).toHaveLength(1);
     expect(diagnostics[0]).toEqual(expect.objectContaining({
       schemaVersion: 1,
-      code: fault === 'malformed' ? 'malformed-question' : fault,
+      code: ['malformed', 'schema-mismatch'].includes(fault) ? 'malformed-question' : fault,
       contextId: row.links.contextId,
     }));
     expect(diagnostics[0]).toHaveProperty('familyId');
@@ -1440,7 +1440,9 @@ for (const fault of ['empty-pool', 'build-throw', 'malformed']) {
       expect(diagnostics[0].questionInstanceId).toBeNull();
     } else {
       expect(diagnostics[0].familyId).toEqual(expect.any(String));
-      if (fault === 'malformed') expect(diagnostics[0].questionInstanceId).toEqual(expect.any(String));
+      if (['malformed', 'schema-mismatch'].includes(fault)) {
+        expect(diagnostics[0].questionInstanceId).toEqual(expect.any(String));
+      }
     }
     expect(row.links).toMatchObject({
       familyId: diagnostics[0].familyId,
