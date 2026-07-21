@@ -4,14 +4,14 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <title>Football Math!</title>
-<link rel="apple-touch-icon" href="apple-touch-icon.png?v=1.26.0">
-<link rel="icon" type="image/png" href="apple-touch-icon.png?v=1.26.0">
+<link rel="apple-touch-icon" href="apple-touch-icon.png?v=1.27.0">
+<link rel="icon" type="image/png" href="apple-touch-icon.png?v=1.27.0">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow+Condensed:wght@600;700;800&display=swap">
-<link rel="stylesheet" href="../shared/fonts.css?v=1.26.0">
-<link rel="stylesheet" href="../shared/reset.css?v=1.26.0">
-<link rel="stylesheet" href="football.css?v=1.26.0">
+<link rel="stylesheet" href="../shared/fonts.css?v=1.27.0">
+<link rel="stylesheet" href="../shared/reset.css?v=1.27.0">
+<link rel="stylesheet" href="football.css?v=1.27.0">
 </head>
 <body>
 <div id="broadcast-shell">
@@ -99,6 +99,11 @@
         <div id="defense-read" aria-live="polite" hidden></div>
         <div id="special-action-live" aria-hidden="true"></div>
         <div id="feedback" role="status" aria-live="polite" aria-atomic="true"></div>
+        <section id="film-room-summary" class="film-room-summary hidden" tabindex="-1" aria-labelledby="film-room-summary-heading" aria-describedby="film-room-summary-copy">
+          <div class="film-room-eyebrow">Film Room</div>
+          <h2 id="film-room-summary-heading">Review the worked play</h2>
+          <p id="film-room-summary-copy"></p>
+        </section>
       </section>
 
       <section id="action-panel" class="panel">
@@ -110,7 +115,15 @@
           <button class="ans-btn" id="b2" onclick="handleAnswer(2)">-</button>
           <button class="ans-btn" id="b3" onclick="handleAnswer(3)">-</button>
         </div>
-        <button id="question-continue" class="question-continue hidden" type="button" onclick="continueAfterExplanation()">Continue</button>
+        <section id="worked-review" class="worked-review hidden" aria-labelledby="worked-review-heading" aria-hidden="true" hidden inert>
+          <h2 id="worked-review-heading" tabindex="-1">Coach Replay</h2>
+          <div id="worked-review-content"></div>
+        </section>
+        <div class="worked-review-actions">
+          <button id="worked-review-back" class="worked-review-back hidden" type="button" disabled onclick="collapseWorkedReview()">Back</button>
+          <button id="question-learn-why" class="question-learn-why hidden" type="button" aria-expanded="false" aria-controls="worked-review" disabled onclick="expandWorkedReview()">Learn why</button>
+          <button id="question-continue" class="question-continue hidden" type="button" onclick="continueAfterExplanation()">Continue</button>
+        </div>
       </section>
     </div>
 
@@ -269,17 +282,17 @@
   </div>
 </div>
 
-<script src="copy.js?v=1.26.0"></script>
-<script src="learning.js?v=1.26.0"></script>
-<script src="stats.js?v=1.26.0"></script>
-<script src="opponent.js?v=1.26.0"></script>
-<script src="season.js?v=1.26.0"></script>
-<script src="football-domain.js?v=1.26.0"></script>
-<script src="contextual-questions.js?v=1.26.0"></script>
-<script src="football.js?v=1.26.0"></script>
+<script src="copy.js?v=1.27.0"></script>
+<script src="learning.js?v=1.27.0"></script>
+<script src="stats.js?v=1.27.0"></script>
+<script src="opponent.js?v=1.27.0"></script>
+<script src="season.js?v=1.27.0"></script>
+<script src="football-domain.js?v=1.27.0"></script>
+<script src="contextual-questions.js?v=1.27.0"></script>
+<script src="football.js?v=1.27.0"></script>
 <script>
   document.getElementById('version-display').textContent = `v${GAME_VERSION}`;
 </script>
-<script src="../shared/updater.js?v=1.26.0"></script>
+<script src="../shared/updater.js?v=1.27.0"></script>
 </body>
 </html>

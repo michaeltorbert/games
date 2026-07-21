@@ -1,4 +1,4 @@
-const GAME_VERSION = '1.26.0';
+const GAME_VERSION = '1.27.0';
 let prevPlayerScore = -1, prevOpponentScore = -1;
 let playerRunTimer = 0, playerCelebrateTimer = 0, playerCelebrateDelayTimer = 0;
 const EZ = 5;
@@ -582,6 +582,7 @@ function syncUiState() {
       : 'Broadcast view';
   }
   if (!['question', 'explanation'].includes(state.phase)) hideMathVisual();
+  if (state.phase !== 'explanation') resetWorkedReviewPresentation();
   updatePromptContext();
   renderDefenseRead();
 }
@@ -721,6 +722,9 @@ function makeQuestionUiState() {
     attempt: 1,
     missedChoiceIds: [],
     support: 'initial',
+    reviewExpanded: false,
+    reviewSatisfied: false,
+    reviewGateState: 'not-required',
     continueRequired: false,
     outcomeCommitted: false,
     resolutionRecorded: false,
@@ -1234,8 +1238,30 @@ function sameContractValue(left, right) {
   return JSON.stringify(left) === JSON.stringify(right);
 }
 
+function isRecursivelyFrozen(value, seen = new Set()) {
+  if (!value || typeof value !== 'object' || seen.has(value)) return true;
+  if (!Object.isFrozen(value)) return false;
+  seen.add(value);
+  return Reflect.ownKeys(value).every(key => isRecursivelyFrozen(value[key], seen));
+}
+
+function validReviewCopy(copy, bindingIds, answerId) {
+  return Boolean(copy)
+    && typeof copy.text === 'string'
+    && copy.text.trim() !== ''
+    && typeof copy.ariaLabel === 'string'
+    && copy.ariaLabel.trim() !== ''
+    && Array.isArray(copy.bindingIds)
+    && copy.bindingIds.length > 0
+    && copy.bindingIds.every(id => bindingIds.has(id))
+    && copy.answerId === answerId;
+}
+
 function validateQuestionInstance(activePlay, question) {
   if (!question || typeof question !== 'object') throw Object.assign(new Error('Question builder returned no contract.'), { code: 'malformed-question' });
+  if (question.schemaVersion !== FOOTBALL_CONTEXTUAL_QUESTIONS.SCHEMA_VERSION) {
+    throw Object.assign(new Error('Question schema does not match the contextual-question module.'), { code: 'malformed-question' });
+  }
   if (question.contextId !== activePlay.contextId || !question.questionInstanceId || question.id !== question.familyId
     || question.playType !== activePlay.playType) {
     throw Object.assign(new Error('Question identity does not link to the frozen play.'), { code: 'malformed-question' });
@@ -1271,6 +1297,19 @@ function validateQuestionInstance(activePlay, question) {
   const correct = question.choices.filter(choice => choice.id === question.correctChoiceId);
   if (correct.length !== 1 || !sameContractValue(correct[0].value, question.answer?.value)) {
     throw Object.assign(new Error('Question must contain exactly one linked correct choice.'), { code: 'malformed-question' });
+  }
+  const canonicalBindingIds = new Set(question.bindings.map(binding => binding.id));
+  const review = question.workedReview;
+  const stepIds = Array.isArray(review?.steps) ? review.steps.map(step => step?.id) : [];
+  if (!review || review.familyId !== question.familyId || review.concept !== question.concept
+    || typeof review.title !== 'string' || review.title.trim() === ''
+    || ![2, 3].includes(stepIds.length) || new Set(stepIds).size !== stepIds.length
+    || stepIds.some(id => typeof id !== 'string' || id.trim() === '')
+    || !validReviewCopy(review.goal, canonicalBindingIds, question.answer.id)
+    || !review.steps.every(step => validReviewCopy(step, canonicalBindingIds, question.answer.id))
+    || !validReviewCopy(review.footballMeaning, canonicalBindingIds, question.answer.id)
+    || !isRecursivelyFrozen(review)) {
+    throw Object.assign(new Error('Question worked review is missing, ungrounded, or mutable.'), { code: 'malformed-question' });
   }
   for (const stage of ['initial', 'guided', 'worked']) {
     const visual = question.visuals?.[stage];
@@ -1315,8 +1354,10 @@ function pickQuestion(activePlay) {
       profile: inspected.profile,
     });
     const source = questionFaultMode === 'malformed'
-      ? { ...built, choices: [] }
-      : built;
+      ? { ...built, workedReview: null }
+      : questionFaultMode === 'schema-mismatch'
+        ? { ...built, schemaVersion: FOOTBALL_CONTEXTUAL_QUESTIONS.SCHEMA_VERSION - 1 }
+        : built;
     question = FOOTBALL_DOMAIN.deepFreeze(FOOTBALL_DOMAIN.clone({
       ...source,
       contextId: activePlay.contextId,
@@ -1627,6 +1668,207 @@ function renderMathVisual() {
   ).join('')}</div>` + (support === 'worked' ? `<span class="math-worked">${question.workedExplanation.text}</span>` : '');
 }
 
+function workedReviewElements() {
+  return {
+    summary: document.getElementById('film-room-summary'),
+    summaryCopy: document.getElementById('film-room-summary-copy'),
+    region: document.getElementById('worked-review'),
+    heading: document.getElementById('worked-review-heading'),
+    content: document.getElementById('worked-review-content'),
+    back: document.getElementById('worked-review-back'),
+    learn: document.getElementById('question-learn-why'),
+    continueButton: document.getElementById('question-continue'),
+  };
+}
+
+function reviewAvailable() {
+  const learn = document.getElementById('question-learn-why');
+  return state.phase === 'explanation'
+    && Boolean(learn)
+    && !learn.disabled
+    && !learn.classList.contains('hidden');
+}
+
+function resetWorkedReviewPresentation() {
+  const { summary, summaryCopy, region, heading, content, back, learn } = workedReviewElements();
+  if (state.questionUi) state.questionUi.reviewExpanded = false;
+  if (summary) summary.classList.add('hidden');
+  if (summaryCopy) summaryCopy.textContent = '';
+  if (content) content.replaceChildren();
+  if (heading) heading.textContent = 'Coach Replay';
+  if (region) {
+    region.hidden = true;
+    region.inert = true;
+    region.classList.add('hidden');
+    region.setAttribute('aria-hidden', 'true');
+  }
+  if (back) {
+    back.classList.add('hidden');
+    back.disabled = true;
+  }
+  if (learn) {
+    learn.classList.add('hidden');
+    learn.disabled = true;
+    learn.setAttribute('aria-expanded', 'false');
+  }
+}
+
+function collapseWorkedReview({ restoreFocus = true } = {}) {
+  const { region, heading, content, back, learn } = workedReviewElements();
+  if (state.questionUi) state.questionUi.reviewExpanded = false;
+  if (content) content.replaceChildren();
+  if (heading) heading.textContent = 'Coach Replay';
+  if (region) {
+    region.hidden = true;
+    region.inert = true;
+    region.classList.add('hidden');
+    region.setAttribute('aria-hidden', 'true');
+  }
+  if (back) {
+    back.classList.add('hidden');
+    back.disabled = true;
+  }
+  if (learn) {
+    learn.setAttribute('aria-expanded', 'false');
+    const canOffer = state.phase === 'explanation'
+      && Boolean(state.questionInstance?.workedReview)
+      && !learn.disabled;
+    learn.classList.toggle('hidden', !canOffer);
+    if (restoreFocus && canOffer) learn.focus({ preventScroll: true });
+  }
+}
+
+function makeWorkedReviewFragment(review) {
+  const fragment = document.createDocumentFragment();
+  const goal = document.createElement('section');
+  goal.className = 'worked-review-goal';
+  const goalLabel = document.createElement('div');
+  goalLabel.className = 'worked-review-label';
+  goalLabel.textContent = 'Goal';
+  const goalCopy = document.createElement('p');
+  goalCopy.textContent = review.goal.text;
+  goalCopy.setAttribute('aria-label', review.goal.ariaLabel);
+  goal.append(goalLabel, goalCopy);
+
+  const steps = document.createElement('ol');
+  steps.className = 'worked-review-steps';
+  review.steps.forEach((step, index) => {
+    const item = document.createElement('li');
+    item.dataset.stepId = step.id;
+    const label = document.createElement('span');
+    label.className = 'worked-review-step-number';
+    label.setAttribute('aria-hidden', 'true');
+    label.textContent = String(index + 1);
+    const copy = document.createElement('p');
+    copy.textContent = step.text;
+    copy.setAttribute('aria-label', step.ariaLabel);
+    item.append(label, copy);
+    steps.appendChild(item);
+  });
+
+  const meaning = document.createElement('section');
+  meaning.className = 'worked-review-meaning';
+  const meaningLabel = document.createElement('div');
+  meaningLabel.className = 'worked-review-label';
+  meaningLabel.textContent = 'Football meaning';
+  const meaningCopy = document.createElement('p');
+  meaningCopy.textContent = review.footballMeaning.text;
+  meaningCopy.setAttribute('aria-label', review.footballMeaning.ariaLabel);
+  meaning.append(meaningLabel, meaningCopy);
+  fragment.append(goal, steps, meaning);
+  if (questionFaultMode === 'review-render-throw') {
+    throw new Error('Injected worked-review rendering failure.');
+  }
+  return fragment;
+}
+
+function expandWorkedReview() {
+  if (state.phase !== 'explanation' || !reviewAvailable() || state.questionUi?.reviewExpanded) return false;
+  const question = state.questionInstance;
+  const { region, heading, content, back, learn, continueButton } = workedReviewElements();
+  try {
+    if (!question?.workedReview || !region || !heading || !content || !back || !learn || !continueButton) {
+      throw new Error('Worked-review presentation is unavailable.');
+    }
+    const fragment = makeWorkedReviewFragment(question.workedReview);
+    content.replaceChildren(fragment);
+    heading.textContent = `Coach Replay: ${question.workedReview.title}`;
+    state.questionUi.reviewExpanded = true;
+    learn.setAttribute('aria-expanded', 'true');
+    learn.classList.add('hidden');
+    back.disabled = false;
+    back.classList.remove('hidden');
+    region.hidden = false;
+    region.inert = false;
+    region.classList.remove('hidden');
+    region.setAttribute('aria-hidden', 'false');
+    state.questionUi.reviewSatisfied = true;
+    state.questionUi.reviewGateState = 'opened';
+    showContinueButton({ focus: false });
+    heading.focus({ preventScroll: true });
+    return true;
+  } catch (error) {
+    state.questionUi.reviewExpanded = false;
+    state.questionUi.reviewSatisfied = true;
+    state.questionUi.reviewGateState = 'bypassed-render-failure';
+    if (content) content.replaceChildren();
+    if (heading) heading.textContent = 'Coach Replay';
+    if (region) {
+      region.hidden = true;
+      region.inert = true;
+      region.classList.add('hidden');
+      region.setAttribute('aria-hidden', 'true');
+    }
+    if (back) {
+      back.disabled = true;
+      back.classList.add('hidden');
+    }
+    if (learn) {
+      learn.setAttribute('aria-expanded', 'false');
+      learn.disabled = true;
+      learn.classList.add('hidden');
+    }
+    if (continueButton) {
+      continueButton.classList.remove('hidden');
+      continueButton.disabled = false;
+      continueButton.focus({ preventScroll: true });
+    }
+    reportFootballDiagnostic('worked-review-render-failure', {
+      familyId: question?.familyId ?? null,
+      contextId: question?.contextId ?? state.activePlay?.contextId ?? null,
+      questionInstanceId: question?.questionInstanceId ?? null,
+    });
+    return false;
+  }
+}
+
+function showWorkedReviewSummary() {
+  resetWorkedReviewPresentation();
+  const question = state.questionInstance;
+  const { summary, summaryCopy, learn, continueButton } = workedReviewElements();
+  if (!question?.workedReview || !summary || !summaryCopy || !learn) {
+    if (state.questionUi) {
+      state.questionUi.reviewSatisfied = true;
+      state.questionUi.reviewGateState = 'bypassed-render-failure';
+    }
+    showContinueButton({ focus: false });
+    if (continueButton) continueButton.focus({ preventScroll: true });
+    return false;
+  }
+  if (state.questionUi) {
+    state.questionUi.reviewSatisfied = false;
+    state.questionUi.reviewGateState = 'pending';
+  }
+  hideContinueButton();
+  summaryCopy.textContent = question.workedExplanation.text;
+  summary.classList.remove('hidden');
+  learn.disabled = false;
+  learn.classList.remove('hidden');
+  learn.setAttribute('aria-expanded', 'false');
+  summary.focus({ preventScroll: true });
+  return true;
+}
+
 function hideContinueButton() {
   const button = document.getElementById('question-continue');
   if (!button) return;
@@ -1634,12 +1876,12 @@ function hideContinueButton() {
   button.disabled = true;
 }
 
-function showContinueButton() {
+function showContinueButton({ focus = true } = {}) {
   const button = document.getElementById('question-continue');
   if (!button) return;
   button.classList.remove('hidden');
   button.disabled = false;
-  requestAnimationFrame(() => button.focus());
+  if (focus) requestAnimationFrame(() => button.focus({ preventScroll: true }));
 }
 
 function setActionSubcopy(t) {
@@ -2408,13 +2650,47 @@ function expectedRequestedGainForResolution(snap, policy) {
 
   if (policy === 'questionBypass') return originalRequestedGain;
   if (policy === 'firstTryCorrect' || policy === 'retryCorrect') {
-    return possession === 'offense' ? originalRequestedGain : 0;
+    if (possession === 'defense') return 0;
+    if (policy === 'retryCorrect') return creditedRetryGainForSnap(snap);
+    return originalRequestedGain;
   }
   if (policy === 'secondMiss') return secondMissOutcomeForSnap(snap).requestedGain;
 
   const error = new Error(`Unknown resolution policy: ${policy}`);
   error.code = 'invalid-resolution-policy';
   throw error;
+}
+
+function creditedRetryGainForSnap(snap) {
+  const originalRequestedGain = snap?.proposal?.requestedGain;
+  const originalAppliedGain = snap?.proposal?.appliedGain;
+  if (!Number.isInteger(originalRequestedGain) || !Number.isInteger(originalAppliedGain)
+    || originalAppliedGain <= 0 || snap?.context?.possession !== 'offense') {
+    return originalRequestedGain;
+  }
+  return Math.max(1, Math.floor(originalAppliedGain / 2));
+}
+
+function resolutionAssistMetadata(activePlay, policy, transition) {
+  const snap = activePlay?.playType === 'scrimmage'
+    ? FOOTBALL_DOMAIN.activeSnapFromPlay(activePlay)
+    : null;
+  const rawGain = snap ? snap.proposal.appliedGain : null;
+  const creditedGain = activePlay?.playType === 'scrimmage' ? transition.appliedGain : null;
+  const assisted = policy === 'retryCorrect';
+  const reductionApplied = Boolean(assisted
+    && snap
+    && activePlay.context.possession === 'offense'
+    && rawGain > 0
+    && creditedGain !== rawGain);
+  return {
+    assisted,
+    assistReason: assisted ? 'retry' : 'none',
+    rawGain,
+    creditedGain,
+    reductionApplied,
+    reviewGateState: state.questionUi?.reviewGateState || 'not-required',
+  };
 }
 
 function secondMissOutcomeForSnap(snap) {
@@ -2450,7 +2726,10 @@ function expectedTransitionForResolution(activePlay, policy) {
   if (activePlay.playType === 'scrimmage') {
     const snap = FOOTBALL_DOMAIN.activeSnapFromPlay(activePlay);
     if (instructionalSuccess) {
-      return possession === 'offense' ? activePlay.proposal : FOOTBALL_DOMAIN.reprojectGain(snap, 0);
+      if (possession === 'defense') return FOOTBALL_DOMAIN.reprojectGain(snap, 0);
+      return policy === 'retryCorrect'
+        ? FOOTBALL_DOMAIN.reprojectGain(snap, creditedRetryGainForSnap(snap))
+        : activePlay.proposal;
     }
     const miss = secondMissOutcomeForSnap(snap);
     return FOOTBALL_DOMAIN.reprojectGain(snap, miss.requestedGain, miss.resultReason ? {
@@ -2512,6 +2791,7 @@ function makePendingResolution(policy, transition = null, links = null) {
     familyId: links?.familyId ?? state.questionInstance?.familyId ?? null,
     questionInstanceId: links?.questionInstanceId ?? state.questionInstance?.questionInstanceId ?? null,
     transitionToCommit: validated.value,
+    assist: resolutionAssistMetadata(activePlay, policy, validated.value),
   });
 }
 
@@ -2725,7 +3005,9 @@ function completeCorrectAnswer(btn, question) {
     : state.possession === 'defense'
       ? outcomeMessage(PLAY_OUTCOME_COPY.defenseStop, state.opponentCallKey)
       : state.questionUi.attempt > 1
-        ? 'Great retry. The full play counts!'
+        ? state.pendingResolution.assist?.reductionApplied
+          ? `Great retry. The assisted play counts for ${yds(state.pendingResolution.assist.creditedGain)}.`
+          : 'Great retry. The play counts!'
         : 'Correct. Run the play!';
   state.outcomeMessage = msg;
   applyDeskHeader(special
@@ -2739,6 +3021,8 @@ function handleInstructionalMiss(btn, choice, question) {
   let secondMissPending = null;
   if (state.questionUi.attempt !== 1) {
     secondMissPending = makePendingResolution('secondMiss');
+    state.questionUi.reviewSatisfied = false;
+    state.questionUi.reviewGateState = 'pending';
   }
   if (state.questionUi.attempt !== 1 && !secondMissPending) {
     const error = new Error('A terminal instructional miss requires one validated pending resolution.');
@@ -2778,7 +3062,7 @@ function handleInstructionalMiss(btn, choice, question) {
     ? (state.possession === 'offense' ? 'explainOffense' : 'explainDefense')
     : (state.possession === 'offense' ? 'specialExplainOffense' : 'specialExplainDefense'));
   setFeedback(question.workedExplanation.text, 'info');
-  showContinueButton();
+  showWorkedReviewSummary();
 }
 
 function recordQuestionResolution(result) {
@@ -2797,8 +3081,14 @@ function recordQuestionResolution(result) {
 
 function continueAfterExplanation() {
   if (state.phase !== 'explanation' || !state.questionUi.continueRequired || state.questionUi.outcomeCommitted) return;
+  if (!state.questionUi.reviewSatisfied) {
+    const learn = document.getElementById('question-learn-why');
+    if (learn && !learn.disabled && !learn.classList.contains('hidden')) learn.focus({ preventScroll: true });
+    return;
+  }
   const continueButton = document.getElementById('question-continue');
   const focusNextCall = document.activeElement === continueButton;
+  collapseWorkedReview({ restoreFocus: false });
   state.questionUi.continueRequired = false;
   hideContinueButton();
   state.phase = 'feedback';
@@ -3177,6 +3467,7 @@ function commitPendingResolution({ focusNextCall = false } = {}) {
     outcome,
     transition: validation.value,
     placement: settledPlacement,
+    assist: pending.assist || null,
   });
   if (possessionFinalized
     && state.quarter >= 4
@@ -3455,6 +3746,11 @@ function hideOverlays() {
 }
 
 document.addEventListener('keydown', function(event) {
+  if (event.key === 'Escape' && state.phase === 'explanation' && state.questionUi?.reviewExpanded) {
+    event.preventDefault();
+    collapseWorkedReview();
+    return;
+  }
   const overlay = document.querySelector('.overlay.show');
   if (!overlay) return;
   if (event.key === 'Escape') {
@@ -4133,6 +4429,12 @@ function renderGameToText() {
     missedChoiceIds: state.questionUi?.missedChoiceIds || [],
     missedChoiceIndexes: state.missedChoiceIndexes || [],
     retryAvailable: state.phase === 'question' && state.questionUi?.attempt === 2,
+    reviewAvailable: reviewAvailable(),
+    reviewExpanded: Boolean(state.questionUi?.reviewExpanded),
+    reviewSatisfied: Boolean(state.questionUi?.reviewSatisfied),
+    reviewGateState: state.questionUi?.reviewGateState || 'not-required',
+    reviewFamilyId: state.questionInstance?.workedReview?.familyId || null,
+    reviewStepCount: state.questionInstance?.workedReview?.steps?.length || 0,
     continueRequired: Boolean(state.questionUi?.continueRequired),
     outcomeCommitted: Boolean(state.questionUi?.outcomeCommitted),
     learning: {
@@ -4321,7 +4623,7 @@ window.__footballTest = {
     return FOOTBALL_OPPONENT.pickCall(weights, rng);
   },
   setQuestionFault(mode) {
-    const allowed = [null, 'empty-pool', 'build-throw', 'malformed', 'prepare-after-ui', 'invalid-context', 'invalid-projection'];
+    const allowed = [null, 'empty-pool', 'build-throw', 'malformed', 'schema-mismatch', 'prepare-after-ui', 'invalid-context', 'invalid-projection', 'review-render-throw'];
     if (!allowed.includes(mode)) throw new TypeError(`Unknown question fault mode: ${mode}`);
     questionFaultMode = mode;
   },

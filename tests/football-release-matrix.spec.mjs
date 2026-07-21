@@ -34,7 +34,7 @@ async function shot(page, testInfo, label) {
   const dir = path.join(process.cwd(), 'tests', 'artifacts', 'release-matrix', testInfo.project.name);
   const artifactPath = path.join(dir, `${label}.png`);
   await fs.mkdir(dir, { recursive: true });
-  await page.screenshot({ path: artifactPath, fullPage: false });
+  await page.screenshot({ path: artifactPath });
   await testInfo.attach(`${label}.png`, { path: artifactPath, contentType: 'image/png' });
 }
 
@@ -114,6 +114,43 @@ async function assertPhaseAndShot(page, testInfo, phase, label) {
   const metrics = await assertViewport(page, label);
   await shot(page, testInfo, label);
   return metrics;
+}
+
+async function assertCoachReplayAndShot(page, testInfo, label) {
+  await page.locator('#question-learn-why').click();
+  await expect(page.locator('#worked-review')).toBeVisible();
+  await expect(page.locator('#worked-review-heading')).toBeFocused();
+  const metrics = await page.evaluate(() => {
+    const review = document.getElementById('worked-review');
+    const content = document.getElementById('worked-review-content');
+    const controls = ['worked-review-back', 'question-continue'].map((id) => {
+      const rect = document.getElementById(id).getBoundingClientRect();
+      return { id, width: rect.width, height: rect.height, left: rect.left, right: rect.right };
+    });
+    return {
+      viewportWidth: innerWidth,
+      documentScrollWidth: document.documentElement.scrollWidth,
+      reviewScrollWidth: review.scrollWidth,
+      reviewClientWidth: review.clientWidth,
+      reviewOverflowY: getComputedStyle(review).overflowY,
+      contentOverflowY: getComputedStyle(content).overflowY,
+      controls,
+    };
+  });
+  expect(metrics.documentScrollWidth, `${label}: horizontal document overflow`)
+    .toBeLessThanOrEqual(metrics.viewportWidth + EPS);
+  expect(metrics.reviewScrollWidth, `${label}: horizontal Coach Replay overflow`)
+    .toBeLessThanOrEqual(metrics.reviewClientWidth + EPS);
+  expect(['auto', 'scroll']).not.toContain(metrics.reviewOverflowY);
+  expect(['auto', 'scroll']).not.toContain(metrics.contentOverflowY);
+  for (const control of metrics.controls) {
+    expect(control.width, `${label}: narrow ${control.id}`).toBeGreaterThanOrEqual(44);
+    expect(control.height, `${label}: short ${control.id}`).toBeGreaterThanOrEqual(44);
+    expect(control.left, `${label}: ${control.id} clipped left`).toBeGreaterThanOrEqual(-EPS);
+    expect(control.right, `${label}: ${control.id} clipped right`).toBeLessThanOrEqual(metrics.viewportWidth + EPS);
+  }
+  await page.locator('.worked-review-actions').scrollIntoViewIfNeeded();
+  await shot(page, testInfo, label);
 }
 
 async function assertOverlay(page, testInfo, id, phase, label) {
@@ -313,8 +350,10 @@ test('full football state matrix follows production transitions', async ({ page 
   expect(game.continueRequired).toBe(true);
   expect(game.outcomeCommitted).toBe(false);
   await assertPhaseAndShot(page, testInfo, 'explanation', '08c-defense-explanation');
+  await assertCoachReplayAndShot(page, testInfo, '08d-defense-coach-replay');
 
   await page.locator('#question-continue').click();
+  await page.evaluate(() => scrollTo(0, 0));
   game = await renderedState(page);
   expect(game.score).toEqual({ player: 7, opponent: 6 });
   expect(game.opponentTouchdowns).toBe(1);
@@ -339,14 +378,16 @@ test('full football state matrix follows production transitions', async ({ page 
   expect(game.continueRequired).toBe(true);
   expect(game.outcomeCommitted).toBe(false);
   await assertPhaseAndShot(page, testInfo, 'explanation', '10c-opponent-conversion-explanation');
+  await assertCoachReplayAndShot(page, testInfo, '10d-opponent-conversion-coach-replay');
 
   await page.locator('#question-continue').click();
+  await page.evaluate(() => scrollTo(0, 0));
   game = await renderedState(page);
   expect(game.score).toEqual({ player: 7, opponent: 7 });
   expect(game.correctAnswers).toBe(2);
   expect(game.gradedQuestions).toBe(4);
   expect(game.quarterPossessions).toBe(2);
-  await assertPhaseAndShot(page, testInfo, 'feedback', '10d-opponent-conversion-feedback');
+  await assertPhaseAndShot(page, testInfo, 'feedback', '10e-opponent-conversion-feedback');
 
   await page.clock.runFor(1450);
   await assertOverlay(page, testInfo, 'ov-offense', 'transition', '11-offense-transition');
@@ -811,6 +852,7 @@ test('post-game accuracy counts wrong offense and defense answers', async ({ pag
   await answerChoice(page, firstWrong);
   await answerChoice(page, await liveChoiceId(page, 'wrong', [firstWrong]));
   await expect(page.locator('#ui-desk')).toHaveAttribute('data-phase', 'explanation');
+  await page.locator('#question-learn-why').click();
   await page.locator('#question-continue').click();
   await expect(page.locator('#ui-desk')).toHaveAttribute('data-phase', 'feedback');
 
@@ -838,6 +880,7 @@ test('post-game accuracy counts wrong offense and defense answers', async ({ pag
   await answerChoice(page, firstWrong);
   await answerChoice(page, await liveChoiceId(page, 'wrong', [firstWrong]));
   await expect(page.locator('#ui-desk')).toHaveAttribute('data-phase', 'explanation');
+  await page.locator('#question-learn-why').click();
   await page.locator('#question-continue').click();
   await expect(page.locator('#ui-desk')).toHaveAttribute('data-phase', 'feedback');
 

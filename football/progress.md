@@ -632,3 +632,101 @@ surfaces remain v1.26.0.
   skips, and 262/262 verified screenshots across all six projects.
 - Exact-artifact independent review and reconciliation remain
   orchestrator-owned. This writer made no GitHub write and claims no consensus.
+
+---
+
+## Football v1.27.0 issue #24 Film Room Coach Replay
+
+- Preserved the persistent guided first retry and required second-miss Continue
+  gate. A terminal miss now focuses a concise Film Room summary and offers an
+  optional, non-modal Coach Replay inside the existing explanation desk; Learn
+  why, Back, and Escape are presentation-only, while Continue remains the sole
+  committing control in collapsed and expanded states.
+- Raised only the contextual-question contract to schema 2. Every one of the
+  27 registered families now builds a required, recursively frozen,
+  family-authored `workedReview` with a child-facing goal, two grounded coached
+  steps, and the football meaning linked to the canonical bindings and answer.
+  Runtime validation rejects mismatched versions, missing authoring, mutable
+  review data, and broken family, concept, binding, answer, or step identity
+  before an attempt begins.
+- Kept the existing worked field model authoritative and the answer buttons
+  hidden during explanation. Expanded lessons are assembled off-DOM before
+  presentation; an injected render failure atomically hides and disables the
+  optional lesson, emits only fixed identifiers, focuses Continue, and retains
+  the frozen pending play and concise correction without committing or leaking
+  instructional prose.
+- Added deterministic focus, keyboard, no-RNG, authority-preservation,
+  privacy, duplicate-Continue, failure, and all-family grounding coverage.
+  The release matrix now captures ordinary and special-team Coach Replay on
+  every target, bringing the complete artifact contract to 274 PNGs. Expanded
+  phone lessons use normal page flow with no nested scroll region, horizontal
+  overflow, or sub-44-point controls.
+- Visually inspected regenerated iPad 11 landscape and iPhone 15 frames with
+  the worked field model, concise summary, complete two-step review, and Back
+  plus Continue reachable. The prescribed browser client also rendered a real
+  production question with schema-2 review identity in semantic state and no
+  console or page-error artifact.
+- Focused writer evidence: 32/32 contextual-question checks; 71/71 primary
+  context, learning, and accessibility checks; 2/2 copy/version checks; 6/6
+  complete deterministic state-sequence checks across the configured device
+  projects; and 4/4 registry checks. The standalone artifact verifier remains
+  intentionally incomplete after these focused runs because the unchanged
+  non-target screenshots were not regenerated; the full writeful Football
+  release gate, exact-artifact reviews, commit, push, PR, merge, deployment,
+  and live-version verification remain orchestrator-owned. This writer made no
+  GitHub write and claims no consensus.
+- Round-one non-blocking review observations were dispositioned without
+  speculative churn. N1 is retained intentionally: step 1 supplies the guided
+  method, while step 2 repeats the canonical concise equation or conclusion as
+  the stable check; the family-authored goal and football meaning provide the
+  additional lesson context without creating a second numeric authority. N2
+  does not broaden the shared diagnostic helper: this feature passes only its
+  fixed code and three stable IDs, and its exact event test rejects prose or
+  extra data; changing every diagnostic caller is outside issue #24. N3 leaves
+  the registry test's `1.26.0` values unchanged because they are a deliberately
+  synthetic exact-base fixture proving target-only drift, not a current-release
+  version source. These dispositions do not claim a final exact-artifact
+  review of the resulting tree.
+- N4 is recorded as informational with no runtime change. The terminal
+  correction continues through the established polite `#feedback` status,
+  while focus on the labelled Film Room summary supplies the new navigation
+  target and its local description. Whether an assistive technology voices
+  both is timing- and implementation-dependent; the DOM and focused tests show
+  no deterministic duplicate event, regression, or disclosure. Removing
+  either path without a reproduced screen-reader defect could instead drop the
+  established status announcement or the required focused-summary context.
+
+---
+
+## Football issue #24 required Coach Replay and assisted retry gain
+
+- Follow-up prompt: make Learn why / Coach Replay required before Continue
+  after a second miss, and make a successful offensive retry credit half of the
+  positive scrimmage gain instead of the full result.
+- After a second miss, the concise Film Room summary still appears first, but
+  Continue is hidden, disabled, and blocked in `continueAfterExplanation()`
+  until Coach Replay opens. Opening Coach Replay marks the review satisfied and
+  reveals Continue; review-render failure deliberately fails open to the
+  existing concise frozen Continue path with a fixed diagnostic.
+- Retry-correct assist is scoped to player-offense scrimmage plays with a
+  positive applied gain. Credited gain is `Math.max(1, Math.floor(raw / 2))`
+  and the play transition is reprojected from that credited gain, so first down,
+  touchdown, down-distance, field position, and stats settle from the reduced
+  result. Defense, opponent/special-team plays, first-try success, failed
+  answers, zero gains, and losses keep their existing policies.
+- Added render-state and result-event assist metadata for diagnostics/tests
+  without changing question schemas or learning-event payloads. Preserved the
+  existing guided first-try behavior: guidance alone does not halve a successful
+  first try.
+- Verification evidence from this pass: `node --check football/football.js`;
+  `git diff --check`; `npm run test:registry` 4/4; focused football
+  verification with learning, context integration, audio, and call-layout on
+  iPad 11 landscape 74/74; the configured `npm run test:football` call-layout
+  suite 18/18 across the device projects; targeted accessibility rerun 9/9;
+  `npm run test:football:release` DOM-free checks 107/107; the first full
+  release Playwright pass had one iPad Pro 13 landscape release-matrix timeout
+  after 286 passes and 499 expected skips, and that timed-out scenario then
+  passed by itself in 19.8s; the lower-concurrency release Playwright matrix
+  completed cleanly with 287 passes and 499 expected skips. Exact-artifact
+  independent review, commit, push, PR, merge, deployment, and live-version
+  verification remain orchestrator-owned.
