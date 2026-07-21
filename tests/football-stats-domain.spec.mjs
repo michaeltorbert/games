@@ -141,7 +141,7 @@ function playContext(overrides = {}) {
   };
 }
 
-function question(id, concept) {
+function question(id, concept, evidenceClass = 'independent') {
   return {
     id,
     skill: 'addition',
@@ -149,6 +149,7 @@ function question(id, concept) {
     purpose: 'coreReview',
     grading: 'gate',
     tier: 'within-10',
+    evidenceClass,
   };
 }
 
@@ -201,14 +202,15 @@ function legacyPayload(schemaVersion) {
 }
 
 for (const schemaVersion of [1, 2]) {
-  test(`schema v${schemaVersion} normalizes in memory and writes v3 only after completion`, () => {
+  test(`schema v${schemaVersion} normalizes in memory and writes v4 only after completion`, () => {
     const seededRaw = legacyPayload(schemaVersion);
     const { stats, localStorage } = loadStats(seededRaw);
 
     const history = plain(stats.history());
     assert.equal(stats.STORAGE_KEY, STORAGE_KEY);
-    assert.equal(stats.SCHEMA_VERSION, 3);
-    assert.equal(history.schemaVersion, 3);
+    assert.equal(stats.SCHEMA_VERSION, 4);
+    assert.equal(stats.TYPED_PLAY_SCHEMA_VERSION, 3);
+    assert.equal(history.schemaVersion, 4);
     assert.equal(localStorage.raw(), seededRaw);
     assert.equal(history.aggregates.completedPlays, 1);
     assert.equal(history.aggregates.actualYards, 4);
@@ -225,13 +227,16 @@ for (const schemaVersion of [1, 2]) {
       scrimmage: 1, conversion: 0, fieldGoal: 0, punt: 0,
     });
     assert.deepEqual(history.mastery, {
-      'legacy-concept': { resolved: 1, firstTryCorrect: 1, retryCorrect: 0, secondMiss: 0 },
+      'legacy-concept': {
+        unclassified: { resolved: 1, firstTryCorrect: 1, retryCorrect: 0, secondMiss: 0 },
+      },
     });
     const legacyRow = history.recentPlays[0];
     assert.equal(legacyRow.id, `legacy-v${schemaVersion}`);
     assert.equal(legacyRow.gameId, 'legacy-game');
     assert.equal(legacyRow.playId, `legacy-v${schemaVersion}`);
     assert.equal(legacyRow.playType, 'scrimmage');
+    assert.equal(legacyRow.question.evidenceClass, 'unclassified');
     assert.deepEqual(legacyRow.metrics, { offeredYards: 4, actualYards: 4 });
 
     const session = stats.createSession(`new-game-v${schemaVersion}`);
@@ -252,7 +257,7 @@ for (const schemaVersion of [1, 2]) {
     }));
 
     const persisted = JSON.parse(localStorage.raw());
-    assert.equal(persisted.schemaVersion, 3);
+    assert.equal(persisted.schemaVersion, 4);
     assert.equal(persisted.aggregates.completedPlays, 2);
     assert.equal(persisted.aggregates.actualYards, 6);
     assert.equal(persisted.aggregates.byPlayType.scrimmage, 2);
@@ -262,6 +267,132 @@ for (const schemaVersion of [1, 2]) {
     assert.equal(persisted.recentPlays.length, 2);
   });
 }
+
+test('schema v3 typed evidence migrates to unclassified without a read write and round-trips on v4 write', () => {
+  const completedAt = '2026-07-03T12:00:00.000Z';
+  const seeded = JSON.stringify({
+    schemaVersion: 3,
+    aggregates: {
+      completedPlays: 1,
+      byPossession: { offense: 1, defense: 0 },
+      byOutcome: { conversionMade: 1 },
+      byPlayType: { scrimmage: 0, conversion: 1, fieldGoal: 0, punt: 0 },
+      learning: { gradedPlays: 1, firstTryCorrect: 1 },
+    },
+    recentPlays: [{
+      id: 'typed-v3-row',
+      gameId: 'typed-v3-game',
+      possessionId: 'typed-v3-possession',
+      playId: 'typed-v3-play',
+      playType: 'conversion',
+      sequence: 1,
+      completedAt,
+      instructionalStatus: 'presented',
+      preSnap: playContext(),
+      question: { ...question('typed-v3-family', 'conversion-scoring'), evidenceClass: 'independent' },
+      attempts: [{ number: 1, correct: true, elapsedMs: 4, support: 'none' }],
+      resolution: 'firstTryCorrect',
+      outcome: 'conversionMade',
+      metrics: { attemptType: 'twoPoint', attemptValue: 2, tryYardLine: 98, pointsAwarded: 2 },
+      postPlay: playContext({ score: { player: 2, opponent: 0 } }),
+    }],
+    mastery: {
+      'conversion-scoring': { resolved: 1, firstTryCorrect: 1, retryCorrect: 0, secondMiss: 0 },
+    },
+    lastResolvedByConcept: {
+      'conversion-scoring': { completedAt, resolution: 'firstTryCorrect' },
+    },
+  });
+  const { stats, localStorage } = loadStats(seeded);
+  const history = plain(stats.history());
+  const learning = plain(stats.learningSnapshot());
+
+  assert.equal(localStorage.raw(), seeded);
+  assert.equal(history.schemaVersion, 4);
+  assert.deepEqual(history.recentPlays[0], {
+    ...history.recentPlays[0],
+    playType: 'conversion',
+    offeredYards: null,
+    actualYards: null,
+    calls: null,
+    outcome: 'conversionMade',
+    metrics: { attemptType: 'twoPoint', attemptValue: 2, tryYardLine: 98, pointsAwarded: 2 },
+  });
+  assert.equal(history.recentPlays[0].question.evidenceClass, 'unclassified');
+  assert.deepEqual(learning.mastery, {
+    'conversion-scoring': {
+      unclassified: { resolved: 1, firstTryCorrect: 1, retryCorrect: 0, secondMiss: 0 },
+    },
+  });
+  assert.deepEqual(learning.lastResolvedByConcept, {
+    'conversion-scoring': { unclassified: { completedAt, resolution: 'firstTryCorrect' } },
+  });
+
+  assert.ok(completeBypassed(stats, {
+    gameId: 'v4-trigger-game', possessionId: 'v4-trigger-possession', playId: 'v4-trigger-play',
+  }));
+  const persisted = JSON.parse(localStorage.raw());
+  assert.equal(persisted.schemaVersion, 4);
+  assert.equal(persisted.recentPlays[0].question.evidenceClass, 'unclassified');
+  assert.deepEqual(persisted.mastery, learning.mastery);
+  assert.deepEqual(persisted.lastResolvedByConcept, learning.lastResolvedByConcept);
+});
+
+test('schema v4 missing or unknown evidence class preserves safe rows but grants no mastery or latest credit', () => {
+  const row = (id, evidenceClass) => {
+    const rowQuestion = question(`${id}-family`, 'line-to-gain');
+    if (evidenceClass === undefined) delete rowQuestion.evidenceClass;
+    else rowQuestion.evidenceClass = evidenceClass;
+    return {
+      id,
+      gameId: 'malformed-class-game',
+      possessionId: 'malformed-class-possession',
+      playId: `${id}-play`,
+      playType: 'scrimmage',
+      sequence: id === 'missing-class' ? 1 : 2,
+      completedAt: `2026-07-04T12:0${id === 'missing-class' ? 0 : 1}:00.000Z`,
+      instructionalStatus: 'presented',
+      preSnap: playContext(),
+      calls: { offense: 'shortRun' },
+      question: rowQuestion,
+      attempts: [{ number: 1, correct: true, elapsedMs: 5, support: 'none' }],
+      resolution: 'firstTryCorrect',
+      outcome: 'gain',
+      metrics: { offeredYards: 3, actualYards: 3 },
+      postPlay: playContext({ yardLine: 91, plays: 1, drivePlays: 1 }),
+    };
+  };
+  const seeded = JSON.stringify({
+    schemaVersion: 4,
+    aggregates: { completedPlays: 2, actualYards: 6 },
+    recentPlays: [row('missing-class', undefined), row('unknown-class', 'invented')],
+    mastery: {},
+    lastResolvedByConcept: {
+      'line-to-gain': { invented: { completedAt: '2026-07-04T12:01:00.000Z', resolution: 'firstTryCorrect' } },
+    },
+  });
+  const { stats, localStorage } = loadStats(seeded);
+
+  assert.equal(localStorage.raw(), seeded);
+  assert.deepEqual(plain(stats.history().recentPlays.map(item => item.question.evidenceClass)), [null, null]);
+  assert.deepEqual(plain(stats.learningSnapshot()), { mastery: {}, lastResolvedByConcept: {} });
+
+  const session = stats.createSession('current-class-validation');
+  const details = {
+    possessionId: 'current-class-possession',
+    playId: 'current-class-play',
+    playType: 'scrimmage',
+    preSnap: playContext(),
+    calls: { offense: 'shortRun' },
+    offeredYards: 3,
+    question: { ...question('current-class-family', 'line-to-gain'), evidenceClass: 'unclassified' },
+  };
+  assert.equal(stats.beginPlay(session, details), false);
+  const draft = stats.beginPlayDraft(session, details);
+  assert.ok(draft);
+  assert.equal(stats.markPresented(draft, { question: details.question }), false);
+  assert.ok(stats.markBypassed(draft));
+});
 
 test('typed special rows retain their metrics and never enter scrimmage yard aggregates', () => {
   const { stats } = loadStats();
@@ -408,7 +539,7 @@ test('an unknown future schema remains byte-for-byte untouched after a local com
   const futureRaw = JSON.stringify({ schemaVersion: 99, future: { preserve: true } });
   const { stats, localStorage } = loadStats(futureRaw);
   assert.deepEqual(plain(stats.history()), {
-    schemaVersion: 3,
+    schemaVersion: 4,
     aggregates: {
       completedPlays: 0,
       actualYards: 0,
@@ -596,6 +727,7 @@ function completePresented(stats, {
   playId,
   id = null,
   concept = 'field-distance',
+  evidenceClass = 'independent',
   resolution = 'firstTryCorrect',
 }) {
   const session = stats.createSession(gameId);
@@ -607,7 +739,7 @@ function completePresented(stats, {
     preSnap: playContext(),
     calls: { offense: 'shortRun' },
     offeredYards: 3,
-    question: question(`${playId}-question`, concept),
+    question: question(`${playId}-question`, concept, evidenceClass),
   });
   stats.recordAttempt(pending, {
     number: 1,
@@ -659,6 +791,42 @@ test('exclusive origin lock preserves two tab completions queued before either c
   );
 });
 
+test('concurrent tabs preserve separate literacy and independent mastery, recency, and unrelated season bytes', async () => {
+  const seasonKey = 'footballMathSeason:v1';
+  const seasonRaw = '{\n  "schemaVersion": 1,\n  "season": "leave-me-byte-identical"\n}\n';
+  const sharedStorage = makeStorage();
+  sharedStorage.setItem(seasonKey, seasonRaw);
+  const sharedLocks = makeLockManager({ autoGrant: false });
+  const firstTab = loadStats(null, {}, sharedStorage, sharedLocks);
+  const secondTab = loadStats(null, {}, sharedStorage, sharedLocks);
+
+  assert.ok(completePresented(firstTab.stats, {
+    gameId: 'independent-game', possessionId: 'independent-possession', playId: 'independent-play',
+    concept: 'shared-concept', evidenceClass: 'independent', resolution: 'firstTryCorrect',
+  }));
+  assert.ok(completePresented(secondTab.stats, {
+    gameId: 'literacy-game', possessionId: 'literacy-possession', playId: 'literacy-play',
+    concept: 'shared-concept', evidenceClass: 'literacy', resolution: 'retryCorrect',
+  }));
+
+  assert.equal(sharedLocks.pendingCount(), 2);
+  await sharedLocks.grantAll();
+
+  const persisted = JSON.parse(sharedStorage.raw());
+  assert.equal(persisted.schemaVersion, 4);
+  assert.deepEqual(persisted.mastery['shared-concept'], {
+    independent: { resolved: 1, firstTryCorrect: 1, retryCorrect: 0, secondMiss: 0 },
+    literacy: { resolved: 1, firstTryCorrect: 0, retryCorrect: 1, secondMiss: 0 },
+  });
+  assert.equal(persisted.lastResolvedByConcept['shared-concept'].independent.resolution, 'firstTryCorrect');
+  assert.equal(persisted.lastResolvedByConcept['shared-concept'].literacy.resolution, 'retryCorrect');
+  assert.deepEqual(
+    persisted.recentPlays.map(row => [row.playId, row.question.evidenceClass]),
+    [['independent-play', 'independent'], ['literacy-play', 'literacy']],
+  );
+  assert.equal(sharedStorage.raw(seasonKey), seasonRaw);
+});
+
 test('the same stable play completed in two tabs persists and aggregates once', async () => {
   const sharedStorage = makeStorage();
   const sharedLocks = makeLockManager({ autoGrant: false });
@@ -682,6 +850,34 @@ test('the same stable play completed in two tabs persists and aggregates once', 
   assert.equal(persisted.aggregates.completedPlays, 1);
   assert.deepEqual(persisted.recentPlays.map(row => row.id), ['first-row']);
   assert.equal(sharedStorage.setCount(), 1);
+});
+
+test('a same-stable-play race grants mastery to only the class on the winning canonical row', async () => {
+  const sharedStorage = makeStorage();
+  const sharedLocks = makeLockManager({ autoGrant: false });
+  const firstTab = loadStats(null, {}, sharedStorage, sharedLocks);
+  const secondTab = loadStats(null, {}, sharedStorage, sharedLocks);
+
+  assert.ok(completePresented(firstTab.stats, {
+    gameId: 'shared-class-game', possessionId: 'first-possession', playId: 'same-classified-play',
+    id: 'independent-row', concept: 'shared-concept', evidenceClass: 'independent', resolution: 'firstTryCorrect',
+  }));
+  assert.ok(completePresented(secondTab.stats, {
+    gameId: 'shared-class-game', possessionId: 'second-possession', playId: 'same-classified-play',
+    id: 'literacy-row', concept: 'shared-concept', evidenceClass: 'literacy', resolution: 'retryCorrect',
+  }));
+
+  await sharedLocks.grantAll();
+
+  const persisted = JSON.parse(sharedStorage.raw());
+  assert.equal(persisted.aggregates.completedPlays, 1);
+  assert.deepEqual(persisted.recentPlays.map(row => [row.id, row.question.evidenceClass]), [
+    ['independent-row', 'independent'],
+  ]);
+  assert.deepEqual(persisted.mastery['shared-concept'], {
+    independent: { resolved: 1, firstTryCorrect: 1, retryCorrect: 0, secondMiss: 0 },
+  });
+  assert.deepEqual(Object.keys(persisted.lastResolvedByConcept['shared-concept']), ['independent']);
 });
 
 test('stable-play replay remains deduplicated after its history row is evicted', async () => {
@@ -881,7 +1077,7 @@ test('learning recency follows completion time when an older staged row is appen
   );
   assert.deepEqual(
     plain(localTab.stats.learningSnapshot().lastResolvedByConcept['field-distance']),
-    { completedAt: remoteCompletedAt, resolution: 'secondMiss' },
+    { independent: { completedAt: remoteCompletedAt, resolution: 'secondMiss' } },
   );
 
   await sharedLocks.grantAll();
@@ -891,7 +1087,7 @@ test('learning recency follows completion time when an older staged row is appen
   );
   assert.deepEqual(
     plain(localTab.stats.learningSnapshot().lastResolvedByConcept['field-distance']),
-    { completedAt: remoteCompletedAt, resolution: 'secondMiss' },
+    { independent: { completedAt: remoteCompletedAt, resolution: 'secondMiss' } },
   );
 });
 
@@ -917,8 +1113,9 @@ test('learning recency survives when a delayed row displaces newer evidence from
       possessionId: `remote-cap-possession-${index}`,
       playId: `remote-cap-play-${index}`,
       id: `remote-cap-row-${index}`,
-      concept: index === 1 ? 'field-distance' : 'cap-filler',
-      resolution: index === 1 ? 'secondMiss' : 'firstTryCorrect',
+      concept: index <= 2 ? 'field-distance' : 'cap-filler',
+      evidenceClass: index === 2 ? 'literacy' : 'independent',
+      resolution: index === 1 ? 'secondMiss' : index === 2 ? 'retryCorrect' : 'firstTryCorrect',
     }));
   }
   await remoteTab.locks.grantAll();
@@ -928,6 +1125,7 @@ test('learning recency survives when a delayed row displaces newer evidence from
     row.completedAt = new Date(futureStart + (index * 1000)).toISOString();
   });
   const newestFieldDistance = remoteStore.recentPlays[0].completedAt;
+  const newestLiteracyFieldDistance = remoteStore.recentPlays[1].completedAt;
 
   sharedStorage.setItem(STORAGE_KEY, JSON.stringify(remoteStore));
   localTab.dispatchStorage();
@@ -938,17 +1136,26 @@ test('learning recency survives when a delayed row displaces newer evidence from
   assert.equal(Object.hasOwn(mergedHistory, 'lastResolvedByConcept'), false);
   assert.deepEqual(
     plain(localTab.stats.learningSnapshot().lastResolvedByConcept['field-distance']),
-    { completedAt: newestFieldDistance, resolution: 'secondMiss' },
+    {
+      independent: { completedAt: newestFieldDistance, resolution: 'secondMiss' },
+      literacy: { completedAt: newestLiteracyFieldDistance, resolution: 'retryCorrect' },
+    },
   );
 
   await sharedLocks.grantAll();
   const persisted = JSON.parse(sharedStorage.raw());
   assert.deepEqual(
     persisted.lastResolvedByConcept['field-distance'],
-    { completedAt: newestFieldDistance, resolution: 'secondMiss' },
+    {
+      independent: { completedAt: newestFieldDistance, resolution: 'secondMiss' },
+      literacy: { completedAt: newestLiteracyFieldDistance, resolution: 'retryCorrect' },
+    },
   );
   assert.deepEqual(
     plain(localTab.stats.learningSnapshot().lastResolvedByConcept['field-distance']),
-    { completedAt: newestFieldDistance, resolution: 'secondMiss' },
+    {
+      independent: { completedAt: newestFieldDistance, resolution: 'secondMiss' },
+      literacy: { completedAt: newestLiteracyFieldDistance, resolution: 'retryCorrect' },
+    },
   );
 });

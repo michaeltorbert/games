@@ -76,11 +76,11 @@ test('runtime keeps factual page-145 completion with a separate page-179 questio
     const entries = [
       {
         id: 'recent-family', familyId: 'recent-family', skill: 'difference', concept: 'line-to-gain',
-        purpose: 'weakSpot', grading: 'gate', weight: 1,
+        purpose: 'weakSpot', grading: 'gate', evidenceClass: 'independent', weight: 1,
       },
       {
         id: 'fresh-family', familyId: 'fresh-family', skill: 'difference', concept: 'line-to-gain',
-        purpose: 'weakSpot', grading: 'gate', weight: 1,
+        purpose: 'weakSpot', grading: 'gate', evidenceClass: 'independent', weight: 1,
       },
     ];
     const session = FOOTBALL_LEARNING.createSession();
@@ -94,7 +94,7 @@ test('runtime keeps factual page-145 completion with a separate page-179 questio
     return { progress, profile, counts, onlyRecent };
   });
 
-  expect(result.profile.schemaVersion).toBe(2);
+  expect(result.profile.schemaVersion).toBe(3);
   expect(result.profile.completedThroughPage).toBe(145);
   expect(result.profile.completedThroughPage).toBe(result.progress.learner.completedThroughPage);
   expect(result.profile.includedThroughPage).toBe(179);
@@ -128,8 +128,8 @@ test('selected-call affinity boosts after purpose normalization while preserving
 
   const result = await page.evaluate(() => {
     const entries = [
-      { id: 'first', familyId: 'first', skill: 'a', concept: 'a', purpose: 'coreReview', grading: 'gate', weight: 1 },
-      { id: 'second', familyId: 'second', skill: 'b', concept: 'b', purpose: 'coreReview', grading: 'gate', weight: 1 },
+      { id: 'first', familyId: 'first', skill: 'a', concept: 'a', purpose: 'coreReview', grading: 'gate', evidenceClass: 'independent', weight: 1 },
+      { id: 'second', familyId: 'second', skill: 'b', concept: 'b', purpose: 'coreReview', grading: 'gate', evidenceClass: 'independent', weight: 1 },
     ];
     const session = FOOTBALL_LEARNING.createSession();
     let neutralDraws = 0;
@@ -216,6 +216,7 @@ test('defensive learning telemetry records only the player-selected scoped call'
         concept: 'line-to-gain',
         purpose: 'weakSpot',
         grading: 'gate',
+        evidenceClass: 'independent',
         selection,
       });
       return session.events[0];
@@ -321,16 +322,18 @@ test('mastered concepts age back into refreshers while the latest supported resu
     const nowMs = Date.parse('2026-07-14T12:00:00.000Z');
     const entry = {
       id: 'adaptive-family', familyId: 'adaptive-family', skill: 'difference',
-      concept: 'adaptive-concept', purpose: 'weakSpot', grading: 'gate', weight: 1,
+      concept: 'adaptive-concept', purpose: 'weakSpot', grading: 'gate', evidenceClass: 'independent', weight: 1,
     };
     const question = { ...entry, contextId: 1, questionInstanceId: 1 };
     const mastery = (firstTryCorrect, retryCorrect = 0, secondMiss = 0) => ({
-      'adaptive-concept': { firstTryCorrect, retryCorrect, secondMiss },
+      'adaptive-concept': { independent: { firstTryCorrect, retryCorrect, secondMiss } },
     });
     const latest = (resolution, ageDays) => ({
       'adaptive-concept': {
-        completedAt: new Date(nowMs - (ageDays * DAY_MS)).toISOString(),
-        resolution,
+        independent: {
+          completedAt: new Date(nowMs - (ageDays * DAY_MS)).toISOString(),
+          resolution,
+        },
       },
     });
     const multiplier = (historicalMastery, historicalLatest, ageNow = nowMs) => {
@@ -377,7 +380,7 @@ test('mastered concepts age back into refreshers while the latest supported resu
       latestSecondMiss: multiplier(mastered, latest('secondMiss', 1)),
       missingLatest: multiplier(mastered, {}),
       invalidLatest: multiplier(mastered, {
-        'adaptive-concept': { completedAt: 'not-a-date', resolution: 'firstTryCorrect' },
+        'adaptive-concept': { independent: { completedAt: 'not-a-date', resolution: 'firstTryCorrect' } },
       }),
       afterSupport,
       afterLaterFirstTry,
@@ -403,12 +406,198 @@ test('mastered concepts age back into refreshers while the latest supported resu
   expect(result.afterSupport).toBeCloseTo(2.125, 8);
   expect(result.afterLaterFirstTry).toBeCloseTo(0.25, 8);
   expect(result.noStakes).toBe(1);
-  expect(result.sessionLatest).toEqual({ 'adaptive-concept': { resolution: 'firstTryCorrect' } });
+  expect(result.sessionLatest).toEqual({
+    'adaptive-concept': { independent: { resolution: 'firstTryCorrect' } },
+  });
   expect(result.reachableCounts['adaptive-family']).toBeGreaterThan(0);
   expect(result.reachableCounts['fresh-other-family']).toBeGreaterThan(result.reachableCounts['adaptive-family']);
 });
 
-test('adaptation and schema-v2 learning events retain grounded question identity', async ({ page }, testInfo) => {
+test('literacy, independent, and unclassified evidence stay isolated for scheduling, support, and freshness', async ({ page }, testInfo) => {
+  primaryOnly(testInfo);
+  await page.goto('/football/?boot=offense-call');
+
+  const result = await page.evaluate(() => {
+    const nowMs = Date.parse('2026-07-14T12:00:00.000Z');
+    const entry = (evidenceClass) => ({
+      id: `${evidenceClass}-family`, familyId: `${evidenceClass}-family`,
+      skill: 'shared-skill', concept: 'shared-concept', purpose: 'weakSpot',
+      grading: 'gate', evidenceClass, weight: 1,
+    });
+    const independent = entry('independent');
+    const literacy = entry('literacy');
+    const freshIndependent = FOOTBALL_LEARNING.createSession({
+      'shared-concept': {
+        independent: { firstTryCorrect: 4, retryCorrect: 0, secondMiss: 0 },
+        literacy: { firstTryCorrect: 0, retryCorrect: 0, secondMiss: 3 },
+      },
+    }, {
+      'shared-concept': {
+        independent: { completedAt: new Date(nowMs).toISOString(), resolution: 'firstTryCorrect' },
+        literacy: { completedAt: new Date(nowMs).toISOString(), resolution: 'secondMiss' },
+      },
+    }, nowMs);
+    const unclassifiedOnly = FOOTBALL_LEARNING.createSession({
+      'shared-concept': {
+        unclassified: { firstTryCorrect: 0, retryCorrect: 0, secondMiss: 99 },
+      },
+    }, {
+      'shared-concept': {
+        unclassified: { completedAt: new Date(nowMs).toISOString(), resolution: 'secondMiss' },
+      },
+    }, nowMs);
+    const clean = FOOTBALL_LEARNING.createSession({}, {}, nowMs);
+
+    const current = FOOTBALL_LEARNING.createSession();
+    for (let index = 0; index < 2; index++) {
+      FOOTBALL_LEARNING.recordResolved(current, {
+        ...literacy,
+        contextId: index + 1,
+        questionInstanceId: index + 1,
+      }, 'retryCorrect', { support: 'guided' });
+    }
+    const invalidClasses = ['unclassified', 'invented', null].map((evidenceClass) => {
+      try {
+        FOOTBALL_LEARNING.recordPresented(current, { ...independent, evidenceClass });
+        return false;
+      } catch (error) {
+        return error instanceof TypeError;
+      }
+    });
+    let draws = 0;
+    FOOTBALL_LEARNING.weightedPick([independent, literacy], freshIndependent, () => {
+      draws++;
+      return 0.5;
+    });
+
+    return {
+      independentFresh: FOOTBALL_LEARNING.adaptiveNeedMultiplier(freshIndependent, independent),
+      literacyNeed: FOOTBALL_LEARNING.adaptiveNeedMultiplier(freshIndependent, literacy),
+      independentUnclassified: FOOTBALL_LEARNING.adaptiveNeedMultiplier(unclassifiedOnly, independent),
+      literacyUnclassified: FOOTBALL_LEARNING.adaptiveNeedMultiplier(unclassifiedOnly, literacy),
+      independentClean: FOOTBALL_LEARNING.adaptiveNeedMultiplier(clean, independent),
+      literacyClean: FOOTBALL_LEARNING.adaptiveNeedMultiplier(clean, literacy),
+      current: FOOTBALL_LEARNING.snapshot(current),
+      independentSupport: FOOTBALL_LEARNING.supportFor(current, independent, 'initial'),
+      literacySupport: FOOTBALL_LEARNING.supportFor(current, literacy, 'initial'),
+      invalidClasses,
+      draws,
+    };
+  });
+
+  expect(result.independentFresh).toBeCloseTo(0.25, 8);
+  expect(result.literacyNeed).toBeCloseTo(1.25, 8);
+  expect(result.independentUnclassified).toBeCloseTo(result.independentClean, 8);
+  expect(result.literacyUnclassified).toBeCloseTo(result.literacyClean, 8);
+  expect(result.current.bySkill).toEqual({
+    'shared-skill': {
+      literacy: { presented: 0, firstTryCorrect: 0, retryCorrect: 2, secondMiss: 0 },
+    },
+  });
+  expect(result.current.byConcept).toEqual({
+    'shared-concept': {
+      literacy: { resolved: 2, firstTryCorrect: 0, retryCorrect: 2, secondMiss: 0 },
+    },
+  });
+  expect(result.current.latestResolvedByConcept).toEqual({
+    'shared-concept': { literacy: { resolution: 'retryCorrect' } },
+  });
+  expect(result.independentSupport).toBe('initial');
+  expect(result.literacySupport).toBe('guided');
+  expect(result.invalidClasses).toEqual([true, true, true]);
+  expect(result.draws).toBe(1);
+});
+
+test('real line, field-distance, and football-number-sense families cannot cross evidence tracks', async ({ page }, testInfo) => {
+  primaryOnly(testInfo);
+  await page.goto('/football/?boot=offense-call');
+
+  const result = await page.evaluate(() => {
+    const base = { purpose: 'coreReview', grading: 'gate' };
+    const questions = [
+      {
+        ...base, id: 'yards-read-1', familyId: 'yards-to-go-read',
+        skill: 'football-number-sense', concept: 'line-to-gain', evidenceClass: 'literacy',
+      },
+      {
+        ...base, id: 'yards-read-2', familyId: 'yards-to-go-read',
+        skill: 'football-number-sense', concept: 'line-to-gain', evidenceClass: 'literacy',
+      },
+      {
+        ...base, id: 'distance-read-1', familyId: 'goal-distance-read',
+        skill: 'place-value', concept: 'field-distance', evidenceClass: 'literacy',
+      },
+      {
+        ...base, id: 'distance-read-2', familyId: 'goal-distance-read',
+        skill: 'place-value', concept: 'field-distance', evidenceClass: 'literacy',
+      },
+    ];
+    const session = FOOTBALL_LEARNING.createSession();
+    questions.forEach((question, index) => {
+      FOOTBALL_LEARNING.recordResolved(
+        session,
+        { ...question, contextId: index + 1, questionInstanceId: index + 1 },
+        index < 2 ? 'firstTryCorrect' : 'retryCorrect',
+        { support: index < 2 ? 'none' : 'guided' },
+      );
+    });
+    const independentEntries = {
+      line: {
+        ...base, id: 'line-to-gain-missing-part', familyId: 'line-to-gain-missing-part',
+        skill: 'missing-part', concept: 'line-to-gain', evidenceClass: 'independent', weight: 1,
+      },
+      field: {
+        ...base, id: 'goal-distance-minus-whole-tens', familyId: 'goal-distance-minus-whole-tens',
+        skill: 'plus-minus-ten', concept: 'field-distance', evidenceClass: 'independent', weight: 1,
+      },
+      broadSkill: {
+        ...base, id: 'touchdown-base-points', familyId: 'touchdown-base-points',
+        skill: 'football-number-sense', concept: 'touchdown-base-scoring', evidenceClass: 'independent', weight: 1,
+      },
+    };
+    const clean = FOOTBALL_LEARNING.createSession();
+    let invalidResolution = false;
+    try {
+      FOOTBALL_LEARNING.recordResolved(session, questions[0], 'invented-result');
+    } catch (error) {
+      invalidResolution = error instanceof TypeError;
+    }
+    return {
+      session: FOOTBALL_LEARNING.snapshot(session),
+      multipliers: Object.fromEntries(Object.entries(independentEntries).map(([key, entry]) => [
+        key,
+        {
+          afterLiteracy: FOOTBALL_LEARNING.adaptiveNeedMultiplier(session, entry),
+          clean: FOOTBALL_LEARNING.adaptiveNeedMultiplier(clean, entry),
+        },
+      ])),
+      broadSupport: FOOTBALL_LEARNING.supportFor(session, independentEntries.broadSkill, 'initial'),
+      invalidResolution,
+    };
+  });
+
+  expect(result.session.byConcept).toEqual({
+    'line-to-gain': {
+      literacy: { resolved: 2, firstTryCorrect: 2, retryCorrect: 0, secondMiss: 0 },
+    },
+    'field-distance': {
+      literacy: { resolved: 2, firstTryCorrect: 0, retryCorrect: 2, secondMiss: 0 },
+    },
+  });
+  expect(result.session.latestResolvedByConcept).toEqual({
+    'line-to-gain': { literacy: { resolution: 'firstTryCorrect' } },
+    'field-distance': { literacy: { resolution: 'retryCorrect' } },
+  });
+  for (const pair of Object.values(result.multipliers)) {
+    expect(pair.afterLiteracy).toBeCloseTo(pair.clean, 8);
+  }
+  expect(result.broadSupport).toBe('initial');
+  expect(result.invalidResolution).toBe(true);
+  expect(result.session.resolved).toBe(4);
+  expect(result.session.events).toHaveLength(4);
+});
+
+test('adaptation and schema-v3 learning events retain grounded question identity', async ({ page }, testInfo) => {
   primaryOnly(testInfo);
   await page.goto('/football/?boot=offense-call');
 
@@ -431,7 +620,7 @@ test('adaptation and schema-v2 learning events retain grounded question identity
       questionInstanceId: 19,
     };
     const session = FOOTBALL_LEARNING.createSession({
-      'line-to-gain': { firstTryCorrect: 0, retryCorrect: 0, secondMiss: 3 },
+      'line-to-gain': { independent: { firstTryCorrect: 0, retryCorrect: 0, secondMiss: 3 } },
     });
     const wrong = question.choices.find((choice) => choice.id !== question.correctChoiceId);
     FOOTBALL_LEARNING.recordPresented(session, question);
@@ -443,37 +632,40 @@ test('adaptation and schema-v2 learning events retain grounded question identity
     const entries = [
       {
         id: 'needs-practice', familyId: 'needs-practice', skill: 'difference',
-        concept: 'line-to-gain', purpose: 'weakSpot', grading: 'gate', weight: 1,
+        concept: 'line-to-gain', purpose: 'weakSpot', grading: 'gate', evidenceClass: 'independent', weight: 1,
       },
       {
         id: 'other-concept', familyId: 'other-concept', skill: 'difference',
-        concept: 'field-distance', purpose: 'weakSpot', grading: 'gate', weight: 1,
+        concept: 'field-distance', purpose: 'weakSpot', grading: 'gate', evidenceClass: 'independent', weight: 1,
       },
     ];
     const beforeThreshold = FOOTBALL_LEARNING.createSession({
-      'line-to-gain': { firstTryCorrect: 0, retryCorrect: 0, secondMiss: 2 },
+      'line-to-gain': { independent: { firstTryCorrect: 0, retryCorrect: 0, secondMiss: 2 } },
     });
     return {
       session,
       atThree: FOOTBALL_LEARNING.weightedPick(entries, session, () => 0.51).familyId,
       beforeThree: FOOTBALL_LEARNING.weightedPick(entries, beforeThreshold, () => 0.51).familyId,
       supportAfterPractice: FOOTBALL_LEARNING.supportFor({
-        bySkill: { difference: { firstTryCorrect: 0, retryCorrect: 1, secondMiss: 1 } },
-      }, 'difference', 'initial'),
+        bySkill: { difference: { independent: { firstTryCorrect: 0, retryCorrect: 1, secondMiss: 1 } } },
+      }, 'difference', 'independent', 'initial'),
       supportAfterGuidedMiss: FOOTBALL_LEARNING.nextSupport('guided'),
     };
   });
 
   expect(result.session.byConcept).toEqual({
-    'line-to-gain': { resolved: 1, firstTryCorrect: 0, retryCorrect: 1, secondMiss: 0 },
+    'line-to-gain': {
+      independent: { resolved: 1, firstTryCorrect: 0, retryCorrect: 1, secondMiss: 0 },
+    },
   });
   expect(result.session.historicalMastery['line-to-gain']).toEqual({
-    resolved: 3, firstTryCorrect: 0, retryCorrect: 0, secondMiss: 3,
+    independent: { resolved: 3, firstTryCorrect: 0, retryCorrect: 0, secondMiss: 3 },
   });
   expect(result.session.recentFamilyIds).toEqual(['line-to-gain-missing-part']);
   expect(result.session.events.map((event) => event.type)).toEqual(['presented', 'attempt', 'resolved']);
   for (const event of result.session.events) {
-    expect(event.schemaVersion).toBe(2);
+    expect(event.schemaVersion).toBe(3);
+    expect(event.evidenceClass).toBe('independent');
     expect(event.familyId).toBe('line-to-gain-missing-part');
     expect(event.contextId).toBe(77);
     expect(event.questionInstanceId).toBe(19);
@@ -551,7 +743,8 @@ test('first miss keeps one frozen question and retry correct commits the assiste
 
   const events = await page.evaluate(() => window.__learningEvents);
   expect(events.map((event) => event.type)).toEqual(['presented', 'attempt', 'attempt', 'resolved']);
-  expect(events.every((event) => event.schemaVersion === 2)).toBe(true);
+  expect(events.every((event) => event.schemaVersion === 3)).toBe(true);
+  expect(events.every((event) => event.evidenceClass === question.evidenceClass)).toBe(true);
   expect(events.every((event) => event.familyId === question.familyId)).toBe(true);
   expect(events.every((event) => event.contextId === question.contextId)).toBe(true);
   expect(events.every((event) => event.questionInstanceId === question.questionInstanceId)).toBe(true);
@@ -864,7 +1057,7 @@ test('a production snap exposes only approved, grounded, graded contextual conte
   });
   const question = active.questionInstance;
 
-  expect(question.schemaVersion).toBe(2);
+  expect(question.schemaVersion).toBe(3);
   expect(question.id).toBe(question.familyId);
   expect(question.grading).toBe('gate');
   expect(['workbook', 'football-only']).toContain(question.curriculumSource);
@@ -880,6 +1073,8 @@ test('a production snap exposes only approved, grounded, graded contextual conte
   expect(question.choices.filter((choice) => choice.id === question.correctChoiceId)).toHaveLength(1);
   expect(new Set(question.choices.map((choice) => choice.id)).size).toBe(question.choices.length);
   expect(['source-visible', 'modeled-with-result-hidden', 'hidden-until-worked']).toContain(question.answerExposure);
+  expect(['literacy', 'independent']).toContain(question.evidenceClass);
+  if (question.answerExposure === 'source-visible') expect(question.evidenceClass).toBe('literacy');
   expect(question.visuals.initial.ariaLabel).toBeTruthy();
   expect(question.visuals.guided.ariaLabel).toBeTruthy();
   expect(question.visuals.worked.ariaLabel).toBeTruthy();
@@ -902,6 +1097,60 @@ test('a production snap exposes only approved, grounded, graded contextual conte
   expect(text.questionFamilyId ?? text.questionId).toBe(question.familyId);
   expect(text.contextId).toBe(question.contextId);
   expect(text.questionInstanceId).toBe(question.questionInstanceId);
+  expect(text.questionEvidenceClass).toBe(question.evidenceClass);
+});
+
+test('runtime validation rejects contradictory or unknown evidence contracts before presentation', async ({ page }, testInfo) => {
+  primaryOnly(testInfo);
+  await page.goto('/football/?boot=offense-call');
+  const active = await beginSnap(page, 'offense');
+
+  const result = await page.evaluate(() => {
+    const activePlay = state.activePlay;
+    const original = state.questionInstance;
+    const makeIndependent = () => {
+      const question = FOOTBALL_DOMAIN.clone(original);
+      question.evidenceClass = 'independent';
+      question.answerExposure = 'modeled-with-result-hidden';
+      for (const stage of ['initial', 'guided']) {
+        question.visuals[stage].revealsAnswer = false;
+        question.visuals[stage].result = null;
+      }
+      return question;
+    };
+    const variants = [];
+    const sourceVisibleIndependent = makeIndependent();
+    sourceVisibleIndependent.answerExposure = 'source-visible';
+    variants.push(sourceVisibleIndependent);
+    const revealingInitial = makeIndependent();
+    revealingInitial.visuals.initial.revealsAnswer = true;
+    variants.push(revealingInitial);
+    const resultBearingGuided = makeIndependent();
+    resultBearingGuided.visuals.guided.result = { answerId: original.answer.id, value: original.answer.value };
+    variants.push(resultBearingGuided);
+    const unknownClass = makeIndependent();
+    unknownClass.evidenceClass = 'unclassified';
+    variants.push(unknownClass);
+
+    return variants.map((variant) => {
+      try {
+        validateQuestionInstance(activePlay, FOOTBALL_DOMAIN.deepFreeze(variant));
+        return null;
+      } catch (error) {
+        return { code: error.code, message: error.message };
+      }
+    });
+  });
+
+  expect(result).toHaveLength(4);
+  expect(result.every((failure) => failure?.code === 'malformed-question')).toBe(true);
+  expect(result.map((failure) => failure.message)).toEqual([
+    'Question evidence classification contradicts its answer exposure.',
+    'Independent evidence exposes its initial answer.',
+    'Independent evidence exposes its guided answer.',
+    'Question evidence classification contradicts its answer exposure.',
+  ]);
+  expect(active.questionInstance).not.toBeNull();
 });
 
 test('Coach Report uses this game\'s real contextual resolution, not historical mastery', async ({ page }, testInfo) => {
@@ -920,7 +1169,9 @@ test('Coach Report uses this game\'s real contextual resolution, not historical 
   await page.evaluate(() => window.__footballTest.setRootSeed(0xc0ac4));
 
   expect(await page.evaluate(() => window.__footballTest.learningState().historicalMastery.addition))
-    .toEqual({ resolved: 8, firstTryCorrect: 8, retryCorrect: 0, secondMiss: 0 });
+    .toEqual({
+      unclassified: { resolved: 8, firstTryCorrect: 8, retryCorrect: 0, secondMiss: 0 },
+    });
   expect(await page.evaluate(() => window.__footballTest.coachReport())).toEqual([
     { label: 'Learning today', value: 'Keep playing to build your learning recap' },
   ]);
@@ -932,9 +1183,11 @@ test('Coach Report uses this game\'s real contextual resolution, not historical 
 
   expect(Object.keys(learning.byConcept)).toEqual([active.questionInstance.concept]);
   expect(learning.byConcept[active.questionInstance.concept]).toEqual({
-    resolved: 1, firstTryCorrect: 1, retryCorrect: 0, secondMiss: 0,
+    [active.questionInstance.evidenceClass]: {
+      resolved: 1, firstTryCorrect: 1, retryCorrect: 0, secondMiss: 0,
+    },
   });
-  expect(report[0].label).toBe('Strong today');
+  expect(report[0].label).toBe(active.questionInstance.evidenceClass === 'independent' ? 'Strong today' : 'Read today');
   expect(report.map((row) => row.value)).not.toContain('Adding within 10');
   expect(report.every((row) => row.value !== 'Football math')).toBe(true);
 });

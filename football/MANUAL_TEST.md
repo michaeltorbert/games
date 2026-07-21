@@ -107,10 +107,10 @@ Run these on both iPhone sizes:
 - Q1→Q2 and Q3→Q4 retain pending placement; halftime replaces it with the
   prescribed opponent start at absolute 80; Q4 completes the conversion before
   showing the final and schedules no restart
-- local history keeps the `footballMathStats:v1` key but writes inner schema 3;
-  schema-1/schema-2 rows normalize in memory without a read rewrite, the next
-  completed play writes v3, and an unknown future schema remains byte-for-byte
-  untouched
+- local history keeps the `footballMathStats:v1` key but writes inner schema 4;
+  schema-1 through schema-3 evidence normalizes in memory to `unclassified`
+  without a write on read, the next canonical completed play writes v4, and an
+  unknown future schema remains byte-for-byte untouched
 - special-team rows use typed outcomes/metrics without adding kick distance,
   punt travel, or conversion values to scrimmage/team/drive yard totals
 - repeated answer, Continue, touchdown, or transition controls cannot append a
@@ -164,7 +164,7 @@ property tests, then runs every Football contract and UI spec against all six
 device projects. Coverage includes tagged `activePlay` grounding, type-specific
 projection validation, structured choice IDs, valid-question-failure bypass
 telemetry, invalid-context fail-closed recovery, exact football-RNG budgets,
-stats-v3 migration/privacy/exactly-once behavior, mastery/coach-report behavior,
+stats-v4 migration/privacy/exactly-once behavior, mastery/coach-report behavior,
 deterministic opponent decisions, and pre-snap hint truthfulness. Its primary
 state matrix follows production paths through a six-point player touchdown,
 player conversion, six-point opponent touchdown, opponent conversion, both
@@ -238,6 +238,23 @@ states to every device project:
 08d-defense-coach-replay
 10d-opponent-conversion-coach-replay
 ```
+
+The v1.27.1 evidence-classification correction keeps the same visual-state
+matrix. During ordinary and special-team question states, confirm that reading
+questions retain the supplied field/score/rule source and that independent
+questions do not show an answer in the prompt, hint, field model, or accessible
+model label before Coach Replay. In particular, the guided half hint must ask
+the child to split four quarters into two equal groups without naming the
+answer. After a mixed game, Coach Report may show **Strong today** only from an
+independent first-try result; literacy may show **Read today**, while retries
+and second misses remain **Building today** or **Practice next**.
+
+For persistence checks, seed schema-1, schema-2, and schema-3
+`footballMathStats:v1` data and verify that opening the game performs no write.
+After one newly committed play, the store should be schema 4 with all legacy
+question/mastery/recency evidence preserved under `unclassified` and the new
+play credited only to its authored `literacy` or `independent` bucket. An
+unknown future schema and `footballMathSeason:v1` bytes must remain unchanged.
 
 The two phone projects add production pending-result recovery artifacts for
 both incompatible durable-store states:

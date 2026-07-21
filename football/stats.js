@@ -4,8 +4,10 @@
 const FOOTBALL_STATS = (() => {
   const STORAGE_KEY = 'footballMathStats:v1';
   const STORAGE_LOCK_NAME = `${STORAGE_KEY}:central-write`;
-  const SCHEMA_VERSION = 3;
-  const LEGACY_SCHEMA_VERSIONS = Object.freeze([1, 2]);
+  const SCHEMA_VERSION = 4;
+  const TYPED_PLAY_SCHEMA_VERSION = 3;
+  const EVIDENCE_CLASS_SCHEMA_VERSION = 4;
+  const LEGACY_SCHEMA_VERSIONS = Object.freeze([1, 2, 3]);
   const MAX_RECENT_PLAYS = 200;
   const PLAY_TYPES = Object.freeze(['scrimmage', 'conversion', 'fieldGoal', 'punt']);
   const SCRIMMAGE_OUTCOMES = Object.freeze([
@@ -19,6 +21,8 @@ const FOOTBALL_STATS = (() => {
   });
   const OUTCOMES = Object.freeze(PLAY_TYPES.flatMap(playType => OUTCOMES_BY_PLAY_TYPE[playType]));
   const RESOLUTIONS = ['firstTryCorrect', 'retryCorrect', 'secondMiss'];
+  const CURRENT_EVIDENCE_CLASSES = Object.freeze(['literacy', 'independent']);
+  const STORED_EVIDENCE_CLASSES = Object.freeze([...CURRENT_EVIDENCE_CLASSES, 'unclassified']);
   const INSTRUCTIONAL_STATUSES = Object.freeze(['presented', 'bypassed']);
   let idSequence = 0;
   let storeCache;
@@ -191,9 +195,12 @@ const FOOTBALL_STATS = (() => {
     };
   }
 
-  function normalizeQuestion(value) {
+  function normalizeQuestion(value, sourceSchema = SCHEMA_VERSION) {
     if (!isRecord(value)) return null;
     const question = value;
+    const evidenceClass = sourceSchema < EVIDENCE_CLASS_SCHEMA_VERSION
+      ? 'unclassified'
+      : STORED_EVIDENCE_CLASSES.includes(question.evidenceClass) ? question.evidenceClass : null;
     return {
       id: safeString(question.id, 'unknown'),
       skill: safeString(question.skill, 'unknown'),
@@ -201,6 +208,7 @@ const FOOTBALL_STATS = (() => {
       purpose: safeString(question.purpose, 'unknown'),
       grading: question.grading === 'noStakes' ? 'noStakes' : 'gate',
       tier: safeString(question.tier, 'unknown'),
+      evidenceClass,
     };
   }
 
@@ -217,19 +225,32 @@ const FOOTBALL_STATS = (() => {
     };
   }
 
-  function normalizeMastery(value) {
+  function normalizeMasteryCounts(value) {
+    const mastery = isRecord(value) ? value : {};
+    const firstTryCorrect = safeInteger(mastery.firstTryCorrect);
+    const retryCorrect = safeInteger(mastery.retryCorrect);
+    const secondMiss = safeInteger(mastery.secondMiss);
+    return {
+      resolved: firstTryCorrect + retryCorrect + secondMiss,
+      firstTryCorrect,
+      retryCorrect,
+      secondMiss,
+    };
+  }
+
+  function normalizeMastery(value, sourceSchema = SCHEMA_VERSION) {
     const input = isRecord(value) ? value : {};
-    return Object.fromEntries(Object.entries(input).map(([concept, raw]) => {
-      const mastery = isRecord(raw) ? raw : {};
-      const firstTryCorrect = safeInteger(mastery.firstTryCorrect);
-      const retryCorrect = safeInteger(mastery.retryCorrect);
-      const secondMiss = safeInteger(mastery.secondMiss);
-      return [concept, {
-        resolved: firstTryCorrect + retryCorrect + secondMiss,
-        firstTryCorrect,
-        retryCorrect,
-        secondMiss,
-      }];
+    return Object.fromEntries(Object.entries(input).flatMap(([concept, raw]) => {
+      if (!isRecord(raw)) return [];
+      if (sourceSchema < EVIDENCE_CLASS_SCHEMA_VERSION) {
+        return [[concept, { unclassified: normalizeMasteryCounts(raw) }]];
+      }
+      const classes = Object.fromEntries(STORED_EVIDENCE_CLASSES.flatMap(evidenceClass => (
+        isRecord(raw[evidenceClass])
+          ? [[evidenceClass, normalizeMasteryCounts(raw[evidenceClass])]]
+          : []
+      )));
+      return Object.keys(classes).length ? [[concept, classes]] : [];
     }));
   }
 
@@ -249,7 +270,7 @@ const FOOTBALL_STATS = (() => {
     // Legacy rows had only scrimmage semantics and were intentionally lenient.
     // A malformed current-schema outcome must be dropped, not rewritten into
     // a plausible football result that never happened.
-    if (sourceSchema >= SCHEMA_VERSION) return null;
+    if (sourceSchema >= TYPED_PLAY_SCHEMA_VERSION) return null;
     if (playType === 'scrimmage') return 'noGain';
     if (playType === 'conversion') return 'conversionMissed';
     if (playType === 'fieldGoal') return 'fieldGoalMissed';
@@ -289,7 +310,7 @@ const FOOTBALL_STATS = (() => {
 
   function normalizeRow(value, sourceSchema = SCHEMA_VERSION) {
     if (!isRecord(value)) return null;
-    const playType = sourceSchema < SCHEMA_VERSION
+    const playType = sourceSchema < TYPED_PLAY_SCHEMA_VERSION
       ? 'scrimmage'
       : PLAY_TYPES.includes(value.playType) ? value.playType : null;
     // Only legacy schemas lack a type and are intentionally interpreted as
@@ -297,7 +318,7 @@ const FOOTBALL_STATS = (() => {
     // into scrimmage yards or outcomes.
     if (!playType) return null;
     const instructionalStatus = value.instructionalStatus === 'bypassed' ? 'bypassed' : 'presented';
-    const question = instructionalStatus === 'presented' ? normalizeQuestion(value.question) : null;
+    const question = instructionalStatus === 'presented' ? normalizeQuestion(value.question, sourceSchema) : null;
     const resolution = instructionalStatus === 'presented' && RESOLUTIONS.includes(value.resolution)
       ? value.resolution
       : null;
@@ -308,14 +329,14 @@ const FOOTBALL_STATS = (() => {
     const outcome = normalizeOutcome(playType, value.outcome, sourceSchema);
     if (!outcome) return null;
     const sequence = Math.max(1, safeInteger(value.sequence, 1));
-    const isCurrentSchema = sourceSchema >= SCHEMA_VERSION;
-    const gameId = safeString(value.gameId, isCurrentSchema ? null : 'unknown-game');
+    const isTypedSchema = sourceSchema >= TYPED_PLAY_SCHEMA_VERSION;
+    const gameId = safeString(value.gameId, isTypedSchema ? null : 'unknown-game');
     if (!gameId) return null;
-    const rowId = safeString(value.id, isCurrentSchema ? null : `${gameId}-legacy-${sequence}`);
+    const rowId = safeString(value.id, isTypedSchema ? null : `${gameId}-legacy-${sequence}`);
     if (!rowId) return null;
-    const playId = safeString(value.playId, isCurrentSchema ? null : rowId);
+    const playId = safeString(value.playId, isTypedSchema ? null : rowId);
     if (!playId) return null;
-    const metricsSource = sourceSchema >= SCHEMA_VERSION && isRecord(value.metrics)
+    const metricsSource = sourceSchema >= TYPED_PLAY_SCHEMA_VERSION && isRecord(value.metrics)
       ? value.metrics
       : { offeredYards: value.offeredYards, actualYards: value.actualYards };
     const metrics = normalizeMetrics(playType, metricsSource, outcome);
@@ -356,7 +377,7 @@ const FOOTBALL_STATS = (() => {
     for (const row of normalizedRows.slice(0, -MAX_RECENT_PLAYS)) {
       archivePlayIdentity(archivedPlayIndex, row);
     }
-    const lastResolvedByConcept = normalizeLastResolved(value.lastResolvedByConcept);
+    const lastResolvedByConcept = normalizeLastResolved(value.lastResolvedByConcept, sourceSchema);
     for (const row of normalizedRows) updateLastResolved(lastResolvedByConcept, row);
     return {
       schemaVersion: SCHEMA_VERSION,
@@ -364,7 +385,7 @@ const FOOTBALL_STATS = (() => {
       recentPlays: recent,
       archivedPlayIndex,
       lastResolvedByConcept,
-      mastery: normalizeMastery(value.mastery),
+      mastery: normalizeMastery(value.mastery, sourceSchema),
     };
   }
 
@@ -462,7 +483,11 @@ const FOOTBALL_STATS = (() => {
       || !Number.isSafeInteger(session.nextSequence) || session.nextSequence < 1
       || !Array.isArray(session.completedPlays) || !Array.isArray(session.completedPlayKeys)) return false;
     const startedAtMs = monotonicNow();
-    const question = instructionalStatus === 'presented' ? details.question : null;
+    const question = instructionalStatus === 'presented'
+      ? normalizeQuestion(details.question, SCHEMA_VERSION)
+      : null;
+    if (instructionalStatus === 'presented'
+      && (!question || !CURRENT_EVIDENCE_CLASSES.includes(question.evidenceClass))) return false;
     const playType = details.playType == null ? 'scrimmage' : details.playType;
     if (!PLAY_TYPES.includes(playType)) return false;
     const id = safeString(details.id) || makeId('play');
@@ -503,9 +528,11 @@ const FOOTBALL_STATS = (() => {
   function markPresented(pending, details) {
     if (!pending || pending.finalized || pending.instructionalStatus !== 'pending'
       || !isRecord(details?.question)) return false;
-    const links = normalizeLinks(details, details.question);
+    const question = normalizeQuestion(details.question, SCHEMA_VERSION);
+    if (!question || !CURRENT_EVIDENCE_CLASSES.includes(question.evidenceClass)) return false;
+    const links = normalizeLinks(details, question);
     pending.instructionalStatus = 'presented';
-    pending.question = details.question;
+    pending.question = question;
     pending.links = {
       familyId: links.familyId ?? pending.links.familyId,
       contextId: links.contextId ?? pending.links.contextId,
@@ -595,25 +622,44 @@ const FOOTBALL_STATS = (() => {
   function updateMastery(mastery, row) {
     if (row.instructionalStatus === 'bypassed' || row.question.grading === 'noStakes') return;
     const concept = row.question.concept;
-    if (!mastery[concept]) {
-      mastery[concept] = { resolved: 0, firstTryCorrect: 0, retryCorrect: 0, secondMiss: 0 };
+    const evidenceClass = row.question.evidenceClass;
+    if (!concept || concept === 'unknown' || !STORED_EVIDENCE_CLASSES.includes(evidenceClass)) return;
+    if (!mastery[concept]) mastery[concept] = {};
+    if (!mastery[concept][evidenceClass]) {
+      mastery[concept][evidenceClass] = {
+        resolved: 0, firstTryCorrect: 0, retryCorrect: 0, secondMiss: 0,
+      };
     }
-    mastery[concept].resolved++;
-    mastery[concept][row.resolution]++;
+    mastery[concept][evidenceClass].resolved++;
+    mastery[concept][evidenceClass][row.resolution]++;
   }
 
-  function normalizeLastResolved(value) {
+  function normalizedLatestEvidence(value) {
+    const completedAt = isRecord(value) ? safeString(value.completedAt) : null;
+    const resolution = isRecord(value) && RESOLUTIONS.includes(value.resolution)
+      ? value.resolution
+      : null;
+    return resolution && Number.isFinite(Date.parse(completedAt))
+      ? { completedAt, resolution }
+      : null;
+  }
+
+  function normalizeLastResolved(value, sourceSchema = SCHEMA_VERSION) {
     const normalized = Object.create(null);
     if (!isRecord(value)) return normalized;
-    for (const [conceptValue, evidence] of Object.entries(value)) {
+    for (const [conceptValue, raw] of Object.entries(value)) {
       const concept = safeString(conceptValue);
-      const completedAt = isRecord(evidence) ? safeString(evidence.completedAt) : null;
-      const resolution = isRecord(evidence) && RESOLUTIONS.includes(evidence.resolution)
-        ? evidence.resolution
-        : null;
-      if (!concept || concept === 'unknown' || !resolution
-        || !Number.isFinite(Date.parse(completedAt))) continue;
-      normalized[concept] = { completedAt, resolution };
+      if (!concept || concept === 'unknown' || !isRecord(raw)) continue;
+      if (sourceSchema < EVIDENCE_CLASS_SCHEMA_VERSION) {
+        const evidence = normalizedLatestEvidence(raw);
+        if (evidence) normalized[concept] = { unclassified: evidence };
+        continue;
+      }
+      const classes = Object.fromEntries(STORED_EVIDENCE_CLASSES.flatMap(evidenceClass => {
+        const evidence = normalizedLatestEvidence(raw[evidenceClass]);
+        return evidence ? [[evidenceClass, evidence]] : [];
+      }));
+      if (Object.keys(classes).length) normalized[concept] = classes;
     }
     return normalized;
   }
@@ -625,15 +671,18 @@ const FOOTBALL_STATS = (() => {
       || !RESOLUTIONS.includes(row.resolution)
       || !row.question.concept
       || row.question.concept === 'unknown') return;
+    const evidenceClass = row.question.evidenceClass;
+    if (!STORED_EVIDENCE_CLASSES.includes(evidenceClass)) return;
     const completedAtMs = Date.parse(row.completedAt);
     if (!Number.isFinite(completedAtMs)) return;
     const concept = row.question.concept;
-    const previous = lastResolvedByConcept[concept];
+    const classLatest = lastResolvedByConcept[concept] || (lastResolvedByConcept[concept] = {});
+    const previous = classLatest[evidenceClass];
     const previousAtMs = previous ? Date.parse(previous.completedAt) : Number.NEGATIVE_INFINITY;
     // A later journal entry wins an exact timestamp tie, matching the prior
     // reverse-scan behavior while still rejecting genuinely older evidence.
     if (Number.isFinite(previousAtMs) && previousAtMs > completedAtMs) return;
-    lastResolvedByConcept[concept] = {
+    classLatest[evidenceClass] = {
       completedAt: row.completedAt,
       resolution: row.resolution,
     };
@@ -882,6 +931,7 @@ const FOOTBALL_STATS = (() => {
   return Object.freeze({
     STORAGE_KEY,
     SCHEMA_VERSION,
+    TYPED_PLAY_SCHEMA_VERSION,
     MAX_RECENT_PLAYS,
     INSTRUCTIONAL_STATUSES,
     createSession,
