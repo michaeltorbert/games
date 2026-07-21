@@ -852,6 +852,7 @@ test('post-game accuracy counts wrong offense and defense answers', async ({ pag
   await answerChoice(page, firstWrong);
   await answerChoice(page, await liveChoiceId(page, 'wrong', [firstWrong]));
   await expect(page.locator('#ui-desk')).toHaveAttribute('data-phase', 'explanation');
+  await page.locator('#question-learn-why').click();
   await page.locator('#question-continue').click();
   await expect(page.locator('#ui-desk')).toHaveAttribute('data-phase', 'feedback');
 
@@ -879,6 +880,7 @@ test('post-game accuracy counts wrong offense and defense answers', async ({ pag
   await answerChoice(page, firstWrong);
   await answerChoice(page, await liveChoiceId(page, 'wrong', [firstWrong]));
   await expect(page.locator('#ui-desk')).toHaveAttribute('data-phase', 'explanation');
+  await page.locator('#question-learn-why').click();
   await page.locator('#question-continue').click();
   await expect(page.locator('#ui-desk')).toHaveAttribute('data-phase', 'feedback');
 

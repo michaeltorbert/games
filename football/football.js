@@ -723,6 +723,8 @@ function makeQuestionUiState() {
     missedChoiceIds: [],
     support: 'initial',
     reviewExpanded: false,
+    reviewSatisfied: false,
+    reviewGateState: 'not-required',
     continueRequired: false,
     outcomeCommitted: false,
     resolutionRecorded: false,
@@ -1800,10 +1802,15 @@ function expandWorkedReview() {
     region.inert = false;
     region.classList.remove('hidden');
     region.setAttribute('aria-hidden', 'false');
+    state.questionUi.reviewSatisfied = true;
+    state.questionUi.reviewGateState = 'opened';
+    showContinueButton({ focus: false });
     heading.focus({ preventScroll: true });
     return true;
   } catch (error) {
     state.questionUi.reviewExpanded = false;
+    state.questionUi.reviewSatisfied = true;
+    state.questionUi.reviewGateState = 'bypassed-render-failure';
     if (content) content.replaceChildren();
     if (heading) heading.textContent = 'Coach Replay';
     if (region) {
@@ -1837,13 +1844,22 @@ function expandWorkedReview() {
 
 function showWorkedReviewSummary() {
   resetWorkedReviewPresentation();
-  showContinueButton({ focus: false });
   const question = state.questionInstance;
   const { summary, summaryCopy, learn, continueButton } = workedReviewElements();
   if (!question?.workedReview || !summary || !summaryCopy || !learn) {
+    if (state.questionUi) {
+      state.questionUi.reviewSatisfied = true;
+      state.questionUi.reviewGateState = 'bypassed-render-failure';
+    }
+    showContinueButton({ focus: false });
     if (continueButton) continueButton.focus({ preventScroll: true });
     return false;
   }
+  if (state.questionUi) {
+    state.questionUi.reviewSatisfied = false;
+    state.questionUi.reviewGateState = 'pending';
+  }
+  hideContinueButton();
   summaryCopy.textContent = question.workedExplanation.text;
   summary.classList.remove('hidden');
   learn.disabled = false;
@@ -2634,13 +2650,47 @@ function expectedRequestedGainForResolution(snap, policy) {
 
   if (policy === 'questionBypass') return originalRequestedGain;
   if (policy === 'firstTryCorrect' || policy === 'retryCorrect') {
-    return possession === 'offense' ? originalRequestedGain : 0;
+    if (possession === 'defense') return 0;
+    if (policy === 'retryCorrect') return creditedRetryGainForSnap(snap);
+    return originalRequestedGain;
   }
   if (policy === 'secondMiss') return secondMissOutcomeForSnap(snap).requestedGain;
 
   const error = new Error(`Unknown resolution policy: ${policy}`);
   error.code = 'invalid-resolution-policy';
   throw error;
+}
+
+function creditedRetryGainForSnap(snap) {
+  const originalRequestedGain = snap?.proposal?.requestedGain;
+  const originalAppliedGain = snap?.proposal?.appliedGain;
+  if (!Number.isInteger(originalRequestedGain) || !Number.isInteger(originalAppliedGain)
+    || originalAppliedGain <= 0 || snap?.context?.possession !== 'offense') {
+    return originalRequestedGain;
+  }
+  return Math.max(1, Math.floor(originalAppliedGain / 2));
+}
+
+function resolutionAssistMetadata(activePlay, policy, transition) {
+  const snap = activePlay?.playType === 'scrimmage'
+    ? FOOTBALL_DOMAIN.activeSnapFromPlay(activePlay)
+    : null;
+  const rawGain = snap ? snap.proposal.appliedGain : null;
+  const creditedGain = activePlay?.playType === 'scrimmage' ? transition.appliedGain : null;
+  const assisted = policy === 'retryCorrect';
+  const reductionApplied = Boolean(assisted
+    && snap
+    && activePlay.context.possession === 'offense'
+    && rawGain > 0
+    && creditedGain !== rawGain);
+  return {
+    assisted,
+    assistReason: assisted ? 'retry' : 'none',
+    rawGain,
+    creditedGain,
+    reductionApplied,
+    reviewGateState: state.questionUi?.reviewGateState || 'not-required',
+  };
 }
 
 function secondMissOutcomeForSnap(snap) {
@@ -2676,7 +2726,10 @@ function expectedTransitionForResolution(activePlay, policy) {
   if (activePlay.playType === 'scrimmage') {
     const snap = FOOTBALL_DOMAIN.activeSnapFromPlay(activePlay);
     if (instructionalSuccess) {
-      return possession === 'offense' ? activePlay.proposal : FOOTBALL_DOMAIN.reprojectGain(snap, 0);
+      if (possession === 'defense') return FOOTBALL_DOMAIN.reprojectGain(snap, 0);
+      return policy === 'retryCorrect'
+        ? FOOTBALL_DOMAIN.reprojectGain(snap, creditedRetryGainForSnap(snap))
+        : activePlay.proposal;
     }
     const miss = secondMissOutcomeForSnap(snap);
     return FOOTBALL_DOMAIN.reprojectGain(snap, miss.requestedGain, miss.resultReason ? {
@@ -2738,6 +2791,7 @@ function makePendingResolution(policy, transition = null, links = null) {
     familyId: links?.familyId ?? state.questionInstance?.familyId ?? null,
     questionInstanceId: links?.questionInstanceId ?? state.questionInstance?.questionInstanceId ?? null,
     transitionToCommit: validated.value,
+    assist: resolutionAssistMetadata(activePlay, policy, validated.value),
   });
 }
 
@@ -2951,7 +3005,9 @@ function completeCorrectAnswer(btn, question) {
     : state.possession === 'defense'
       ? outcomeMessage(PLAY_OUTCOME_COPY.defenseStop, state.opponentCallKey)
       : state.questionUi.attempt > 1
-        ? 'Great retry. The full play counts!'
+        ? state.pendingResolution.assist?.reductionApplied
+          ? `Great retry. The assisted play counts for ${yds(state.pendingResolution.assist.creditedGain)}.`
+          : 'Great retry. The play counts!'
         : 'Correct. Run the play!';
   state.outcomeMessage = msg;
   applyDeskHeader(special
@@ -2965,6 +3021,8 @@ function handleInstructionalMiss(btn, choice, question) {
   let secondMissPending = null;
   if (state.questionUi.attempt !== 1) {
     secondMissPending = makePendingResolution('secondMiss');
+    state.questionUi.reviewSatisfied = false;
+    state.questionUi.reviewGateState = 'pending';
   }
   if (state.questionUi.attempt !== 1 && !secondMissPending) {
     const error = new Error('A terminal instructional miss requires one validated pending resolution.');
@@ -3023,6 +3081,11 @@ function recordQuestionResolution(result) {
 
 function continueAfterExplanation() {
   if (state.phase !== 'explanation' || !state.questionUi.continueRequired || state.questionUi.outcomeCommitted) return;
+  if (!state.questionUi.reviewSatisfied) {
+    const learn = document.getElementById('question-learn-why');
+    if (learn && !learn.disabled && !learn.classList.contains('hidden')) learn.focus({ preventScroll: true });
+    return;
+  }
   const continueButton = document.getElementById('question-continue');
   const focusNextCall = document.activeElement === continueButton;
   collapseWorkedReview({ restoreFocus: false });
@@ -3404,6 +3467,7 @@ function commitPendingResolution({ focusNextCall = false } = {}) {
     outcome,
     transition: validation.value,
     placement: settledPlacement,
+    assist: pending.assist || null,
   });
   if (possessionFinalized
     && state.quarter >= 4
@@ -4367,6 +4431,8 @@ function renderGameToText() {
     retryAvailable: state.phase === 'question' && state.questionUi?.attempt === 2,
     reviewAvailable: reviewAvailable(),
     reviewExpanded: Boolean(state.questionUi?.reviewExpanded),
+    reviewSatisfied: Boolean(state.questionUi?.reviewSatisfied),
+    reviewGateState: state.questionUi?.reviewGateState || 'not-required',
     reviewFamilyId: state.questionInstance?.workedReview?.familyId || null,
     reviewStepCount: state.questionInstance?.workedReview?.steps?.length || 0,
     continueRequired: Boolean(state.questionUi?.continueRequired),

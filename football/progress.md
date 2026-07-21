@@ -695,3 +695,38 @@ surfaces remain v1.26.0.
   no deterministic duplicate event, regression, or disclosure. Removing
   either path without a reproduced screen-reader defect could instead drop the
   established status announcement or the required focused-summary context.
+
+---
+
+## Football issue #24 required Coach Replay and assisted retry gain
+
+- Follow-up prompt: make Learn why / Coach Replay required before Continue
+  after a second miss, and make a successful offensive retry credit half of the
+  positive scrimmage gain instead of the full result.
+- After a second miss, the concise Film Room summary still appears first, but
+  Continue is hidden, disabled, and blocked in `continueAfterExplanation()`
+  until Coach Replay opens. Opening Coach Replay marks the review satisfied and
+  reveals Continue; review-render failure deliberately fails open to the
+  existing concise frozen Continue path with a fixed diagnostic.
+- Retry-correct assist is scoped to player-offense scrimmage plays with a
+  positive applied gain. Credited gain is `Math.max(1, Math.floor(raw / 2))`
+  and the play transition is reprojected from that credited gain, so first down,
+  touchdown, down-distance, field position, and stats settle from the reduced
+  result. Defense, opponent/special-team plays, first-try success, failed
+  answers, zero gains, and losses keep their existing policies.
+- Added render-state and result-event assist metadata for diagnostics/tests
+  without changing question schemas or learning-event payloads. Preserved the
+  existing guided first-try behavior: guidance alone does not halve a successful
+  first try.
+- Verification evidence from this pass: `node --check football/football.js`;
+  `git diff --check`; `npm run test:registry` 4/4; focused football
+  verification with learning, context integration, audio, and call-layout on
+  iPad 11 landscape 74/74; the configured `npm run test:football` call-layout
+  suite 18/18 across the device projects; targeted accessibility rerun 9/9;
+  `npm run test:football:release` DOM-free checks 107/107; the first full
+  release Playwright pass had one iPad Pro 13 landscape release-matrix timeout
+  after 286 passes and 499 expected skips, and that timed-out scenario then
+  passed by itself in 19.8s; the lower-concurrency release Playwright matrix
+  completed cleanly with 287 passes and 499 expected skips. Exact-artifact
+  independent review, commit, push, PR, merge, deployment, and live-version
+  verification remain orchestrator-owned.

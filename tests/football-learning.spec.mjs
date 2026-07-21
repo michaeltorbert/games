@@ -488,7 +488,7 @@ test('adaptation and schema-v2 learning events retain grounded question identity
   expect(result.supportAfterGuidedMiss).toBe('guided');
 });
 
-test('first miss keeps one frozen question and retry correct commits the full proposed offense play once', async ({ page }, testInfo) => {
+test('first miss keeps one frozen question and retry correct commits the assisted offense gain once', async ({ page }, testInfo) => {
   primaryOnly(testInfo);
   await page.goto('/football/?boot=offense-call');
   await page.evaluate(() => {
@@ -528,7 +528,10 @@ test('first miss keeps one frozen question and retry correct commits the full pr
   await answerChoice(page, question.correctChoiceId);
   const resolvedContracts = await contracts(page);
   const resolved = await rendered(page);
-  const expectedYard = beforeContracts.activeSnap.proposal.endYardLine;
+  const originalGain = beforeContracts.activeSnap.proposal.appliedGain;
+  const assistedGain = Math.max(1, Math.floor(originalGain / 2));
+  const expectedYard = beforeContracts.activeSnap.context.yardLine
+    + (beforeContracts.activeSnap.context.direction * assistedGain);
 
   expect(resolved.mode).toBe('feedback');
   expect(resolved.plays).toBe(before.plays + 1);
@@ -537,6 +540,14 @@ test('first miss keeps one frozen question and retry correct commits the full pr
   expect(resolved.learning.resolved).toBe(1);
   expect(resolved.correctAnswers).toBe(before.correctAnswers + 1);
   expect(resolvedContracts.questionUi.outcomeCommitted).toBe(true);
+  expect(resolvedContracts.pendingResolution.assist).toMatchObject({
+    assisted: true,
+    assistReason: 'retry',
+    rawGain: originalGain,
+    creditedGain: assistedGain,
+    reductionApplied: true,
+    reviewGateState: 'not-required',
+  });
 
   const events = await page.evaluate(() => window.__learningEvents);
   expect(events.map((event) => event.type)).toEqual(['presented', 'attempt', 'attempt', 'resolved']);
@@ -590,6 +601,42 @@ test('a question that starts guided stays answer-hidden until the second miss', 
   await expect(page.locator(`[data-choice-id="${question.correctChoiceId}"]`)).toBeEnabled();
 });
 
+test('guided first-try success keeps the full offensive result', async ({ page }, testInfo) => {
+  primaryOnly(testInfo);
+  await page.goto('/football/?boot=offense-call');
+  await page.evaluate(() => window.__footballTest.setRootSeed(0x24424));
+
+  const beforeContracts = await beginSnap(page, 'offense');
+  const before = await rendered(page);
+  const question = beforeContracts.questionInstance;
+  const expectedYard = beforeContracts.activeSnap.proposal.endYardLine;
+  const expectedGain = beforeContracts.activeSnap.proposal.appliedGain;
+
+  await page.evaluate(() => {
+    state.questionUi.support = 'guided';
+    syncQuestionMirrors();
+    renderMathVisual();
+  });
+  await answerChoice(page, question.correctChoiceId);
+
+  const afterContracts = await contracts(page);
+  const after = await rendered(page);
+  expect(after.mode).toBe('feedback');
+  expect(after.absoluteYard).toBe(expectedYard);
+  expect(after.plays).toBe(before.plays + 1);
+  expect(afterContracts.pendingResolution.assist).toMatchObject({
+    assisted: false,
+    assistReason: 'none',
+    rawGain: expectedGain,
+    creditedGain: expectedGain,
+    reductionApplied: false,
+  });
+  expect(afterContracts.statsSession.completedPlays.at(-1)).toMatchObject({
+    resolution: 'firstTryCorrect',
+    actualYards: expectedGain,
+  });
+});
+
 test('second defensive miss records learning only after Continue commits one frozen capped transition', async ({ page }, testInfo) => {
   primaryOnly(testInfo);
   await page.goto('/football/?boot=defense-call');
@@ -632,16 +679,25 @@ test('second defensive miss records learning only after Continue commits one fro
   await expect(page.locator('#film-room-summary')).toBeFocused();
   await expect(page.locator('#question-learn-why')).toBeVisible();
   await expect(page.locator('#question-learn-why')).toBeEnabled();
-  await expect(page.locator('#question-continue')).toBeVisible();
-  await expect(page.locator('#question-continue')).toBeEnabled();
+  await expect(page.locator('#question-continue')).toBeHidden();
+  await expect(page.locator('#question-continue')).toBeDisabled();
   await expect(page.locator('#worked-review')).toBeHidden();
   await expect(page.locator('#btn-row')).toHaveCSS('display', 'none');
   await expect(page.locator('#btn-row .ans-btn.correct')).toHaveCount(0);
+  expect(explanation.reviewSatisfied).toBe(false);
+  expect(explanation.reviewGateState).toBe('pending');
+
+  await page.evaluate(() => continueAfterExplanation());
+  const blocked = await rendered(page);
+  expect(blocked.mode).toBe('explanation');
+  expect(blocked.outcomeCommitted).toBe(false);
+  expect(blocked.plays).toBe(before.plays);
+  expect(blocked.absoluteYard).toBe(before.absoluteYard);
+  expect(blocked.learning.resolved).toBe(0);
+  await expect(page.locator('#question-learn-why')).toBeFocused();
 
   await page.keyboard.press('Tab');
-  await expect(page.locator('#question-learn-why')).toBeFocused();
-  await page.keyboard.press('Tab');
-  await expect(page.locator('#question-continue')).toBeFocused();
+  await expect(page.locator('#question-learn-why')).not.toBeFocused();
 
   const authorityBeforeReview = await page.evaluate(() => {
     const snapshot = window.__footballTest.activeContracts();
@@ -669,8 +725,11 @@ test('second defensive miss records learning only after Continue commits one fro
   await expect(page.locator('.worked-review-steps > li')).toHaveCount(question.workedReview.steps.length);
   await expect(page.locator('#question-continue')).toBeVisible();
   await expect(page.locator('#question-continue')).toBeEnabled();
-  expect((await rendered(page)).reviewExpanded).toBe(true);
-  expect((await rendered(page)).reviewAvailable).toBe(false);
+  const openedReview = await rendered(page);
+  expect(openedReview.reviewExpanded).toBe(true);
+  expect(openedReview.reviewAvailable).toBe(false);
+  expect(openedReview.reviewSatisfied).toBe(true);
+  expect(openedReview.reviewGateState).toBe('opened');
 
   await page.keyboard.press('Tab');
   await expect(page.locator('#worked-review-back')).toBeFocused();
@@ -754,6 +813,8 @@ test('Coach Replay rendering failure rolls back to the concise frozen Continue p
   expect(rolledBack.reviewAvailable).toBe(false);
   expect(rolledBack.reviewExpanded).toBe(false);
   expect(rolledBack.continueRequired).toBe(true);
+  expect(rolledBack.reviewSatisfied).toBe(true);
+  expect(rolledBack.reviewGateState).toBe('bypassed-render-failure');
   expect(rolledBack.outcomeCommitted).toBe(false);
   expect(rolledBack.plays).toBe(before.plays);
   expect(rolledBack.learning.resolved).toBe(0);

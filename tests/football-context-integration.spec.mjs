@@ -112,6 +112,7 @@ async function resolveSpecialPolicy(page, policy) {
   }
   await answerChoice(page, wrongIds[0]);
   await answerChoice(page, wrongIds[1]);
+  await page.locator('#question-learn-why').click();
   await page.locator('#question-continue').click();
   return activeContracts(page);
 }
@@ -176,6 +177,8 @@ async function continueAndRetryCommitSynchronously(page) {
     let resultCount = 0;
     const countResult = () => { resultCount++; };
     window.addEventListener('football:result', countResult);
+    const learn = document.getElementById('question-learn-why');
+    if (learn && !learn.disabled && !learn.classList.contains('hidden')) learn.click();
     const button = document.getElementById('question-continue');
     button.click();
     const duplicateCommit = commitPendingResolution();
@@ -861,6 +864,27 @@ test('every resolution policy authorizes only its exact frozen requested gain', 
       callKey: 'longRun',
       label: 'Long Run',
     });
+    const oneYardOffenseSnap = FOOTBALL_DOMAIN.createSnap({
+      ...base,
+      contextId: 'policy-probe-offense-one-yard',
+      calls: { ...base.calls, offense: 'shortRun' },
+    }, {
+      gain: 1,
+      callKey: 'shortRun',
+      label: 'Short Run',
+    });
+    const nearGoalOffenseSnap = FOOTBALL_DOMAIN.createSnap({
+      ...base,
+      contextId: 'policy-probe-offense-near-goal',
+      yardLine: 97,
+      firstDownLine: 100,
+      yardsToGo: 3,
+      calls: { ...base.calls, offense: 'longRun' },
+    }, {
+      gain: 8,
+      callKey: 'longRun',
+      label: 'Long Run',
+    });
     const defenseContext = {
       ...base,
       contextId: 'policy-probe-defense',
@@ -891,7 +915,9 @@ test('every resolution policy authorizes only its exact frozen requested gain', 
     });
     const cases = [
       [offenseSnap, 'firstTryCorrect', 8],
-      [offenseSnap, 'retryCorrect', 8],
+      [offenseSnap, 'retryCorrect', 4],
+      [oneYardOffenseSnap, 'retryCorrect', 1],
+      [nearGoalOffenseSnap, 'retryCorrect', 1],
       [offenseSnap, 'secondMiss', -2, { resultKind: 'turnover', resultReason: 'fumble' }],
       [offenseSnap, 'questionBypass', 8],
       [defenseSnap, 'firstTryCorrect', 0],
@@ -1126,6 +1152,7 @@ test('a long-run second miss commits one fumble and reaches the possession trans
   await page.evaluate(() => {
     window.__turnoverResults = [];
     window.addEventListener('football:result', event => window.__turnoverResults.push(event.detail));
+    document.getElementById('question-learn-why').click();
     document.getElementById('question-continue').click();
     window.__turnoverFloat = document.querySelector('.field-float')?.textContent || '';
     commitPendingResolution();
@@ -1168,6 +1195,7 @@ test('a medium-pass loss creates 2nd and 13 and the next snap still builds a que
   await chooseCall(page, 'Medium Pass');
   const before = await activeContracts(page);
   await missTwice(page, before);
+  await page.locator('#question-learn-why').click();
   await page.evaluate(() => document.getElementById('question-continue').click());
   await page.waitForTimeout(1900);
   const between = await activeContracts(page);
@@ -1280,6 +1308,7 @@ test('late defensive rejection restores only the frozen snap-owned opponent plan
       ...FOOTBALL_DOMAIN.clone(state.pendingResolution),
       transitionToCommit: FOOTBALL_DOMAIN.reprojectGain(snap, unauthorizedGain),
     });
+    document.getElementById('question-learn-why').click();
     document.getElementById('question-continue').click();
     return window.__footballTest.activeContracts();
   });

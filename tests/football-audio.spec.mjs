@@ -247,6 +247,7 @@ test('correct fourth-down defense celebrates while misses and bypasses stay sile
   expect(wrongIds.length).toBeGreaterThanOrEqual(2);
   await answerChoice(page, wrongIds[0]);
   await answerChoice(page, wrongIds[1]);
+  await page.locator('#question-learn-why').click();
   await page.locator('#question-continue').click();
   const missResult = await page.evaluate(() => window.__footballTest.activeContracts());
   expect(missResult.statsSession.completedPlays.at(-1)).toMatchObject({
@@ -329,6 +330,7 @@ test('special-play audio is positive only for first-try or retry instructional s
           } else {
             await answerChoice(page, wrongIds[0]);
             await answerChoice(page, wrongIds[1]);
+            await page.locator('#question-learn-why').click();
             await page.locator('#question-continue').click();
           }
         }
