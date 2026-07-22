@@ -39,6 +39,16 @@ repository-level `AGENTS.md`.
 - Keep question-family source metadata auditable. Workbook-derived families
   must name their earliest relevant workbook page; football-only display or
   rule literacy must be labeled separately and must not claim a workbook page.
+- Give every question family one immutable `evidenceClass`: `literacy` when the
+  child is reading a supplied number, place, marker, or football rule/value,
+  and `independent` when the child must derive the answer. Source-visible
+  answers are always literacy. Independent initial and guided visuals must keep
+  `revealsAnswer: false` and `result: null`; only the worked state may reveal
+  the answer.
+- Keep scheduling, support, current-game mastery, durable mastery, and recency
+  partitioned by evidence class. Evidence from one class must not strengthen,
+  suppress, guide, or refresh the other. Migrated `unclassified` history is
+  display/preservation-only and remains inert for adaptation and Coach Report.
 - Every in-play question must be derived from the immutable public facts of the
   live tagged play. Scrimmage questions include the selected calls and exact
   proposed gain; conversion, field-goal, and punt questions consume only their
@@ -153,10 +163,13 @@ repository-level `AGENTS.md`.
 
 ## Play-History Semantics
 
-- Keep the storage key `footballMathStats:v1`, but write only inner schema 3.
-  Normalize schema-1 and schema-2 rows in memory as scrimmage without rewriting
-  on read; persist schema 3 on the next completed play. Never overwrite an
-  unknown future schema.
+- Keep the storage key `footballMathStats:v1`, but write only inner schema 4.
+  Normalize schema-1 through schema-3 question, mastery, and recency evidence
+  into the preserved `unclassified` bucket without rewriting on read; persist
+  schema 4 on the next completed play. Schema-1 and schema-2 retain their
+  legacy scrimmage/identity fallbacks, while schema-3 and later rows must keep
+  strict typed play and stable identity contracts. Never overwrite an unknown
+  future schema.
 - Every current or future central writer for `footballMathStats:v1`, regardless
   of inner schema version, must acquire the origin-wide exclusive Web Lock
   `footballMathStats:v1:central-write`. Fresh-read, stable-play deduplication,
@@ -174,10 +187,11 @@ repository-level `AGENTS.md`.
   rows; repeated answer/Continue/overlay controls cannot append another row or
   aggregate the same possession twice.
 - Select adaptive-learning recency by valid `completedAt`, never journal order.
-  Preserve the newest graded resolution per curriculum concept in the internal
-  `lastResolvedByConcept` index so a delayed write cannot become authoritative
-  or displace newer evidence when `recentPlays` is capped. Public history does
-  not expose this persistence index.
+  Preserve the newest graded resolution per curriculum concept and evidence
+  class in the internal `lastResolvedByConcept` index so a delayed write cannot
+  become authoritative or displace newer same-class evidence when
+  `recentPlays` is capped. Public history does not expose this persistence
+  index.
 - Conversion, field-goal, and punt rows use typed outcomes and metrics. Attempt
   value, kick distance, punt travel, and landing position must stay out of
   scrimmage `offeredYards`, `actualYards`, team offense, and drive-yard totals.

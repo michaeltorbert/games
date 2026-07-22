@@ -172,11 +172,14 @@ instructional authority are split across ordered plain-global scripts:
   (`scrimmage`, `punt`, `fieldGoal`, `conversion`) and independently validated,
   type-specific transition projection/reprojection. `activeSnap` is only the
   derived scrimmage compatibility view.
-- `contextual-questions.js` owns DOM-free, play-grounded question families and
-  structured stable choices. Scrimmage and special-team pools consume only
-  their closed public context shapes.
-- `learning.js`, `stats.js`, and `opponent.js` own scheduling/support,
-  privacy-safe linked history, and the exact frozen opponent plan respectively.
+- `contextual-questions.js` owns DOM-free, play-grounded question families,
+  their immutable literacy/independent evidence classification, and structured
+  stable choices. Scrimmage and special-team pools consume only their closed
+  public context shapes.
+- `learning.js`, `stats.js`, and `opponent.js` own class-partitioned
+  scheduling/support, privacy-safe class-partitioned linked history, and the
+  exact frozen opponent plan respectively. Migrated unclassified evidence is
+  preserved but cannot drive adaptation or the current-game Coach Report.
 - `season.js` owns the DOM-free, browser-local three-game season store. Its
   fixed schedule snapshots the public rival order; all mutations serialize
   through a dedicated Web Lock and a single callback-time fresh read/write.

@@ -13,17 +13,59 @@ test('coach report never assigns the same concept to strength and practice', asy
 
   const reports = await page.evaluate(() => {
     learningSession.byConcept = {
-      addition: { resolved: 1, firstTryCorrect: 0, retryCorrect: 1, secondMiss: 0 },
+      addition: {
+        independent: { resolved: 1, firstTryCorrect: 0, retryCorrect: 1, secondMiss: 0 },
+      },
     };
     const oneSupportedConcept = buildCoachReport();
 
     learningSession.byConcept = {
-      addition: { resolved: 2, firstTryCorrect: 1, retryCorrect: 1, secondMiss: 0 },
-      difference: { resolved: 4, firstTryCorrect: 3, retryCorrect: 0, secondMiss: 1 },
+      addition: {
+        independent: { resolved: 2, firstTryCorrect: 1, retryCorrect: 1, secondMiss: 0 },
+      },
+      difference: {
+        independent: { resolved: 4, firstTryCorrect: 3, retryCorrect: 0, secondMiss: 1 },
+      },
     };
     const distinctPracticeConcept = buildCoachReport();
 
-    return { oneSupportedConcept, distinctPracticeConcept };
+    learningSession.byConcept = {
+      addition: {
+        literacy: { resolved: 2, firstTryCorrect: 2, retryCorrect: 0, secondMiss: 0 },
+      },
+      difference: {
+        independent: { resolved: 1, firstTryCorrect: 1, retryCorrect: 0, secondMiss: 0 },
+      },
+      'line-to-gain': {
+        unclassified: { resolved: 99, firstTryCorrect: 99, retryCorrect: 0, secondMiss: 0 },
+      },
+    };
+    const mixedClasses = buildCoachReport();
+
+    learningSession.byConcept = {
+      'punt-distance': {
+        literacy: { resolved: 1, firstTryCorrect: 1, retryCorrect: 0, secondMiss: 0 },
+      },
+    };
+    const literacyOnly = buildCoachReport();
+
+    learningSession.byConcept = {
+      addition: {
+        independent: { resolved: 100, firstTryCorrect: 1, retryCorrect: 99, secondMiss: 0 },
+      },
+      difference: {
+        independent: { resolved: 2, firstTryCorrect: 1, retryCorrect: 0, secondMiss: 1 },
+      },
+    };
+    const retryDoesNotRankAsStrength = buildCoachReport();
+
+    return {
+      oneSupportedConcept,
+      distinctPracticeConcept,
+      mixedClasses,
+      literacyOnly,
+      retryDoesNotRankAsStrength,
+    };
   });
 
   expect(reports.oneSupportedConcept).toEqual([
@@ -31,8 +73,20 @@ test('coach report never assigns the same concept to strength and practice', asy
     { label: 'Coach says', value: 'Great job using support and trying again' },
   ]);
   expect(reports.distinctPracticeConcept).toEqual([
-    { label: 'Strong today', value: 'Adding within 10' },
-    { label: 'Practice next', value: 'Finding the difference' },
+    { label: 'Strong today', value: 'Finding the difference' },
+    { label: 'Practice next', value: 'Adding within 10' },
+  ]);
+  expect(reports.mixedClasses).toEqual([
+    { label: 'Strong today', value: 'Finding the difference' },
+    { label: 'Read today', value: 'Adding within 10' },
+  ]);
+  expect(reports.literacyOnly).toEqual([
+    { label: 'Read today', value: 'Punt distance' },
+    { label: 'Coach says', value: 'Keep reading the game' },
+  ]);
+  expect(reports.retryDoesNotRankAsStrength).toEqual([
+    { label: 'Strong today', value: 'Finding the difference' },
+    { label: 'Practice next', value: 'Adding within 10' },
   ]);
 });
 
@@ -50,7 +104,9 @@ test('coach report uses this game only and keeps the final CTA above the fold', 
   await page.goto('/football/?boot=offense-call');
 
   expect(await page.evaluate(() => window.__footballTest.learningState().historicalMastery.addition))
-    .toEqual({ resolved: 8, firstTryCorrect: 8, retryCorrect: 0, secondMiss: 0 });
+    .toEqual({
+      unclassified: { resolved: 8, firstTryCorrect: 8, retryCorrect: 0, secondMiss: 0 },
+    });
   expect(await page.evaluate(() => window.__footballTest.coachReport())).toEqual([
     { label: 'Learning today', value: 'Keep playing to build your learning recap' },
   ]);
@@ -59,7 +115,9 @@ test('coach report uses this game only and keeps the final CTA above the fold', 
     const result = {};
     for (const concept of ['line-to-gain-comparison', 'team-total-yards', 'drive-play-order']) {
       learningSession.byConcept = {
-        [concept]: { resolved: 1, firstTryCorrect: 1, retryCorrect: 0, secondMiss: 0 },
+        [concept]: {
+          independent: { resolved: 1, firstTryCorrect: 1, retryCorrect: 0, secondMiss: 0 },
+        },
       };
       result[concept] = buildCoachReport()[0].value;
     }
@@ -75,10 +133,10 @@ test('coach report uses this game only and keeps the final CTA above the fold', 
   await page.evaluate(() => {
     const base = { purpose: 'coreReview', grading: 'gate' };
     FOOTBALL_LEARNING.recordResolved(learningSession, {
-      ...base, id: 'today-add', skill: 'addition', concept: 'addition',
+      ...base, id: 'today-add', skill: 'addition', concept: 'addition', evidenceClass: 'independent',
     }, 'firstTryCorrect');
     FOOTBALL_LEARNING.recordResolved(learningSession, {
-      ...base, id: 'today-difference', skill: 'difference', concept: 'difference',
+      ...base, id: 'today-difference', skill: 'difference', concept: 'difference', evidenceClass: 'independent',
     }, 'secondMiss');
     state.gradedQuestions = 2;
     state.correctAnswers = 1;
@@ -104,8 +162,12 @@ test('coach report uses this game only and keeps the final CTA above the fold', 
   const rendered = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
   expect(rendered.questionConcept).toBeNull();
   expect(rendered.learning.byConcept).toEqual({
-    addition: { resolved: 1, firstTryCorrect: 1, retryCorrect: 0, secondMiss: 0 },
-    difference: { resolved: 1, firstTryCorrect: 0, retryCorrect: 0, secondMiss: 1 },
+    addition: {
+      independent: { resolved: 1, firstTryCorrect: 1, retryCorrect: 0, secondMiss: 0 },
+    },
+    difference: {
+      independent: { resolved: 1, firstTryCorrect: 0, retryCorrect: 0, secondMiss: 1 },
+    },
   });
   expect(rendered.coachReport).toEqual([
     { label: 'Strong today', value: 'Adding within 10' },
@@ -119,7 +181,9 @@ test('compact final-overlay compatibility rule stays usable at 1180x740', async 
   await page.goto('/football/?boot=offense-call');
   await page.evaluate(() => {
     learningSession.byConcept = {
-      addition: { resolved: 1, firstTryCorrect: 0, retryCorrect: 1, secondMiss: 0 },
+      addition: {
+        independent: { resolved: 1, firstTryCorrect: 0, retryCorrect: 1, secondMiss: 0 },
+      },
     };
     state.playerScore = 21;
     state.opponentScore = 14;

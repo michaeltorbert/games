@@ -1,4 +1,4 @@
-const GAME_VERSION = '1.27.0';
+const GAME_VERSION = '1.27.1';
 let prevPlayerScore = -1, prevOpponentScore = -1;
 let playerRunTimer = 0, playerCelebrateTimer = 0, playerCelebrateDelayTimer = 0;
 const EZ = 5;
@@ -941,6 +941,7 @@ function sanitizedStatsQuestion(question) {
     purpose: question.purpose,
     grading: question.grading,
     tier: question.tier,
+    evidenceClass: question.evidenceClass,
   };
 }
 
@@ -1266,6 +1267,14 @@ function validateQuestionInstance(activePlay, question) {
     || question.playType !== activePlay.playType) {
     throw Object.assign(new Error('Question identity does not link to the frozen play.'), { code: 'malformed-question' });
   }
+  const validEvidenceClass = FOOTBALL_CONTEXTUAL_QUESTIONS.EVIDENCE_CLASSES.includes(question.evidenceClass);
+  const sourceVisibleContradiction = question.answerExposure === 'source-visible'
+    && question.evidenceClass !== 'literacy';
+  const independentExposureContradiction = question.evidenceClass === 'independent'
+    && question.answerExposure === 'source-visible';
+  if (!validEvidenceClass || sourceVisibleContradiction || independentExposureContradiction) {
+    throw Object.assign(new Error('Question evidence classification contradicts its answer exposure.'), { code: 'malformed-question' });
+  }
   if (!Array.isArray(question.bindings) || question.bindings !== question.premises || !question.bindings.length) {
     throw Object.assign(new Error('Question bindings are missing or have drifted.'), { code: 'malformed-question' });
   }
@@ -1316,6 +1325,10 @@ function validateQuestionInstance(activePlay, question) {
     if (!visual || typeof visual.ariaLabel !== 'string' || visual.ariaLabel.trim() === '') {
       throw Object.assign(new Error(`Question is missing its ${stage} visual contract.`), { code: 'malformed-question' });
     }
+    if (question.evidenceClass === 'independent' && stage !== 'worked'
+      && (visual.revealsAnswer !== false || visual.result !== null)) {
+      throw Object.assign(new Error(`Independent evidence exposes its ${stage} answer.`), { code: 'malformed-question' });
+    }
   }
   return question;
 }
@@ -1347,7 +1360,7 @@ function pickQuestion(activePlay) {
       && entry.introducedOnPage > inspected.profile.completedThroughPage
       ? 'guided'
       : 'initial';
-    const support = FOOTBALL_LEARNING.supportFor(learningSession, entry.skill, firstSupport);
+    const support = FOOTBALL_LEARNING.supportFor(learningSession, entry, firstSupport);
     const built = FOOTBALL_CONTEXTUAL_QUESTIONS.build(activePlay, entry.familyId, {
       support,
       presentationRng,
@@ -4110,52 +4123,70 @@ function populateEndStats() {
 }
 
 function buildCoachReport() {
-  const concepts = Object.entries(learningSession?.byConcept || {})
-    .filter(([, mastery]) => mastery.resolved > 0)
-    .map(([concept, mastery]) => ({
-      concept,
-      label: COACH_CONCEPT_LABELS[concept] || 'Football math',
-      ...mastery,
-    }));
+  const byConcept = learningSession?.byConcept || {};
+  const candidatesFor = (evidenceClass) => Object.entries(byConcept)
+    .flatMap(([concept, classes]) => {
+      const mastery = classes?.[evidenceClass];
+      if (!mastery || mastery.resolved <= 0) return [];
+      return [{
+        concept,
+        evidenceClass,
+        label: COACH_CONCEPT_LABELS[concept] || 'Football math',
+        ...mastery,
+      }];
+    });
+  const independent = candidatesFor('independent');
+  const literacy = candidatesFor('literacy');
 
-  if (!concepts.length) {
+  if (!independent.length && !literacy.length) {
     return [{ label: 'Learning today', value: 'Keep playing to build your learning recap' }];
   }
 
-  const score = (item) => (item.firstTryCorrect + 0.75 * item.retryCorrect) / item.resolved;
+  const firstTryStrength = (item) => item.firstTryCorrect / item.resolved;
   const supportNeed = (item) => (item.retryCorrect + item.secondMiss) / item.resolved;
   const stableConceptOrder = (a, b) =>
     a.label.localeCompare(b.label) || a.concept.localeCompare(b.concept);
-  const strongest = concepts
-    .filter((item) => item.firstTryCorrect + item.retryCorrect > 0)
-    .sort((a, b) => score(b) - score(a) || b.resolved - a.resolved || stableConceptOrder(a, b))[0];
-  const practiceCandidates = concepts
+  const strongest = independent
+    .filter((item) => item.firstTryCorrect > 0)
+    .sort((a, b) => firstTryStrength(b) - firstTryStrength(a)
+      || b.firstTryCorrect - a.firstTryCorrect
+      || b.resolved - a.resolved
+      || stableConceptOrder(a, b))[0];
+  const independentNeed = independent
     .filter((item) => item.retryCorrect + item.secondMiss > 0)
     .sort((a, b) => supportNeed(b) - supportNeed(a) || b.secondMiss - a.secondMiss || stableConceptOrder(a, b));
-  const practice = practiceCandidates.find((item) => item.concept !== strongest?.concept) || null;
+  const literacyRead = literacy
+    .filter((item) => item.firstTryCorrect > 0)
+    .sort((a, b) => b.firstTryCorrect / b.resolved - a.firstTryCorrect / a.resolved
+      || b.firstTryCorrect - a.firstTryCorrect
+      || b.resolved - a.resolved
+      || stableConceptOrder(a, b));
+  const literacyNeed = literacy
+    .filter((item) => item.retryCorrect + item.secondMiss > 0)
+    .sort((a, b) => supportNeed(b) - supportNeed(a) || b.secondMiss - a.secondMiss || stableConceptOrder(a, b));
   const rows = [];
+  const usedConcepts = new Set();
+  const add = (label, item) => {
+    if (!item || usedConcepts.has(item.concept) || rows.length >= 2) return false;
+    rows.push({ label, value: item.label });
+    usedConcepts.add(item.concept);
+    return true;
+  };
 
-  if (concepts.length === 1 && strongest && practiceCandidates[0]?.concept === strongest.concept) {
-    return [
-      { label: 'Building today', value: strongest.label },
-      { label: 'Coach says', value: 'Great job using support and trying again' },
-    ];
+  add('Strong today', strongest);
+  add(rows.length ? 'Practice next' : 'Building today', independentNeed.find(item => !usedConcepts.has(item.concept)));
+  add('Read today', literacyRead.find(item => !usedConcepts.has(item.concept)));
+  add(rows.length ? 'Practice next' : 'Building today', literacyNeed.find(item => !usedConcepts.has(item.concept)));
+  if (rows.length < 2) {
+    rows.push({
+      label: 'Coach says',
+      value: rows[0]?.label === 'Read today'
+        ? 'Keep reading the game'
+        : rows[0]?.label === 'Building today'
+          ? 'Great job using support and trying again'
+          : 'Keep building on that great work',
+    });
   }
-
-  if (strongest) rows.push({ label: 'Strong today', value: strongest.label });
-  if (practice) {
-    rows.push({ label: 'Practice next', value: practice.label });
-  } else if (strongest) {
-    const challenge = [...concepts]
-      .filter((item) => item.concept !== strongest.concept)
-      .sort((a, b) => a.resolved - b.resolved || stableConceptOrder(a, b))[0];
-    rows.push(challenge
-      ? { label: 'Next challenge', value: challenge.label }
-      : { label: 'Coach says', value: 'Keep building on that great work' });
-  } else if (practiceCandidates[0]) {
-    rows.push({ label: 'Practice next', value: practiceCandidates[0].label });
-  }
-  if (!strongest) rows.push({ label: 'Keep going', value: 'Every try builds your skill' });
   return rows.slice(0, 2);
 }
 
@@ -4413,6 +4444,7 @@ function renderGameToText() {
     questionConcept: state.questionConcept || null,
     questionPurpose: state.questionPurpose || null,
     questionGrading: state.questionGrading || null,
+    questionEvidenceClass: state.questionInstance?.evidenceClass || null,
     question: state.question || null,
     choices: state.choices || [],
     choiceIds: state.questionInstance?.choices?.map(choice => choice.id) || [],

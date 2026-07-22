@@ -4,7 +4,7 @@
 const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
   'use strict';
 
-  const SCHEMA_VERSION = 2;
+  const SCHEMA_VERSION = 3;
   const CURRENT_COMPLETED_PAGE = 145;
   const INCLUDED_THROUGH_PAGE = 179;
   const PLAY_TYPES = Object.freeze(['scrimmage', 'punt', 'fieldGoal', 'conversion']);
@@ -38,6 +38,11 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
     'source-visible',
     'modeled-with-result-hidden',
     'hidden-until-worked',
+  ]);
+
+  const EVIDENCE_CLASSES = Object.freeze([
+    'literacy',
+    'independent',
   ]);
 
   const CURRICULUM_SOURCES = Object.freeze([
@@ -551,6 +556,7 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
     weight,
     operationType,
     answerExposure,
+    evidenceClass,
     curriculumSource,
     introducedOnPage = null,
     playType = 'scrimmage',
@@ -558,6 +564,13 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
     if (!PLAY_TYPES.includes(playType)) throw new Error(`Unknown play type ${playType}.`);
     if (!OPERATION_TYPES.includes(operationType)) throw new Error(`Unknown operation type ${operationType}.`);
     if (!ANSWER_EXPOSURE_POLICIES.includes(answerExposure)) throw new Error(`Unknown answer-exposure policy ${answerExposure}.`);
+    if (!EVIDENCE_CLASSES.includes(evidenceClass)) throw new Error(`Unknown evidence class ${evidenceClass}.`);
+    if (answerExposure === 'source-visible' && evidenceClass !== 'literacy') {
+      throw new Error('Source-visible questions must be classified as literacy evidence.');
+    }
+    if (evidenceClass === 'independent' && answerExposure === 'source-visible') {
+      throw new Error('Independent evidence must keep the answer outside the source-visible model.');
+    }
     if (!CURRICULUM_SOURCES.includes(curriculumSource)) throw new Error(`Unknown curriculum source ${curriculumSource}.`);
     if (curriculumSource === 'workbook' && (!Number.isInteger(introducedOnPage) || introducedOnPage < 1 || introducedOnPage > INCLUDED_THROUGH_PAGE)) {
       throw new Error('Workbook-sourced families need an exact introducedOnPage within the approved book.');
@@ -578,6 +591,7 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
       weight,
       operationType,
       answerExposure,
+      evidenceClass,
       playType,
     });
   }
@@ -641,7 +655,7 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
 
   const FAMILY_DEFINITIONS = [
     {
-      meta: makeMeta({ familyId: 'yards-to-go-read', skill: 'football-number-sense', concept: 'line-to-gain', purpose: 'coreReview', tier: 'within-10', weight: 4, operationType: 'read', answerExposure: 'source-visible', curriculumSource: 'football-only' }),
+      meta: makeMeta({ familyId: 'yards-to-go-read', skill: 'football-number-sense', concept: 'line-to-gain', purpose: 'coreReview', tier: 'within-10', weight: 4, operationType: 'read', answerExposure: 'source-visible', evidenceClass: 'literacy', curriculumSource: 'football-only' }),
       derive(snap) {
         const answer = snap.context.yardsToGo;
         if (answer > 10) return { decline: decline('outside-read-band', 'This read family is limited to yards-to-go values through 10.') };
@@ -663,7 +677,7 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
       },
     },
     {
-      meta: makeMeta({ familyId: 'line-to-gain-missing-part', skill: 'missing-part', concept: 'line-to-gain', purpose: 'weakSpot', tier: 'within-10', weight: 3.2, operationType: 'missingPart', answerExposure: 'modeled-with-result-hidden', curriculumSource: 'workbook', introducedOnPage: 41 }),
+      meta: makeMeta({ familyId: 'line-to-gain-missing-part', skill: 'missing-part', concept: 'line-to-gain', purpose: 'weakSpot', tier: 'within-10', weight: 3.2, operationType: 'missingPart', answerExposure: 'modeled-with-result-hidden', evidenceClass: 'independent', curriculumSource: 'workbook', introducedOnPage: 41 }),
       derive(snap, profile) {
         const needed = snap.context.yardsToGo;
         const gain = appliedGain(snap);
@@ -685,7 +699,7 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
       },
     },
     {
-      meta: makeMeta({ familyId: 'line-to-gain-exact', skill: 'difference', concept: 'line-to-gain', purpose: 'weakSpot', tier: 'within-10', weight: 2.4, operationType: 'exactRemainder', answerExposure: 'modeled-with-result-hidden', curriculumSource: 'workbook', introducedOnPage: 110 }),
+      meta: makeMeta({ familyId: 'line-to-gain-exact', skill: 'difference', concept: 'line-to-gain', purpose: 'weakSpot', tier: 'within-10', weight: 2.4, operationType: 'exactRemainder', answerExposure: 'modeled-with-result-hidden', evidenceClass: 'independent', curriculumSource: 'workbook', introducedOnPage: 110 }),
       derive(snap, profile) {
         const needed = snap.context.yardsToGo;
         const gain = appliedGain(snap);
@@ -705,7 +719,7 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
       },
     },
     {
-      meta: makeMeta({ familyId: 'line-to-gain-surplus', skill: 'difference', concept: 'line-to-gain', purpose: 'weakSpot', tier: 'within-10', weight: 2.6, operationType: 'surplus', answerExposure: 'modeled-with-result-hidden', curriculumSource: 'workbook', introducedOnPage: 110 }),
+      meta: makeMeta({ familyId: 'line-to-gain-surplus', skill: 'difference', concept: 'line-to-gain', purpose: 'weakSpot', tier: 'within-10', weight: 2.6, operationType: 'surplus', answerExposure: 'modeled-with-result-hidden', evidenceClass: 'independent', curriculumSource: 'workbook', introducedOnPage: 110 }),
       derive(snap, profile) {
         const needed = snap.context.yardsToGo;
         const gain = appliedGain(snap);
@@ -726,7 +740,7 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
       },
     },
     {
-      meta: makeMeta({ familyId: 'line-to-gain-fact-family', skill: 'fact-family', concept: 'line-to-gain', purpose: 'coreReview', tier: 'within-10', weight: 2.3, operationType: 'factFamilyMissingPart', answerExposure: 'modeled-with-result-hidden', curriculumSource: 'workbook', introducedOnPage: 98 }),
+      meta: makeMeta({ familyId: 'line-to-gain-fact-family', skill: 'fact-family', concept: 'line-to-gain', purpose: 'coreReview', tier: 'within-10', weight: 2.3, operationType: 'factFamilyMissingPart', answerExposure: 'modeled-with-result-hidden', evidenceClass: 'independent', curriculumSource: 'workbook', introducedOnPage: 98 }),
       derive(snap, profile) {
         const total = snap.context.yardsToGo;
         const part = appliedGain(snap);
@@ -756,6 +770,7 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
         weight: 2.4,
         operationType: 'compare',
         answerExposure: 'modeled-with-result-hidden',
+        evidenceClass: 'independent',
         curriculumSource: 'workbook',
         introducedOnPage: 39,
       }),
@@ -790,7 +805,7 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
       },
     },
     {
-      meta: makeMeta({ familyId: 'goal-distance-read', skill: 'place-value', concept: 'field-distance', purpose: 'completedPlaceValue', tier: 'two-digit-structure', weight: 2.2, operationType: 'distance', answerExposure: 'source-visible', curriculumSource: 'workbook', introducedOnPage: 126 }),
+      meta: makeMeta({ familyId: 'goal-distance-read', skill: 'place-value', concept: 'field-distance', purpose: 'completedPlaceValue', tier: 'two-digit-structure', weight: 2.2, operationType: 'distance', answerExposure: 'source-visible', evidenceClass: 'literacy', curriculumSource: 'workbook', introducedOnPage: 126 }),
       derive(snap, profile) {
         const answer = goalDistance(snap);
         if (!inDisplayBand(profile, answer)) return { decline: decline('outside-display-band', 'Goal distance must fit the completed display band.') };
@@ -808,7 +823,7 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
       },
     },
     {
-      meta: makeMeta({ familyId: 'goal-distance-tens', skill: 'place-value', concept: 'place-value', purpose: 'completedPlaceValue', tier: 'two-digit-structure', weight: 2.4, operationType: 'tensOfDistance', answerExposure: 'modeled-with-result-hidden', curriculumSource: 'workbook', introducedOnPage: 124 }),
+      meta: makeMeta({ familyId: 'goal-distance-tens', skill: 'place-value', concept: 'place-value', purpose: 'completedPlaceValue', tier: 'two-digit-structure', weight: 2.4, operationType: 'tensOfDistance', answerExposure: 'modeled-with-result-hidden', evidenceClass: 'literacy', curriculumSource: 'workbook', introducedOnPage: 124 }),
       derive(snap, profile) {
         const distance = goalDistance(snap);
         if (distance < 10 || distance > 99 || !inDisplayBand(profile, distance)) return { decline: decline('not-two-digit-distance', 'Tens work needs a two-digit goal distance from 10 through 99.') };
@@ -827,7 +842,7 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
       },
     },
     {
-      meta: makeMeta({ familyId: 'goal-distance-ones', skill: 'place-value', concept: 'place-value', purpose: 'completedPlaceValue', tier: 'two-digit-structure', weight: 2, operationType: 'onesOfDistance', answerExposure: 'modeled-with-result-hidden', curriculumSource: 'workbook', introducedOnPage: 124 }),
+      meta: makeMeta({ familyId: 'goal-distance-ones', skill: 'place-value', concept: 'place-value', purpose: 'completedPlaceValue', tier: 'two-digit-structure', weight: 2, operationType: 'onesOfDistance', answerExposure: 'modeled-with-result-hidden', evidenceClass: 'literacy', curriculumSource: 'workbook', introducedOnPage: 124 }),
       derive(snap, profile) {
         const distance = goalDistance(snap);
         if (distance < 10 || distance > 99 || !inDisplayBand(profile, distance)) return { decline: decline('not-two-digit-distance', 'Ones work needs a two-digit goal distance from 10 through 99.') };
@@ -855,6 +870,7 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
         weight: 1.8,
         operationType: 'add',
         answerExposure: 'modeled-with-result-hidden',
+        evidenceClass: 'independent',
         curriculumSource: 'workbook',
         introducedOnPage: 149,
       }),
@@ -887,7 +903,7 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
       },
     },
     {
-      meta: makeMeta({ familyId: 'drive-distance-scaffolded', skill: 'difference', concept: 'drive-distance', purpose: 'weakSpot', tier: 'within-10', weight: 1.8, operationType: 'absoluteDifference', answerExposure: 'modeled-with-result-hidden', curriculumSource: 'workbook', introducedOnPage: 110 }),
+      meta: makeMeta({ familyId: 'drive-distance-scaffolded', skill: 'difference', concept: 'drive-distance', purpose: 'weakSpot', tier: 'within-10', weight: 1.8, operationType: 'absoluteDifference', answerExposure: 'modeled-with-result-hidden', evidenceClass: 'independent', curriculumSource: 'workbook', introducedOnPage: 110 }),
       derive(snap, profile) {
         const answer = Math.abs(snap.context.yardLine - snap.context.driveStart);
         if (!(answer > 0 && inComputationBand(profile, answer))) return { decline: decline('drive-distance-not-scaffoldable', 'Current drive movement must be a positive distance within the computation band.') };
@@ -906,7 +922,7 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
       },
     },
     {
-      meta: makeMeta({ familyId: 'committed-score-total', skill: 'addition', concept: 'committed-score', purpose: 'coreReview', tier: 'within-10', weight: 1.3, operationType: 'add', answerExposure: 'modeled-with-result-hidden', curriculumSource: 'workbook', introducedOnPage: 18 }),
+      meta: makeMeta({ familyId: 'committed-score-total', skill: 'addition', concept: 'committed-score', purpose: 'coreReview', tier: 'within-10', weight: 1.3, operationType: 'add', answerExposure: 'modeled-with-result-hidden', evidenceClass: 'independent', curriculumSource: 'workbook', introducedOnPage: 18 }),
       derive(snap, profile) {
         const labels = publicTeamLabels(snap);
         const player = snap.context.scores.player;
@@ -928,7 +944,7 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
       },
     },
     {
-      meta: makeMeta({ familyId: 'committed-score-difference', skill: 'difference', concept: 'committed-score', purpose: 'weakSpot', tier: 'within-10', weight: 1.2, operationType: 'absoluteDifference', answerExposure: 'modeled-with-result-hidden', curriculumSource: 'workbook', introducedOnPage: 110 }),
+      meta: makeMeta({ familyId: 'committed-score-difference', skill: 'difference', concept: 'committed-score', purpose: 'weakSpot', tier: 'within-10', weight: 1.2, operationType: 'absoluteDifference', answerExposure: 'modeled-with-result-hidden', evidenceClass: 'independent', curriculumSource: 'workbook', introducedOnPage: 110 }),
       derive(snap, profile) {
         const labels = publicTeamLabels(snap);
         const player = snap.context.scores.player;
@@ -950,19 +966,19 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
       },
     },
     {
-      meta: makeMeta({ familyId: 'committed-score-tens', skill: 'teen-place-value', concept: 'teen-place-value', purpose: 'completedPlaceValue', tier: 'two-digit-structure', weight: 0.8, operationType: 'tensOfScore', answerExposure: 'modeled-with-result-hidden', curriculumSource: 'workbook', introducedOnPage: 124 }),
+      meta: makeMeta({ familyId: 'committed-score-tens', skill: 'teen-place-value', concept: 'teen-place-value', purpose: 'completedPlaceValue', tier: 'two-digit-structure', weight: 0.8, operationType: 'tensOfScore', answerExposure: 'modeled-with-result-hidden', evidenceClass: 'literacy', curriculumSource: 'workbook', introducedOnPage: 124 }),
       derive(snap) {
         return teenScorePlaceValue(snap, 'tens');
       },
     },
     {
-      meta: makeMeta({ familyId: 'committed-score-ones', skill: 'teen-place-value', concept: 'teen-place-value', purpose: 'completedPlaceValue', tier: 'two-digit-structure', weight: 1.4, operationType: 'onesOfScore', answerExposure: 'modeled-with-result-hidden', curriculumSource: 'workbook', introducedOnPage: 124 }),
+      meta: makeMeta({ familyId: 'committed-score-ones', skill: 'teen-place-value', concept: 'teen-place-value', purpose: 'completedPlaceValue', tier: 'two-digit-structure', weight: 1.4, operationType: 'onesOfScore', answerExposure: 'modeled-with-result-hidden', evidenceClass: 'literacy', curriculumSource: 'workbook', introducedOnPage: 124 }),
       derive(snap) {
         return teenScorePlaceValue(snap, 'ones');
       },
     },
     {
-      meta: makeMeta({ familyId: 'quarter-read', skill: 'football-number-sense', concept: 'quarter-read', purpose: 'coreReview', tier: 'football-context', weight: 0.8, operationType: 'ordinal', answerExposure: 'source-visible', curriculumSource: 'football-only' }),
+      meta: makeMeta({ familyId: 'quarter-read', skill: 'football-number-sense', concept: 'quarter-read', purpose: 'coreReview', tier: 'football-context', weight: 0.8, operationType: 'ordinal', answerExposure: 'source-visible', evidenceClass: 'literacy', curriculumSource: 'football-only' }),
       derive(snap) {
         const answer = ordinal(snap.context.quarter);
         return eligible(makeSemantic({
@@ -979,7 +995,7 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
       },
     },
     {
-      meta: makeMeta({ familyId: 'half-read', skill: 'quarter-half-structure', concept: 'quarter-half-structure', purpose: 'coreReview', tier: 'football-context', weight: 0.4, operationType: 'halfFromQuarter', answerExposure: 'modeled-with-result-hidden', curriculumSource: 'football-only' }),
+      meta: makeMeta({ familyId: 'half-read', skill: 'quarter-half-structure', concept: 'quarter-half-structure', purpose: 'coreReview', tier: 'football-context', weight: 0.4, operationType: 'halfFromQuarter', answerExposure: 'modeled-with-result-hidden', evidenceClass: 'independent', curriculumSource: 'football-only' }),
       derive(snap) {
         const quarter = snap.context.quarter;
         const answer = quarter <= 2 ? '1st half' : '2nd half';
@@ -987,7 +1003,7 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
           bindings: [contextBinding(snap, 'quarter', '/context/quarter')],
           operationType: 'halfFromQuarter', operandIds: ['quarter'], answer,
           prompt: `The scoreboard shows Q${quarter}. What part of the game is it?`,
-          hint: 'Q1 and Q2 make the 1st half. Q3 and Q4 make the 2nd half.',
+          hint: `Split the four quarters into two equal groups in order, then place Q${quarter} in its group.`,
           explanation: `Q1 and Q2 make the 1st half. Q3 and Q4 make the 2nd half. Q${quarter} is in the ${answer}.`,
           choiceSpec: fixedChoiceSpec(['1st half', 'Halftime', '2nd half', 'Final']), visualType: 'quarter-half',
           visualData: { quarter },
@@ -998,7 +1014,7 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
       },
     },
     {
-      meta: makeMeta({ familyId: 'next-down', skill: 'football-number-sense', concept: 'down-progression', purpose: 'coreReview', tier: 'football-context', weight: 1.1, operationType: 'ordinal', answerExposure: 'modeled-with-result-hidden', curriculumSource: 'football-only' }),
+      meta: makeMeta({ familyId: 'next-down', skill: 'football-number-sense', concept: 'down-progression', purpose: 'coreReview', tier: 'football-context', weight: 1.1, operationType: 'ordinal', answerExposure: 'modeled-with-result-hidden', evidenceClass: 'independent', curriculumSource: 'football-only' }),
       derive(snap) {
         const currentDown = snap.context.down;
         const yardsToGo = snap.context.yardsToGo;
@@ -1044,7 +1060,7 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
       },
     },
     {
-      meta: makeMeta({ familyId: 'goal-distance-minus-whole-tens', skill: 'plus-minus-ten', concept: 'field-distance', purpose: 'completedPlaceValue', tier: 'two-digit-structure', weight: 1.9, operationType: 'goalDistanceAfterGain', answerExposure: 'modeled-with-result-hidden', curriculumSource: 'workbook', introducedOnPage: 140 }),
+      meta: makeMeta({ familyId: 'goal-distance-minus-whole-tens', skill: 'plus-minus-ten', concept: 'field-distance', purpose: 'completedPlaceValue', tier: 'two-digit-structure', weight: 1.9, operationType: 'goalDistanceAfterGain', answerExposure: 'modeled-with-result-hidden', evidenceClass: 'independent', curriculumSource: 'workbook', introducedOnPage: 140 }),
       derive(snap, profile) {
         const before = goalDistance(snap);
         const gain = appliedGain(snap);
@@ -1068,7 +1084,7 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
       },
     },
     {
-      meta: makeMeta({ familyId: 'drive-distance-plus-whole-tens', skill: 'plus-minus-ten', concept: 'drive-distance', purpose: 'completedPlaceValue', tier: 'two-digit-structure', weight: 1.5, operationType: 'driveDistancePlusGain', answerExposure: 'modeled-with-result-hidden', curriculumSource: 'workbook', introducedOnPage: 140 }),
+      meta: makeMeta({ familyId: 'drive-distance-plus-whole-tens', skill: 'plus-minus-ten', concept: 'drive-distance', purpose: 'completedPlaceValue', tier: 'two-digit-structure', weight: 1.5, operationType: 'driveDistancePlusGain', answerExposure: 'modeled-with-result-hidden', evidenceClass: 'independent', curriculumSource: 'workbook', introducedOnPage: 140 }),
       derive(snap, profile) {
         const current = Math.abs(snap.context.yardLine - snap.context.driveStart);
         const gain = appliedGain(snap);
@@ -1094,7 +1110,7 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
       },
     },
     {
-      meta: makeMeta({ familyId: 'touchdown-base-points', skill: 'football-number-sense', concept: 'touchdown-base-scoring', purpose: 'coreReview', tier: 'football-context', weight: 0.7, operationType: 'ruleValue', answerExposure: 'hidden-until-worked', curriculumSource: 'football-only' }),
+      meta: makeMeta({ familyId: 'touchdown-base-points', skill: 'football-number-sense', concept: 'touchdown-base-scoring', purpose: 'coreReview', tier: 'football-context', weight: 0.7, operationType: 'ruleValue', answerExposure: 'hidden-until-worked', evidenceClass: 'independent', curriculumSource: 'football-only' }),
       derive(snap) {
         if (snap.proposal.resultKind !== 'touchdown') return { decline: decline('not-touchdown-proposal', 'The scoring constant is contextual only for a touchdown proposal.', ['/proposal/resultKind']) };
         const answer = RULES['game.touchdownBasePoints'];
@@ -1113,7 +1129,7 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
       },
     },
     {
-      meta: makeMeta({ familyId: 'conversion-attempt-value', skill: 'football-number-sense', concept: 'conversion-scoring', purpose: 'coreReview', tier: 'football-context', weight: 1.4, operationType: 'conversionValue', answerExposure: 'hidden-until-worked', curriculumSource: 'football-only', playType: 'conversion' }),
+      meta: makeMeta({ familyId: 'conversion-attempt-value', skill: 'football-number-sense', concept: 'conversion-scoring', purpose: 'coreReview', tier: 'football-context', weight: 1.4, operationType: 'conversionValue', answerExposure: 'hidden-until-worked', evidenceClass: 'literacy', curriculumSource: 'football-only', playType: 'conversion' }),
       derive(play) {
         const c = play.context;
         const teamRole = c.possession === 'offense' ? 'player' : 'opponent';
@@ -1141,7 +1157,7 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
       },
     },
     {
-      meta: makeMeta({ familyId: 'conversion-try-marker', skill: 'football-number-sense', concept: 'conversion-placement', purpose: 'coreReview', tier: 'football-context', weight: 1, operationType: 'tryMarkerForDirection', answerExposure: 'modeled-with-result-hidden', curriculumSource: 'football-only', playType: 'conversion' }),
+      meta: makeMeta({ familyId: 'conversion-try-marker', skill: 'football-number-sense', concept: 'conversion-placement', purpose: 'coreReview', tier: 'football-context', weight: 1, operationType: 'tryMarkerForDirection', answerExposure: 'modeled-with-result-hidden', evidenceClass: 'literacy', curriculumSource: 'football-only', playType: 'conversion' }),
       derive(play) {
         const c = play.context;
         const answer = c.tryYardLine;
@@ -1163,7 +1179,7 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
       },
     },
     {
-      meta: makeMeta({ familyId: 'field-goal-attempt-distance', skill: 'football-number-sense', concept: 'field-goal-distance', purpose: 'coreReview', tier: 'football-context', weight: 1.5, operationType: 'read', answerExposure: 'source-visible', curriculumSource: 'football-only', playType: 'fieldGoal' }),
+      meta: makeMeta({ familyId: 'field-goal-attempt-distance', skill: 'football-number-sense', concept: 'field-goal-distance', purpose: 'coreReview', tier: 'football-context', weight: 1.5, operationType: 'read', answerExposure: 'source-visible', evidenceClass: 'literacy', curriculumSource: 'football-only', playType: 'fieldGoal' }),
       derive(play) {
         const c = play.context;
         const answer = c.attemptDistance;
@@ -1184,7 +1200,7 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
       },
     },
     {
-      meta: makeMeta({ familyId: 'field-goal-point-value', skill: 'football-number-sense', concept: 'field-goal-scoring', purpose: 'coreReview', tier: 'football-context', weight: 1, operationType: 'ruleValue', answerExposure: 'hidden-until-worked', curriculumSource: 'football-only', playType: 'fieldGoal' }),
+      meta: makeMeta({ familyId: 'field-goal-point-value', skill: 'football-number-sense', concept: 'field-goal-scoring', purpose: 'coreReview', tier: 'football-context', weight: 1, operationType: 'ruleValue', answerExposure: 'hidden-until-worked', evidenceClass: 'literacy', curriculumSource: 'football-only', playType: 'fieldGoal' }),
       derive(play) {
         const c = play.context;
         const teamRole = c.possession === 'offense' ? 'player' : 'opponent';
@@ -1211,7 +1227,7 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
       },
     },
     {
-      meta: makeMeta({ familyId: 'punt-travel-distance', skill: 'football-number-sense', concept: 'punt-distance', purpose: 'coreReview', tier: 'football-context', weight: 1.5, operationType: 'read', answerExposure: 'source-visible', curriculumSource: 'football-only', playType: 'punt' }),
+      meta: makeMeta({ familyId: 'punt-travel-distance', skill: 'football-number-sense', concept: 'punt-distance', purpose: 'coreReview', tier: 'football-context', weight: 1.5, operationType: 'read', answerExposure: 'source-visible', evidenceClass: 'literacy', curriculumSource: 'football-only', playType: 'punt' }),
       derive(play) {
         const p = play.proposal;
         const answer = p.appliedTravelYards;
@@ -1235,7 +1251,7 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
       },
     },
     {
-      meta: makeMeta({ familyId: 'punt-landing-spot', skill: 'football-number-sense', concept: 'punt-placement', purpose: 'coreReview', tier: 'football-context', weight: 1, operationType: 'read', answerExposure: 'source-visible', curriculumSource: 'football-only', playType: 'punt' }),
+      meta: makeMeta({ familyId: 'punt-landing-spot', skill: 'football-number-sense', concept: 'punt-placement', purpose: 'coreReview', tier: 'football-context', weight: 1, operationType: 'read', answerExposure: 'source-visible', evidenceClass: 'literacy', curriculumSource: 'football-only', playType: 'punt' }),
       derive(play) {
         const p = play.proposal;
         if (p.resultKind === 'puntTouchback') {
@@ -1579,7 +1595,16 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
         ariaLabel: semantic.visualAriaLabels[name],
       };
     };
-    return { initial: stage('initial'), guided: stage('guided'), worked: stage('worked') };
+    const visuals = { initial: stage('initial'), guided: stage('guided'), worked: stage('worked') };
+    if (meta.evidenceClass === 'independent') {
+      for (const stageName of ['initial', 'guided']) {
+        const visual = visuals[stageName];
+        if (visual.revealsAnswer || visual.result !== null) {
+          throw contractError('invalid-evidence-class', `${meta.familyId} exposes an answer before independent work is resolved.`);
+        }
+      }
+    }
+    return visuals;
   }
 
   function groundedCopy(text, ariaLabel, bindingIds, answerId) {
@@ -1692,6 +1717,7 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
     DEFAULT_PROFILE,
     OPERATION_TYPES,
     ANSWER_EXPOSURE_POLICIES,
+    EVIDENCE_CLASSES,
     CURRICULUM_SOURCES,
     RULES,
     SPECIAL_BINDING_PATHS,

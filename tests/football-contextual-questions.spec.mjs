@@ -232,11 +232,20 @@ function recompute(question) {
 }
 
 function verifyGrounding(questions, snap, question) {
-  assert.equal(question.schemaVersion, 2);
+  assert.equal(question.schemaVersion, 3);
   assert.equal(question.id, question.familyId);
   assert.equal(question.bindings, question.premises, 'premises must alias canonical bindings');
   assert.ok(questions.OPERATION_TYPES.includes(question.operation.type));
   assert.ok(questions.ANSWER_EXPOSURE_POLICIES.includes(question.answerExposure));
+  assert.ok(questions.EVIDENCE_CLASSES.includes(question.evidenceClass));
+  if (question.answerExposure === 'source-visible') assert.equal(question.evidenceClass, 'literacy');
+  if (question.evidenceClass === 'independent') {
+    assert.notEqual(question.answerExposure, 'source-visible');
+    for (const stage of ['initial', 'guided']) {
+      assert.equal(question.visuals[stage].revealsAnswer, false, `${question.familyId}:${stage}`);
+      assert.equal(question.visuals[stage].result, null, `${question.familyId}:${stage}`);
+    }
+  }
 
   for (const binding of question.bindings) {
     if (binding.source.kind === 'context') {
@@ -312,7 +321,7 @@ function expectComparisonChoiceLabels(question) {
 test('exports one deeply frozen plain-global API with a closed contract', () => {
   const { questions } = loadModules();
   assert.ok(questions);
-  assert.equal(questions.SCHEMA_VERSION, 2);
+  assert.equal(questions.SCHEMA_VERSION, 3);
   assert.equal(questions.CURRENT_COMPLETED_PAGE, 145);
   assert.equal(questions.INCLUDED_THROUGH_PAGE, 179);
   assert.equal(deepFrozen(questions), true);
@@ -329,7 +338,97 @@ test('exports one deeply frozen plain-global API with a closed contract', () => 
   assert.ok(questions.OPERATION_TYPES.length > 0);
   assert.equal(questions.OPERATION_TYPES.includes('nextOrdinal'), false);
   assert.ok(questions.ANSWER_EXPOSURE_POLICIES.includes('hidden-until-worked'));
+  assert.deepEqual(plain(questions.EVIDENCE_CLASSES), ['literacy', 'independent']);
   assert.deepEqual(plain(questions.CURRICULUM_SOURCES), ['workbook', 'football-only']);
+});
+
+test('every family authors the exact evidence class and independent families hide structural results', () => {
+  const { domain, questions } = loadModules();
+  const expected = {
+    literacy: [
+      'yards-to-go-read',
+      'goal-distance-read',
+      'goal-distance-tens',
+      'goal-distance-ones',
+      'committed-score-tens',
+      'committed-score-ones',
+      'quarter-read',
+      'conversion-attempt-value',
+      'conversion-try-marker',
+      'field-goal-attempt-distance',
+      'field-goal-point-value',
+      'punt-travel-distance',
+      'punt-landing-spot',
+    ],
+    independent: [
+      'line-to-gain-missing-part',
+      'line-to-gain-exact',
+      'line-to-gain-surplus',
+      'line-to-gain-fact-family',
+      'gain-vs-needed-comparison',
+      'team-yards-past-100',
+      'drive-distance-scaffolded',
+      'committed-score-total',
+      'committed-score-difference',
+      'half-read',
+      'next-down',
+      'goal-distance-minus-whole-tens',
+      'drive-distance-plus-whole-tens',
+      'touchdown-base-points',
+    ],
+  };
+  const registry = Object.values(questions.FAMILY_REGISTRY).flat();
+  for (const evidenceClass of questions.EVIDENCE_CLASSES) {
+    assert.deepEqual(
+      registry.filter((entry) => entry.evidenceClass === evidenceClass).map((entry) => entry.familyId).sort(),
+      [...expected[evidenceClass]].sort(),
+    );
+  }
+  assert.equal(registry.length, 27);
+  assert.equal(Object.isFrozen(registry[0]), true);
+
+  const scenarios = [
+    makeSnap(domain, {
+      quarter: 3, down: 2, yardLine: 30, firstDownLine: 35, yardsToGo: 5,
+      driveStart: 25, scores: { player: 3, opponent: 4 }, totalYards: { player: 83, opponent: 71 },
+    }, 3),
+    makeSnap(domain, { down: 2, yardLine: 30, firstDownLine: 35, yardsToGo: 5, driveStart: 25 }, 5),
+    makeSnap(domain, { down: 2, yardLine: 30, firstDownLine: 35, yardsToGo: 5, driveStart: 25 }, 7),
+    makeSnap(domain, {
+      down: 2, yardLine: 30, firstDownLine: 35, yardsToGo: 5,
+      driveStart: 25, totalYards: { player: 99, opponent: 71 },
+    }, 2),
+    makeSnap(domain, {
+      quarter: 3, down: 2, yardLine: 30, firstDownLine: 35, yardsToGo: 5,
+      driveStart: 20, scores: { player: 14, opponent: 7 },
+    }, 10),
+    makeSnap(domain, {
+      down: 2, yardLine: 95, firstDownLine: 100, yardsToGo: 5, driveStart: 90,
+    }, 5),
+    makeSpecialPlay(domain, 'conversion', { attemptType: 'pat' }),
+    makeSpecialPlay(domain, 'conversion', { attemptType: 'twoPoint', possession: 'defense' }),
+    makeSpecialPlay(domain, 'fieldGoal'),
+    makeSpecialPlay(domain, 'punt', { yardLine: 30, travelYards: 40 }),
+  ];
+  const builtById = new Map();
+  for (const source of scenarios) {
+    for (const candidate of questions.inspect(source).eligible) {
+      if (!builtById.has(candidate.familyId)) {
+        builtById.set(candidate.familyId, questions.build(source, candidate.familyId));
+      }
+    }
+  }
+  for (const familyId of expected.independent) {
+    const question = builtById.get(familyId);
+    assert.ok(question, `build independent family ${familyId}`);
+    assert.equal(question.evidenceClass, 'independent');
+    assert.notEqual(question.answerExposure, 'source-visible');
+    for (const stage of ['initial', 'guided']) {
+      assert.equal(question.visuals[stage].revealsAnswer, false, `${familyId}:${stage}`);
+      assert.equal(question.visuals[stage].result, null, `${familyId}:${stage}`);
+    }
+    assert.throws(() => { question.evidenceClass = 'literacy'; }, TypeError);
+  }
 });
 
 test('inspect preserves page-145 completion while capping approved question content at page 179', () => {
@@ -338,7 +437,7 @@ test('inspect preserves page-145 completion while capping approved question cont
   const first = questions.inspect(snap, { completedThroughPage: 999, includedThroughPage: 999, computationMax: 99, displayMax: 999 });
   const second = questions.inspect(snap, { completedThroughPage: 999, includedThroughPage: 999, computationMax: 99, displayMax: 999 });
   assert.deepEqual(plain(first), plain(second));
-  assert.equal(first.schemaVersion, 2);
+  assert.equal(first.schemaVersion, 3);
   assert.equal(deepFrozen(first), true);
   assert.deepEqual(plain(first.profile), { completedThroughPage: 145, includedThroughPage: 179, computationMax: 10, displayMax: 120 });
   assert.ok(first.eligible.length > 0);
@@ -396,7 +495,7 @@ test('every inspected candidate builds, dereferences, and recomputes across both
   assert.ok(built > 1000, `expected broad property coverage, built ${built}`);
 });
 
-test('every exported family builds one exact, grounded, recursively frozen schema-2 worked review', () => {
+test('every exported family builds one exact, grounded, recursively frozen schema-3 worked review', () => {
   const { domain, questions } = loadModules();
   const scenarios = [
     makeSnap(domain, {
@@ -822,6 +921,7 @@ test('next-down is grounded in the frozen proposal and hides the projected resul
     weight: 1.1,
     operationType: 'ordinal',
     answerExposure: 'modeled-with-result-hidden',
+    evidenceClass: 'independent',
     playType: 'scrimmage',
   });
 
@@ -990,6 +1090,9 @@ test('half and teen-score families use only the frozen quarter and real committe
     assert.ok(candidate.weight < quarterCandidate.weight);
     const question = questions.build(snap, 'half-read');
     assert.equal(question.answer.value, quarter <= 2 ? '1st half' : '2nd half');
+    assert.match(question.hint.text, /split the four quarters into two equal groups in order/i);
+    assert.doesNotMatch(question.hint.text, /1st half|2nd half/i);
+    assert.doesNotMatch(question.visuals.guided.ariaLabel, /1st half|2nd half/i);
     assert.equal(question.choices.length, 4);
     assert.ok(question.choices.filter((choice) => choice.id !== question.correctChoiceId).length >= 2);
     assert.deepEqual(plain(question.bindings), [{
@@ -998,11 +1101,12 @@ test('half and teen-score families use only the frozen quarter and real committe
     verifyGrounding(questions, snap, question);
   }
 
-  for (const score of [10, 14, 19]) {
+  for (const score of [10, 11, 14, 19]) {
     const snap = makeSnap(domain, { scores: { player: score, opponent: 7 } }, 4);
     for (const familyId of ['committed-score-tens', 'committed-score-ones']) {
       const question = questions.build(snap, familyId);
       const targetPlace = familyId.endsWith('tens') ? 'tens' : 'ones';
+      assert.equal(question.evidenceClass, 'literacy');
       assert.equal(question.bindings[0].source.path, '/context/scores/player');
       assert.equal(question.bindings[0].value, score);
       assert.equal(question.answer.value, targetPlace === 'tens' ? Math.floor(score / 10) : score % 10);
@@ -1256,6 +1360,7 @@ test('goal-distance place-value questions use plain football copy and hide the r
 
   for (const familyId of ['goal-distance-tens', 'goal-distance-ones']) {
     const question = questions.build(snap, familyId);
+    assert.equal(question.evidenceClass, 'literacy');
     assert.equal(question.answerExposure, 'modeled-with-result-hidden');
     assert.equal(question.visuals.initial.revealsAnswer, false);
     assert.equal(question.visuals.initial.result, null);
@@ -1269,6 +1374,25 @@ test('goal-distance place-value questions use plain football copy and hide the r
     assert.doesNotMatch(question.hint.text, /goal-distance (model|strip)/i);
     assert.match(question.prompt.text, new RegExp(`What digit is in the ${familyId.endsWith('tens') ? 'tens' : 'ones'} place`, 'i'));
     assert.doesNotMatch(question.prompt.text, /How many (?:tens|ones) are in/i);
+  }
+
+  for (const distance of [70, 77]) {
+    const digitSnap = makeSnap(domain, {
+      yardLine: 100 - distance,
+      firstDownLine: 110 - distance,
+      yardsToGo: 10,
+      driveStart: 90 - distance,
+    }, 3);
+    const tens = questions.build(digitSnap, 'goal-distance-tens');
+    const ones = questions.build(digitSnap, 'goal-distance-ones');
+    assert.equal(tens.evidenceClass, 'literacy');
+    assert.equal(ones.evidenceClass, 'literacy');
+    assert.equal(tens.answer.value, Math.floor(distance / 10));
+    assert.equal(ones.answer.value, distance % 10);
+    assert.equal(tens.visuals.initial.data.tens, null);
+    assert.equal(ones.visuals.initial.data.ones, null);
+    assert.equal(tens.visuals.guided.result, null);
+    assert.equal(ones.visuals.guided.result, null);
   }
 
   const readQuestion = questions.build(snap, 'goal-distance-read');

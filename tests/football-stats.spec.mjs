@@ -38,7 +38,7 @@ async function readPersistedStats(page, { completedPlays, recentPlays = complete
       return null;
     }
   })).toEqual({
-    schemaVersion: 3,
+    schemaVersion: 4,
     completedPlays,
     recentPlays,
   });
@@ -81,6 +81,7 @@ test('presented rows preserve learning semantics, link IDs, and private content 
         purpose: 'weakSpot',
         grading: 'gate',
         tier: 'within-10',
+        evidenceClass: 'independent',
         prompt: 'How many yards are left?',
         choices: [4, 5, 6, 7],
         correct: 6,
@@ -105,6 +106,7 @@ test('presented rows preserve learning semantics, link IDs, and private content 
         purpose: 'currentSupported',
         grading: 'noStakes',
         tier: 'supported',
+        evidenceClass: 'independent',
       },
     });
     FOOTBALL_STATS.recordAttempt(preview, { number: 1, correct: false, support: 'guided' });
@@ -128,7 +130,7 @@ test('presented rows preserve learning semantics, link IDs, and private content 
   });
   const persistedRaw = await readPersistedStats(page, { completedPlays: 2 });
 
-  expect(result.history.schemaVersion).toBe(3);
+  expect(result.history.schemaVersion).toBe(4);
   expect(result.history.recentPlays).toHaveLength(2);
   expect(result.history.aggregates).toMatchObject({
     completedPlays: 2,
@@ -144,7 +146,9 @@ test('presented rows preserve learning semantics, link IDs, and private content 
     },
   });
   expect(result.history.mastery).toEqual({
-    'line-to-gain': { resolved: 1, firstTryCorrect: 1, retryCorrect: 0, secondMiss: 0 },
+    'line-to-gain': {
+      independent: { resolved: 1, firstTryCorrect: 1, retryCorrect: 0, secondMiss: 0 },
+    },
   });
   expect(result.gateRow).toMatchObject({
     playType: 'scrimmage',
@@ -164,6 +168,7 @@ test('presented rows preserve learning semantics, link IDs, and private content 
     purpose: 'weakSpot',
     grading: 'gate',
     tier: 'within-10',
+    evidenceClass: 'independent',
   });
   expect(result.gateRow.attempts).toEqual([
     expect.objectContaining({ number: 1, correct: true, elapsedMs: expect.any(Number), support: 'none' }),
@@ -275,7 +280,7 @@ test('bypassed plays persist football results exactly once without learning or m
   expect(errors).toEqual([]);
 });
 
-test('schema v3 records typed special plays without leaking their distances into scrimmage yards', async ({ page }, testInfo) => {
+test('schema v4 records typed special plays without leaking their distances into scrimmage yards', async ({ page }, testInfo) => {
   primaryOnly(testInfo);
   const errors = trackErrors(page);
   await page.goto('/football/');
@@ -295,13 +300,14 @@ test('schema v3 records typed special plays without leaking their distances into
       plays,
       drivePlays: plays,
     });
-    const question = (id, concept) => ({
+    const question = (id, concept, evidenceClass = 'independent') => ({
       id,
       skill: 'addition',
       concept,
       purpose: 'coreReview',
       grading: 'gate',
       tier: 'within-10',
+      evidenceClass,
     });
     const session = FOOTBALL_STATS.createSession('game-special');
     const touchdown = FOOTBALL_STATS.beginPlayDraft(session, {
@@ -342,7 +348,7 @@ test('schema v3 records typed special plays without leaking their distances into
       links: { contextId: 'context-conversion' },
     });
     FOOTBALL_STATS.markPresented(conversion, {
-      question: question('conversion-score', 'conversion-points'),
+      question: question('conversion-score', 'conversion-points', 'literacy'),
       links: { familyId: 'conversion-score', questionInstanceId: 'question-conversion' },
     });
     FOOTBALL_STATS.recordAttempt(conversion, { number: 1, correct: true, support: 'none' });
@@ -439,7 +445,7 @@ test('schema v3 records typed special plays without leaking their distances into
   expect(result.bypassedPunt).toBe(true);
   expect(result.wrongOutcome).toBe(false);
   expect(result.persistedDuplicate).toBe(false);
-  expect(result.history.schemaVersion).toBe(3);
+  expect(result.history.schemaVersion).toBe(4);
   expect(result.history.recentPlays).toHaveLength(4);
   expect(result.history.aggregates).toMatchObject({
     completedPlays: 4,
@@ -587,7 +593,7 @@ test('schema-v1 history normalizes without a read write and persists on the next
 
   expect(result.rawBeforeWrite).toBe(result.seededRaw);
   expect(JSON.parse(result.rawBeforeWrite).schemaVersion).toBe(1);
-  expect(result.history.schemaVersion).toBe(3);
+  expect(result.history.schemaVersion).toBe(4);
   expect(result.history.aggregates).toMatchObject({
     completedPlays: 1,
     actualYards: 4,
@@ -597,7 +603,9 @@ test('schema-v1 history normalizes without a read write and persists on the next
     learning: { gradedPlays: 1, retryCorrect: 1 },
   });
   expect(result.history.mastery).toEqual({
-    'line-to-gain': { resolved: 1, firstTryCorrect: 0, retryCorrect: 1, secondMiss: 0 },
+    'line-to-gain': {
+      unclassified: { resolved: 1, firstTryCorrect: 0, retryCorrect: 1, secondMiss: 0 },
+    },
   });
   expect(result.history.recentPlays).toHaveLength(1);
   expect(result.history.recentPlays[0]).toMatchObject({
@@ -610,8 +618,9 @@ test('schema-v1 history normalizes without a read write and persists on the next
     instructionalStatus: 'presented',
     links: { familyId: 'legacy-family', contextId: null, questionInstanceId: null },
     resolution: 'retryCorrect',
+    question: { evidenceClass: 'unclassified' },
   });
-  expect(rawAfterWrite.schemaVersion).toBe(3);
+  expect(rawAfterWrite.schemaVersion).toBe(4);
   expect(rawAfterWrite.recentPlays).toHaveLength(2);
   expect(rawAfterWrite.recentPlays[1]).toMatchObject({
     instructionalStatus: 'bypassed',
@@ -724,7 +733,7 @@ test('history preserves finite signed actual yards while offered gains stay non-
   });
   const rawAfterWrite = JSON.parse(await readPersistedStats(page, { completedPlays: 3 }));
 
-  expect(result.before.schemaVersion).toBe(3);
+  expect(result.before.schemaVersion).toBe(4);
   expect(JSON.parse(result.rawBeforeWrite).schemaVersion).toBe(2);
   expect(result.before.aggregates.actualYards).toBe(-7);
   expect(result.before.aggregates.byOutcome).toEqual(expect.objectContaining({
@@ -738,8 +747,8 @@ test('history preserves finite signed actual yards while offered gains stay non-
   expect(result.before.recentPlays[0].offeredYards).toBe(4);
   expect(result.before.recentPlays[1].actualYards).toBe(0);
   expect(result.before.recentPlays[1].offeredYards).toBe(0);
-  expect(result.after.schemaVersion).toBe(3);
-  expect(rawAfterWrite.schemaVersion).toBe(3);
+  expect(result.after.schemaVersion).toBe(4);
+  expect(rawAfterWrite.schemaVersion).toBe(4);
   expect(result.after.aggregates.actualYards).toBe(-12);
   expect(result.after.recentPlays.at(-1).actualYards).toBe(-5);
   expect(result.after.recentPlays.at(-1).preSnap.totalYards).toEqual({ player: -4, opponent: -9 });
@@ -797,8 +806,8 @@ test('learning snapshots select the newest valid graded evidence without mutatin
 
   const result = await page.evaluate(() => {
     const first = FOOTBALL_STATS.learningSnapshot();
-    first.mastery['line-to-gain'].firstTryCorrect = 999;
-    first.lastResolvedByConcept['line-to-gain'].resolution = 'secondMiss';
+    first.mastery['line-to-gain'].unclassified.firstTryCorrect = 999;
+    first.lastResolvedByConcept['line-to-gain'].unclassified.resolution = 'secondMiss';
     const second = FOOTBALL_STATS.learningSnapshot();
     const history = FOOTBALL_STATS.history();
     return {
@@ -812,11 +821,15 @@ test('learning snapshots select the newest valid graded evidence without mutatin
 
   expect(result.rawAfterReads).toBe(result.seededRaw);
   expect(result.second.mastery['line-to-gain']).toEqual({
-    resolved: 5, firstTryCorrect: 4, retryCorrect: 1, secondMiss: 0,
+    unclassified: { resolved: 5, firstTryCorrect: 4, retryCorrect: 1, secondMiss: 0 },
   });
   expect(result.second.lastResolvedByConcept).toEqual({
-    'field-distance': { completedAt: '2026-06-02T12:00:00.000Z', resolution: 'secondMiss' },
-    'line-to-gain': { completedAt: '2026-07-05T12:00:00.000Z', resolution: 'retryCorrect' },
+    'field-distance': {
+      unclassified: { completedAt: '2026-06-02T12:00:00.000Z', resolution: 'secondMiss' },
+    },
+    'line-to-gain': {
+      unclassified: { completedAt: '2026-07-05T12:00:00.000Z', resolution: 'retryCorrect' },
+    },
   });
   expect(result.malformedDate).toBe('not-a-date');
   expect(result.missingDate).toBeNull();
@@ -862,6 +875,7 @@ test('history remains capped, completion is deduplicated, and stats IDs consume 
             purpose: 'coreReview',
             grading: 'gate',
             tier: 'within-10',
+            evidenceClass: 'independent',
           },
         });
         FOOTBALL_STATS.recordAttempt(pending, { number: 1, correct: true, support: 'none' });
@@ -901,6 +915,7 @@ test('history remains capped, completion is deduplicated, and stats IDs consume 
       question: {
         id: 'replayed-question', skill: 'addition', concept: 'addition',
         purpose: 'coreReview', grading: 'gate', tier: 'within-10',
+        evidenceClass: 'independent',
       },
     });
     FOOTBALL_STATS.recordAttempt(pending, { number: 1, correct: true, support: 'none' });
@@ -923,10 +938,12 @@ test('history remains capped, completion is deduplicated, and stats IDs consume 
   expect(result.history.aggregates.actualYards).toBe(615);
   expect(result.history.aggregates.learning.firstTryCorrect).toBe(205);
   expect(result.history.mastery.addition).toEqual({
-    resolved: 205,
-    firstTryCorrect: 205,
-    retryCorrect: 0,
-    secondMiss: 0,
+    independent: {
+      resolved: 205,
+      firstTryCorrect: 205,
+      retryCorrect: 0,
+      secondMiss: 0,
+    },
   });
   expect(replay.duplicate).toBe(false);
   expect(result.randomCalls).toBe(0);
@@ -935,7 +952,7 @@ test('history remains capped, completion is deduplicated, and stats IDs consume 
   expect(persisted.archivedPlayIndex[result.firstIdentity.gameId]).toEqual({ through: 5, ids: [] });
   expect(persisted.aggregates.completedPlays).toBe(205);
   expect(persisted.aggregates.actualYards).toBe(615);
-  expect(persisted.mastery.addition.resolved).toBe(205);
+  expect(persisted.mastery.addition.independent.resolved).toBe(205);
   expect(JSON.parse(replay.rawAfterReplay)).toEqual(persisted);
 });
 
@@ -967,6 +984,7 @@ test('malformed stores recover, future schemas remain untouched, and blocked sto
         purpose: 'coreReview',
         grading: 'gate',
         tier: 'within-10',
+        evidenceClass: 'independent',
       },
     });
     FOOTBALL_STATS.recordAttempt(pending, { number: 1, correct: true, support: 'none' });
@@ -988,7 +1006,7 @@ test('malformed stores recover, future schemas remain untouched, and blocked sto
   await malformedPage.goto(`${baseURL}/football/`);
   await completeOnePresentedPlay(malformedPage);
   const repaired = JSON.parse(await readPersistedStats(malformedPage, { completedPlays: 1 }));
-  expect(repaired.schemaVersion).toBe(3);
+  expect(repaired.schemaVersion).toBe(4);
   expect(repaired.recentPlays).toHaveLength(1);
   expect(malformedErrors).toEqual([]);
   await malformedContext.close();

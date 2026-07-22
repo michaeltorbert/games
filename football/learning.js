@@ -3,8 +3,11 @@
 // nothing about field coordinates or football outcomes.
 
 const FOOTBALL_LEARNING = (() => {
+  const EVIDENCE_CLASSES = Object.freeze(['literacy', 'independent']);
+  const HISTORICAL_EVIDENCE_CLASSES = Object.freeze([...EVIDENCE_CLASSES, 'unclassified']);
+  const RESOLUTIONS = Object.freeze(['firstTryCorrect', 'retryCorrect', 'secondMiss']);
   const PROFILE = Object.freeze({
-    schemaVersion: 2,
+    schemaVersion: 3,
     completedThroughPage: 145,
     includedThroughPage: 179,
     computationMax: 10,
@@ -26,31 +29,63 @@ const FOOTBALL_LEARNING = (() => {
     }),
   });
 
+  function isRecord(value) {
+    return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+  }
+
+  function normalizeCounts(raw) {
+    const stats = isRecord(raw) ? raw : {};
+    const firstTryCorrect = Math.max(0, Math.floor(Number(stats.firstTryCorrect) || 0));
+    const retryCorrect = Math.max(0, Math.floor(Number(stats.retryCorrect) || 0));
+    const secondMiss = Math.max(0, Math.floor(Number(stats.secondMiss) || 0));
+    return {
+      resolved: firstTryCorrect + retryCorrect + secondMiss,
+      firstTryCorrect,
+      retryCorrect,
+      secondMiss,
+    };
+  }
+
   function normalizeMasterySnapshot(value) {
-    const input = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
-    return Object.fromEntries(Object.entries(input).map(([concept, raw]) => {
-      const stats = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
-      const firstTryCorrect = Math.max(0, Math.floor(Number(stats.firstTryCorrect) || 0));
-      const retryCorrect = Math.max(0, Math.floor(Number(stats.retryCorrect) || 0));
-      const secondMiss = Math.max(0, Math.floor(Number(stats.secondMiss) || 0));
-      const resolved = firstTryCorrect + retryCorrect + secondMiss;
-      return [concept, { resolved, firstTryCorrect, retryCorrect, secondMiss }];
+    const input = isRecord(value) ? value : {};
+    return Object.fromEntries(Object.entries(input).flatMap(([concept, raw]) => {
+      if (!isRecord(raw)) return [];
+      const hasClassBuckets = HISTORICAL_EVIDENCE_CLASSES.some(evidenceClass => isRecord(raw[evidenceClass]));
+      const buckets = hasClassBuckets
+        ? Object.fromEntries(HISTORICAL_EVIDENCE_CLASSES.flatMap(evidenceClass => (
+            isRecord(raw[evidenceClass]) ? [[evidenceClass, normalizeCounts(raw[evidenceClass])]] : []
+          )))
+        : { unclassified: normalizeCounts(raw) };
+      return Object.keys(buckets).length ? [[concept, buckets]] : [];
     }));
   }
 
   function normalizeLastResolvedSnapshot(value) {
-    const input = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
-    return Object.fromEntries(Object.entries(input).flatMap(([concept, raw]) => {
-      const evidence = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+    const input = isRecord(value) ? value : {};
+    const normalizeEvidence = (raw) => {
+      const evidence = isRecord(raw) ? raw : {};
       const resolvedAtMs = Date.parse(evidence.completedAt);
-      if (!Number.isFinite(resolvedAtMs)
-        || !['firstTryCorrect', 'retryCorrect', 'secondMiss'].includes(evidence.resolution)) return [];
-      return [[concept, { resolvedAtMs, resolution: evidence.resolution }]];
+      if (!Number.isFinite(resolvedAtMs) || !RESOLUTIONS.includes(evidence.resolution)) return null;
+      return { resolvedAtMs, resolution: evidence.resolution };
+    };
+    return Object.fromEntries(Object.entries(input).flatMap(([concept, raw]) => {
+      if (!isRecord(raw)) return [];
+      const hasClassBuckets = HISTORICAL_EVIDENCE_CLASSES.some(evidenceClass => isRecord(raw[evidenceClass]));
+      if (!hasClassBuckets) {
+        const evidence = normalizeEvidence(raw);
+        return evidence ? [[concept, { unclassified: evidence }]] : [];
+      }
+      const buckets = Object.fromEntries(HISTORICAL_EVIDENCE_CLASSES.flatMap(evidenceClass => {
+        const evidence = normalizeEvidence(raw[evidenceClass]);
+        return evidence ? [[evidenceClass, evidence]] : [];
+      }));
+      return Object.keys(buckets).length ? [[concept, buckets]] : [];
     }));
   }
 
   function createSession(historicalMastery = {}, historicalLastResolved = {}, nowMs = Date.now()) {
     return {
+      schemaVersion: PROFILE.schemaVersion,
       recentFamilyIds: [],
       bySkill: {},
       byConcept: {},
@@ -69,18 +104,32 @@ const FOOTBALL_LEARNING = (() => {
     return JSON.parse(JSON.stringify(value));
   }
 
-  function skillState(session, skill) {
-    if (!session.bySkill[skill]) {
-      session.bySkill[skill] = { presented: 0, firstTryCorrect: 0, retryCorrect: 0, secondMiss: 0 };
-    }
-    return session.bySkill[skill];
+  function validEvidenceClass(value) {
+    return EVIDENCE_CLASSES.includes(value);
   }
 
-  function conceptState(session, concept) {
-    if (!session.byConcept[concept]) {
-      session.byConcept[concept] = { resolved: 0, firstTryCorrect: 0, retryCorrect: 0, secondMiss: 0 };
-    }
-    return session.byConcept[concept];
+  function questionEvidenceClass(question) {
+    const evidenceClass = question?.evidenceClass;
+    if (!validEvidenceClass(evidenceClass)) throw new TypeError('Question evidenceClass must be literacy or independent');
+    return evidenceClass;
+  }
+
+  function classState(container, key, evidenceClass, initial) {
+    if (!container[key]) container[key] = {};
+    if (!container[key][evidenceClass]) container[key][evidenceClass] = initial();
+    return container[key][evidenceClass];
+  }
+
+  function skillState(session, skill, evidenceClass) {
+    return classState(session.bySkill, skill, evidenceClass, () => (
+      { presented: 0, firstTryCorrect: 0, retryCorrect: 0, secondMiss: 0 }
+    ));
+  }
+
+  function conceptState(session, concept, evidenceClass) {
+    return classState(session.byConcept, concept, evidenceClass, () => (
+      { resolved: 0, firstTryCorrect: 0, retryCorrect: 0, secondMiss: 0 }
+    ));
   }
 
   function addEvent(session, type, payload = {}) {
@@ -128,8 +177,9 @@ const FOOTBALL_LEARNING = (() => {
   }
 
   function recordPresented(session, question, context = {}) {
+    const evidenceClass = questionEvidenceClass(question);
     session.presented++;
-    skillState(session, question.skill).presented++;
+    skillState(session, question.skill, evidenceClass).presented++;
     const identity = questionIdentity(question);
     session.recentFamilyIds.push(identity.familyId);
     session.recentFamilyIds = session.recentFamilyIds.slice(-PROFILE.recencyWindow);
@@ -140,6 +190,7 @@ const FOOTBALL_LEARNING = (() => {
       concept: question.concept || question.skill,
       purpose: question.purpose,
       grading: question.grading,
+      evidenceClass,
       support: question.math?.support || 'none',
       ...questionEvidence(question),
       ...questionSelection(question),
@@ -147,6 +198,7 @@ const FOOTBALL_LEARNING = (() => {
   }
 
   function recordAttempt(session, question, context = {}) {
+    const evidenceClass = questionEvidenceClass(question);
     addEvent(session, 'attempt', {
       ...questionIdentity(question),
       ...eventPlayScope(context),
@@ -154,6 +206,7 @@ const FOOTBALL_LEARNING = (() => {
       concept: question.concept || question.skill,
       purpose: question.purpose,
       grading: question.grading,
+      evidenceClass,
       attempt: context.attempt,
       selectedChoiceId: context.selectedChoiceId || null,
       correct: Boolean(context.correct),
@@ -164,14 +217,18 @@ const FOOTBALL_LEARNING = (() => {
   }
 
   function recordResolved(session, question, result, context = {}) {
+    const evidenceClass = questionEvidenceClass(question);
+    if (!RESOLUTIONS.includes(result)) throw new TypeError('Resolved result is not a supported learning outcome');
     session.resolved++;
     if (question.grading !== 'noStakes') {
-      const stats = skillState(session, question.skill);
+      const stats = skillState(session, question.skill, evidenceClass);
       stats[result] = (stats[result] || 0) + 1;
-      const mastery = conceptState(session, question.concept || question.skill);
+      const concept = question.concept || question.skill;
+      const mastery = conceptState(session, concept, evidenceClass);
       mastery.resolved++;
       mastery[result] = (mastery[result] || 0) + 1;
-      session.latestResolvedByConcept[question.concept || question.skill] = { resolution: result };
+      if (!session.latestResolvedByConcept[concept]) session.latestResolvedByConcept[concept] = {};
+      session.latestResolvedByConcept[concept][evidenceClass] = { resolution: result };
     }
     addEvent(session, 'resolved', {
       ...questionIdentity(question),
@@ -180,6 +237,7 @@ const FOOTBALL_LEARNING = (() => {
       concept: question.concept || question.skill,
       purpose: question.purpose,
       grading: question.grading,
+      evidenceClass,
       result,
       support: context.support || 'none',
       ...questionEvidence(question),
@@ -189,12 +247,13 @@ const FOOTBALL_LEARNING = (() => {
 
   function needMultiplier(session, entry) {
     if (entry.grading === 'noStakes') return 1;
+    const evidenceClass = questionEvidenceClass(entry);
     const concept = entry.concept || entry.skill;
-    const latest = session.latestResolvedByConcept[concept];
+    const latest = session.latestResolvedByConcept[concept]?.[evidenceClass];
     if (latest?.resolution === 'firstTryCorrect') return 1;
-    const stats = session.bySkill[entry.skill];
+    const stats = session.bySkill[entry.skill]?.[evidenceClass];
     if (!stats) {
-      return Object.prototype.hasOwnProperty.call(session.historicalMastery, concept) ? 1 : 1.15;
+      return session.historicalMastery[concept]?.[evidenceClass] ? 1 : 1.15;
     }
     const attempts = stats.firstTryCorrect + stats.retryCorrect + stats.secondMiss;
     if (!attempts) return 1.15;
@@ -208,9 +267,10 @@ const FOOTBALL_LEARNING = (() => {
 
   function historicalNeedMultiplier(session, entry) {
     if (entry.grading === 'noStakes') return 1;
+    const evidenceClass = questionEvidenceClass(entry);
     const concept = entry.concept || entry.skill;
-    const current = session.latestResolvedByConcept[concept];
-    const stats = session.historicalMastery[concept];
+    const current = session.latestResolvedByConcept[concept]?.[evidenceClass];
+    const stats = session.historicalMastery[concept]?.[evidenceClass];
     const mastered = Boolean(stats)
       && stats.resolved >= PROFILE.masteryMinResolved
       && stats.firstTryCorrect / stats.resolved >= PROFILE.masteryMinFirstTryRate
@@ -223,7 +283,7 @@ const FOOTBALL_LEARNING = (() => {
       return mastered ? PROFILE.freshMasteryMultiplier : 1;
     }
 
-    const latest = session.historicalLastResolved[concept];
+    const latest = session.historicalLastResolved[concept]?.[evidenceClass];
     if (latest?.resolution === 'retryCorrect' || latest?.resolution === 'secondMiss') {
       return PROFILE.recentSupportMultiplier;
     }
@@ -279,8 +339,15 @@ const FOOTBALL_LEARNING = (() => {
     return weighted[weighted.length - 1]?.entry || null;
   }
 
-  function supportFor(session, skill, initial = 'none') {
-    const stats = session.bySkill[skill];
+  function supportFor(session, entryOrSkill, evidenceClassOrInitial = 'none', explicitInitial = 'none') {
+    const entry = isRecord(entryOrSkill) ? entryOrSkill : null;
+    const skill = entry ? entry.skill : entryOrSkill;
+    const evidenceClass = entry ? questionEvidenceClass(entry) : evidenceClassOrInitial;
+    const initial = entry ? evidenceClassOrInitial : explicitInitial;
+    if (typeof skill !== 'string' || !skill || !validEvidenceClass(evidenceClass)) {
+      throw new TypeError('supportFor expects an entry or an explicit skill plus evidenceClass');
+    }
+    const stats = session.bySkill[skill]?.[evidenceClass];
     if (!stats) return initial;
     const attempts = stats.firstTryCorrect + stats.retryCorrect + stats.secondMiss;
     if (attempts < 2) return initial;
@@ -306,6 +373,8 @@ const FOOTBALL_LEARNING = (() => {
 
   return Object.freeze({
     PROFILE,
+    EVIDENCE_CLASSES,
+    HISTORICAL_EVIDENCE_CLASSES,
     createSession,
     adaptiveNeedMultiplier,
     weightedPick,

@@ -730,3 +730,54 @@ surfaces remain v1.26.0.
   completed cleanly with 287 passes and 499 expected skips. Exact-artifact
   independent review, commit, push, PR, merge, deployment, and live-version
   verification remain orchestrator-owned.
+
+---
+
+## Football v1.27.1 issue #93 evidence classification correction
+
+- Raised the contextual-question contract to schema 3 and assigned every one
+  of the 27 families an immutable `literacy` or `independent` evidence class.
+  The exact 13/14 family map is pinned. Source-visible answers are literacy,
+  while all independent initial and guided visuals retain
+  `revealsAnswer: false` and `result: null`. The guided `half-read` copy now
+  teaches the four-quarters/two-equal-groups method without naming either half.
+- Raised learning profiles, sessions, and events to schema 3. Current and
+  historical concept/skill mastery plus recency are partitioned by evidence
+  class, and adaptive weighting, support, mastery suppression, and freshness
+  consult only the candidate's matching class. Legacy flat evidence migrates
+  to inert `unclassified` history. Event class and resolution values are
+  validated before current-game learning state changes.
+- Kept the `footballMathStats:v1` key and raised only its inner schema to 4.
+  Schema 1 through 3 rows, mastery, and recency migrate in memory to
+  `unclassified` without a read write; the next canonical completion writes
+  schema 4. Typed-play strictness remains anchored at schema 3, current rows
+  accept only authored literacy/independent classes, and missing or unknown
+  schema-4 classes cannot grant mastery or recency credit.
+- Updated Coach Report to prefer independent first-try strength, then
+  independent need, literacy reading success, and literacy need, with at most
+  two distinct concepts. Retry evidence participates only in need ranking;
+  unclassified and retry-only evidence can never produce **Strong today**.
+- Added deterministic contracts for the exact family map, independent answer
+  hiding, half guidance, zero/repeated place-value digits, runtime
+  contradictions, class-isolated scheduling/support/freshness, legacy
+  migration, malformed current rows, two-tab opposite-class writes,
+  same-play race deduplication, season-byte isolation, and mixed Coach Report
+  ordering. Synchronized the runtime, all 14 Football asset URLs, registry, and
+  version manifest to v1.27.1.
+- Writer verification passed 112/112 DOM-free release contracts; 82/82 serial
+  primary-iPad context, learning, stats, Coach Report, and copy contracts;
+  11/11 serial primary-iPad Season contracts; 18/18 call-layout checks across
+  all six configured device projects; syntax checks for all four changed
+  runtime files; and `git diff --check`. A broad parallel rerun exposed the
+  literacy-only Coach fallback wrapping below the 820-point final viewport;
+  shortening that fallback restored the exact Season scenario and the compact
+  740-point overlay remained visually complete. A later high-concurrency pass
+  was discarded after the local Chromium/display stack stalled and reported
+  offline resource errors; the affected changed suites then passed serially.
+- The prescribed browser client loaded every v1.27.1 asset, produced semantic
+  state with no console/page-error artifact, and its ordinary production frame
+  was visually inspected. The freshly attached 1180x740 final-overlay frame was
+  also inspected with both report rows and the full CTA visible. The writeful
+  six-device release-artifact matrix, exact-artifact review, commit, push, PR,
+  merge, deployment, and live-version verification remain orchestrator-owned.
+  This writer made no GitHub write and claims no review or consensus.
