@@ -125,10 +125,10 @@ test('render_game_to_text reports conversion facts instead of stale down-distanc
   expect(rendered).toMatchObject({
     mode: 'conversion-decision', possession: 'offense',
     down: null, ytg: null, firstDownLine: null,
-    yardLine: 'opponent 2', absoluteYard: 98,
+    yardLine: "UNC's 2-yard line", absoluteYard: 98,
     conversion: {
       status: 'decision', attemptType: null, attemptValue: null,
-      tryYardLine: 98, trySpot: 'opponent 2',
+      tryYardLine: 98, trySpot: "UNC's 2-yard line",
     },
   });
 
@@ -137,10 +137,10 @@ test('render_game_to_text reports conversion facts instead of stale down-distanc
   expect(rendered).toMatchObject({
     mode: 'question', possession: 'offense', playType: 'conversion',
     down: null, ytg: null, firstDownLine: null,
-    yardLine: 'opponent 2', absoluteYard: 98,
+    yardLine: "UNC's 2-yard line", absoluteYard: 98,
     conversion: {
       status: 'active', attemptType: 'twoPoint', attemptValue: 2,
-      tryYardLine: 98, trySpot: 'opponent 2',
+      tryYardLine: 98, trySpot: "UNC's 2-yard line",
     },
   });
 
@@ -158,10 +158,10 @@ test('render_game_to_text reports conversion facts instead of stale down-distanc
   expect(rendered).toMatchObject({
     mode: 'conversion-decision', possession: 'defense',
     down: null, ytg: null, firstDownLine: null,
-    yardLine: 'own 2', absoluteYard: 2,
+    yardLine: "Duke's 2-yard line", absoluteYard: 2,
     conversion: {
       status: 'decision', attemptType: 'pat', attemptValue: 1,
-      tryYardLine: 2, trySpot: 'own 2',
+      tryYardLine: 2, trySpot: "Duke's 2-yard line",
     },
   });
 
@@ -170,12 +170,72 @@ test('render_game_to_text reports conversion facts instead of stale down-distanc
   expect(rendered).toMatchObject({
     mode: 'question', possession: 'defense', playType: 'conversion',
     down: null, ytg: null, firstDownLine: null,
-    yardLine: 'own 2', absoluteYard: 2,
+    yardLine: "Duke's 2-yard line", absoluteYard: 2,
     conversion: {
       status: 'active', attemptType: 'pat', attemptValue: 1,
-      tryYardLine: 2, trySpot: 'own 2',
+      tryYardLine: 2, trySpot: "Duke's 2-yard line",
     },
   });
+});
+
+test('render_game_to_text preserves numeric semantic choices and formats only field-position semantics', async ({ page }, testInfo) => {
+  primaryOnly(testInfo);
+
+  async function prepareSemanticQuestion({ familyId, playType, seed }) {
+    await bootCallPhase(page, seed);
+    return page.evaluate(({ requestedFamilyId, requestedPlayType }) => {
+      window.__footballTest.seedDriveState({
+        possession: 'offense', direction: 1, quarter: 2,
+        down: 3, yardsToGo: 7, yardLine: 30, firstDownLine: 37, driveStart: 20,
+        scores: { player: 7, opponent: 7 }, totalYards: { player: 40, opponent: 35 },
+      });
+      const activePlay = requestedPlayType === 'conversion'
+        ? makeConversionActivePlay('pat')
+        : makeActiveScrimmagePlay('shortRun', {
+            calls: { offense: 'shortRun', defense: null, matchup: null },
+          });
+      const built = FOOTBALL_CONTEXTUAL_QUESTIONS.build(activePlay, requestedFamilyId, {
+        presentationRng: () => 0.5,
+      });
+      const question = FOOTBALL_DOMAIN.deepFreeze(FOOTBALL_DOMAIN.clone({
+        ...built,
+        contextId: activePlay.contextId,
+        questionInstanceId: nextQuestionInstanceId(),
+      }));
+      validateQuestionInstance(activePlay, question);
+      beginStatsDraft(activePlay);
+      prepareQuestion({ activePlay, question }, playPromptLabel(activePlay));
+      return {
+        question: window.__footballTest.activeContracts().questionInstance,
+        rendered: JSON.parse(render_game_to_text()),
+      };
+    }, { requestedFamilyId: familyId, requestedPlayType: playType });
+  }
+
+  const ordinary = await prepareSemanticQuestion({
+    familyId: 'yards-to-go-read', playType: 'scrimmage', seed: 0x6a290,
+  });
+  const ordinaryValues = ordinary.question.choices.map(choice => choice.value);
+  expect(ordinaryValues.every(choice => typeof choice === 'number')).toBe(true);
+  expect(ordinary.rendered.choices).toEqual(ordinaryValues);
+  expect(ordinary.rendered.choices.every(choice => typeof choice === 'number')).toBe(true);
+  expect(ordinary.rendered.correct).toBe(ordinary.question.answer.value);
+  expect(ordinary.rendered.choices).toContain(ordinary.rendered.correct);
+
+  const fieldPosition = await prepareSemanticQuestion({
+    familyId: 'conversion-try-marker', playType: 'conversion', seed: 0x6a291,
+  });
+  const fieldPositionValues = fieldPosition.question.choices.map(choice => choice.value);
+  const fieldPositionLabels = fieldPosition.question.choices.map(choice => choice.label);
+  const correctFieldPosition = fieldPosition.question.choices.find(
+    choice => choice.id === fieldPosition.question.correctChoiceId,
+  );
+  expect(fieldPosition.question.choicePresentation).toBe('field-position');
+  expect(fieldPositionValues.every(choice => typeof choice === 'number')).toBe(true);
+  expect(fieldPosition.rendered.choices).toEqual(fieldPositionLabels);
+  expect(fieldPosition.rendered.choices.every(choice => typeof choice === 'string')).toBe(true);
+  expect(fieldPosition.rendered.correct).toBe(correctFieldPosition.label);
+  expect(fieldPosition.rendered.choices).toContain(fieldPosition.rendered.correct);
 });
 
 test('keyboard activation moves focus from an ordinary call card to the first answer', async ({ page }, testInfo) => {

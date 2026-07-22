@@ -66,8 +66,8 @@ async function answerChoice(page, choiceId) {
   return page.evaluate((id) => window.__footballTest.answerChoice(id), choiceId);
 }
 
-async function beginSpecialPlay(page, playType, possession, fault = null) {
-  await page.evaluate(({ type, side, faultMode }) => {
+async function beginSpecialPlay(page, playType, possession, fault = null, period = {}) {
+  await page.evaluate(({ type, side, faultMode, periodState }) => {
     window.__footballTest.setQuestionFault(faultMode);
     const reverse = side === 'defense';
     const seed = type === 'fieldGoal'
@@ -78,20 +78,20 @@ async function beginSpecialPlay(page, playType, possession, fault = null) {
     window.__footballTest.seedDriveState({
       possession: side,
       direction: reverse ? -1 : 1,
-      quarter: 1,
-      quarterPossessions: 0,
+      quarter: periodState.quarter ?? 1,
+      quarterPossessions: periodState.quarterPossessions ?? 0,
       down: type === 'conversion' ? 1 : 4,
       yardsToGo: seed.yardsToGo,
       yardLine: seed.yardLine,
       firstDownLine: seed.yardLine + (reverse ? -seed.yardsToGo : seed.yardsToGo),
       driveStart: reverse ? 80 : 20,
-      scores: { player: 0, opponent: 0 },
+      scores: periodState.scores ?? { player: 0, opponent: 0 },
       totalYards: { player: 0, opponent: 0 },
       plays: 0,
       drivePlays: 0,
     });
     if (type === 'conversion') showConversionDecision();
-  }, { type: playType, side: possession, faultMode: fault });
+  }, { type: playType, side: possession, faultMode: fault, periodState: period });
   if (possession === 'offense') {
     const action = playType === 'conversion' ? 'pat' : playType;
     await page.locator(`#decision-grid .decision-btn[data-action="${action}"]`).click();
@@ -1663,6 +1663,481 @@ test('special-team resolution policies preserve player-perspective polarity and 
   }
 });
 
+test('ordinary source-visible yard and quarter reads render under the generic Field Reading header', async ({ page }, testInfo) => {
+  primaryOnly(testInfo);
+  await cleanBoot(page, 0x5a704);
+
+  for (const scenario of [
+    { familyId: 'yards-to-go-read', quarter: 1 },
+    { familyId: 'quarter-read', quarter: 3 },
+  ]) {
+    await page.evaluate(({ familyId, quarter }) => {
+      window.__footballTest.seedDriveState({
+        possession: 'offense', direction: 1, quarter, down: 3,
+        yardsToGo: 7, yardLine: 30, firstDownLine: 37, driveStart: 20,
+        scores: { player: 0, opponent: 0 }, totalYards: { player: 0, opponent: 0 },
+      });
+      const activePlay = makeActiveScrimmagePlay('shortRun', {
+        calls: { offense: 'shortRun', defense: null, matchup: null },
+      });
+      const built = FOOTBALL_CONTEXTUAL_QUESTIONS.build(activePlay, familyId, {
+        presentationRng: () => 0.5,
+      });
+      const question = FOOTBALL_DOMAIN.deepFreeze(FOOTBALL_DOMAIN.clone({
+        ...built,
+        contextId: activePlay.contextId,
+        questionInstanceId: nextQuestionInstanceId(),
+      }));
+      validateQuestionInstance(activePlay, question);
+      beginStatsDraft(activePlay);
+      prepareQuestion({ activePlay, question }, playPromptLabel(activePlay));
+    }, scenario);
+    const contracts = await activeContracts(page);
+    expect(contracts.questionInstance.familyId).toBe(scenario.familyId);
+    expect(contracts.questionInstance.answerExposure).toBe('source-visible');
+    await expect(page.locator('#desk-chip')).toHaveText('Field Reading');
+    await expect(page.locator('#desk-kicker')).toHaveText('Read the game graphic.');
+  }
+});
+
+test('touchback punt travel renders the goal, possible touchback, and own-20 restart as separate facts', async ({ page }, testInfo) => {
+  primaryOnly(testInfo);
+  await cleanBoot(page, 0x5a724);
+  const cases = [
+    {
+      possession: 'offense', direction: 1, yardLine: 70,
+      tokens: ['PUNT PREVIEW', 'FROM UNC 30 → CAROLINA END ZONE', 'POSSIBLE TOUCHBACK', 'RESTART UNC 20 · 30 YDS'],
+      aria: "Punt preview from UNC's 30-yard line toward the CAROLINA goal line and CAROLINA end zone; travel 30 yards. Possible touchback. North Carolina restarts at UNC's own 20-yard line.",
+    },
+    {
+      possession: 'defense', direction: -1, yardLine: 30,
+      tokens: ['PUNT PREVIEW', 'FROM DUKE 30 → DUKE END ZONE', 'POSSIBLE TOUCHBACK', 'RESTART DUKE 20 · 30 YDS'],
+      aria: "Punt preview from Duke's 30-yard line toward the DUKE goal line and DUKE end zone; travel 30 yards. Possible touchback. Duke restarts at Duke's own 20-yard line.",
+    },
+  ];
+  for (const scenario of cases) {
+    await page.evaluate(({ possession, direction, yardLine }) => {
+      window.__footballTest.seedDriveState({
+        possession, direction, quarter: 1, quarterPossessions: 0,
+        down: 4, yardsToGo: 10, yardLine,
+        firstDownLine: yardLine + (direction * 10), driveStart: yardLine,
+        scores: { player: 0, opponent: 0 }, totalYards: { player: 0, opponent: 0 },
+      });
+      startSpecialPlay(makePuntActivePlay({ travelYards: 35 }), 'Touchback punt preview ready.');
+    }, scenario);
+    const contracts = await activeContracts(page);
+    expect(contracts.questionInstance.familyId).toBe('punt-travel-distance');
+    expect(contracts.questionInstance.answer.value).toBe(30);
+    expect(contracts.questionInstance.prompt.text).not.toMatch(/\b30\b/);
+    expect(contracts.questionInstance.bindings
+      .filter(binding => binding.source.kind === 'context')
+      .map(binding => binding.source.path)).toEqual([
+      '/context/direction',
+      '/proposal/startYardLine',
+      '/proposal/rawLandingYardLine',
+      '/proposal/appliedTravelYards',
+    ]);
+    const rendered = await page.evaluate(() => ({
+      tokens: Array.from(document.querySelectorAll('#math-overlay .math-context-row > span'))
+        .map(element => element.textContent),
+      aria: document.getElementById('math-overlay').getAttribute('aria-label'),
+    }));
+    expect(rendered.tokens).toEqual(scenario.tokens);
+    expect(rendered.aria).toBe(scenario.aria);
+  }
+});
+
+test('punt preview and committed result explain only child-visible changes and persist into the possession dialog', async ({ page }, testInfo) => {
+  primaryOnly(testInfo);
+  await cleanBoot(page, 0x5a754);
+
+  const startPunt = async (possession, yardLine, travelYards, period = {}) => {
+    await page.evaluate(({ side, spot, travel, periodState }) => {
+      const direction = side === 'offense' ? 1 : -1;
+      window.__footballTest.seedDriveState({
+        possession: side,
+        direction,
+        quarter: periodState.quarter ?? 1,
+        quarterPossessions: periodState.quarterPossessions ?? 0,
+        down: 4,
+        yardsToGo: 10,
+        yardLine: spot,
+        firstDownLine: spot + (direction * 10),
+        driveStart: spot,
+        scores: { player: 0, opponent: 0 },
+        totalYards: { player: 0, opponent: 0 },
+      });
+      startSpecialPlay(makePuntActivePlay({ travelYards: travel }), 'Punt preview ready.');
+    }, { side: possession, spot: yardLine, travel: travelYards, periodState: period });
+    return activeContracts(page);
+  };
+
+  const changedBefore = await startPunt('defense', 80, 37);
+  expect(changedBefore.activePlay.proposal).toMatchObject({
+    startYardLine: 80,
+    appliedTravelYards: 37,
+    nextStartYardLine: 43,
+  });
+  await expect(page.locator('#desk-chip')).toHaveText('Field Reading');
+  await expect(page.locator('#play-label')).toContainText('Punt preview: UNC 20 → possible DUKE 43 · 37 yards');
+  await expect(page.locator('#play-context')).toContainText('37-YARD PUNT');
+
+  const changedCommit = await page.evaluate((correctChoiceId) => {
+    const contracts = window.__footballTest.answerChoice(correctChoiceId);
+    return {
+      contracts,
+      playContext: document.getElementById('play-context')?.textContent || '',
+      phase: state.phase,
+      offenseOverlayShown: document.getElementById('ov-offense')?.classList.contains('show') || false,
+    };
+  }, changedBefore.questionInstance.correctChoiceId);
+  const changedAfter = changedCommit.contracts;
+  expect(changedCommit.phase).toBe('feedback');
+  expect(changedCommit.offenseOverlayShown).toBe(false);
+  expect(changedCommit.playContext).not.toContain('37-YARD PUNT');
+  expect(changedCommit.playContext).not.toMatch(/\d+-YARD PUNT/);
+  expect(changedAfter.pendingResolution.transitionToCommit).toMatchObject({
+    appliedTravelYards: 20,
+    rawLandingYardLine: 60,
+    resultKind: 'punt',
+    nextStartYardLine: 60,
+  });
+  expect(changedAfter.render.specialResult).toMatchObject({
+    playType: 'punt',
+    changed: true,
+    policy: 'firstTryCorrect',
+    cause: 'Your correct answer changed the outcome.',
+  });
+  expect(changedAfter.render.specialResult.actual).toBe(
+    "Actual: 20 yards to UNC's 40-yard line. Duke ball at UNC's 40-yard line.",
+  );
+  expect(changedAfter.render.specialResult.message).toBe(
+    "Preview: 37 yards from UNC's own 20-yard line to Duke's 43-yard line. "
+      + "Your correct answer changed the outcome. "
+      + "Actual: 20 yards to UNC's 40-yard line. Duke ball at UNC's 40-yard line.",
+  );
+  await expect(page.locator('#feedback')).toHaveText(changedAfter.render.specialResult.message);
+  await expect(page.locator('#ov-offense')).toBeVisible({ timeout: 2500 });
+  await expect(page.locator('#ov-offense-sub')).toContainText(changedAfter.render.specialResult.message);
+  const transitionOverlay = await activeContracts(page);
+  expect(transitionOverlay.activePlay).toBeNull();
+  expect(transitionOverlay.activeSnap).toBeNull();
+  expect(transitionOverlay.questionInstance).toBeNull();
+  expect(transitionOverlay.pendingResolution).toBeNull();
+  expect(transitionOverlay.render.mode).toBe('transition');
+  expect(transitionOverlay.render.specialResult).toEqual(changedAfter.render.specialResult);
+  expect(transitionOverlay.render.outcomeMessage).toBe(changedAfter.render.specialResult.message);
+  await page.locator('#ov-offense .ov-btn').click();
+  const clearedAfterContinue = await activeContracts(page);
+  expect(clearedAfterContinue.render.mode).toBe('call');
+  expect(clearedAfterContinue.render.specialResult).toBeNull();
+  expect(clearedAfterContinue.render.outcomeMessage).toBeNull();
+
+  const matchingBefore = await startPunt('offense', 30, 37);
+  const matchingAfter = await resolveSpecialPolicy(page, 'firstTryCorrect');
+  expect(matchingAfter.pendingResolution.transitionToCommit).toEqual(matchingBefore.activePlay.proposal);
+  expect(matchingAfter.render.specialResult).toMatchObject({
+    changed: false,
+    cause: 'The actual result matched the preview.',
+  });
+  expect(matchingAfter.render.specialResult.message).not.toContain('changed the outcome');
+
+  await startPunt('offense', 30, 37);
+  const missedAfter = await resolveSpecialPolicy(page, 'secondMiss');
+  expect(missedAfter.render.specialResult).toMatchObject({
+    changed: true,
+    policy: 'secondMiss',
+    cause: 'Because the second answer was not correct, the receiving team got the more favorable result.',
+  });
+  expect(missedAfter.render.specialResult.message).not.toMatch(/correct answer (?:changed|improved|helped)/i);
+
+  await startPunt('defense', 80, 37);
+  const defenseMissedAfter = await resolveSpecialPolicy(page, 'secondMiss');
+  expect(defenseMissedAfter.render.specialResult).toMatchObject({
+    changed: false,
+    policy: 'secondMiss',
+    cause: 'The actual result matched the preview.',
+  });
+  expect(defenseMissedAfter.render.specialResult.message).not.toMatch(/correct answer (?:changed|improved|helped)/i);
+
+  const sameSpotBefore = await startPunt('offense', 70, 35);
+  expect(sameSpotBefore.activePlay.proposal).toMatchObject({
+    mode: 'normal', requestedTravelYards: 35, appliedTravelYards: 30,
+    resultKind: 'puntTouchback', nextStartYardLine: 80,
+  });
+  const sameSpotAfter = await resolveSpecialPolicy(page, 'secondMiss');
+  expect(sameSpotAfter.pendingResolution.transitionToCommit).toMatchObject({
+    mode: 'receiverFavorable', requestedTravelYards: 20, appliedTravelYards: 20,
+    rawLandingYardLine: 90, resultKind: 'punt', nextStartYardLine: 80,
+  });
+  expect(sameSpotAfter.render.specialResult).toMatchObject({
+    changed: true,
+    policy: 'secondMiss',
+    cause: 'Because the second answer was not correct, the punt result changed, but the receiving team starts at the same spot.',
+  });
+  expect(sameSpotAfter.render.specialResult.actual).toBe(
+    "Actual travel: 20 yards to UNC's own 10-yard line. Restart: North Carolina ball at UNC's own 20-yard line.",
+  );
+  expect(sameSpotAfter.render.specialResult.message).toBe(
+    "Preview: 30 yards from UNC's 30-yard line into the CAROLINA end zone for a possible touchback. "
+      + 'Because the second answer was not correct, the punt result changed, but the receiving team starts at the same spot. '
+      + "Actual travel: 20 yards to UNC's own 10-yard line. Restart: North Carolina ball at UNC's own 20-yard line.",
+  );
+
+  const reverseCappedBefore = await startPunt('defense', 35, 35);
+  expect(reverseCappedBefore.activePlay.proposal).toMatchObject({
+    mode: 'normal', requestedTravelYards: 35, appliedTravelYards: 35,
+    resultKind: 'puntTouchback', nextStartYardLine: 20,
+  });
+  const reverseCappedAfter = await resolveSpecialPolicy(page, 'firstTryCorrect');
+  expect(reverseCappedAfter.pendingResolution.transitionToCommit).toMatchObject({
+    mode: 'receiverFavorable', requestedTravelYards: 20, appliedTravelYards: 20,
+    rawLandingYardLine: 15, resultKind: 'punt', nextStartYardLine: 20,
+  });
+  expect(reverseCappedAfter.render.specialResult).toMatchObject({
+    changed: true,
+    policy: 'firstTryCorrect',
+    cause: 'Your correct answer changed the outcome.',
+  });
+  expect(reverseCappedAfter.render.specialResult.actual).toBe(
+    "Actual travel: 20 yards to Duke's own 15-yard line. Restart: Duke ball at Duke's own 20-yard line.",
+  );
+  expect(reverseCappedAfter.render.specialResult.message).toBe(
+    "Preview: 35 yards from Duke's 35-yard line into the DUKE end zone for a possible touchback. "
+      + 'Your correct answer changed the outcome. '
+      + "Actual travel: 20 yards to Duke's own 15-yard line. Restart: Duke ball at Duke's own 20-yard line.",
+  );
+
+  await startPunt('offense', 30, 37, { quarter: 1, quarterPossessions: 3 });
+  const breakResult = await resolveSpecialPolicy(page, 'firstTryCorrect');
+  await expect(page.locator('#ov-quarter')).toBeVisible({ timeout: 2500 });
+  const breakOverlay = await activeContracts(page);
+  expect(breakOverlay.activePlay).toBeNull();
+  expect(breakOverlay.questionInstance).toBeNull();
+  expect(breakOverlay.pendingResolution).toBeNull();
+  expect(breakOverlay.render.mode).toBe('quarter');
+  expect(breakOverlay.render.specialResult).toEqual(breakResult.render.specialResult);
+  expect(breakOverlay.render.outcomeMessage).toBe(breakResult.render.specialResult.message);
+  await page.locator('#ov-quarter .ov-btn').click();
+  const clearedAfterBreak = await activeContracts(page);
+  expect(clearedAfterBreak.render.mode).toBe('call');
+  expect(clearedAfterBreak.render.specialResult).toBeNull();
+  expect(clearedAfterBreak.render.outcomeMessage).toBeNull();
+});
+
+test('committed special results survive defense-transition and halftime overlays, then clear on Continue', async ({ page }, testInfo) => {
+  primaryOnly(testInfo);
+  await cleanBoot(page, 0x5a774);
+
+  const cases = [
+    {
+      period: { quarter: 1, quarterPossessions: 0 },
+      overlay: '#ov-defense',
+      overlayMode: 'transition',
+      next: { mode: 'call', possession: 'defense', quarter: 1 },
+    },
+    {
+      period: { quarter: 2, quarterPossessions: 3 },
+      overlay: '#ov-halftime',
+      overlayMode: 'halftime',
+      next: { mode: 'call', possession: 'defense', quarter: 3 },
+    },
+  ];
+
+  for (const scenario of cases) {
+    await beginSpecialPlay(page, 'punt', 'offense', null, scenario.period);
+    const committed = await resolveSpecialPolicy(page, 'firstTryCorrect');
+    const presentation = committed.render.specialResult;
+    expect(committed.render).toMatchObject({ mode: 'feedback', outcomeMessage: presentation.message });
+
+    await expect(page.locator(scenario.overlay)).toBeVisible({ timeout: 2500 });
+    const overlay = await activeContracts(page);
+    expect(overlay.activePlay).toBeNull();
+    expect(overlay.activeSnap).toBeNull();
+    expect(overlay.questionInstance).toBeNull();
+    expect(overlay.pendingResolution).toBeNull();
+    expect(overlay.render.mode).toBe(scenario.overlayMode);
+    expect(overlay.render.specialResult).toEqual(presentation);
+    expect(overlay.render.outcomeMessage).toBe(presentation.message);
+
+    await page.locator(`${scenario.overlay} .ov-btn`).click();
+    const next = await activeContracts(page);
+    expect(next.render).toMatchObject(scenario.next);
+    expect(next.render.specialResult).toBeNull();
+    expect(next.render.outcomeMessage).toBeNull();
+  }
+});
+
+test('a final special result starts Season settlement at commit, survives final presentation, and clears for the next game', async ({ page }, testInfo) => {
+  primaryOnly(testInfo);
+  await page.addInitScript(() => {
+    localStorage.removeItem('footballMathStats:v1');
+    localStorage.removeItem('footballMathSeason:v1');
+  });
+  await page.goto('/football/');
+  await page.getByRole('radio', { name: /3-Game Season/ }).check();
+  await page.locator('#start-game-btn').click();
+  await expect(page.locator('#ui-desk')).toHaveAttribute('data-phase', 'call');
+  const binding = await page.evaluate(() => window.__footballTest.activeSeasonGame());
+  expect(binding).toMatchObject({ gameNumber: 1, rivalId: 'unc' });
+
+  await beginSpecialPlay(page, 'punt', 'offense', null, {
+    quarter: 4,
+    quarterPossessions: 3,
+    scores: { player: 3, opponent: 7 },
+  });
+  const resolved = await page.evaluate(() => {
+    const before = window.__footballTest.activeContracts();
+    const committed = window.__footballTest.answerChoice(before.questionInstance.correctChoiceId);
+    return {
+      committed,
+      settlementStarted: seasonSettlementPromise instanceof Promise,
+    };
+  });
+  const committed = resolved.committed;
+  const presentation = committed.render.specialResult;
+  expect(resolved.settlementStarted).toBe(true);
+  expect(committed.render).toMatchObject({
+    mode: 'feedback',
+    quarter: 4,
+    quarterPossessions: 4,
+    outcomeMessage: presentation.message,
+  });
+
+  await expect.poll(() => page.evaluate(() => {
+    const raw = localStorage.getItem('footballMathSeason:v1');
+    return raw ? JSON.parse(raw).currentSeason.results : [];
+  })).toEqual([expect.objectContaining({
+    gameNumber: 1,
+    gameId: binding.gameId,
+    rivalId: 'unc',
+    playerScore: 3,
+    opponentScore: 7,
+  })]);
+
+  await expect(page.locator('#ov-end')).toBeVisible({ timeout: 2500 });
+  const finalOverlay = await activeContracts(page);
+  expect(finalOverlay.activePlay).toBeNull();
+  expect(finalOverlay.activeSnap).toBeNull();
+  expect(finalOverlay.questionInstance).toBeNull();
+  expect(finalOverlay.pendingResolution).toBeNull();
+  expect(finalOverlay.render.mode).toBe('final');
+  expect(finalOverlay.render.specialResult).toEqual(presentation);
+  expect(finalOverlay.render.outcomeMessage).toBe(presentation.message);
+  const finalDescription = await page.evaluate(() => {
+    const dialog = document.querySelector('.overlay.show[role="dialog"]');
+    const describedIds = (dialog?.getAttribute('aria-describedby') || '').split(/\s+/).filter(Boolean);
+    return {
+      dialogId: dialog?.id || null,
+      dialogText: dialog?.textContent || '',
+      describedIds,
+      describedText: describedIds.map(id => document.getElementById(id)?.textContent || '').join(' '),
+      specialText: document.getElementById('ov-end-result')?.textContent || '',
+      specialHidden: document.getElementById('ov-end-result')?.hidden ?? true,
+    };
+  });
+  expect(finalDescription).toMatchObject({
+    dialogId: 'ov-end',
+    describedIds: ['ov-end-result', 'ov-end-sub'],
+    specialText: presentation.message,
+    specialHidden: false,
+  });
+  expect(finalDescription.dialogText).toContain(presentation.message);
+  expect(finalDescription.describedText.startsWith(presentation.message)).toBe(true);
+  expect(finalOverlay.render.season).toMatchObject({
+    gameNumber: 1,
+    rungStatuses: ['loss', 'next', 'open'],
+    saveState: 'saved',
+  });
+
+  await page.locator('#ov-end-btn').click();
+  await expect(page.locator('#ov-start')).toBeVisible();
+  const restarted = await activeContracts(page);
+  expect(restarted.render.mode).toBe('start');
+  expect(restarted.render.specialResult).toBeNull();
+  expect(restarted.render.outcomeMessage).toBeNull();
+
+  await page.locator('#start-game-btn').click();
+  await expect(page.locator('#ui-desk')).toHaveAttribute('data-phase', 'call');
+  const nextGame = await activeContracts(page);
+  expect(nextGame.render).toMatchObject({ mode: 'call', possession: 'offense' });
+  expect(nextGame.render.specialResult).toBeNull();
+  expect(nextGame.render.outcomeMessage).toBeNull();
+  expect(await page.evaluate(() => window.__footballTest.activeSeasonGame())).toMatchObject({
+    gameNumber: 2,
+    rivalId: 'nc-state',
+  });
+});
+
+test('special-team questions do not leak kick outcomes and actual field-goal placement uses team field language', async ({ page }, testInfo) => {
+  primaryOnly(testInfo);
+  await cleanBoot(page, 0x5a7a4);
+
+  for (const playType of ['fieldGoal', 'conversion']) {
+    const before = await beginSpecialPlay(page, playType, 'defense');
+    const visibleOutcomeSurfaces = await page.evaluate(() => [
+      document.getElementById('play-label').textContent,
+      document.getElementById('feedback').textContent,
+    ].join(' '));
+    expect(visibleOutcomeSurfaces).not.toMatch(/\b(?:made|missed|blocked|denied|no good)\b/i);
+    expect(before.render.outcomeMessage).toBeNull();
+    expect(before.render.specialResult).toBeNull();
+
+    const after = await resolveSpecialPolicy(page, 'firstTryCorrect');
+    if (playType === 'fieldGoal') {
+      expect(after.render.specialResult.actual).toContain('Field goal blocked.');
+      expect(after.render.specialResult.actual).toMatch(/Duke ball at (?:Duke|UNC)'s/);
+      expect(after.render.specialResult.actual).not.toMatch(/field marker|toward (?:0|100)/i);
+    } else {
+      expect(after.render.specialResult.actual).toBe('PAT no good.');
+    }
+  }
+});
+
+test('committed score difference renders high minus low with the result hidden until worked support', async ({ page }, testInfo) => {
+  primaryOnly(testInfo);
+  await cleanBoot(page, 0x5a7b4);
+  await page.evaluate(() => {
+    window.__footballTest.seedDriveState({
+      possession: 'offense', direction: 1, quarter: 2, down: 2,
+      yardsToGo: 5, yardLine: 30, firstDownLine: 35, driveStart: 20,
+      scores: { player: 3, opponent: 7 },
+      totalYards: { player: 10, opponent: 10 },
+    });
+    const activePlay = makeActiveScrimmagePlay('shortRun', {
+      calls: { offense: 'shortRun', defense: null, matchup: null },
+    });
+    const built = FOOTBALL_CONTEXTUAL_QUESTIONS.build(activePlay, 'committed-score-difference', {
+      presentationRng: () => 0.5,
+    });
+    const question = FOOTBALL_DOMAIN.deepFreeze(FOOTBALL_DOMAIN.clone({
+      ...built,
+      contextId: activePlay.contextId,
+      questionInstanceId: nextQuestionInstanceId(),
+    }));
+    validateQuestionInstance(activePlay, question);
+    beginStatsDraft(activePlay);
+    prepareQuestion({ activePlay, question }, playPromptLabel(activePlay));
+  });
+
+  const initial = await activeContracts(page);
+  expect(initial.questionInstance.visuals.initial).toMatchObject({ revealsAnswer: false, result: null });
+  await expect(page.locator('#math-overlay')).toContainText('UNC 7');
+  await expect(page.locator('#math-overlay')).toContainText('−');
+  await expect(page.locator('#math-overlay')).toContainText('DUKE 3');
+  await expect(page.locator('#math-overlay')).toContainText('= ?');
+  await expect(page.locator('#math-overlay')).toHaveAttribute('aria-label', 'UNC 7 minus Duke 3; the difference is hidden.');
+
+  const wrongIds = initial.questionInstance.choices
+    .filter(choice => choice.id !== initial.questionInstance.correctChoiceId)
+    .map(choice => choice.id);
+  await answerChoice(page, wrongIds[0]);
+  await expect(page.locator('#math-overlay')).toContainText('= ?');
+  await answerChoice(page, wrongIds[1]);
+  await expect(page.locator('#math-overlay')).toContainText('= 4');
+  await expect(page.locator('#math-overlay')).toHaveAttribute('aria-label', '7 minus 3 equals 4; the teams are 4 points apart.');
+});
+
 test('crossing receiver-favorable punts are touchbacks in both directions through telemetry, stats, and copy', async ({ page }, testInfo) => {
   primaryOnly(testInfo);
   await cleanBoot(page, 0x5a854);
@@ -1727,7 +2202,15 @@ test('crossing receiver-favorable punts are touchbacks in both directions throug
       },
     });
     expect(after.render.pendingRestartReason).toBe('puntTouchback');
-    await expect(page.locator('#feedback')).toContainText('The punt reaches the end zone. Touchback: the receiving team starts at its own 20.');
+    await expect(page.locator('#feedback')).toContainText('Touchback.');
+    await expect(page.locator('#feedback')).toContainText('The actual result matched the preview.');
+    expect(after.render.specialResult).toMatchObject({
+      playType: 'punt',
+      changed: false,
+      cause: 'The actual result matched the preview.',
+    });
+    expect(after.render.specialResult.message).toContain('ball at');
+    expect(after.render.specialResult.message).not.toContain('field marker');
   }
 });
 
@@ -2511,6 +2994,8 @@ test('pending placement carries across quarters, resets at halftime, and disappe
     mode: 'final', pendingNextPossession: null,
     pendingNextStartYardLine: null, pendingRestartReason: null,
   });
+  await expect(page.locator('#ov-end-result')).toBeHidden();
+  await expect(page.locator('#ov-end-result')).toHaveText('');
 });
 
 test('result telemetry publishes settled halftime placement separately from the raw kick transition', async ({ page }, testInfo) => {

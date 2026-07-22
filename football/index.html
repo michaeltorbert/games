@@ -4,14 +4,14 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <title>Football Math!</title>
-<link rel="apple-touch-icon" href="apple-touch-icon.png?v=1.27.1">
-<link rel="icon" type="image/png" href="apple-touch-icon.png?v=1.27.1">
+<link rel="apple-touch-icon" href="apple-touch-icon.png?v=1.28.0">
+<link rel="icon" type="image/png" href="apple-touch-icon.png?v=1.28.0">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow+Condensed:wght@600;700;800&display=swap">
-<link rel="stylesheet" href="../shared/fonts.css?v=1.27.1">
-<link rel="stylesheet" href="../shared/reset.css?v=1.27.1">
-<link rel="stylesheet" href="football.css?v=1.27.1">
+<link rel="stylesheet" href="../shared/fonts.css?v=1.28.0">
+<link rel="stylesheet" href="../shared/reset.css?v=1.28.0">
+<link rel="stylesheet" href="football.css?v=1.28.0">
 </head>
 <body>
 <div id="broadcast-shell">
@@ -266,12 +266,13 @@
     <button class="ov-btn" onclick="nextQuarter()">2nd Half</button>
   </div>
 </div>
-<div class="overlay" id="ov-end" role="dialog" aria-modal="true" aria-labelledby="ov-end-title" aria-describedby="ov-end-sub" aria-hidden="true" inert>
+<div class="overlay" id="ov-end" role="dialog" aria-modal="true" aria-labelledby="ov-end-title" aria-describedby="ov-end-result ov-end-sub" aria-hidden="true" inert>
   <div class="overlay-card">
     <div class="ov-confetti" id="ov-end-confetti"></div>
     <span class="ov-broadcast-badge" id="ov-end-badge">FINAL</span>
     <div class="ov-title" id="ov-end-title">Final Score</div>
     <div class="ov-final-score" id="ov-end-score"></div>
+    <div class="ov-end-result" id="ov-end-result" hidden></div>
     <div class="ov-sub" id="ov-end-sub"></div>
     <div class="ov-end-season" id="ov-end-season" role="status" aria-live="polite" aria-atomic="true" hidden></div>
     <div class="ov-stats" id="ov-end-stats"></div>
@@ -282,17 +283,17 @@
   </div>
 </div>
 
-<script src="copy.js?v=1.27.1"></script>
-<script src="learning.js?v=1.27.1"></script>
-<script src="stats.js?v=1.27.1"></script>
-<script src="opponent.js?v=1.27.1"></script>
-<script src="season.js?v=1.27.1"></script>
-<script src="football-domain.js?v=1.27.1"></script>
-<script src="contextual-questions.js?v=1.27.1"></script>
-<script src="football.js?v=1.27.1"></script>
+<script src="copy.js?v=1.28.0"></script>
+<script src="learning.js?v=1.28.0"></script>
+<script src="stats.js?v=1.28.0"></script>
+<script src="opponent.js?v=1.28.0"></script>
+<script src="season.js?v=1.28.0"></script>
+<script src="football-domain.js?v=1.28.0"></script>
+<script src="contextual-questions.js?v=1.28.0"></script>
+<script src="football.js?v=1.28.0"></script>
 <script>
   document.getElementById('version-display').textContent = `v${GAME_VERSION}`;
 </script>
-<script src="../shared/updater.js?v=1.27.1"></script>
+<script src="../shared/updater.js?v=1.28.0"></script>
 </body>
 </html>

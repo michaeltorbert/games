@@ -30,6 +30,12 @@ test('copy tables cover their exact runtime key domains', async ({ page }) => {
       validDeskHeaders: Object.values(DESK_HEADER_COPY).every(entry =>
         ['chip', 'kicker', 'action'].every(key => typeof entry[key] === 'string' && entry[key].length > 0)
       ),
+      fieldReadingKickers: {
+        offense: DESK_HEADER_COPY.fieldReadingOffense.kicker,
+        defense: DESK_HEADER_COPY.fieldReadingDefense.kicker,
+        specialOffense: DESK_HEADER_COPY.specialFieldReadingOffense.kicker,
+        specialDefense: DESK_HEADER_COPY.specialFieldReadingDefense.kicker,
+      },
     };
   });
 
@@ -47,6 +53,12 @@ test('copy tables cover their exact runtime key domains', async ({ page }) => {
     stage: { offense: 'Duke on offense', defense: 'UNC on offense' },
   });
   expect(contract.validDeskHeaders).toBe(true);
+  expect(contract.fieldReadingKickers).toEqual({
+    offense: 'Read the game graphic.',
+    defense: 'Read the game graphic.',
+    specialOffense: 'Read the special-teams graphic.',
+    specialDefense: 'Read the special-teams graphic.',
+  });
 });
 
 test('football runtime assets share one release version', async ({ page }) => {

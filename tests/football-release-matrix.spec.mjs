@@ -279,7 +279,7 @@ test('full football state matrix follows production transitions', async ({ page 
   await expect(page.locator('#decision-grid .decision-btn').first()).toBeFocused();
   await expect(page.locator('#s-down')).toHaveText('TRY');
   await expect(page.locator('#s-yd-label')).toHaveText('Try Spot');
-  await expect(page.locator('#s-yd')).toHaveText('2-yard line');
+  await expect(page.locator('#s-yd')).toHaveText('UNC 2');
   await assertPhaseAndShot(page, testInfo, 'conversion-decision', '05a-player-conversion-decision');
 
   await page.locator('#decision-grid .decision-btn[data-action="pat"]').click();
@@ -579,7 +579,8 @@ test('fourth-down and special-team states preserve decision and normal-call cont
   await answerChoice(page, await liveChoiceId(page, 'correct'));
   let game = await renderedState(page);
   expect(game.quarterPossessions).toBe(1);
-  await expect(page.locator('#feedback')).toContainText(/punt|touchback/i);
+  expect(game.specialResult).toMatchObject({ playType: 'punt' });
+  await expect(page.locator('#feedback')).toHaveText(game.specialResult.message);
   await assertPhaseAndShot(page, testInfo, 'feedback', '20a-offense-punt-feedback');
 
   await page.evaluate(() => window.__footballTest.seedDriveState({
@@ -624,7 +625,8 @@ test('fourth-down and special-team states preserve decision and normal-call cont
   await answerChoice(page, await liveChoiceId(page, 'correct'));
   game = await renderedState(page);
   expect(game.quarterPossessions).toBe(1);
-  await expect(page.locator('#feedback')).toContainText(/punt|touchback/i);
+  expect(game.specialResult).toMatchObject({ playType: 'punt' });
+  await expect(page.locator('#feedback')).toHaveText(game.specialResult.message);
   await assertPhaseAndShot(page, testInfo, 'feedback', '22a-defense-punt-feedback');
 
   await page.evaluate(() => window.__footballTest.seedDriveState({
