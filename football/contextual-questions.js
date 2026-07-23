@@ -111,13 +111,13 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
   const CALL_AFFINITIES = deepFreeze({
     'offense:shortRun': ['yards-to-go-read', 'line-to-gain-missing-part', 'line-to-gain-exact', 'line-to-gain-surplus', 'line-to-gain-fact-family', 'gain-vs-needed-comparison', 'team-yards-past-100'],
     'offense:shortPass': ['yards-to-go-read', 'line-to-gain-missing-part', 'line-to-gain-exact', 'line-to-gain-surplus', 'line-to-gain-fact-family', 'gain-vs-needed-comparison', 'next-down'],
-    'offense:longRun': ['gain-vs-needed-comparison', 'goal-distance-read', 'drive-distance-scaffolded', 'next-down', 'touchdown-base-points'],
-    'offense:mediumPass': ['gain-vs-needed-comparison', 'goal-distance-read', 'goal-distance-tens', 'goal-distance-ones', 'next-down', 'touchdown-base-points'],
-    'offense:longPass': ['gain-vs-needed-comparison', 'goal-distance-read', 'goal-distance-tens', 'goal-distance-ones', 'goal-distance-minus-whole-tens', 'drive-distance-plus-whole-tens', 'touchdown-base-points'],
+    'offense:longRun': ['gain-vs-needed-comparison', 'drive-distance-scaffolded', 'next-down', 'touchdown-base-points'],
+    'offense:mediumPass': ['gain-vs-needed-comparison', 'goal-distance-tens', 'goal-distance-ones', 'next-down', 'touchdown-base-points'],
+    'offense:longPass': ['gain-vs-needed-comparison', 'goal-distance-tens', 'goal-distance-ones', 'goal-distance-minus-whole-tens', 'drive-distance-plus-whole-tens', 'touchdown-base-points'],
     'defense:run': ['yards-to-go-read', 'line-to-gain-missing-part', 'line-to-gain-exact', 'line-to-gain-surplus', 'line-to-gain-fact-family', 'gain-vs-needed-comparison'],
     'defense:shortPass': ['yards-to-go-read', 'line-to-gain-missing-part', 'line-to-gain-exact', 'line-to-gain-surplus', 'gain-vs-needed-comparison', 'next-down'],
-    'defense:mediumPass': ['gain-vs-needed-comparison', 'goal-distance-read', 'next-down'],
-    'defense:deepPass': ['goal-distance-read', 'goal-distance-tens', 'goal-distance-ones', 'touchdown-base-points'],
+    'defense:mediumPass': ['gain-vs-needed-comparison', 'next-down'],
+    'defense:deepPass': ['goal-distance-tens', 'goal-distance-ones', 'touchdown-base-points'],
   });
 
   const DEFAULT_PROFILE = deepFreeze({
@@ -234,6 +234,19 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
       player: snap.context.match.player.displayName,
       opponent: snap.context.match.opponent.shortName,
     };
+  }
+
+  function teamRoleForPossession(possession) {
+    if (possession === 'offense') return 'player';
+    if (possession === 'defense') return 'opponent';
+    throw contractError('invalid-possession', `Unknown possession ${possession}.`);
+  }
+
+  function fieldPosition(source, absoluteYard, ownerRole = null) {
+    if (typeof FOOTBALL_FIELD_POSITION !== 'object' || typeof FOOTBALL_FIELD_POSITION.describe !== 'function') {
+      throw contractError('missing-field-position-authority', 'Football field-position copy authority is unavailable.');
+    }
+    return FOOTBALL_FIELD_POSITION.describe(absoluteYard, source.context.match, ownerRole);
   }
 
   function comparisonSymbol(left, right) {
@@ -616,6 +629,7 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
     choiceSpec,
     visualType,
     visualData,
+    choicePresentation = null,
     initialAriaLabel,
     guidedAriaLabel,
     workedAriaLabel,
@@ -631,6 +645,7 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
       choiceSpec,
       visualType,
       visualData,
+      choicePresentation,
       visualAriaLabels: {
         initial: initialAriaLabel,
         guided: guidedAriaLabel,
@@ -664,7 +679,7 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
           operationType: 'read',
           operandIds: ['yardsToGo'],
           answer,
-          prompt: `The scoreboard says ${ordinal(snap.context.down)} & ${answer}. How many yards are needed for a first down?`,
+          prompt: 'Read the down-and-distance scoreboard. How many yards are needed for a first down?',
           hint: 'Read the number after the & sign on the scoreboard.',
           explanation: `${ordinal(snap.context.down)} & ${answer} means ${yards(answer)} ${isOrAre(answer)} needed.`,
           choiceSpec: numericChoiceSpec(1, 10),
@@ -805,24 +820,6 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
       },
     },
     {
-      meta: makeMeta({ familyId: 'goal-distance-read', skill: 'place-value', concept: 'field-distance', purpose: 'completedPlaceValue', tier: 'two-digit-structure', weight: 2.2, operationType: 'distance', answerExposure: 'source-visible', evidenceClass: 'literacy', curriculumSource: 'workbook', introducedOnPage: 126 }),
-      derive(snap, profile) {
-        const answer = goalDistance(snap);
-        if (!inDisplayBand(profile, answer)) return { decline: decline('outside-display-band', 'Goal distance must fit the completed display band.') };
-        return eligible(makeSemantic({
-          bindings: goalBindings(snap), operationType: 'distance', operandIds: ['ballYardLine', 'goalLine'], answer,
-          prompt: 'Look at the number between BALL and GOAL. How many yards is the ball from the end zone?',
-          hint: 'Read the number between BALL and GOAL from left to right.',
-          explanation: `The ball is ${answer} yard${answer === 1 ? '' : 's'} from the goal line.`,
-          choiceSpec: numericChoiceSpec(0, 100), visualType: 'goal-distance',
-          visualData: { ballYardLine: snap.context.yardLine, goalLine: goalLine(snap), distance: answer },
-          initialAriaLabel: `BALL, ${answer} yard${answer === 1 ? '' : 's'}, GOAL.`,
-          guidedAriaLabel: `Read the number ${answer} between BALL and GOAL.`,
-          workedAriaLabel: `The ball is ${answer} yard${answer === 1 ? '' : 's'} from the goal line.`,
-        }));
-      },
-    },
-    {
       meta: makeMeta({ familyId: 'goal-distance-tens', skill: 'place-value', concept: 'place-value', purpose: 'completedPlaceValue', tier: 'two-digit-structure', weight: 2.4, operationType: 'tensOfDistance', answerExposure: 'modeled-with-result-hidden', evidenceClass: 'literacy', curriculumSource: 'workbook', introducedOnPage: 124 }),
       derive(snap, profile) {
         const distance = goalDistance(snap);
@@ -950,6 +947,10 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
         const player = snap.context.scores.player;
         const opponent = snap.context.scores.opponent;
         const answer = Math.abs(player - opponent);
+        const highRole = player >= opponent ? 'player' : 'opponent';
+        const lowRole = highRole === 'player' ? 'opponent' : 'player';
+        const highScore = Math.max(player, opponent);
+        const lowScore = Math.min(player, opponent);
         if (player + opponent === 0 || !inComputationBand(profile, player, opponent, answer)) return { decline: decline('score-relation-outside-band', 'Both committed scores and the entire difference relation must fit within 10.') };
         return eligible(makeSemantic({
           bindings: [contextBinding(snap, 'playerScore', '/context/scores/player'), contextBinding(snap, 'opponentScore', '/context/scores/opponent')],
@@ -958,10 +959,14 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
           hint: `Pair one ${labels.player} point with one ${labels.opponent} point. Count the points without partners.`,
           explanation: `${Math.max(player, opponent)} - ${Math.min(player, opponent)} = ${answer}, so the teams are ${answer} point${answer === 1 ? '' : 's'} apart.`,
           choiceSpec: numericChoiceSpec(0, 10), visualType: 'score-difference',
-          visualData: { playerLabel: labels.player, opponentLabel: labels.opponent, playerScore: player, opponentScore: opponent, difference: null },
-          initialAriaLabel: `${player} ${labels.player} counters and ${opponent} ${labels.opponent} counters are lined up; the difference is hidden.`,
-          guidedAriaLabel: `Pair the ${labels.player} and ${labels.opponent} groups and count the unpaired counters without announcing the result yet.`,
-          workedAriaLabel: `The teams are ${answer} point${answer === 1 ? '' : 's'} apart.`,
+          visualData: {
+            highLabel: labels[highRole], highRole, highScore,
+            lowLabel: labels[lowRole], lowRole, lowScore,
+            difference: null,
+          },
+          initialAriaLabel: `${labels[highRole]} ${highScore} minus ${labels[lowRole]} ${lowScore}; the difference is hidden.`,
+          guidedAriaLabel: `${highScore} minus ${lowScore}; count the unpaired points without announcing the difference yet.`,
+          workedAriaLabel: `${highScore} minus ${lowScore} equals ${answer}; the teams are ${answer} point${answer === 1 ? '' : 's'} apart.`,
         }));
       },
     },
@@ -983,7 +988,7 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
         const answer = ordinal(snap.context.quarter);
         return eligible(makeSemantic({
           bindings: [contextBinding(snap, 'quarter', '/context/quarter')], operationType: 'ordinal', operandIds: ['quarter'], answer,
-          prompt: `The scoreboard shows Q${snap.context.quarter}. Which quarter is the game in?`,
+          prompt: 'Read the quarter on the scoreboard. Which quarter is the game in?',
           hint: 'Match the Q number to an order number such as 1st, 2nd, 3rd, or 4th.',
           explanation: `Q${snap.context.quarter} means the ${answer} quarter.`,
           choiceSpec: fixedChoiceSpec(['1st', '2nd', '3rd', '4th']), visualType: 'scoreboard-read',
@@ -1161,20 +1166,24 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
       derive(play) {
         const c = play.context;
         const answer = c.tryYardLine;
+        const ownerRole = teamRoleForPossession(c.possession);
+        const goal = fieldPosition(play, c.direction === 1 ? 100 : 0);
+        const tryPosition = fieldPosition(play, answer, ownerRole);
         return eligible(makeSemantic({
           bindings: [
             contextBinding(play, 'direction', '/context/direction'),
             contextBinding(play, 'tryYardLine', '/context/tryYardLine'),
           ],
           operationType: 'tryMarkerForDirection', operandIds: ['direction'], answer,
-          prompt: `The offense is moving ${c.direction === 1 ? 'toward the 100 end' : 'toward the 0 end'}. At which field marker is this conversion tried?`,
-          hint: `A conversion is tried two yards from the ${c.direction === 1 ? '100' : '0'} end.`,
-          explanation: `Two yards from the ${c.direction === 1 ? '100' : '0'} end is field marker ${answer}.`,
+          prompt: `The graphic shows the ${goal.namedGoalLine} and a try spot two yards back. Which field position is the try spot?`,
+          hint: `Start at the ${goal.namedGoalLine}, move two yards back, and choose that field position.`,
+          explanation: `Two yards back from the ${goal.namedGoalLine} is ${tryPosition.ownerAware}.`,
           choiceSpec: numericChoiceSpec(0, 100), visualType: 'conversion-marker',
-          visualData: { direction: c.direction, goalLine: c.direction === 1 ? 100 : 0 },
-          initialAriaLabel: `Conversion direction ${c.direction === 1 ? 'toward 100' : 'toward 0'}; try marker hidden.`,
-          guidedAriaLabel: `Move two yards back from the ${c.direction === 1 ? '100' : '0'} end; the marker remains hidden.`,
-          workedAriaLabel: `The conversion marker is ${answer}.`,
+          visualData: { namedGoalLine: goal.namedGoalLine },
+          choicePresentation: { type: 'field-position', match: c.match, ownerRole },
+          initialAriaLabel: `${goal.namedGoalLine}; the conversion try spot two yards back is hidden.`,
+          guidedAriaLabel: `Move two yards back from the ${goal.namedGoalLine}; the field position remains hidden.`,
+          workedAriaLabel: `The conversion begins at ${tryPosition.ownerAware}.`,
         }));
       },
     },
@@ -1188,7 +1197,7 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
             contextBinding(play, 'attemptDistance', '/context/attemptDistance'),
           ],
           operationType: 'read', operandIds: ['attemptDistance'], answer,
-          prompt: `The kick card shows a ${answer}-yard field goal. How long is this field-goal try?`,
+          prompt: 'The kick card labels the field-goal distance. How long is this field-goal try?',
           hint: 'Read the field-goal distance on the kick card.',
           explanation: `The kick card says ${answer} yards, so this is a ${answer}-yard field-goal try.`,
           choiceSpec: numericChoiceSpec(18, 57), visualType: 'field-goal-distance',
@@ -1231,6 +1240,23 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
       derive(play) {
         const p = play.proposal;
         const answer = p.appliedTravelYards;
+        const ownerRole = teamRoleForPossession(play.context.possession);
+        const start = fieldPosition(play, p.startYardLine, ownerRole);
+        const possibleTouchback = p.resultKind === 'puntTouchback';
+        const destination = fieldPosition(
+          play,
+          possibleTouchback ? p.rawLandingYardLine : p.landingYardLine,
+        );
+        const restartOwnerRole = possibleTouchback
+          ? teamRoleForPossession(p.nextPossession)
+          : null;
+        const restart = possibleTouchback
+          ? fieldPosition(play, p.nextStartYardLine, restartOwnerRole)
+          : null;
+        const restartTeam = possibleTouchback
+          ? play.context.match[restartOwnerRole].displayName
+          : null;
+        const travel = yards(answer);
         return eligible(makeSemantic({
           bindings: [
             contextBinding(play, 'direction', '/context/direction'),
@@ -1239,14 +1265,31 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
             contextBinding(play, 'appliedTravelYards', '/proposal/appliedTravelYards'),
           ],
           operationType: 'read', operandIds: ['appliedTravelYards'], answer,
-          prompt: `The punt preview shows ${answer} ${answer === 1 ? 'yard' : 'yards'} of travel from field marker ${p.startYardLine}. How far does the ball travel?`,
+          prompt: 'The punt preview labels the possible travel distance. How far could the ball travel?',
           hint: 'Read the travel distance on the punt preview.',
           explanation: `The punt preview says ${answer} ${answer === 1 ? 'yard' : 'yards'}, so the ball travels ${answer} ${answer === 1 ? 'yard' : 'yards'}.`,
           choiceSpec: numericChoiceSpec(0, 50), visualType: 'punt-travel',
-          visualData: { startYardLine: p.startYardLine, rawLandingYardLine: p.rawLandingYardLine, direction: p.direction, travelYards: answer },
-          initialAriaLabel: `Punt preview from marker ${p.startYardLine} shows ${answer} ${answer === 1 ? 'yard' : 'yards'} of travel.`,
-          guidedAriaLabel: `Read ${answer} ${answer === 1 ? 'yard' : 'yards'} on the punt preview.`,
-          workedAriaLabel: `The punt travels ${answer} ${answer === 1 ? 'yard' : 'yards'}.`,
+          visualData: possibleTouchback ? {
+            start: start.compact,
+            possibleGoalLine: destination.namedGoalLine,
+            possibleEndZone: destination.namedEndZone,
+            possibleTouchback: true,
+            restart: restart.compact,
+            travelYards: answer,
+          } : {
+            start: start.compact,
+            possibleLanding: destination.compact,
+            travelYards: answer,
+          },
+          initialAriaLabel: possibleTouchback
+            ? `Punt preview from ${start.ownerAware} toward the ${destination.namedGoalLine} and ${destination.namedEndZone}; travel ${travel}. Possible touchback. ${restartTeam} restarts at ${restart.ownerAware}.`
+            : `Punt preview from ${start.ownerAware} toward a possible landing at ${destination.full}; travel ${travel}.`,
+          guidedAriaLabel: possibleTouchback
+            ? `Read ${travel} on the punt preview toward the ${destination.namedEndZone}. A touchback is possible, with ${restartTeam} restarting at ${restart.ownerAware}.`
+            : `Read ${travel} on the punt preview.`,
+          workedAriaLabel: possibleTouchback
+            ? `The punt travels ${travel} toward the ${destination.namedEndZone}. A touchback is possible, with ${restartTeam} restarting at ${restart.ownerAware}.`
+            : `The punt travels ${travel}.`,
         }));
       },
     },
@@ -1261,6 +1304,10 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
           return { decline: decline('punt-capped-placement', 'A receiver-favorable cap is a receiving placement, not a direct kick landing.') };
         }
         const answer = p.landingYardLine;
+        const ownerRole = teamRoleForPossession(p.nextPossession);
+        const startOwnerRole = teamRoleForPossession(play.context.possession);
+        const start = fieldPosition(play, p.startYardLine, startOwnerRole);
+        const landing = fieldPosition(play, answer, ownerRole);
         return eligible(makeSemantic({
           bindings: [
             contextBinding(play, 'puntStartYardLine', '/proposal/startYardLine'),
@@ -1269,14 +1316,15 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
             contextBinding(play, 'landingYardLine', '/proposal/landingYardLine'),
           ],
           operationType: 'read', operandIds: ['landingYardLine'], answer,
-          prompt: `The punt preview points ${p.direction === 1 ? 'toward 100' : 'toward 0'} and marks field marker ${answer}. At which marker does the punt land?`,
+          prompt: 'The punt preview labels a possible landing position. Where could the punt land?',
           hint: 'Read the marked landing spot on the punt preview.',
-          explanation: `The punt preview marks field marker ${answer}, so the punt lands there.`,
+          explanation: `The punt preview marks ${landing.ownerAware}, so that is the possible landing position.`,
           choiceSpec: numericChoiceSpec(0, 100), visualType: 'punt-landing',
-          visualData: { startYardLine: p.startYardLine, travelYards: p.appliedTravelYards, direction: p.direction, landingYardLine: answer },
-          initialAriaLabel: `Punt preview points ${p.direction === 1 ? 'toward 100' : 'toward 0'} and marks landing spot ${answer}.`,
-          guidedAriaLabel: `Read landing marker ${answer} on the punt preview.`,
-          workedAriaLabel: `The punt lands at field marker ${answer}.`,
+          visualData: { start: start.compact, travelYards: p.appliedTravelYards, possibleLanding: landing.compact },
+          choicePresentation: { type: 'field-position', match: play.context.match, ownerRole },
+          initialAriaLabel: `Punt preview from ${start.ownerAware} marks a possible landing at ${landing.ownerAware}.`,
+          guidedAriaLabel: `Read the labeled possible landing position, ${landing.ownerAware}.`,
+          workedAriaLabel: `The preview landing position is ${landing.ownerAware}.`,
         }));
       },
     },
@@ -1317,11 +1365,6 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
       title: 'Compare Play and Need',
       goal: 'Compare the play gain with the yards needed.',
       footballMeaning: 'The comparison shows whether the play falls short, reaches, or passes the marker.',
-    },
-    'goal-distance-read': {
-      title: 'Read the Goal Distance',
-      goal: 'Read the labeled distance between the ball and the goal.',
-      footballMeaning: 'That distance shows how far the offense is from the end zone.',
     },
     'goal-distance-tens': {
       title: 'Find the Tens Digit',
@@ -1535,6 +1578,16 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
     return String(value);
   }
 
+  function choicePresentation(semantic, value) {
+    const presentation = semantic.choicePresentation;
+    if (!presentation) return { label: String(value), ariaLabel: choiceAriaLabel(value) };
+    if (presentation.type !== 'field-position') {
+      throw contractError('invalid-choice-presentation', `Unknown choice presentation ${presentation.type}.`);
+    }
+    const position = FOOTBALL_FIELD_POSITION.describe(value, presentation.match, presentation.ownerRole);
+    return { label: position.compact, ariaLabel: position.ownerAware };
+  }
+
   function numericDistractors(answer, spec) {
     const min = spec.min;
     const max = spec.max;
@@ -1659,12 +1712,19 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
     const answerId = `${familyId}--answer`;
     const values = choiceValues(semantic.answer, semantic.choiceSpec);
     const presentationRng = typeof options.presentationRng === 'function' ? options.presentationRng : () => 0.5;
-    const choices = shuffled(values, presentationRng).map((value) => ({
-      id: `${familyId}--choice-${stableValueToken(value)}`,
-      value,
-      label: String(value),
-      ariaLabel: choiceAriaLabel(value),
-    }));
+    const choices = shuffled(values, presentationRng).map((value) => {
+      const presentation = choicePresentation(semantic, value);
+      return {
+        id: `${familyId}--choice-${stableValueToken(value)}`,
+        value,
+        label: presentation.label,
+        ariaLabel: presentation.ariaLabel,
+      };
+    });
+    if (new Set(choices.map((choice) => choice.label)).size !== choices.length
+      || new Set(choices.map((choice) => choice.ariaLabel)).size !== choices.length) {
+      throw contractError('invalid-choice-presentation', `Family ${familyId} must present unique choice labels and accessible names.`);
+    }
     const correctChoice = choices.find((choice) => sameValue(choice.value, semantic.answer));
     if (!correctChoice || choices.filter((choice) => sameValue(choice.value, semantic.answer)).length !== 1) {
       throw contractError('invalid-choices', `Family ${familyId} did not produce exactly one correct choice.`);
@@ -1687,6 +1747,7 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
       answer,
       result: answer,
       choices,
+      choicePresentation: semantic.choicePresentation?.type || null,
       correctChoiceId: correctChoice.id,
       answerExposure: meta.answerExposure,
       prompt,

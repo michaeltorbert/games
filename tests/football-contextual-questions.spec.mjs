@@ -5,15 +5,19 @@ import vm from 'node:vm';
 
 const opponentSource = await readFile(new URL('../football/opponent.js', import.meta.url), 'utf8');
 const domainSource = await readFile(new URL('../football/football-domain.js', import.meta.url), 'utf8');
+const copySource = await readFile(new URL('../football/copy.js', import.meta.url), 'utf8');
 const questionsSource = await readFile(new URL('../football/contextual-questions.js', import.meta.url), 'utf8');
 
 function loadModules() {
   const context = vm.createContext({});
   vm.runInContext(opponentSource, context, { filename: 'opponent.js' });
   vm.runInContext(domainSource, context, { filename: 'football-domain.js' });
+  vm.runInContext(copySource, context, { filename: 'copy.js' });
   vm.runInContext(questionsSource, context, { filename: 'contextual-questions.js' });
   return {
     domain: context.FOOTBALL_DOMAIN,
+    fieldPosition: context.FOOTBALL_FIELD_POSITION,
+    opponent: vm.runInContext('FOOTBALL_OPPONENT', context),
     questions: context.FOOTBALL_CONTEXTUAL_QUESTIONS,
   };
 }
@@ -342,12 +346,128 @@ test('exports one deeply frozen plain-global API with a closed contract', () => 
   assert.deepEqual(plain(questions.CURRICULUM_SOURCES), ['workbook', 'football-only']);
 });
 
+test('field-position copy strictly normalizes canonical coordinates for every public rival', () => {
+  const { fieldPosition, opponent } = loadModules();
+  const rivals = opponent.listRivals();
+  assert.equal(Object.isFrozen(fieldPosition), true);
+  assert.deepEqual(plain(rivals.map(rival => rival.endZoneName)), ['CAROLINA', 'NC STATE', 'WAKE']);
+  for (const rival of rivals) {
+    const match = opponent.createMatch(rival.id);
+    const boundaries = [
+      {
+        absoluteYard: 0, territoryRole: 'player', yardNumber: 0, ownerRole: 'player',
+        compact: 'DUKE GOAL LINE', full: "Duke's goal line",
+        ownerAware: 'DUKE goal line', ball: 'Duke ball at DUKE goal line',
+        namedGoalLine: 'DUKE goal line', namedEndZone: 'DUKE end zone',
+      },
+      {
+        absoluteYard: 1, territoryRole: 'player', yardNumber: 1, ownerRole: 'player',
+        compact: 'DUKE 1', full: "Duke's 1-yard line",
+        ownerAware: "Duke's own 1-yard line", ball: "Duke ball at Duke's own 1-yard line",
+        namedGoalLine: null, namedEndZone: null,
+      },
+      {
+        absoluteYard: 49, territoryRole: 'player', yardNumber: 49, ownerRole: 'player',
+        compact: 'DUKE 49', full: "Duke's 49-yard line",
+        ownerAware: "Duke's own 49-yard line", ball: "Duke ball at Duke's own 49-yard line",
+        namedGoalLine: null, namedEndZone: null,
+      },
+      {
+        absoluteYard: 50, territoryRole: null, yardNumber: 50, ownerRole: 'player',
+        compact: '50', full: 'the 50-yard line', ownerAware: 'the 50-yard line',
+        ball: 'Duke ball at the 50-yard line', namedGoalLine: null, namedEndZone: null,
+      },
+      {
+        absoluteYard: 51, territoryRole: 'opponent', yardNumber: 49, ownerRole: 'opponent',
+        compact: `${rival.shortName} 49`, full: `${rival.displayName}'s 49-yard line`,
+        ownerAware: `${rival.shortName}'s own 49-yard line`,
+        ball: `${rival.displayName} ball at ${rival.shortName}'s own 49-yard line`,
+        namedGoalLine: null, namedEndZone: null,
+      },
+      {
+        absoluteYard: 99, territoryRole: 'opponent', yardNumber: 1, ownerRole: 'opponent',
+        compact: `${rival.shortName} 1`, full: `${rival.displayName}'s 1-yard line`,
+        ownerAware: `${rival.shortName}'s own 1-yard line`,
+        ball: `${rival.displayName} ball at ${rival.shortName}'s own 1-yard line`,
+        namedGoalLine: null, namedEndZone: null,
+      },
+      {
+        absoluteYard: 100, territoryRole: 'opponent', yardNumber: 0, ownerRole: 'opponent',
+        compact: `${rival.shortName} GOAL LINE`, full: `${rival.displayName}'s goal line`,
+        ownerAware: `${rival.endZoneName} goal line`,
+        ball: `${rival.displayName} ball at ${rival.endZoneName} goal line`,
+        namedGoalLine: `${rival.endZoneName} goal line`, namedEndZone: `${rival.endZoneName} end zone`,
+      },
+    ];
+    for (const expected of boundaries) {
+      const position = fieldPosition.describe(expected.absoluteYard, match, expected.ownerRole);
+      assert.deepEqual(plain(position), {
+        absoluteYard: expected.absoluteYard,
+        territoryRole: expected.territoryRole,
+        yardNumber: expected.yardNumber,
+        isMidfield: expected.absoluteYard === 50,
+        isGoalLine: expected.absoluteYard === 0 || expected.absoluteYard === 100,
+        compact: expected.compact,
+        full: expected.full,
+        midfield: 'the 50-yard line',
+        namedGoalLine: expected.namedGoalLine,
+        namedEndZone: expected.namedEndZone,
+        ownerRole: expected.ownerRole,
+        ownerAware: expected.ownerAware,
+        ball: expected.ball,
+      });
+      assert.equal(deepFrozen(position), true);
+      const { ownerRole, ownerAware, ball, ...expectedFacts } = plain(position);
+      assert.deepEqual(plain(fieldPosition.facts(expected.absoluteYard, match)), expectedFacts);
+      assert.equal(deepFrozen(fieldPosition.facts(expected.absoluteYard, match)), true);
+    }
+  }
+
+  const match = opponent.createMatch('unc');
+  assert.throws(() => fieldPosition.describe(-1, match), error => error?.name === 'RangeError');
+  assert.throws(() => fieldPosition.describe(101, match), error => error?.name === 'RangeError');
+  assert.throws(() => fieldPosition.describe(43.5, match), error => error?.name === 'TypeError');
+  assert.throws(() => fieldPosition.describe('43', match), error => error?.name === 'TypeError');
+  assert.throws(() => fieldPosition.describe(43, { ...match, extra: true }), error => error?.name === 'TypeError');
+  assert.throws(() => fieldPosition.describe(43, match, 'offense'), error => error?.name === 'TypeError');
+});
+
+test('committed score difference orders player-high, opponent-high, and nonzero ties as high minus low', () => {
+  const { domain, questions } = loadModules();
+  const cases = [
+    {
+      scores: { player: 7, opponent: 3 }, answer: 4,
+      data: { highLabel: 'Duke', highRole: 'player', highScore: 7, lowLabel: 'UNC', lowRole: 'opponent', lowScore: 3, difference: null },
+      aria: 'Duke 7 minus UNC 3; the difference is hidden.',
+    },
+    {
+      scores: { player: 3, opponent: 7 }, answer: 4,
+      data: { highLabel: 'UNC', highRole: 'opponent', highScore: 7, lowLabel: 'Duke', lowRole: 'player', lowScore: 3, difference: null },
+      aria: 'UNC 7 minus Duke 3; the difference is hidden.',
+    },
+    {
+      scores: { player: 4, opponent: 4 }, answer: 0,
+      data: { highLabel: 'Duke', highRole: 'player', highScore: 4, lowLabel: 'UNC', lowRole: 'opponent', lowScore: 4, difference: null },
+      aria: 'Duke 4 minus UNC 4; the difference is hidden.',
+    },
+  ];
+  for (const scenario of cases) {
+    const snap = makeSnap(domain, { scores: scenario.scores }, 4);
+    const question = questions.build(snap, 'committed-score-difference');
+    assert.equal(question.answer.value, scenario.answer);
+    assert.deepEqual(plain(question.visuals.initial.data), scenario.data);
+    assert.equal(question.visuals.initial.ariaLabel, scenario.aria);
+    assert.equal(question.visuals.initial.revealsAnswer, false);
+    assert.equal(question.visuals.initial.result, null);
+    verifyGrounding(questions, snap, question);
+  }
+});
+
 test('every family authors the exact evidence class and independent families hide structural results', () => {
   const { domain, questions } = loadModules();
   const expected = {
     literacy: [
       'yards-to-go-read',
-      'goal-distance-read',
       'goal-distance-tens',
       'goal-distance-ones',
       'committed-score-tens',
@@ -384,7 +504,7 @@ test('every family authors the exact evidence class and independent families hid
       [...expected[evidenceClass]].sort(),
     );
   }
-  assert.equal(registry.length, 27);
+  assert.equal(registry.length, 26);
   assert.equal(Object.isFrozen(registry[0]), true);
 
   const scenarios = [
@@ -495,6 +615,27 @@ test('every inspected candidate builds, dereferences, and recomputes across both
   assert.ok(built > 1000, `expected broad property coverage, built ${built}`);
 });
 
+test('yards-to-go reading keeps the source value out of the prompt and in the accessible graphic', () => {
+  const { domain, questions } = loadModules();
+  const snap = makeSnap(domain, {
+    down: 3,
+    yardLine: 30,
+    firstDownLine: 37,
+    yardsToGo: 7,
+  }, 3);
+  const question = questions.build(snap, 'yards-to-go-read');
+
+  assert.equal(question.answerExposure, 'source-visible');
+  assert.equal(
+    question.prompt.text,
+    'Read the down-and-distance scoreboard. How many yards are needed for a first down?',
+  );
+  assert.doesNotMatch(question.prompt.text, /\b7\b/);
+  assert.match(question.visuals.initial.ariaLabel, /\b7 yards?\b/i);
+  assert.match(question.hint.text, /number after the & sign/i);
+  assert.match(question.workedExplanation.text, /3rd & 7 means 7 yards are needed/i);
+});
+
 test('every exported family builds one exact, grounded, recursively frozen schema-3 worked review', () => {
   const { domain, questions } = loadModules();
   const scenarios = [
@@ -531,7 +672,6 @@ test('every exported family builds one exact, grounded, recursively frozen schem
     'line-to-gain-surplus': ['line-to-gain', 'surplus', ['yardsToGo', 'proposedGain']],
     'line-to-gain-fact-family': ['line-to-gain', 'factFamilyMissingPart', ['yardsToGo', 'proposedGain']],
     'gain-vs-needed-comparison': ['line-to-gain-comparison', 'compare', ['proposedGain', 'yardsToGo']],
-    'goal-distance-read': ['field-distance', 'distance', ['ballYardLine', 'goalLine']],
     'goal-distance-tens': ['place-value', 'tensOfDistance', ['ballYardLine', 'goalLine']],
     'goal-distance-ones': ['place-value', 'onesOfDistance', ['ballYardLine', 'goalLine']],
     'team-yards-past-100': ['team-total-yards', 'add', ['teamTotalYards', 'proposedGain']],
@@ -716,6 +856,35 @@ test('special-team registries are closed, buildable, neutral, and grounded in ea
   assert.equal(questions.build(reversePunt, 'punt-travel-distance').answer.value, 40);
   assert.equal(questions.build(reversePunt, 'punt-landing-spot').answer.value, 30);
 
+  for (const [play, familyId] of [
+    [pat, 'conversion-try-marker'],
+    [twoPoint, 'conversion-try-marker'],
+    [forwardPunt, 'punt-landing-spot'],
+    [reversePunt, 'punt-landing-spot'],
+  ]) {
+    const question = questions.build(play, familyId, { presentationRng: () => 0.37 });
+    assert.equal(question.choicePresentation, 'field-position');
+    assert.ok(question.choices.every(choice => Number.isInteger(choice.value)));
+    assert.equal(new Set(question.choices.map(choice => choice.label)).size, question.choices.length);
+    assert.equal(new Set(question.choices.map(choice => choice.ariaLabel)).size, question.choices.length);
+    assert.ok(question.choices.every(choice => /(?:DUKE|UNC|50|GOAL LINE)/.test(choice.label)));
+    assert.ok(question.choices.every(choice => /yard line|goal line/i.test(choice.ariaLabel)));
+    assert.equal(question.choices.find(choice => choice.id === question.correctChoiceId).value, question.answer.value);
+  }
+
+  for (const [play, familyId] of [
+    [forwardFieldGoal, 'field-goal-attempt-distance'],
+    [forwardPunt, 'punt-travel-distance'],
+  ]) {
+    const question = questions.build(play, familyId);
+    assert.doesNotMatch(question.prompt.text, new RegExp(`\\b${question.answer.value}\\b`));
+    assert.match(question.visuals.initial.ariaLabel, new RegExp(`\\b${question.answer.value}\\b`));
+  }
+  const landingQuestion = questions.build(forwardPunt, 'punt-landing-spot');
+  const landingChoice = landingQuestion.choices.find(choice => choice.id === landingQuestion.correctChoiceId);
+  assert.doesNotMatch(landingQuestion.prompt.text, /\b70\b/);
+  assert.match(landingQuestion.visuals.initial.ariaLabel, new RegExp(landingChoice.ariaLabel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+
   assert.throws(
     () => questions.build(pat, 'yards-to-go-read'),
     (error) => error.code === 'family-play-type-mismatch',
@@ -727,12 +896,27 @@ test('special-team registries are closed, buildable, neutral, and grounded in ea
 });
 
 test('punt touchbacks preserve direction polarity and retain a truthful travel family', () => {
-  const { domain, questions } = loadModules();
+  const { domain, opponent, questions } = loadModules();
+  const match = opponent.createMatch('unc');
   const cases = [
-    makeSpecialPlay(domain, 'punt', { possession: 'offense', yardLine: 70, travelYards: 35 }),
-    makeSpecialPlay(domain, 'punt', { possession: 'defense', yardLine: 30, travelYards: 35 }),
+    {
+      play: makeSpecialPlay(domain, 'punt', { possession: 'offense', yardLine: 70, travelYards: 35, match }),
+      data: {
+        start: 'UNC 30', possibleGoalLine: 'CAROLINA goal line', possibleEndZone: 'CAROLINA end zone',
+        possibleTouchback: true, restart: 'UNC 20', travelYards: 30,
+      },
+      aria: "Punt preview from UNC's 30-yard line toward the CAROLINA goal line and CAROLINA end zone; travel 30 yards. Possible touchback. North Carolina restarts at UNC's own 20-yard line.",
+    },
+    {
+      play: makeSpecialPlay(domain, 'punt', { possession: 'defense', yardLine: 30, travelYards: 35, match }),
+      data: {
+        start: 'DUKE 30', possibleGoalLine: 'DUKE goal line', possibleEndZone: 'DUKE end zone',
+        possibleTouchback: true, restart: 'DUKE 20', travelYards: 30,
+      },
+      aria: "Punt preview from Duke's 30-yard line toward the DUKE goal line and DUKE end zone; travel 30 yards. Possible touchback. Duke restarts at Duke's own 20-yard line.",
+    },
   ];
-  for (const play of cases) {
+  for (const { play, data, aria } of cases) {
     assert.equal(play.proposal.resultKind, 'puntTouchback');
     assert.equal(play.proposal.appliedTravelYards, 30);
     assert.equal(play.proposal.landingYardLine, play.context.possession === 'offense' ? 80 : 20);
@@ -745,6 +929,13 @@ test('punt touchbacks preserve direction polarity and retain a truthful travel f
     const question = questions.build(play, 'punt-travel-distance');
     verifyGrounding(questions, play, question);
     assert.equal(question.answer.value, 30);
+    assert.doesNotMatch(question.prompt.text, /\b30\b/);
+    assert.deepEqual(plain(question.visuals.initial.data), data);
+    assert.equal(question.visuals.initial.ariaLabel, aria);
+    for (const stage of ['guided', 'worked']) {
+      assert.match(question.visuals[stage].ariaLabel, /touchback/i);
+      assert.match(question.visuals[stage].ariaLabel, /restarting at .*own 20-yard line/i);
+    }
   }
 });
 
@@ -882,7 +1073,7 @@ test('goal distance, drive movement, place value, whole tens, committed scores, 
     scores: { player: 7, opponent: 0 },
   }, 10);
   const required = [
-    'goal-distance-read', 'goal-distance-tens', 'goal-distance-ones',
+    'goal-distance-tens', 'goal-distance-ones',
     'drive-distance-scaffolded', 'committed-score-total', 'committed-score-difference',
     'quarter-read', 'half-read', 'goal-distance-minus-whole-tens',
     'drive-distance-plus-whole-tens',
@@ -1074,6 +1265,21 @@ test('tautological ordinal families are retired while quarter and half families 
       familyId,
     );
   }
+});
+
+test('quarter reading keeps the Q3 source numeral in its visual and ARIA, not its prompt', () => {
+  const { domain, questions } = loadModules();
+  const snap = makeSnap(domain, { quarter: 3, down: 2, yardsToGo: 8, firstDownLine: 38 }, 3);
+  const question = questions.build(snap, 'quarter-read');
+
+  assert.equal(question.prompt.text, 'Read the quarter on the scoreboard. Which quarter is the game in?');
+  assert.doesNotMatch(question.prompt.text, /Q3|\b3\b/);
+  assert.equal(question.answer.value, '3rd');
+  assert.deepEqual(plain(question.bindings), [{
+    id: 'quarter', source: { kind: 'context', path: '/context/quarter' }, value: 3,
+  }]);
+  assert.deepEqual(plain(question.visuals.initial.data), { label: 'Q3' });
+  assert.equal(question.visuals.initial.ariaLabel, 'Scoreboard quarter display Q3.');
 });
 
 test('half and teen-score families use only the frozen quarter and real committed scoreboard values', () => {
@@ -1395,24 +1601,10 @@ test('goal-distance place-value questions use plain football copy and hide the r
     assert.equal(ones.visuals.guided.result, null);
   }
 
-  const readQuestion = questions.build(snap, 'goal-distance-read');
-  const readCopy = [
-    readQuestion.prompt.text,
-    readQuestion.hint.text,
-    ...Object.values(readQuestion.visuals).map(visual => visual.ariaLabel),
-  ].join(' ');
-  assert.doesNotMatch(readCopy, /goal-distance (model|strip)/i);
-
-  const oneYardSnap = makeSnap(domain, {
-    yardLine: 99,
-    firstDownLine: 100,
-    yardsToGo: 1,
-    driveStart: 90,
-  }, 1);
-  const oneYardRead = questions.build(oneYardSnap, 'goal-distance-read');
-  assert.match(oneYardRead.visuals.initial.ariaLabel, /1 yard,/i);
-  assert.doesNotMatch(oneYardRead.visuals.initial.ariaLabel, /1 yards/i);
-  assert.doesNotMatch(oneYardRead.visuals.guided.ariaLabel, /both digits/i);
+  assert.throws(
+    () => questions.build(snap, 'goal-distance-read'),
+    error => error?.code === 'unknown-family',
+  );
 
   const maximumLegalDistance = makeSnap(domain, {
     yardLine: 1,
@@ -1527,7 +1719,6 @@ test('child-facing contextual copy avoids implementation jargon', () => {
   const familyIds = [
     'yards-to-go-read',
     'gain-vs-needed-comparison',
-    'goal-distance-read',
     'goal-distance-tens',
     'goal-distance-ones',
     'drive-distance-scaffolded',

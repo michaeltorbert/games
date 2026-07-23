@@ -894,6 +894,33 @@ body::after {
     font-size: 17px;
   }
 
+  #math-overlay[data-punt-touchback] {
+    width: min(88%, 380px);
+    min-height: 0;
+    padding: 6px 8px;
+  }
+
+  #math-overlay[data-punt-touchback] .math-context-row {
+    width: 100%;
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr);
+    gap: 5px 8px;
+  }
+
+  #math-overlay[data-punt-touchback] .math-context-token {
+    min-width: 0;
+    padding: 5px 8px 4px;
+    border-radius: 10px;
+    font-size: 22px;
+  }
+
+  #math-overlay[data-punt-touchback] .math-context-link {
+    align-self: center;
+    font-size: 15px;
+    line-height: 1.05;
+    letter-spacing: 0.02em;
+  }
+
   .math-line {
     width: min(68vw, 300px);
     height: 42px;
@@ -2168,6 +2195,23 @@ body::after {
   line-height: 1.14;
 }
 
+.ov-end-result {
+  max-width: 74ch;
+  margin-top: 12px;
+  padding: 8px 12px;
+  border-left: 5px solid var(--gold);
+  background: rgba(255, 255, 255, 0.08);
+  color: #eef4ff;
+  font-family: 'Barlow Condensed', 'Nunito', sans-serif;
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.12;
+}
+
+.ov-end-result[hidden] {
+  display: none;
+}
+
 .ov-btn {
   align-self: flex-start;
   margin-top: 24px;
@@ -2740,6 +2784,12 @@ body::after {
     font-size: 24px;
   }
 
+  #ov-end .ov-end-result {
+    margin-top: 7px;
+    padding: 6px 10px;
+    font-size: 16px;
+  }
+
   #ov-end .ov-stats {
     gap: 8px;
     margin-top: 12px;
@@ -2771,6 +2821,86 @@ body::after {
 }
 
 @media (max-height: 820px) and (min-width: 700px) {
+  #ov-end[data-special-result] .overlay-card {
+    min-height: 0;
+    max-height: calc(100vh - 48px);
+    justify-content: center;
+    padding: 18px 36px 16px 56px;
+  }
+
+  #ov-end[data-special-result] .ov-broadcast-badge {
+    padding: 6px 12px;
+    font-size: 14px;
+  }
+
+  #ov-end[data-special-result] .ov-title {
+    max-width: none;
+    margin-top: 6px;
+    font-size: 56px;
+  }
+
+  #ov-end[data-special-result] .ov-final-score {
+    margin-top: 2px;
+    font-size: 64px;
+  }
+
+  #ov-end[data-special-result] .ov-end-result {
+    margin-top: 5px;
+    padding: 5px 8px;
+    font-size: 14px;
+  }
+
+  #ov-end[data-special-result] .ov-sub {
+    max-width: none;
+    margin-top: 5px;
+    font-size: 18px;
+    line-height: 1.05;
+  }
+
+  #ov-end[data-special-result] .ov-end-season {
+    margin-top: 5px;
+    padding: 5px 8px;
+    font-size: 15px;
+  }
+
+  #ov-end[data-special-result] .ov-stats {
+    gap: 6px;
+    margin-top: 7px;
+  }
+
+  #ov-end[data-special-result] .ov-stats-title {
+    font-size: 22px;
+  }
+
+  #ov-end[data-special-result] .ov-stat {
+    gap: 4px;
+    padding: 6px;
+  }
+
+  #ov-end[data-special-result] .ov-stat-value {
+    font-size: 28px;
+  }
+
+  #ov-end[data-special-result] .ov-stat-label,
+  #ov-end[data-special-result] .ov-coach-label {
+    font-size: 11px;
+  }
+
+  #ov-end[data-special-result] .ov-coach-row {
+    padding: 5px 8px;
+  }
+
+  #ov-end[data-special-result] .ov-coach-value {
+    font-size: 14px;
+  }
+
+  #ov-end[data-special-result] .ov-end-actions .ov-btn {
+    min-height: 44px;
+    margin-top: 8px;
+    padding: 10px 20px 9px;
+    font-size: 26px;
+  }
+
   #ov-end.season-save-pending .ov-stats {
     gap: 8px;
     margin-top: 12px;
@@ -3853,6 +3983,13 @@ body::after {
     font-size: 22px;
   }
 
+  #ov-end .ov-end-result {
+    max-width: none;
+    margin-top: 8px;
+    padding: 7px 9px;
+    font-size: 16px;
+  }
+
   .ov-btn {
     font-size: 28px;
   }
@@ -4021,6 +4158,14 @@ body::after {
     font-size: 18px;
   }
 
+  #ov-end .ov-end-result {
+    margin-top: 6px;
+    padding: 6px 8px;
+    border-left-width: 4px;
+    font-size: 14px;
+    line-height: 1.08;
+  }
+
   .ov-btn {
     font-size: 24px;
   }
@@ -4044,6 +4189,85 @@ body::after {
 
   .ov-final-score {
     font-size: clamp(68px, 20vw, 110px);
+  }
+
+  #ov-end[data-special-result] {
+    padding: 8px;
+  }
+
+  #ov-end[data-special-result] .overlay-card {
+    min-height: 0;
+    max-height: calc(100vh - 16px);
+    justify-content: center;
+    padding: 14px 12px 12px 32px;
+  }
+
+  #ov-end[data-special-result] .ov-title {
+    max-width: none;
+    margin-top: 4px;
+    font-size: 42px;
+  }
+
+  #ov-end[data-special-result] .ov-final-score {
+    margin-top: 2px;
+    font-size: 54px;
+  }
+
+  #ov-end[data-special-result] .ov-sub {
+    max-width: none;
+    margin-top: 4px;
+    font-size: 14px;
+    line-height: 1.04;
+  }
+
+  #ov-end[data-special-result] .ov-stats {
+    gap: 5px;
+    margin-top: 6px;
+  }
+
+  #ov-end[data-special-result] .ov-stats-title {
+    font-size: 20px;
+  }
+
+  #ov-end[data-special-result] .ov-stats-grid {
+    gap: 5px;
+  }
+
+  #ov-end[data-special-result] .ov-stat {
+    gap: 3px;
+    padding: 5px 4px;
+  }
+
+  #ov-end[data-special-result] .ov-stat-value {
+    font-size: 25px;
+  }
+
+  #ov-end[data-special-result] .ov-stat-label {
+    font-size: 10px;
+  }
+
+  #ov-end[data-special-result] .ov-coach-report {
+    gap: 5px;
+  }
+
+  #ov-end[data-special-result] .ov-coach-row {
+    gap: 6px;
+    padding: 5px 6px;
+  }
+
+  #ov-end[data-special-result] .ov-coach-label {
+    font-size: 10px;
+  }
+
+  #ov-end[data-special-result] .ov-coach-value {
+    font-size: 13px;
+  }
+
+  #ov-end[data-special-result] .ov-end-actions .ov-btn {
+    min-height: 44px;
+    margin-top: 6px;
+    padding: 10px 17px 9px;
+    font-size: 22px;
   }
 
   #ov-end.season-save-pending {
@@ -4471,4 +4695,10 @@ body::after {
   .worked-review-back {
     min-height: 58px;
   }
+}
+
+/* Long committed-play feedback must not stretch the answer rows to match the
+   prompt column. Choice buttons retain their device-tier minimum heights. */
+#ui-desk[data-phase="feedback"] #btn-row {
+  grid-auto-rows: max-content;
 }

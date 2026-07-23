@@ -1,6 +1,141 @@
 // Play-by-play copy for Football Math. Plain globals (no modules); loaded
 // before football.js so these tables are ready when the game reads them.
 
+const FOOTBALL_FIELD_POSITION = (() => {
+  'use strict';
+
+  const MATCH_KEYS = Object.freeze(['schemaVersion', 'player', 'opponent']);
+  const TEAM_KEYS = Object.freeze(['id', 'displayName', 'shortName', 'endZoneName']);
+  const OWNER_ROLES = Object.freeze(['player', 'opponent']);
+
+  function isRecord(value) {
+    return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+  }
+
+  function exactKeys(value, keys) {
+    return isRecord(value)
+      && Object.keys(value).length === keys.length
+      && keys.every((key) => Object.prototype.hasOwnProperty.call(value, key));
+  }
+
+  function validateTeam(team, role) {
+    if (!exactKeys(team, TEAM_KEYS)) {
+      throw new TypeError(`Public match ${role} must contain exactly ${TEAM_KEYS.join(', ')}.`);
+    }
+    TEAM_KEYS.forEach((key) => {
+      if (typeof team[key] !== 'string' || team[key].trim() !== team[key] || team[key].length === 0) {
+        throw new TypeError(`Public match ${role}.${key} must be a non-empty trimmed string.`);
+      }
+    });
+  }
+
+  function validateMatch(match) {
+    if (!exactKeys(match, MATCH_KEYS) || match.schemaVersion !== 1) {
+      throw new TypeError(`Public match must be the complete schema-version-1 ${MATCH_KEYS.join(', ')} record.`);
+    }
+    validateTeam(match.player, 'player');
+    validateTeam(match.opponent, 'opponent');
+    if (match.player.id === match.opponent.id) {
+      throw new TypeError('Public match teams must have distinct identities.');
+    }
+  }
+
+  function validateAbsoluteYard(absoluteYard) {
+    if (!Number.isInteger(absoluteYard)) {
+      throw new TypeError('absoluteYard must be an integer from 0 through 100.');
+    }
+    if (absoluteYard < 0 || absoluteYard > 100) {
+      throw new RangeError('absoluteYard must be from 0 through 100.');
+    }
+  }
+
+  function validateOwnerRole(ownerRole) {
+    if (!OWNER_ROLES.includes(ownerRole)) {
+      throw new TypeError('ownerRole must be player or opponent.');
+    }
+  }
+
+  function deepFreeze(value, seen = new Set()) {
+    if (!value || typeof value !== 'object' || seen.has(value)) return value;
+    seen.add(value);
+    Reflect.ownKeys(value).forEach((key) => deepFreeze(value[key], seen));
+    return Object.freeze(value);
+  }
+
+  function facts(absoluteYard, match) {
+    validateAbsoluteYard(absoluteYard);
+    validateMatch(match);
+
+    const isMidfield = absoluteYard === 50;
+    const isGoalLine = absoluteYard === 0 || absoluteYard === 100;
+    const territoryRole = isMidfield ? null : absoluteYard < 50 ? 'player' : 'opponent';
+    const yardNumber = isMidfield ? 50 : absoluteYard <= 50 ? absoluteYard : 100 - absoluteYard;
+    const territory = territoryRole ? match[territoryRole] : null;
+    const compact = isMidfield
+      ? '50'
+      : isGoalLine
+        ? `${territory.shortName} GOAL LINE`
+        : `${territory.shortName} ${yardNumber}`;
+    const full = isMidfield
+      ? 'the 50-yard line'
+      : isGoalLine
+        ? `${territory.displayName}'s goal line`
+        : `${territory.displayName}'s ${yardNumber}-yard line`;
+
+    return deepFreeze({
+      absoluteYard,
+      territoryRole,
+      yardNumber,
+      isMidfield,
+      isGoalLine,
+      compact,
+      full,
+      midfield: 'the 50-yard line',
+      namedGoalLine: isGoalLine ? `${territory.endZoneName} goal line` : null,
+      namedEndZone: isGoalLine ? `${territory.endZoneName} end zone` : null,
+    });
+  }
+
+  function ownerAwareFromFacts(position, match, ownerRole) {
+    validateOwnerRole(ownerRole);
+    if (position.isMidfield) return position.full;
+    if (position.isGoalLine) return position.namedGoalLine;
+    const territoryLabel = position.territoryRole === 'player'
+      ? match.player.displayName
+      : match.opponent.shortName;
+    if (position.territoryRole === ownerRole) {
+      return `${territoryLabel}'s own ${position.yardNumber}-yard line`;
+    }
+    return `${territoryLabel}'s ${position.yardNumber}-yard line`;
+  }
+
+  function describe(absoluteYard, match, ownerRole = null) {
+    const position = facts(absoluteYard, match);
+    if (ownerRole === null) return position;
+    const ownerAware = ownerAwareFromFacts(position, match, ownerRole);
+    return deepFreeze({
+      ...position,
+      ownerRole,
+      ownerAware,
+      ball: `${match[ownerRole].displayName} ball at ${ownerAware}`,
+    });
+  }
+
+  function ownerAware(absoluteYard, match, ownerRole) {
+    return describe(absoluteYard, match, ownerRole).ownerAware;
+  }
+
+  function ball(absoluteYard, match, ownerRole) {
+    return describe(absoluteYard, match, ownerRole).ball;
+  }
+
+  return Object.freeze({ facts, describe, ownerAware, ball });
+})();
+
+if (typeof globalThis !== 'undefined') {
+  globalThis.FOOTBALL_FIELD_POSITION = FOOTBALL_FIELD_POSITION;
+}
+
 const PLAY_OUTCOME_COPY = {
   secondMiss: {
     stuff: 'The defense stuffs the run behind the line.',
@@ -116,8 +251,12 @@ const DESK_HEADER_COPY = {
   conversionDefense: { chip: 'Try', kicker: 'Defend the conversion.', action: 'Watch the announced try, then answer.' },
   questionOffense: { chip: 'Live Math', kicker: 'Run the play.', action: 'Answer the question.' },
   questionDefense: { chip: 'Live Math', kicker: 'Beat the snap.', action: 'Answer the question.' },
+  fieldReadingOffense: { chip: 'Field Reading', kicker: 'Read the game graphic.', action: 'Choose the matching answer.' },
+  fieldReadingDefense: { chip: 'Field Reading', kicker: 'Read the game graphic.', action: 'Choose the matching answer.' },
   specialQuestionOffense: { chip: 'Special Teams', kicker: 'Run the special-teams play.', action: 'Answer the question.' },
   specialQuestionDefense: { chip: 'Special Teams', kicker: 'Defend the special-teams play.', action: 'Answer the question.' },
+  specialFieldReadingOffense: { chip: 'Field Reading', kicker: 'Read the special-teams graphic.', action: 'Choose the matching answer.' },
+  specialFieldReadingDefense: { chip: 'Field Reading', kicker: 'Read the special-teams graphic.', action: 'Choose the matching answer.' },
   retryOffense: { chip: 'Coach Hint', kicker: 'Same play. Try again.', action: 'Use the model and choose again.' },
   retryDefense: { chip: 'Coach Hint', kicker: 'Same snap. Try again.', action: 'Use the model and choose again.' },
   specialRetryOffense: { chip: 'Coach Hint', kicker: 'Same special play. Try again.', action: 'Use the model and choose again.' },

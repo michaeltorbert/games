@@ -1,4 +1,4 @@
-const GAME_VERSION = '1.27.1';
+const GAME_VERSION = '1.28.0';
 let prevPlayerScore = -1, prevOpponentScore = -1;
 let playerRunTimer = 0, playerCelebrateTimer = 0, playerCelebrateDelayTimer = 0;
 const EZ = 5;
@@ -279,12 +279,24 @@ function clamp(n, min, max) {
   return Math.max(min, Math.min(max, n));
 }
 
-function ydLabel(y, short) {
-  const v = clamp(Math.round(y), 0, 100);
-  const opp = short ? 'opp' : 'opponent';
-  if (v < 50) return `own ${v}`;
-  if (v === 50) return '50';
-  return `${opp} ${100 - v}`;
+function teamRoleForPossession(possession) {
+  if (possession === 'offense') return 'player';
+  if (possession === 'defense') return 'opponent';
+  throw new TypeError(`Unknown possession ${possession}.`);
+}
+
+function fieldPositionAt(absoluteYard, match = state.match, ownerPossession = null) {
+  const ownerRole = ownerPossession === null ? null : teamRoleForPossession(ownerPossession);
+  return FOOTBALL_FIELD_POSITION.describe(absoluteYard, match, ownerRole);
+}
+
+function escapeTextForHtml(value) {
+  return String(value)
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
 }
 
 function fieldNumber(y) {
@@ -616,14 +628,16 @@ function playContextText() {
   const owner = state.possession === 'offense'
     ? `${state.match.player.shortName} BALL`
     : `${state.match.opponent.shortName} BALL`;
-  const bits = [owner, `Q${state.quarter}`, `BALL ON ${ydLabel(state.yd, true).toUpperCase()}`];
+  const bits = [owner, `Q${state.quarter}`, `BALL ON ${fieldPositionAt(state.yd).compact}`];
 
   if (state.phase === 'call' || state.phase === 'fourth-down-decision') {
     bits.push(`${DOWN_NAMES[state.down] || state.down} & ${state.ytg}`);
   }
 
   if (state.activePlay?.playType === 'fieldGoal') bits.push(`${state.activePlay.context.attemptDistance}-YARD FIELD GOAL`);
-  if (state.activePlay?.playType === 'punt') bits.push(`${state.activePlay.proposal.appliedTravelYards}-YARD PUNT`);
+  if (state.activePlay?.playType === 'punt' && !state.questionUi?.outcomeCommitted) {
+    bits.push(`${state.activePlay.proposal.appliedTravelYards}-YARD PUNT`);
+  }
 
   if (state.phase === 'question' || state.phase === 'explanation' || state.phase === 'feedback') {
     if (state.g != null) bits.push(`${state.g} YDS IN PLAY`);
@@ -769,8 +783,22 @@ function blankPlayState() {
     continueRequired: false,
     outcomeCommitted: false,
     outcomeMessage: null,
+    specialResultPresentation: null,
     touchdownSide: null,
     play: null,
+  };
+}
+
+function retainedCommittedSpecialResultState() {
+  const presentation = state.specialResultPresentation;
+  if (!presentation
+    || !Object.isFrozen(presentation)
+    || state.outcomeMessage !== presentation.message) {
+    return {};
+  }
+  return {
+    outcomeMessage: presentation.message,
+    specialResultPresentation: presentation,
   };
 }
 
@@ -1475,8 +1503,8 @@ function updateStatus() {
   if (yardLabel) yardLabel.textContent = conversionMode ? 'Try Spot' : 'Ball On';
   document.getElementById('s-down').textContent = conversionMode ? 'TRY' : downDistanceLabel(state.down, state.ytg);
   document.getElementById('s-yd').textContent = conversionMode
-    ? '2-yard line'
-    : ydLabel(state.yd, true);
+    ? fieldPositionAt(state.activePlay?.context?.tryYardLine ?? FOOTBALL_DOMAIN.tryYardLineFor(state.direction)).compact
+    : fieldPositionAt(state.yd).compact;
   document.getElementById('s-quarter').textContent = state.quarter;
   const pEl = document.getElementById('s-pscore');
   const oEl = document.getElementById('s-oscore');
@@ -1530,6 +1558,7 @@ function hideMathVisual() {
   overlay.hidden = true;
   overlay.innerHTML = '';
   overlay.removeAttribute('data-type');
+  overlay.removeAttribute('data-punt-touchback');
   overlay.setAttribute('aria-label', '');
 }
 
@@ -1546,6 +1575,10 @@ function renderMathVisual() {
   overlay.hidden = false;
   overlay.dataset.type = visual.type;
   overlay.dataset.support = support;
+  overlay.toggleAttribute(
+    'data-punt-touchback',
+    visual.type === 'punt-travel' && data.possibleTouchback === true,
+  );
   overlay.setAttribute('aria-label', visual.ariaLabel);
 
   let tokens = [];
@@ -1560,9 +1593,6 @@ function renderMathVisual() {
       break;
     case 'marker-strip':
       tokens = [`NEED ${data.needed}`, `PLAY ${data.proposedGain}`, visual.result ? `PAST ${visual.result.value}` : 'PAST ?'];
-      break;
-    case 'goal-distance':
-      tokens = ['BALL', `${data.distance} YDS`, 'GOAL'];
       break;
     case 'base-ten-distance': {
       const tensUnit = data.tens === 1 ? 'TEN' : 'TENS';
@@ -1596,10 +1626,10 @@ function renderMathVisual() {
       break;
     case 'score-difference':
       tokens = [
-        teamToken(`${String(data.playerLabel).toUpperCase()} ${data.playerScore}`, 'player'),
-        'APART',
-        teamToken(`${String(data.opponentLabel).toUpperCase()} ${data.opponentScore}`, 'opponent'),
-        visual.result ? `${visual.result.value}` : '?',
+        teamToken(`${String(data.highLabel).toUpperCase()} ${data.highScore}`, data.highRole),
+        '−',
+        teamToken(`${String(data.lowLabel).toUpperCase()} ${data.lowScore}`, data.lowRole),
+        visual.result ? `= ${visual.result.value}` : '= ?',
       ];
       break;
     case 'scoreboard-read':
@@ -1648,9 +1678,11 @@ function renderMathVisual() {
       break;
     case 'conversion-marker':
       tokens = [
-        data.direction === 1 ? 'GOAL 100' : 'GOAL 0',
+        String(data.namedGoalLine || 'GOAL LINE').toUpperCase(),
         'TWO YARDS BACK',
-        visual.result ? `TRY ${visual.result.value}` : 'TRY ?',
+        visual.result
+          ? `TRY ${fieldPositionAt(visual.result.value, state.activePlay.context.match, state.activePlay.context.possession).compact}`
+          : 'TRY ?',
       ];
       break;
     case 'field-goal-distance':
@@ -1664,10 +1696,17 @@ function renderMathVisual() {
       ];
       break;
     case 'punt-travel':
-      tokens = [`START ${data.startYardLine}`, data.direction === 1 ? 'KICK RIGHT' : 'KICK LEFT', `${data.travelYards} YDS`];
+      tokens = data.possibleTouchback
+        ? [
+          'PUNT PREVIEW',
+          `FROM ${data.start} → ${String(data.possibleEndZone).toUpperCase()}`,
+          'POSSIBLE TOUCHBACK',
+          `RESTART ${data.restart} · ${data.travelYards} YDS`,
+        ]
+        : ['PUNT PREVIEW', `FROM ${data.start}`, `POSSIBLE ${data.possibleLanding}`, `${data.travelYards} YDS`];
       break;
     case 'punt-landing':
-      tokens = [`START ${data.startYardLine}`, `${data.travelYards} YDS`, visual.result ? `LAND ${visual.result.value}` : 'LAND ?'];
+      tokens = ['PUNT PREVIEW', `FROM ${data.start}`, `${data.travelYards} YDS`, `POSSIBLE ${data.possibleLanding}`];
       break;
     default:
       tokens = Object.values(data).filter(value => value !== null && ['string', 'number'].includes(typeof value));
@@ -1953,7 +1992,9 @@ function renderButtons() {
   const row = document.getElementById('btn-row');
   row.classList.remove('hidden');
   const choices = state.questionInstance?.choices || [];
-  row.dataset.choiceType = choices.every(choice => typeof choice.value === 'number') ? 'number' : 'text';
+  row.dataset.choiceType = state.questionInstance?.choicePresentation === 'field-position'
+    ? 'yard'
+    : choices.every(choice => typeof choice.value === 'number') ? 'number' : 'text';
   hideContinueButton();
   [0, 1, 2, 3].forEach(i => {
     const b = document.getElementById('b' + i);
@@ -2517,7 +2558,9 @@ function syncQuestionMirrors() {
   state.question = question?.prompt?.text || null;
   state.correct = question?.answer?.value ?? null;
   state.choices = question?.choices?.map(choice => choice.value) || [];
-  state.choiceType = question?.choices?.every(choice => typeof choice.value === 'number') ? 'number' : 'text';
+  state.choiceType = question?.choicePresentation === 'field-position'
+    ? 'yard'
+    : question?.choices?.every(choice => typeof choice.value === 'number') ? 'number' : 'text';
   state.explain = question?.workedExplanation?.text || null;
   state.hint = question?.hint?.text || null;
   state.math = visual ? { ...visual, support: ui.support } : null;
@@ -2596,9 +2639,14 @@ function prepareQuestion(bundle, labelHtml, feedbackCopy = '') {
   state.phase = 'question';
   document.getElementById('play-label').innerHTML = labelHtml;
   document.getElementById('question').textContent = question.prompt.text;
+  const isFieldReading = question.answerExposure === 'source-visible';
   applyDeskHeader(activePlay.playType === 'scrimmage'
-    ? (state.possession === 'offense' ? 'questionOffense' : 'questionDefense')
-    : (state.possession === 'offense' ? 'specialQuestionOffense' : 'specialQuestionDefense'));
+    ? isFieldReading
+      ? (state.possession === 'offense' ? 'fieldReadingOffense' : 'fieldReadingDefense')
+      : (state.possession === 'offense' ? 'questionOffense' : 'questionDefense')
+    : isFieldReading
+      ? (state.possession === 'offense' ? 'specialFieldReadingOffense' : 'specialFieldReadingDefense')
+      : (state.possession === 'offense' ? 'specialQuestionOffense' : 'specialQuestionDefense'));
   syncUiState();
   const visibleGuidance = question.support === 'guided' ? question.hint.text : '';
   setFeedback([feedbackCopy, visibleGuidance].filter(Boolean).join(' '), visibleGuidance ? 'info' : 'neutral');
@@ -2855,7 +2903,15 @@ function playPromptLabel(activePlay) {
   if (activePlay.playType === 'scrimmage') {
     return `${activePlay.call.label}: if it works, <span>${yds(activePlay.proposal.appliedGain)}</span>`;
   }
-  if (activePlay.playType === 'punt') return `Punt preview: <span>${yds(activePlay.proposal.appliedTravelYards)}</span>`;
+  if (activePlay.playType === 'punt') {
+    const proposal = activePlay.proposal;
+    const start = fieldPositionAt(proposal.startYardLine, activePlay.context.match, activePlay.context.possession);
+    const receiving = fieldPositionAt(proposal.nextStartYardLine, activePlay.context.match, proposal.nextPossession);
+    const possibleResult = proposal.resultKind === 'puntTouchback'
+      ? `possible touchback · ${receiving.compact}`
+      : `possible ${receiving.compact}`;
+    return `Punt preview: <span>${escapeTextForHtml(start.compact)} → ${escapeTextForHtml(possibleResult)} · ${yds(proposal.appliedTravelYards)}</span>`;
+  }
   if (activePlay.playType === 'fieldGoal') return `<span>${activePlay.context.attemptDistance}-yard field goal</span>`;
   return activePlay.context.attemptType === 'twoPoint' ? '<span>Two-point try</span>' : '<span>PAT try</span>';
 }
@@ -3109,21 +3165,8 @@ function continueAfterExplanation() {
   syncUiState();
 
   if (state.activePlay.playType !== 'scrimmage') {
-    const transition = state.pendingResolution.transitionToCommit;
-    const message = transition.resultKind === 'conversionMade'
-      ? `${state.activePlay.context.attemptType === 'twoPoint' ? 'Two-point try' : 'PAT'} made.`
-      : transition.resultKind === 'conversionMissed'
-        ? `${state.activePlay.context.attemptType === 'twoPoint' ? 'Two-point try' : 'PAT'} no good.`
-        : transition.resultKind === 'fieldGoalMade'
-          ? 'Field goal made for three points.'
-          : transition.resultKind === 'fieldGoalBlocked'
-            ? 'Field goal blocked. The ball changes hands at the original line of scrimmage.'
-            : transition.resultKind === 'fieldGoalMissed'
-              ? 'Field goal no good. The ball changes hands at the original line of scrimmage.'
-              : `The punt puts the receiving team at field marker ${transition.nextStartYardLine}.`;
-    state.outcomeMessage = message;
-    applyDeskHeader(state.possession === 'offense' ? 'specialResultOffense' : 'specialResultDefense');
-    setFeedback(message, 'negative');
+    // The committed special-result semantic is built from the independently
+    // validated transition inside commitPendingResolution().
   } else if (state.possession === 'offense') {
     const reason = state.pendingResolution.transitionToCommit.resultReason;
     const msg = PLAY_OUTCOME_COPY.secondMiss[reason];
@@ -3276,21 +3319,108 @@ function routePossessionPresentation(message) {
   else showDefenseTransition(message);
 }
 
-function specialResultMessage(activePlay, transition) {
+function puntPreviewSentence(activePlay, transition) {
+  const start = fieldPositionAt(
+    transition.startYardLine,
+    activePlay.context.match,
+    activePlay.context.possession,
+  );
+  if (transition.resultKind === 'puntTouchback') {
+    const goal = fieldPositionAt(activePlay.context.direction === 1 ? 100 : 0, activePlay.context.match);
+    return `Preview: ${yds(transition.appliedTravelYards)} from ${start.ownerAware} into the ${goal.namedEndZone} for a possible touchback.`;
+  }
+  const receiving = fieldPositionAt(
+    transition.nextStartYardLine,
+    activePlay.context.match,
+    transition.nextPossession,
+  );
+  return `Preview: ${yds(transition.appliedTravelYards)} from ${start.ownerAware} to ${receiving.full}.`;
+}
+
+function puntActualSentence(activePlay, transition) {
+  const receiving = fieldPositionAt(
+    transition.nextStartYardLine,
+    activePlay.context.match,
+    transition.nextPossession,
+  );
+  if (transition.resultKind === 'puntTouchback') {
+    return `Actual: Touchback. ${receiving.ball}.`;
+  }
+  if (transition.rawLandingYardLine !== transition.nextStartYardLine) {
+    const raw = fieldPositionAt(
+      transition.rawLandingYardLine,
+      activePlay.context.match,
+      transition.nextPossession,
+    );
+    return `Actual travel: ${yds(transition.appliedTravelYards)} to ${raw.ownerAware}. Restart: ${receiving.ball}.`;
+  }
+  return `Actual: ${yds(transition.appliedTravelYards)} to ${receiving.ownerAware}. ${receiving.ball}.`;
+}
+
+function buildSpecialResultPresentation(activePlay, transition, policy) {
   if (activePlay.playType === 'punt') {
-    return transition.resultKind === 'puntTouchback'
-      ? 'The punt reaches the end zone. Touchback: the receiving team starts at its own 20.'
-      : `The punt ends at field marker ${transition.nextStartYardLine}.`;
+    const proposal = activePlay.proposal;
+    const changed = proposal.appliedTravelYards !== transition.appliedTravelYards
+      || proposal.landingYardLine !== transition.landingYardLine
+      || proposal.nextStartYardLine !== transition.nextStartYardLine
+      || proposal.resultKind !== transition.resultKind
+      || proposal.restartReason !== transition.restartReason;
+    const preview = puntPreviewSentence(activePlay, proposal);
+    const actual = puntActualSentence(activePlay, transition);
+    let cause;
+    if (!changed) {
+      cause = 'The actual result matched the preview.';
+    } else if (policy === 'firstTryCorrect' || policy === 'retryCorrect') {
+      cause = 'Your correct answer changed the outcome.';
+    } else if (policy === 'secondMiss') {
+      cause = proposal.nextStartYardLine === transition.nextStartYardLine
+        ? 'Because the second answer was not correct, the punt result changed, but the receiving team starts at the same spot.'
+        : 'Because the second answer was not correct, the receiving team got the more favorable result.';
+    } else {
+      cause = 'The actual result changed from the preview.';
+    }
+    return FOOTBALL_DOMAIN.deepFreeze({
+      schemaVersion: 1,
+      playType: 'punt',
+      changed,
+      policy,
+      preview,
+      actual,
+      cause,
+      message: `${preview} ${cause} ${actual}`,
+    });
   }
+
+  let message;
   if (activePlay.playType === 'fieldGoal') {
-    if (transition.resultKind === 'fieldGoalMade') return 'Field goal made. Three points.';
-    if (transition.resultKind === 'fieldGoalBlocked') return 'Field goal blocked. The ball changes hands at the original line of scrimmage.';
-    return 'Field goal no good. The ball changes hands at the original line of scrimmage.';
+    if (transition.resultKind === 'fieldGoalMade') {
+      message = 'Field goal made. Three points.';
+    } else {
+      const next = fieldPositionAt(
+        transition.nextStartYardLine,
+        activePlay.context.match,
+        transition.nextPossession,
+      );
+      message = transition.resultKind === 'fieldGoalBlocked'
+        ? `Field goal blocked. ${next.ball}.`
+        : `Field goal no good. ${next.ball}.`;
+    }
+  } else {
+    const name = activePlay.context.attemptType === 'twoPoint' ? 'Two-point try' : 'PAT';
+    message = transition.resultKind === 'conversionMade'
+      ? `${name} made for ${transition.points} ${transition.points === 1 ? 'point' : 'points'}.`
+      : `${name} no good.`;
   }
-  const name = activePlay.context.attemptType === 'twoPoint' ? 'Two-point try' : 'PAT';
-  return transition.resultKind === 'conversionMade'
-    ? `${name} made for ${transition.points} ${transition.points === 1 ? 'point' : 'points'}.`
-    : `${name} no good.`;
+  return FOOTBALL_DOMAIN.deepFreeze({
+    schemaVersion: 1,
+    playType: activePlay.playType,
+    changed: null,
+    policy,
+    preview: null,
+    actual: message,
+    cause: null,
+    message,
+  });
 }
 
 function applyCommittedOutcomeBookkeeping(activePlay, outcome) {
@@ -3300,12 +3430,19 @@ function applyCommittedOutcomeBookkeeping(activePlay, outcome) {
   if (outcome === 'firstDown' && offense) state.firstDowns++;
 }
 
-function finishCommittedTransition(activePlay, transition, policy, outcome, { focusNextCall = false } = {}) {
+function finishCommittedTransition(activePlay, transition, policy, outcome, {
+  focusNextCall = false,
+  specialResultPresentation = null,
+} = {}) {
   const offense = activePlay.context.possession === 'offense';
   if (activePlay.playType !== 'scrimmage') {
-    const message = specialResultMessage(activePlay, transition);
+    const presentation = specialResultPresentation
+      || buildSpecialResultPresentation(activePlay, transition, policy);
+    const message = presentation.message;
     const playerSucceeded = policy === 'firstTryCorrect' || policy === 'retryCorrect';
+    state.specialResultPresentation = presentation;
     state.outcomeMessage = message;
+    applyDeskHeader(offense ? 'specialResultOffense' : 'specialResultDefense');
     setFeedback(message, playerSucceeded ? 'positive' : policy === 'questionBypass' ? 'info' : 'negative');
     if (playerSucceeded) playCorrect();
     if (activePlay.playType === 'punt') showFieldFloat(transition.resultKind === 'puntTouchback' ? 'TOUCHBACK' : 'PUNT');
@@ -3447,6 +3584,10 @@ function commitPendingResolution({ focusNextCall = false } = {}) {
     return false;
   }
 
+  const specialResultPresentation = activePlay.playType === 'scrimmage'
+    ? null
+    : buildSpecialResultPresentation(activePlay, validation.value, pending.policy);
+
   applyCanonicalTransition(activePlay, validation.value);
   state.committedPlayIds = [...(state.committedPlayIds || []), activePlay.playId];
   state.questionUi.outcomeCommitted = true;
@@ -3490,7 +3631,10 @@ function commitPendingResolution({ focusNextCall = false } = {}) {
   if (activePlay.playType === 'scrimmage' || activePlay.playType === 'punt') updateField(true);
   updateStatus();
   syncUiState();
-  finishCommittedTransition(activePlay, validation.value, pending.policy, outcome, { focusNextCall });
+  finishCommittedTransition(activePlay, validation.value, pending.policy, outcome, {
+    focusNextCall,
+    specialResultPresentation,
+  });
   return true;
 }
 
@@ -3997,7 +4141,7 @@ function selectConversionAction(action) {
 
 function showDefenseTransition(message) {
   clearTimeout(advTimer);
-  Object.assign(state, blankPlayState(), { phase: 'transition' });
+  Object.assign(state, blankPlayState(), retainedCommittedSpecialResultState(), { phase: 'transition' });
   syncUiState();
   document.getElementById('ov-defense-title').textContent = `${state.match.opponent.shortName}'s Ball`;
   document.getElementById('ov-defense-sub').textContent =
@@ -4015,7 +4159,7 @@ function startDefense() {
 
 function showOffenseTransition(message) {
   clearTimeout(advTimer);
-  Object.assign(state, blankPlayState(), { phase: 'transition' });
+  Object.assign(state, blankPlayState(), retainedCommittedSpecialResultState(), { phase: 'transition' });
   syncUiState();
   document.getElementById('ov-offense-sub').textContent =
     `${message} Score: ${state.playerScore} - ${state.opponentScore}`;
@@ -4061,7 +4205,7 @@ function setBreakScorebug(overlayId, nextLabel) {
 
 function showQuarterEnd(message) {
   const next = possessionTitle(state.pendingNextPossession || 'offense');
-  Object.assign(state, blankPlayState(), { phase: 'quarter' });
+  Object.assign(state, blankPlayState(), retainedCommittedSpecialResultState(), { phase: 'quarter' });
   syncUiState();
   document.getElementById('ov-quarter-title').textContent = `End of ${QUARTER_NAMES[state.quarter]} Quarter`;
   document.getElementById('ov-quarter-sub').textContent =
@@ -4072,7 +4216,7 @@ function showQuarterEnd(message) {
 
 function showHalftime(message) {
   const next = possessionTitle(state.pendingNextPossession || 'defense');
-  Object.assign(state, blankPlayState(), { phase: 'halftime' });
+  Object.assign(state, blankPlayState(), retainedCommittedSpecialResultState(), { phase: 'halftime' });
   syncUiState();
   document.getElementById('ov-halftime-sub').textContent =
     `${message} Halftime swap: ${next} starts the 2nd half. Score: ${state.playerScore} - ${state.opponentScore}`;
@@ -4268,7 +4412,7 @@ function showGameOver() {
       ? 'Good effort. Try another game.'
       : 'Both teams finished even.';
 
-  Object.assign(state, blankPlayState(), {
+  Object.assign(state, blankPlayState(), retainedCommittedSpecialResultState(), {
     pendingNextPossession: null,
     pendingNextStartYardLine: null,
     pendingRestartReason: null,
@@ -4276,8 +4420,10 @@ function showGameOver() {
   });
   syncUiState();
   const endOv = document.getElementById('ov-end');
+  const finalSpecialMessage = state.specialResultPresentation?.message || '';
   endOv.classList.remove('ov-win', 'ov-loss', 'ov-tie');
   endOv.classList.add(resultClass);
+  endOv.toggleAttribute('data-special-result', Boolean(finalSpecialMessage));
   const badge = document.getElementById('ov-end-badge');
   if (badge) badge.textContent = badgeText;
   document.getElementById('ov-end-title').textContent = title;
@@ -4287,6 +4433,11 @@ function showGameOver() {
     'aria-label',
     `${state.match.player.displayName} ${state.playerScore}, ${state.match.opponent.displayName} ${state.opponentScore}`,
   );
+  const finalSpecialResult = document.getElementById('ov-end-result');
+  if (finalSpecialResult) {
+    finalSpecialResult.textContent = finalSpecialMessage;
+    finalSpecialResult.hidden = !finalSpecialMessage;
+  }
   document.getElementById('ov-end-sub').textContent =
     `${detail} ${state.match.player.displayName} vs ${state.match.opponent.displayName}. Player TDs: ${state.tds}.`;
   populateEndStats();
@@ -4357,7 +4508,11 @@ function conversionRenderState() {
     attemptValue: activeConversion?.context?.attemptValue
       ?? (attemptType === 'pat' ? 1 : attemptType === 'twoPoint' ? 2 : null),
     tryYardLine,
-    trySpot: ydLabel(tryYardLine),
+    trySpot: fieldPositionAt(
+      tryYardLine,
+      activeConversion?.context?.match || state.match,
+      activeConversion?.context?.possession || state.possession,
+    ).ownerAware,
   };
 }
 
@@ -4386,6 +4541,19 @@ function renderGameToText() {
     historicalMastery: {},
   };
   const conversion = conversionRenderState();
+  const renderedBallOwner = state.pendingNextPossession || state.possession;
+  const fieldPositionChoices = state.questionInstance?.choicePresentation === 'field-position';
+  const correctChoice = state.questionInstance?.choices?.find(choice =>
+    choice.id === state.questionInstance.correctChoiceId
+  ) || null;
+  const publicMath = state.math ? {
+    ...state.math,
+    ...(fieldPositionChoices && state.math.result ? {
+      result: { ...state.math.result, value: correctChoice?.label || String(state.math.result.value) },
+    } : {}),
+    support: state.mathSupport,
+    visible: !document.getElementById('math-overlay')?.hidden,
+  } : null;
   return JSON.stringify({
     mode: state.phase,
     playMode: activeSeasonBinding || selectedPlayMode === 'season' ? 'season' : 'quick',
@@ -4404,9 +4572,9 @@ function renderGameToText() {
     },
     down: conversion ? null : state.down,
     ytg: conversion ? null : state.ytg,
-    yardLine: conversion ? conversion.trySpot : ydLabel(state.yd),
+    yardLine: conversion ? conversion.trySpot : fieldPositionAt(state.yd, state.match, renderedBallOwner).ownerAware,
     absoluteYard: conversion ? conversion.tryYardLine : state.yd,
-    firstDownLine: conversion ? null : ydLabel(state.fdYd),
+    firstDownLine: conversion ? null : fieldPositionAt(state.fdYd, state.match).full,
     direction: state.direction,
     conversion,
     plays: state.plays,
@@ -4416,6 +4584,9 @@ function renderGameToText() {
     possessionsPerQuarter: POSSESSIONS_PER_QUARTER,
     pendingNextPossession: state.pendingNextPossession || null,
     pendingNextStartYardLine: Number.isInteger(state.pendingNextStartYardLine) ? state.pendingNextStartYardLine : null,
+    pendingNextStart: Number.isInteger(state.pendingNextStartYardLine) && state.pendingNextPossession
+      ? fieldPositionAt(state.pendingNextStartYardLine, state.match, state.pendingNextPossession).ball
+      : null,
     pendingRestartReason: state.pendingRestartReason || null,
     restartReason: state.restartReason || null,
     playerTouchdowns: state.tds,
@@ -4446,17 +4617,15 @@ function renderGameToText() {
     questionGrading: state.questionGrading || null,
     questionEvidenceClass: state.questionInstance?.evidenceClass || null,
     question: state.question || null,
-    choices: state.choices || [],
+    choices: fieldPositionChoices
+      ? state.questionInstance?.choices?.map(choice => choice.label) || []
+      : state.choices || [],
     choiceIds: state.questionInstance?.choices?.map(choice => choice.id) || [],
     correctChoiceId: state.questionInstance?.correctChoiceId || null,
-    correct: state.correct ?? null,
+    correct: fieldPositionChoices ? correctChoice?.label || null : state.correct ?? null,
     explain: state.explain || null,
     hint: state.hint || null,
-    math: state.math ? {
-      ...state.math,
-      support: state.mathSupport,
-      visible: !document.getElementById('math-overlay')?.hidden,
-    } : null,
+    math: publicMath,
     attempt: state.questionInstance ? state.questionUi.attempt : null,
     missedChoiceIds: state.questionUi?.missedChoiceIds || [],
     missedChoiceIndexes: state.missedChoiceIndexes || [],
@@ -4479,6 +4648,7 @@ function renderGameToText() {
     },
     coachReport: buildCoachReport(),
     outcomeMessage: state.outcomeMessage || null,
+    specialResult: state.specialResultPresentation || null,
     touchdownSide: state.touchdownSide || null,
   });
 }

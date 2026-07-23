@@ -781,3 +781,160 @@ surfaces remain v1.26.0.
   six-device release-artifact matrix, exact-artifact review, commit, push, PR,
   merge, deployment, and live-version verification remain orchestrator-owned.
   This writer made no GitHub write and claims no review or consensus.
+
+---
+
+Original prompt: Decide what Football issue to do next with a current four-model round robin, compare that consensus with an independent Fable 5 plan, then have GPT-5.6 Sol Ultra implement while Opus 4.8 and the named review roster iterate to consensus without wasting Fable quota.
+
+## Football issues #92 and #96 field-clarity work log
+
+- Implemented the agreed combined scope for issues #92 and #96 from the exact
+  clean `origin/main` base on the dedicated Football field-clarity branch,
+  without changing the football domain, learning, stats, opponent, or Season
+  authorities.
+- Added one strict, recursively frozen field-position copy authority. Canonical
+  integer coordinates remain internal while scorebug, prompt, accessible,
+  semantic-render, punt, conversion, and missed/blocked field-goal surfaces use
+  team field language for UNC, NC State, and Wake Forest.
+- Retired only `goal-distance-read` from the live family registry, call
+  affinities, and Coach Replay specs while preserving historical learning rows
+  and every other distance/literacy family. Source-visible reads now begin under
+  an honest **Field Reading** desk header.
+- Added a bounded field-position choice-presentation hook for punt landing and
+  conversion placement. Numeric answer/choice values, binding paths, operand
+  IDs, correct-choice logic, and stable IDs remain unchanged; visible and ARIA
+  labels are formatter-derived and uniquely asserted.
+- Made punt questions visibly and accessibly previews. One frozen presentation
+  built from the real proposal, independently validated committed transition,
+  resolution policy, public match, and field formatter now supplies both the
+  immediate result and the next-possession dialog. It compares only visible
+  travel, placement, touchback/result, and restart facts, distinguishes a
+  matching preview, and never calls an offensive second miss a correct-answer
+  benefit.
+- Corrected score-difference visuals and ARIA to show the larger committed score
+  minus the smaller committed score, retaining hidden initial/guided results and
+  independent evidence classification.
+- Added DOM-free contracts for strict coordinate/match validation, every public
+  rival, exact 26-family/evidence maps, build-every-family coverage, source-copy
+  non-restatement, formatted numeric-choice preservation, and answer hiding.
+  Added primary-iPad integration coverage for the exact UNC punt from absolute
+  80, unchanged normal punts, second-miss causality, touchbacks, special-outcome
+  non-leakage, persistent result copy, field-goal placement, and score-gap math.
+- Writer verification on the final runtime included 36/36 DOM-free contextual
+  contracts, the serial primary-iPad context/learning/copy/accessibility suite,
+  focused post-copy punt and no-leak reruns, `npm run test:registry` (4/4), syntax
+  checks for every changed JavaScript runtime, and `git diff --check`. The
+  writeful full release matrix remains orchestrator-owned.
+- The installed web-game client reached a real post-start question, captured
+  `render_game_to_text()`, and produced no console/page-error artifact. Fresh
+  1180x820 visual captures of Field Reading, punt preview/result/dialog, and
+  committed score difference were inspected; compacting the tight punt header
+  resolved the only presentation issue found.
+- Opus 4.8's first exact-artifact review found no material defect and identified
+  three low cleanup items. The `yards-to-go-read` prompt now leaves its number
+  in the accessible down-and-distance graphic while guided/worked teaching stays
+  intact, committed punt copy uses one owner-aware territory name throughout,
+  and the retired goal-distance renderer branch has been removed.
+- Opus 4.8's second exact-artifact review approved those fixes and identified
+  two low header/documentation cleanups. Generic Field Reading now says **Read
+  the game graphic.** so field and scoreboard sources are both described
+  truthfully, while the special-teams-specific header remains unchanged; the
+  verified DOM-free count at that review reflected 35/35.
+- Four-seat code-review reconciliation required two material presentation
+  fixes. Touchback travel now shows the named goal/end zone, possible touchback,
+  and receiving own-20 restart as three distinct facts without changing the
+  numeric answer or bindings. The already-frozen committed special-result
+  semantic now survives transition, quarter, halftime, and final overlay
+  blanking while active instructional state still clears, then is cleared at
+  the existing next-drive, conversion, and new-game boundaries. Production
+  rival boundary facts, generic Field Reading routing, defense-second-miss punt
+  copy, overlay text-state persistence, and all three score-gap orderings have
+  focused contracts. Final reconciliation verification passed 36/36 DOM-free
+  contextual contracts and 66/66 affected primary-iPad browser contracts.
+  Fresh iPad 11 landscape and iPhone 15 portrait touchback captures were
+  visually inspected with the full named-end-zone, possible-touchback, restart,
+  and travel presentation visible, no page overflow, and no console/page error.
+- A post-approval independent audit found a test-only lifecycle coverage gap.
+  Added production-path regressions proving the frozen committed special result
+  and matching outcome message survive an offense-owned defense transition,
+  halftime, and the final overlay, then clear through the real Continue,
+  next-quarter/start-drive, restart, and next-game paths. The final-Season case
+  also proves settlement starts synchronously from the production commit while
+  presentation remains in feedback, before the delayed final presentation,
+  then becomes durable in the Season store. No runtime defect or runtime edit
+  was needed.
+- The four-model v2 reconciliation required three narrow corrections. The final
+  dialog now presents the exact frozen special-result message in its own
+  visibly and accessibly described element before the existing generic game
+  detail, while final games with no special result keep the prior behavior.
+  Quarter reading now asks exactly which quarter the scoreboard shows without
+  repeating its source numeral, and changed second-miss punts that happen to
+  retain the same receiving spot use neutral causality instead of claiming a
+  more favorable result. Exact contracts cover Q3 source separation, the
+  normal-touchback-to-ordinary-punt same-yard case, the final production path,
+  and no-special cleanup.
+- The first production-browser final-dialog pass exposed the new long result
+  pushing the iPad action below the fold. A final-special-only compact layout
+  fixed that regression without changing ordinary final dialogs. Fresh iPad 11
+  landscape and iPhone 15 portrait captures show the full exact result,
+  generic detail, stats, Coach Report, and action button with no internal card
+  overflow or browser errors. Final verification passed 37/37 DOM-free
+  contextual contracts, 3/3 focused primary-iPad production scenarios, 18/18
+  configured-device call-layout checks, the 4/4 registry gate, syntax checks,
+  and `git diff --check`. The writeful release matrix remains orchestrator-owned.
+- A follow-up geometry audit caught the compact iPhone final action at
+  `39.234375` points, below Football's 44-point minimum. The phone-only
+  final-special rule now restores `min-height: 44px`. A fresh 393x852
+  production capture measures the action at exactly 44 points, keeps the card
+  fully inside the viewport with `clientHeight == scrollHeight` (529/529),
+  preserves the exact result-first accessible description, and reports no
+  browser errors. The focused final production scenario also passes unchanged.
+- The four-model v3 reconciliation reproduced one instructional-copy defect:
+  receiver-favorable punts can travel beyond the receiving own-20 cap, while
+  the old sentence attached the canonical travel distance to the separate
+  capped restart spot. Non-touchback capped results now state the formatter-
+  derived raw travel destination and restart as two explicit facts. Touchback
+  and ordinary uncapped result copy remain byte-for-byte unchanged. Real
+  production assertions cover offense `+1` raw 90 / restart 80, defense `-1`
+  raw 15 / restart 20, and an uncapped ordinary control with exact `actual` and
+  complete frozen messages.
+- The longer final message required no further layout change. Fresh 1180x820
+  and 393x852 last-Q4 captures were visually inspected; visible, semantic, and
+  result-first accessible messages agree exactly, card client and scroll
+  dimensions match on both axes, both 44-point actions remain inside the
+  viewport, horizontal document overflow is zero, and browser errors are
+  empty. Final writer checks passed 4/4 affected production/lifecycle cases,
+  37/37 contextual contracts, 18/18 configured-device layout checks, the 4/4
+  registry gate, syntax checks, and `git diff --check`. The writeful release
+  matrix and independent exact-artifact review remain orchestrator-owned.
+
+## Football v1.28.0 superseding field-position and reading release
+
+- Football v1.28.0 supersedes v1.27.1 for child-facing field-position clarity,
+  honest source-visible reading framing, committed punt-result explanation, and
+  high-minus-low score-gap presentation.
+- `GAME_VERSION`, all 14 Football asset query strings, the portal registry, and
+  `version.json` are synchronized to `1.28.0`. The
+  `footballMathStats:v1` and `footballMathSeason:v1` storage keys are unchanged.
+- The first full matrix attempt passed 116/116 Node tests but exposed two stale
+  release-matrix copy expectations across all six projects. The matrix now
+  expects team-relative `UNC 2` and verifies the frozen punt semantic against
+  the exact visible feedback. That alignment let the preserved viewport gate
+  expose long feedback stretching the answer grid; one feedback-only
+  `grid-auto-rows: max-content` rule fixed it without changing question phase
+  or 44px target minimums. The isolated special-teams matrix now passes 6/6 and
+  the normal layout suite passes 18/18; representative answer bottoms are
+  712.594/820 on iPad 11 landscape and 840.828/852 on iPhone 15. The full
+  matrix rerun remains orchestrator-owned.
+- Review found that `render_game_to_text` converted every semantic choice to a
+  display label while leaving ordinary numeric `correct` values numeric. It now
+  preserves the canonical `state.choices` value types for ordinary questions
+  and uses owner-aware labels only for field-position presentations. A focused
+  production-path regression locks both sides of that contract. This writer's
+  fresh checks passed the focused regression 1/1, the complete affected iPad 11
+  landscape accessibility file 7/7, the contextual-plus-registry Node baseline
+  41/41, syntax checks for the changed runtime and browser test, and
+  `git diff --check`.
+- Exact-artifact independent review, commit, push, PR, full release artifact
+  generation, merge, deployment, and live-version verification remain with the
+  orchestrator. This writer made no GitHub write and claims no review consensus.
