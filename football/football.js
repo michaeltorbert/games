@@ -1,4 +1,4 @@
-const GAME_VERSION = '1.29.0';
+const GAME_VERSION = '1.30.0';
 let prevPlayerScore = -1, prevOpponentScore = -1;
 let playerRunTimer = 0, playerCelebrateTimer = 0, playerCelebrateDelayTimer = 0;
 const EZ = 5;
@@ -28,6 +28,11 @@ const COACH_CONCEPT_LABELS = Object.freeze({
   'red-zone-math': 'Red-zone math',
   'field-distance': 'Field distance',
   'drive-distance': 'Drive distance',
+  'score-total-ch8': 'Adding scores',
+  'score-difference-ch8': 'Score differences',
+  'team-yards-add-ch8': 'Adding team yards',
+  'line-remaining-ch8': 'Yards still needed',
+  'goal-remaining-ch8': 'Yards to the goal',
   'committed-score': 'Reading the score',
   'quarter-read': 'Reading the quarter',
   'down-read': 'Reading the down',
@@ -1389,8 +1394,7 @@ function pickQuestion(activePlay) {
     if (questionFaultMode === 'build-throw') {
       throw Object.assign(new Error('Injected contextual builder failure.'), { code: 'build-throw' });
     }
-    const firstSupport = entry.curriculumSource === 'workbook'
-      && entry.introducedOnPage > inspected.profile.completedThroughPage
+    const firstSupport = FOOTBALL_CONTEXTUAL_QUESTIONS.sourceStatus(entry, inspected.profile).guided
       ? 'guided'
       : 'initial';
     const support = FOOTBALL_LEARNING.supportFor(learningSession, entry, firstSupport);
@@ -1664,6 +1668,9 @@ function renderMathVisual() {
         `PLAY +${data.proposedGain}`,
         visual.result ? `NEXT ${visual.result.value}` : 'NEXT ?',
       ];
+      break;
+    case 'arithmetic-equation':
+      tokens = [data.a, data.operator, data.b, visual.result ? `= ${visual.result.value}` : '= ?'];
       break;
     case 'base-ten-move': {
       const start = data.startDistance ?? 0;

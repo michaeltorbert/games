@@ -1084,3 +1084,11 @@ Original prompt: Implement Football issue #98 from the reconciled plan, with GPT
   worked view was also visually checked at 393×852 with no clipping or errors.
   Verification is complete via the split full suite plus strict verifier;
   final reviews and deployment remain externally tracked in PR #106.
+
+
+## 2026-09-08 — Arithmetic content 1.30.0 (superseding release entry)
+
+- Added five grounded Grade 1-B 2026 families: score totals/differences, possessing-team cumulative yards, remaining first-down yards, and remaining goal distance. The immutable actual team total is used even after drive losses.
+- Legacy family identities and max-10 computation remain unchanged. New source-aware families use approved Chapter 8 inclusion through printed page 149, with factual completion unknown and guided-first support. No general borrowing, strategy demo, timing, or new adaptive policy.
+- Compact equations hide their result in initial/guided DOM and ARIA; existing retry, worked explanation, Coach Replay, and Continue remain intact.
+- Implementer verification: domain/context 72/72; existing context-integration/learning browser checks 76/76 on iPad 11 landscape; new ordinary-selection, retry, worked-review and Continue checks 6/6 across the device matrix. Registry 4/4 against exact base 486d4ef6a1fc33a3e3dc6eeba2e3fa675c3b072b, target football. Full release matrix and final review are pending with the coordinator.

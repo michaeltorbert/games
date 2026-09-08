@@ -120,5 +120,35 @@
     "sourceMetadata": "Workbook-derived families record their exact earliest source page; football-only display and rule literacy is labeled separately and claims no workbook page",
     "timeBoundary": "Do not synthesize clock, AM/PM, or calendar facts in live snaps; the separate Time Lab may use explicit, validated practice fixtures",
     "fieldConstraint": "Avoid confusing cross-midfield label arithmetic; use a separate math visualization when football field labels reverse"
-  }
+  },
+  "additionalWorktexts": [
+    {
+      "title": "Math Mammoth Grade 1-B",
+      "edition": 2026,
+      "includedThroughPage": 149,
+      "completedThroughPage": null,
+      "completionMeaning": "Current exact completion is unknown; inclusion through Chapter 8 is not completion.",
+      "sourceMap": [
+        {
+          "families": [
+            "score-total-ch8",
+            "team-yards-add-ch8"
+          ],
+          "introducedOnPage": 102,
+          "coverageThroughPage": 123,
+          "concepts": "Addition within 20 and up to 100; no carry pages 108/114, carrying 119\u2013121, fact review 123."
+        },
+        {
+          "families": [
+            "score-difference-ch8",
+            "goal-remaining-ch8",
+            "line-remaining-ch8"
+          ],
+          "introducedOnPage": 110,
+          "coverageThroughPage": 143,
+          "concepts": "Subtraction within 20, no-borrow subtraction, whole tens minus one digit. General borrowing excluded."
+        }
+      ]
+    }
+  ]
 }
