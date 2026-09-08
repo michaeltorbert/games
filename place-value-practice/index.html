@@ -1520,6 +1520,19 @@
         animation-iteration-count: 1 !important;
       }
     }
+    .practice-modes { display: flex; justify-content: center; gap: 8px; padding: 14px 16px 0; }
+    .practice-modes button[aria-pressed="true"] { background: var(--ink, #24342d); color: white; }
+    #arithmetic-practice { width: min(100%, 760px); margin: auto; padding: 24px; }
+    #arithmetic-practice h2 { font-size: 1.7rem; margin: 0 0 20px; }
+    .arithmetic-setup { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-bottom: 24px; }
+    .arithmetic-setup select { min-height: 44px; padding: 8px; font: inherit; border-radius: 8px; }
+    #arithmetic-equation { font-size: clamp(2rem, 7vw, 3.8rem); text-align: center; margin: 28px 0 20px; }
+    .arithmetic-choices { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 22px 0 12px; }
+    .arithmetic-answer { min-height: 64px; font-size: 1.65rem; background: white; border: 2px solid #d3ded6; }
+    .arithmetic-answer:disabled { opacity: .48; }
+    #arithmetic-feedback { min-height: 28px; }
+    .arithmetic-storage { font-size: .9rem; }
+    [hidden] { display: none !important; }
   </style>
 </head>
 <body>
@@ -1649,7 +1662,7 @@
 
     <footer class="app-footer">
       <p>Practice stays on this device.</p>
-      <p>Version 1.1.0</p>
+      <p>Version 1.2.0</p>
     </footer>
   </div>
 
@@ -1657,7 +1670,7 @@
     <form class="settings-form" id="settings-form" method="dialog">
       <header class="dialog-header">
         <div>
-          <h2 id="settings-title">Practice settings</h2>
+          <h2 id="settings-title">Place-value settings</h2>
           <p id="settings-description">Choose what feels right today.</p>
         </div>
         <button class="icon-button" type="submit" value="cancel" aria-label="Close settings" title="Close settings">
@@ -1785,14 +1798,14 @@
         </details>
 
         <details class="reset-panel">
-          <summary>Reset practice progress</summary>
+          <summary>Reset place-value progress</summary>
           <div class="reset-panel__body">
             <p>This clears the saved stage and session history on this device. It cannot be undone.</p>
             <label class="confirm-check">
               <input type="checkbox" name="confirm-reset">
               <span>I understand that saved progress will be cleared.</span>
             </label>
-            <button class="button button--danger" id="reset-progress-button" type="button">Reset all progress</button>
+            <button class="button button--danger" id="reset-progress-button" type="button">Reset place-value progress</button>
           </div>
         </details>
       </div>
@@ -1804,11 +1817,12 @@
     </form>
   </dialog>
 
+  <script src="arithmetic-domain.js?v=1.2.0"></script>
   <script>
     "use strict";
 
     (() => {
-      const GAME_VERSION = "1.1.0";
+      const GAME_VERSION = "1.2.0";
       const SCHEMA_VERSION = 1;
       const STORAGE_KEY = "place-value-practice:progress:v1";
       const MAX_QUEUE = 6;
@@ -6462,6 +6476,7 @@
       });
       dom.settingsDialog.addEventListener("cancel", (event) => { event.preventDefault(); closeSettings(); });
       document.addEventListener("keydown", (event) => {
+        if (window.__placePracticeMode === "arithmetic") return;
         if (event.key === "Enter" && state.screen === "practice" && state.activeAttempt && state.activeAttempt.completed && !dom.settingsDialog.open) {
           event.preventDefault();
           nextQuestion();
@@ -6535,14 +6550,26 @@
         }
       });
 
-      state = loadState();
-      recoverPendingAttempt();
-      if (state.screen === "summary" && (!state.session.recorded || state.session.target === null)) state.screen = "practice";
-      createQuestionIfNeeded();
-      saveState();
-      render();
-      focusAnswer();
+      // Arithmetic boot never initializes, repairs, selects, or saves place-value
+      // progress. Its mode and session have separate keys and a separate controller.
+      window.__placePracticeMode = 'place-value';
+      try { if (localStorage.getItem('place-value-practice:mode:v1') === 'arithmetic') window.__placePracticeMode = 'arithmetic'; } catch {}
+      let placeInitialized = false;
+      window.__placeValueActivate = () => {
+        if (!placeInitialized) {
+          state = loadState();
+          recoverPendingAttempt();
+          if (state.screen === "summary" && (!state.session.recorded || state.session.target === null)) state.screen = "practice";
+          createQuestionIfNeeded();
+          saveState();
+          placeInitialized = true;
+        }
+        render();
+        focusAnswer();
+      };
+      if (window.__placePracticeMode === 'place-value') window.__placeValueActivate();
     })();
   </script>
+  <script src="arithmetic.js?v=1.2.0"></script>
 </body>
 </html>
