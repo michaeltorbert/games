@@ -5,8 +5,10 @@ repository-level `AGENTS.md`.
 
 ## Curriculum Reference
 
-- Use `Math Mammoth Grade 1-A.pdf` as the primary curriculum reference for
-  issue #54 and future Football learning-system changes.
+- Use `Math Mammoth Grade 1-A.pdf` and the Grade 1-A/1-B 2026 reference
+  materials in `MathMammoth_Grade1-A_2026/` and `MathMammoth_Grade1-B_2026/`
+  for curriculum-grounded content. Identify each source by worktext, edition,
+  and printed page, as required by the repository curriculum instructions.
 - The PDF is committed with permission from the license holder for educational
   use. Treat it as an intentional repository asset, not an accidental binary.
 - The learner's dated progress and near-term lesson map live in
