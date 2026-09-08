@@ -136,6 +136,17 @@ games. Override both explicitly when validating another release target:
 REGISTRY_RELEASE_BASE=<git-revision> REGISTRY_RELEASE_TARGET=<game-id> npm run test:registry
 ```
 
+## Curriculum Content
+
+- Identify curriculum pages by worktext, edition, and printed page (for example,
+  Math Mammoth Grade 1-B, 2026, page 20); never compare pages across books as
+  bare numbers. Preserve legacy Grade 1-A references when adding Grade 1-B.
+- Keep confirmed learner completion separate from the approved content scope.
+  Current content work prioritizes arithmetic through Grade 1-B Chapter 8;
+  strategy demonstrations, response-time tracking, and new adaptive progression
+  are separate follow-ups, not prerequisites for adding arithmetic questions.
+  Preserve existing retry/support behavior when adding content.
+
 ## Repository Structure
 
 ```text
