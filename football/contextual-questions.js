@@ -7,6 +7,38 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
   const SCHEMA_VERSION = 3;
   const CURRENT_COMPLETED_PAGE = 145;
   const INCLUDED_THROUGH_PAGE = 179;
+  const WORKTEXTS = deepFreeze({
+    'Math Mammoth Grade 1-A': { edition: 2026, includedThroughPage: 179, completedThroughPage: 145 },
+    'Math Mammoth Grade 1-B': { edition: 2026, includedThroughPage: 149, completedThroughPage: null },
+  });
+
+  // Bare legacy page limits refer only to Grade 1-A. Book-specific limits may
+  // narrow inclusion, never widen the approved source or assert completion.
+  function sourceStatus(meta, profile = DEFAULT_PROFILE) {
+    if (meta.curriculumSource !== 'workbook') return { included: true, guided: false };
+    const title = meta.worktext || 'Math Mammoth Grade 1-A';
+    const book = WORKTEXTS[title];
+    if (!book || (meta.edition ?? 2026) !== book.edition) return { included: false, guided: true };
+    const request = profile.worktexts?.[title];
+    if (request && request.edition !== book.edition) return { included: false, guided: true };
+    const ceiling = title === 'Math Mammoth Grade 1-A' ? profile.includedThroughPage : book.includedThroughPage;
+    const requested = request?.includedThroughPage;
+    const limit = Number.isInteger(requested) && requested >= 0 ? Math.min(ceiling, requested) : ceiling;
+    const completed = title === 'Math Mammoth Grade 1-A' ? Math.min(profile.completedThroughPage ?? 145, 145) : book.completedThroughPage;
+    return { included: (meta.coverageThroughPage ?? meta.introducedOnPage) <= limit,
+      guided: completed === null || (meta.coverageThroughPage ?? meta.introducedOnPage) > completed };
+  }
+
+  // Grade 1-B Chapter 8 domains. General borrowing (43 - 7, 52 - 18)
+  // is deliberately excluded; whole tens minus one digit is explicitly sourced.
+  function arithmeticAllowed(operation, a, b) {
+    if (![a, b].every(Number.isInteger) || a < 0 || b < 0) return false;
+    if (operation === 'add') return a <= 99 && b <= 99 && a + b <= 100;
+    if (operation !== 'subtract') return false;
+    return b <= a && (a <= 20 || (a <= 99 && a % 10 >= b % 10)
+      || (a <= 100 && a % 10 === 0 && b <= 9));
+  }
+
   const PLAY_TYPES = Object.freeze(['scrimmage', 'punt', 'fieldGoal', 'conversion']);
   const MATCH_KEYS = Object.freeze(['schemaVersion', 'player', 'opponent']);
   const TEAM_IDENTITY_KEYS = Object.freeze(['id', 'displayName', 'shortName', 'endZoneName']);
@@ -184,9 +216,12 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
     const input = isRecord(profile) ? profile : {};
     const positiveInt = (value, fallback) => Number.isInteger(value) && value >= 0 ? value : fallback;
     return {
+      ...(input.worktexts ? { worktexts: clone(input.worktexts) } : {}),
       // Factual workbook completion and the user-approved question ceiling are
       // separate. A permissive caller cannot widen either repository contract;
-      // narrower profiles are allowed and only remove candidates.
+      // narrower source profiles only remove candidates. computationMax is the
+      // legacy arithmetic bound; Chapter 8 uses arithmeticAllowed and the
+      // book-specific sourceStatus guard instead of this legacy maximum.
       completedThroughPage: Math.min(
         positiveInt(input.completedThroughPage, DEFAULT_PROFILE.completedThroughPage),
         DEFAULT_PROFILE.completedThroughPage,
@@ -573,6 +608,7 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
     curriculumSource,
     introducedOnPage = null,
     playType = 'scrimmage',
+    worktext = 'Math Mammoth Grade 1-A', edition = 2026, coverageThroughPage = introducedOnPage,
   }) {
     if (!PLAY_TYPES.includes(playType)) throw new Error(`Unknown play type ${playType}.`);
     if (!OPERATION_TYPES.includes(operationType)) throw new Error(`Unknown operation type ${operationType}.`);
@@ -601,6 +637,7 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
       tier,
       curriculumSource,
       introducedOnPage,
+      ...(curriculumSource === 'workbook' ? { worktext, edition, coverageThroughPage } : {}),
       weight,
       operationType,
       answerExposure,
@@ -668,7 +705,57 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
     ];
   }
 
+  const ARITHMETIC_RELATIONS = [
+    { id: 'score-total-ch8', operation: 'add', page: 102, through: 123,
+      relation(snap) { return { a: snap.context.scores.player, b: snap.context.scores.opponent,
+        bindings: [contextBinding(snap, 'playerScore', '/context/scores/player'), contextBinding(snap, 'opponentScore', '/context/scores/opponent')],
+        operands: ['playerScore', 'opponentScore'], context: 'The two teams have scored', ask: 'How many points in all?' }; } },
+    { id: 'score-difference-ch8', operation: 'absoluteDifference', page: 110, through: 143,
+      relation(snap) { const p = snap.context.scores.player, o = snap.context.scores.opponent;
+        return { a: Math.max(p, o), b: Math.min(p, o),
+          bindings: [contextBinding(snap, 'playerScore', '/context/scores/player'), contextBinding(snap, 'opponentScore', '/context/scores/opponent')],
+          operands: ['playerScore', 'opponentScore'], context: 'The teams have these scores:', ask: 'How many points apart?' }; } },
+    { id: 'team-yards-add-ch8', operation: 'add', page: 102, through: 123,
+      relation(snap) { return { a: teamTotalYards(snap), b: appliedGain(snap),
+        bindings: [teamTotalYardsBinding(snap), contextBinding(snap, 'proposedGain', '/proposal/appliedGain')],
+        operands: ['teamTotalYards', 'proposedGain'], context: 'The team with the ball has this many total yards, then gains more:', ask: 'What would its total yards be?' }; } },
+    { id: 'line-remaining-ch8', operation: 'missingPart', page: 131, through: 143,
+      relation(snap) { return { a: snap.context.yardsToGo, b: appliedGain(snap), bindings: lineBindings(snap),
+        operands: ['yardsToGo', 'proposedGain'], context: 'Yards needed for this first down, minus the gain:', ask: 'How many yards would still be needed?' }; } },
+    { id: 'goal-remaining-ch8', operation: 'goalDistanceAfterGain', page: 110, through: 143,
+      relation(snap) { if (snap.proposal.resultKind === 'touchdown') return null;
+        return { a: goalDistance(snap), b: appliedGain(snap),
+          bindings: [...goalBindings(snap), contextBinding(snap, 'proposedGain', '/proposal/appliedGain')],
+          operands: ['ballYardLine', 'goalLine', 'proposedGain'], context: 'Distance to the goal, minus this gain:', ask: 'How many yards would remain to the goal?' }; } },
+  ];
+  const ARITHMETIC_FAMILIES = ARITHMETIC_RELATIONS.map((spec) => ({
+    meta: makeMeta({ familyId: spec.id, skill: spec.operation === 'add' ? 'addition' : 'difference',
+      concept: spec.id, purpose: 'approvedExtension', tier: 'chapter-8-arithmetic', weight: 2,
+      operationType: spec.operation, answerExposure: 'modeled-with-result-hidden', evidenceClass: 'independent',
+      curriculumSource: 'workbook', worktext: 'Math Mammoth Grade 1-B', edition: 2026,
+      introducedOnPage: spec.page, coverageThroughPage: spec.through }),
+    derive(snap) {
+      const relation = spec.relation(snap);
+      const plus = spec.operation === 'add';
+      if (!relation || !arithmeticAllowed(plus ? 'add' : 'subtract', relation.a, relation.b)
+        || (relation.a <= 10 && relation.b <= 10 && (!plus || relation.a + relation.b <= 10))) {
+        return { decline: decline('outside-chapter-8-relation', 'No supported wider arithmetic relation in these public facts.') };
+      }
+      const { a, b } = relation, operator = plus ? '+' : '−', answer = plus ? a + b : a - b;
+      const equation = `${a} ${operator} ${b}`;
+      return eligible(makeSemantic({ bindings: relation.bindings, operationType: spec.operation,
+        operandIds: relation.operands, answer, prompt: `${relation.context} ${equation}. ${relation.ask}`,
+        hint: `Work out ${equation}. Use the tens and ones or count on or back.`,
+        explanation: `${equation} = ${answer}.`, choiceSpec: numericChoiceSpec(0, 100),
+        visualType: 'arithmetic-equation', visualData: { a, b, operator },
+        initialAriaLabel: `${equation} equals an unknown number.`,
+        guidedAriaLabel: `Use the tens and ones: ${equation}; the answer is hidden.`,
+        workedAriaLabel: `${equation} equals ${answer}.` }));
+    },
+  }));
+
   const FAMILY_DEFINITIONS = [
+    ...ARITHMETIC_FAMILIES,
     {
       meta: makeMeta({ familyId: 'yards-to-go-read', skill: 'football-number-sense', concept: 'line-to-gain', purpose: 'coreReview', tier: 'within-10', weight: 4, operationType: 'read', answerExposure: 'source-visible', evidenceClass: 'literacy', curriculumSource: 'football-only' }),
       derive(snap) {
@@ -1336,6 +1423,7 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
   // explanation; the surrounding goal and football meaning make that model
   // useful without adding another source of numeric truth.
   const WORKED_REVIEW_SPECS = deepFreeze({
+    ...Object.fromEntries(ARITHMETIC_RELATIONS.map(({ id }) => [id, { title: 'Work Out the Play Numbers', goal: 'Calculate with the public score or yardage facts.', footballMeaning: 'The equation uses the scores or yards from this exact play.' }])),
     'yards-to-go-read': {
       title: 'Read the Distance',
       goal: 'Find the yards needed on the scoreboard.',
@@ -1533,8 +1621,8 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
       if (playType && meta.playType !== playType) continue;
       let reason = commonReason;
       let result = null;
-      if (!reason && meta.curriculumSource === 'workbook' && meta.introducedOnPage > profile.includedThroughPage) {
-        reason = decline('curriculum-not-included', `Family comes from page ${meta.introducedOnPage}, but the approved question ceiling is page ${profile.includedThroughPage}.`);
+      if (!reason && !sourceStatus(meta, profile).included) {
+        reason = decline('curriculum-not-included', `Family requires ${meta.worktext} (${meta.edition}) through page ${meta.coverageThroughPage}; that source is outside the requested curriculum scope.`);
       }
       if (!reason) {
         try {
@@ -1696,8 +1784,8 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
     }
 
     const profile = normalizeProfile(options.profile || DEFAULT_PROFILE);
-    if (definition.meta.curriculumSource === 'workbook' && definition.meta.introducedOnPage > profile.includedThroughPage) {
-      throw contractError('curriculum-not-included', `${familyId} comes from page ${definition.meta.introducedOnPage}, beyond the approved question ceiling of page ${profile.includedThroughPage}.`);
+    if (!sourceStatus(definition.meta, profile).included) {
+      throw contractError('curriculum-not-included', `${familyId} requires ${definition.meta.worktext} (${definition.meta.edition}) through page ${definition.meta.coverageThroughPage}; that source is outside the requested curriculum scope.`);
     }
 
     const result = definition.derive(source, profile);
@@ -1776,6 +1864,7 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
     INCLUDED_THROUGH_PAGE,
     PLAY_TYPES,
     DEFAULT_PROFILE,
+    WORKTEXTS, sourceStatus, arithmeticAllowed,
     OPERATION_TYPES,
     ANSWER_EXPOSURE_POLICIES,
     EVIDENCE_CLASSES,

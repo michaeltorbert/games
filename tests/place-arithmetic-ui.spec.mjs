@@ -1,0 +1,137 @@
+import { test, expect } from '@playwright/test';
+const KEY='place-value-practice:progress:v1', AKEY='place-value-practice:arithmetic:v1';
+async function raw(page,key=KEY){return page.evaluate(k=>localStorage.getItem(k),key);}
+async function snapshot(page){return page.evaluate(()=>__arithmeticTest.snapshot());}
+async function correct(page){const answer=await page.evaluate(()=>PLACE_ARITHMETIC.view(__arithmeticTest.snapshot()).answer);await page.locator('#arithmetic-practice .arithmetic-answer').filter({hasText:new RegExp(`^${answer}$`)}).click();}
+
+test('arithmetic preserves place-value bytes through retry, reload, duplicate completion, Next, keyboard, and mode switches',async({page})=>{
+ const errors=[];page.on('pageerror',e=>errors.push(e.message));
+ await page.goto('/place-value-practice/');
+ // Seed actual outstanding review/gate state using the existing normalization seam.
+ await page.evaluate(()=>{
+   const s=__placeValueTest.snapshot();s.aggregate.attempted=12;
+   s.transferEvidence.zeroTens={blocksToNumber:[305],unlocked:false};
+   s.gateOpportunities.zeroTens={status:'pending',evidenceValue:305,armedAt:1,dueAt:3};
+   s.reviewQueues.exact=[{id:'exact-arithmetic-isolation',value:105,stage:2,format:'blocks-to-number',layout:'fixed',dueAt:0,postponements:0}];
+   const normalized=__placeValueTest.setState(s);
+   localStorage.setItem('place-value-practice:progress:v1',JSON.stringify(normalized));
+ });
+ const before=await raw(page);
+ expect(JSON.parse(before).reviewQueues.exact).toHaveLength(1);
+ expect(JSON.parse(before).gateOpportunities.zeroTens.status).toBe('pending');
+ await page.getByRole('button',{name:'Arithmetic',exact:true}).click();
+ const q=(await snapshot(page)).question;
+ const answer=await page.evaluate(()=>PLACE_ARITHMETIC.view(__arithmeticTest.snapshot()).answer);
+ const wrong=q.choices.find(x=>x!==answer);
+ await page.getByRole('button',{name:String(wrong),exact:true}).click();
+ const missed=await snapshot(page);
+ await page.reload();
+ expect(await snapshot(page)).toEqual(missed);
+ await expect(page.getByRole('button',{name:String(wrong),exact:true})).toBeDisabled();
+ await page.keyboard.press('Enter');
+ expect(await raw(page)).toBe(before);
+ await correct(page);
+ const completed=await snapshot(page);
+ expect(completed.completed).toBe(1);expect(completed.afterHelp).toBe(1);
+ await page.reload();expect(await snapshot(page)).toEqual(completed);
+ // Disabled answer cannot complete a second time, even via a DOM click.
+ await page.evaluate(()=>document.querySelector('.arithmetic-answer').click());
+ expect((await snapshot(page)).completed).toBe(1);
+ await page.locator('#arithmetic-next').click();
+ expect((await snapshot(page)).sequence).toBe(1);
+ const current=await snapshot(page);
+ expect(await raw(page)).toBe(before);
+ await page.getByRole('button',{name:'Place value',exact:true}).click();
+ await page.getByRole('button',{name:'Arithmetic',exact:true}).click();
+ expect(await snapshot(page)).toEqual(current);
+ expect(await raw(page)).toBe(before);
+ expect(errors).toEqual([]);
+ await page.screenshot({path:`tests/artifacts/place-arithmetic-${test.info().project.name}.png`});
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+});
+
+test('all fixed families appear in normal sessions; finite recap and endless restart use only arithmetic progress',async({page})=>{
+ await page.goto('/place-value-practice/');const before=await raw(page);
+ await page.getByRole('button',{name:'Arithmetic',exact:true}).click();
+ await page.getByLabel('Arithmetic session length').selectOption('20');
+ await page.getByRole('button',{name:'Start new arithmetic session'}).click();
+ const seen=new Set();
+ for(let i=0;i<20;i++){seen.add((await snapshot(page)).question.family);await correct(page);if(i<19)await page.locator('#arithmetic-next').click();}
+ expect(seen.size).toBe(10);
+ await expect(page.locator('#arithmetic-recap')).toContainText('20 completed · 20 first try');
+ await page.getByLabel('Arithmetic session length').selectOption('endless');
+ await page.getByRole('button',{name:'Start new arithmetic session'}).click();
+ expect((await snapshot(page)).target).toBeNull();expect((await snapshot(page)).completed).toBe(0);
+ expect(await raw(page)).toBe(before);
+});
+
+test('future arithmetic schema stays byte-identical and storage failure permits in-memory practice',async({page})=>{
+ await page.goto('/place-value-practice/');const before=await raw(page);
+ const future='{"schemaVersion":23,"preserve":"future bytes"}';
+ await page.evaluate(({future,AKEY})=>{localStorage.setItem(AKEY,future);localStorage.setItem('place-value-practice:mode:v1','arithmetic');},{future,AKEY});
+ await page.reload();await correct(page);await page.locator('#arithmetic-next').click();
+ expect(await raw(page,AKEY)).toBe(future);expect(await raw(page)).toBe(before);
+ await expect(page.locator('.arithmetic-storage')).toContainText('newer version');
+ await page.addInitScript(()=>{Storage.prototype.getItem=function(){throw Error('unavailable');};Storage.prototype.setItem=function(){throw Error('unavailable');};});
+ await page.reload();await page.getByRole('button',{name:'Arithmetic',exact:true}).click();
+ await correct(page);expect((await snapshot(page)).completed).toBe(1);
+ await expect(page.locator('.arithmetic-storage')).toContainText('memory');
+});
+
+test('legacy embedded place-value self-tests remain intact',async({page},info)=>{
+ test.skip(info.project.name!=='ipad-11-landscape','One run of the unchanged embedded suite');
+ await page.goto('/place-value-practice/');
+ const result=await page.evaluate(()=>runSelfTests());
+ expect(result.failed).toBe(0);expect(result.passed).toBe(169);
+});
+
+test('malformed arithmetic saves recover without touching place-value progress',async({page})=>{
+ await page.goto('/place-value-practice/');const before=await raw(page);
+ await page.evaluate(AKEY=>{
+   localStorage.setItem(AKEY,JSON.stringify({schemaVersion:1,sequence:0,target:10,completed:0,firstTry:0,afterHelp:0,
+     question:{id:0,family:'facts-add',operands:[500,4],choices:[504,503,502,501],misses:[],complete:false}}));
+   localStorage.setItem('place-value-practice:mode:v1','arithmetic');
+ },AKEY);
+ await page.reload();
+ const state=await snapshot(page);
+ expect(state.completed).toBe(0);
+ expect(state.question.operands.every(n=>n<=20)).toBe(true);
+ await correct(page);expect((await snapshot(page)).completed).toBe(1);
+ expect(await raw(page)).toBe(before);
+});
+
+
+test('three misses reveal the equation across reload, then require the correct choice before Next',async({page})=>{
+ await page.goto('/place-value-practice/');const before=await raw(page);
+ await page.getByRole('button',{name:'Arithmetic',exact:true}).click();
+ const view=await page.evaluate(()=>PLACE_ARITHMETIC.view(__arithmeticTest.snapshot()));
+ const choices=(await snapshot(page)).question.choices;
+ for(const value of choices.filter(value=>value!==view.answer)) {
+   await page.getByRole('button',{name:String(value),exact:true}).click();
+ }
+ const revealed=await snapshot(page);
+ expect(revealed.question.complete).toBe(false);expect(revealed.completed).toBe(0);
+ await expect(page.locator('#arithmetic-equation')).toHaveText(view.worked);
+ await expect(page.locator('#arithmetic-feedback')).toContainText('Here is the answer');
+ await expect(page.locator('#arithmetic-next')).toBeHidden();
+ const semantic=await page.evaluate(()=>JSON.parse(render_game_to_text()));
+ expect(semantic.revealed).toBe(true);expect(semantic.worked).toBe(view.worked);expect(semantic.complete).toBe(false);
+ await page.reload();expect(await snapshot(page)).toEqual(revealed);
+ await page.screenshot({path:`tests/artifacts/place-arithmetic-reveal-${test.info().project.name}.png`});
+ await expect(page.locator('#arithmetic-equation')).toHaveText(view.worked);
+ await expect(page.locator('#arithmetic-next')).toBeHidden();
+ for(const value of choices.filter(value=>value!==view.answer)) await expect(page.getByRole('button',{name:String(value),exact:true})).toBeDisabled();
+ await correct(page);expect((await snapshot(page)).completed).toBe(1);
+ await page.evaluate(()=>document.querySelector('.arithmetic-answer').click());
+ expect((await snapshot(page)).completed).toBe(1);
+ await page.locator('#arithmetic-next').click();expect((await snapshot(page)).sequence).toBe(1);
+ expect(await raw(page)).toBe(before);
+});
+
+test('changing arithmetic session length retains keyboard focus',async({page})=>{
+ await page.goto('/place-value-practice/');
+ await page.getByRole('button',{name:'Arithmetic',exact:true}).click();
+ const select=page.getByLabel('Arithmetic session length');
+ await select.focus();await select.selectOption('20');await expect(select).toBeFocused();
+ await page.keyboard.press('ArrowUp');await expect(select).toBeFocused();
+});

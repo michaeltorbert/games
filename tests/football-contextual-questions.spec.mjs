@@ -481,6 +481,7 @@ test('every family authors the exact evidence class and independent families hid
       'punt-landing-spot',
     ],
     independent: [
+      'score-total-ch8', 'score-difference-ch8', 'team-yards-add-ch8', 'line-remaining-ch8', 'goal-remaining-ch8',
       'line-to-gain-missing-part',
       'line-to-gain-exact',
       'line-to-gain-surplus',
@@ -504,10 +505,11 @@ test('every family authors the exact evidence class and independent families hid
       [...expected[evidenceClass]].sort(),
     );
   }
-  assert.equal(registry.length, 26);
+  assert.equal(registry.length, 31);
   assert.equal(Object.isFrozen(registry[0]), true);
 
   const scenarios = [
+    makeSnap(domain, { yardsToGo: 14, firstDownLine: 44, scores: { player: 14, opponent: 7 } }, 7),
     makeSnap(domain, {
       quarter: 3, down: 2, yardLine: 30, firstDownLine: 35, yardsToGo: 5,
       driveStart: 25, scores: { player: 3, opponent: 4 }, totalYards: { player: 83, opponent: 71 },
@@ -639,6 +641,7 @@ test('yards-to-go reading keeps the source value out of the prompt and in the ac
 test('every exported family builds one exact, grounded, recursively frozen schema-3 worked review', () => {
   const { domain, questions } = loadModules();
   const scenarios = [
+    makeSnap(domain, { yardsToGo: 14, firstDownLine: 44, scores: { player: 14, opponent: 7 } }, 7),
     makeSnap(domain, {
       quarter: 3, down: 2, yardLine: 30, firstDownLine: 35, yardsToGo: 5,
       driveStart: 25, scores: { player: 3, opponent: 4 },
@@ -666,6 +669,11 @@ test('every exported family builds one exact, grounded, recursively frozen schem
     makeSpecialPlay(domain, 'punt', { possession: 'offense', yardLine: 30, travelYards: 40 }),
   ];
   const expected = {
+    'score-total-ch8': ['score-total-ch8', 'add', ['playerScore', 'opponentScore']],
+    'score-difference-ch8': ['score-difference-ch8', 'absoluteDifference', ['playerScore', 'opponentScore']],
+    'team-yards-add-ch8': ['team-yards-add-ch8', 'add', ['teamTotalYards', 'proposedGain']],
+    'line-remaining-ch8': ['line-remaining-ch8', 'missingPart', ['yardsToGo', 'proposedGain']],
+    'goal-remaining-ch8': ['goal-remaining-ch8', 'goalDistanceAfterGain', ['ballYardLine', 'goalLine', 'proposedGain']],
     'yards-to-go-read': ['line-to-gain', 'read', ['yardsToGo']],
     'line-to-gain-missing-part': ['line-to-gain', 'missingPart', ['yardsToGo', 'proposedGain']],
     'line-to-gain-exact': ['line-to-gain', 'exactRemainder', ['yardsToGo', 'proposedGain']],
@@ -1911,4 +1919,50 @@ test('call affinity annotates but never filters the truthful eligible pool', () 
   assert.deepEqual(plain(question.selection), plain(questions.selectionFor(shortRun, candidate.familyId)));
   assert.equal(question.selection.multiplier, 1.75);
   assert.equal(deepFrozen(question.selection), true);
+});
+
+
+test('Chapter 8 arithmetic respects source identity, full-domain inclusion and explicit borrowing boundaries', () => {
+  const { questions, domain } = loadModules();
+  const snap = makeSnap(domain, { scores: { player: 7, opponent: 6 } }, 4);
+  const family = questions.FAMILY_REGISTRY.scrimmage.find(x => x.familyId === 'score-total-ch8');
+  assert.deepEqual(plain(questions.sourceStatus(family)), { included: true, guided: true });
+  for (const source of [{ worktext: 'unknown' }, { edition: 2025 }]) {
+    assert.equal(questions.sourceStatus({ ...family, ...source }).included, false);
+  }
+  const narrowed = { worktexts: { 'Math Mammoth Grade 1-B': { edition: 2026, includedThroughPage: 122 } } };
+  assert.equal(questions.inspect(snap, narrowed).eligible.some(x => x.familyId === family.familyId), false);
+  const diagnostic = questions.inspect(snap, narrowed).declined.find(x => x.familyId === family.familyId).reason.detail;
+  assert.match(diagnostic, /Math Mammoth Grade 1-B \(2026\) through page 123/);
+  assert.doesNotMatch(diagnostic, /179/);
+  assert.throws(() => questions.build(snap, family.familyId, { profile: narrowed }), /Grade 1-B \(2026\) through page 123/);
+  assert.equal(questions.build(snap, family.familyId).answer.value, 13);
+  assert.equal(questions.DEFAULT_PROFILE.computationMax, 10);
+  for (const [a, b, allowed] of [[14,7,true], [20,16,true], [67,24,true], [100,7,true], [40,7,true], [21,14,false], [52,18,false], [43,7,false], [101,1,false]]) {
+    assert.equal(questions.arithmeticAllowed('subtract',a,b), allowed, `${a}-${b}`);
+    const source = makeSnap(domain, { scores: { player:a, opponent:b } }, 4);
+    assert.equal(questions.inspect(source).eligible.some(x => x.familyId === 'score-difference-ch8'), allowed, `${a}-${b} scoreboard`);
+  }
+  for (let a = 0; a <= 110; a++) for (let b = 0; b <= 110; b++) {
+    const expected = a <= 100 && b <= a && (a <= 20 || (a < 100 && Math.floor(a/10) >= Math.floor(b/10) && a%10 >= b%10) || (a%10 === 0 && b < 10));
+    assert.equal(questions.arithmeticAllowed('subtract',a,b), expected, `${a}-${b}`);
+  }
+  const signed = makeSnap(domain, { totalYards: { player: -3, opponent: 83 }, driveStart: 40 }, 4);
+  assert.equal(questions.inspect(signed).eligible.some(x => x.familyId === 'team-yards-add-ch8'), false);
+});
+
+
+test('published Grade 1-B source map matches every runtime family coordinate', async () => {
+  const { questions } = loadModules();
+  const progress = JSON.parse(await readFile(new URL('../football/curriculum-progress.json', import.meta.url), 'utf8'));
+  const source = progress.additionalWorktexts.find(book => book.title === 'Math Mammoth Grade 1-B');
+  const entries = source.sourceMap.flatMap(row => row.families.map(familyId => ({ familyId, row })));
+  const runtime = questions.FAMILY_REGISTRY.scrimmage.filter(family => family.worktext === source.title);
+  assert.deepEqual(entries.map(entry => entry.familyId).sort(), plain(runtime.map(family => family.familyId)).sort());
+  for (const family of runtime) {
+    const { row } = entries.find(entry => entry.familyId === family.familyId);
+    assert.equal(row.introducedOnPage, family.introducedOnPage, family.familyId);
+    assert.equal(row.coverageThroughPage, family.coverageThroughPage, family.familyId);
+    assert.equal(source.edition, family.edition);
+  }
 });

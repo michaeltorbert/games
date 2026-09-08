@@ -1086,8 +1086,7 @@ test('a production snap exposes only approved, grounded, graded contextual conte
     expect(question.visuals.initial.result).toBeNull();
     expect(question.visuals.guided.result).toBeNull();
   }
-  const curriculumAhead = question.curriculumSource === 'workbook'
-    && question.introducedOnPage > 145;
+  const curriculumAhead = await page.evaluate(q => FOOTBALL_CONTEXTUAL_QUESTIONS.sourceStatus(q).guided, question);
   expect(active.questionUi.support).toBe(curriculumAhead ? 'guided' : 'initial');
   if (curriculumAhead) {
     await expect(page.locator('#feedback')).toContainText(question.hint.text);
