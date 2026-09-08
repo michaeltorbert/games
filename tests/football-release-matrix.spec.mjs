@@ -192,6 +192,27 @@ async function answerChoice(page, choiceId) {
   return contracts;
 }
 
+async function timeLabPracticeState(page) {
+  return page.evaluate(() => window.__footballTest.practiceState());
+}
+
+async function clickTimeLabAnswer(page, kind) {
+  const index = await page.evaluate((answerKind) => {
+    if (typeof timeLabSession !== 'object' || !timeLabSession
+      || timeLabSession.status !== 'active') return -1;
+    const slot = timeLabSession.slots[timeLabSession.index];
+    const buttons = Array.from(document.querySelectorAll('#tl-choices .tl-choice-button'));
+    return buttons.findIndex(button => (
+      !button.disabled
+      && (answerKind === 'correct'
+        ? button.dataset.choiceId === slot.question.correctChoiceId
+        : button.dataset.choiceId !== slot.question.correctChoiceId)
+    ));
+  }, kind);
+  expect(index, `${kind} Time Lab answer control`).toBeGreaterThanOrEqual(0);
+  await page.locator('#tl-choices .tl-choice-button').nth(index).click();
+}
+
 async function pauseClockBeforeAnswer(page) {
   const now = await page.evaluate(() => Date.now());
   await page.clock.pauseAt(new Date(now + 100));
@@ -666,6 +687,106 @@ test('fourth-down and special-team states preserve decision and normal-call cont
   await expect(page.locator('#decision-grid .decision-btn')).toHaveCount(0);
   await expect(page.locator('#defense-read')).toBeVisible();
   await assertPhaseAndShot(page, testInfo, 'call', '24-defense-fourth-down-go-call');
+});
+
+test('Time Lab menu, guided retry, worked explanation, and recap follow production actions', async ({ page }, testInfo) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(window.crypto, 'getRandomValues', {
+      configurable: true,
+      value(values) {
+        values.fill(0);
+        values[0] = 1234;
+        return values;
+      },
+    });
+  });
+  await page.goto('/football/');
+  await expect(page.locator('#ov-start')).toHaveClass(/show/);
+
+  await page.locator('#tl-open-button').click();
+  await expect(page.locator('#ov-time-lab')).toHaveClass(/show/);
+  await expect(page.locator('#ov-time-lab')).toHaveAttribute('aria-hidden', 'false');
+  await expect(page.locator('#ov-start')).not.toHaveClass(/show/);
+  await expect(page.locator('#ov-time-lab .tl-card')).toHaveAttribute('data-tl-view', 'menu');
+  await expect(page.locator('.tl-mode-button')).toHaveCount(3);
+  await assertVisibleOverlayCardBounds(page, '32-time-lab-menu');
+  await shot(page, testInfo, '32-time-lab-menu');
+
+  await page.locator('#tl-mode-mixed').click();
+  await expect(page.locator('#tl-question-view')).toBeVisible();
+  await expect(page.locator('#tl-progress')).toHaveText('Question 1 of 8');
+  await expect(page.locator('#tl-guidance')).toBeVisible();
+  await expect(page.locator('#tl-choices .tl-choice-button')).toHaveCount(4);
+  await expect.poll(() => timeLabPracticeState(page)).toMatchObject({
+    active: true,
+    view: 'question',
+    mode: 'mixed',
+    status: 'active',
+    questionNumber: 1,
+    total: 8,
+    current: {
+      familyId: 'calendar-month-neighbor',
+      evidenceClass: 'independent',
+      attempt: 1,
+      worked: false,
+    },
+  });
+  await assertVisibleOverlayCardBounds(page, '33-time-lab-guided');
+  await shot(page, testInfo, '33-time-lab-guided');
+
+  await clickTimeLabAnswer(page, 'wrong');
+  await expect(page.locator('#tl-feedback')).toHaveAttribute('data-state', 'retry');
+  await expect(page.locator('#tl-feedback')).toContainText('try once more');
+  await expect(page.locator('#tl-choices')).toHaveAttribute('data-attempt', '2');
+  await expect(page.locator('#tl-worked')).toBeHidden();
+  await expect.poll(() => timeLabPracticeState(page)).toMatchObject({
+    questionNumber: 1,
+    current: { attempt: 2, worked: false, visualStage: 'guided' },
+    tallies: { supported: 0, secondMiss: 0 },
+  });
+  await assertVisibleOverlayCardBounds(page, '34-time-lab-retry');
+  await shot(page, testInfo, '34-time-lab-retry');
+
+  await clickTimeLabAnswer(page, 'wrong');
+  await expect(page.locator('#tl-feedback')).toHaveAttribute('data-state', 'worked');
+  await expect(page.locator('#tl-worked')).toBeVisible();
+  await expect(page.locator('#tl-next-button')).toBeVisible();
+  await expect(page.locator('#tl-next-button')).toBeFocused();
+  await expect.poll(() => timeLabPracticeState(page)).toMatchObject({
+    questionNumber: 1,
+    current: { attempt: 2, worked: true, visualStage: 'worked' },
+    tallies: { supported: 1, secondMiss: 1 },
+  });
+  await assertVisibleOverlayCardBounds(page, '35-time-lab-worked');
+  await shot(page, testInfo, '35-time-lab-worked');
+
+  await page.locator('#tl-next-button').click();
+  while ((await timeLabPracticeState(page)).status === 'active') {
+    await clickTimeLabAnswer(page, 'correct');
+    await expect(page.locator('#tl-next-button')).toBeVisible();
+    await page.locator('#tl-next-button').click();
+  }
+
+  await expect(page.locator('#tl-recap-view')).toBeVisible();
+  await expect(page.locator('#tl-done-button')).toBeFocused();
+  await expect.poll(() => timeLabPracticeState(page)).toMatchObject({
+    active: true,
+    view: 'recap',
+    mode: 'mixed',
+    status: 'recap',
+    recap: { read: 4, solved: 3, supported: 1 },
+    tallies: { firstTryCorrect: 7, retryCorrect: 0, secondMiss: 1 },
+  });
+  await expect(page.locator('#tl-recap-copy')).toHaveText(
+    'You read 4 facts and solved 3 problems. You used extra support on 1 question.',
+  );
+  await assertVisibleOverlayCardBounds(page, '36-time-lab-recap');
+  await shot(page, testInfo, '36-time-lab-recap');
+
+  await page.locator('#tl-done-button').click();
+  await expect(page.locator('#ov-start')).toHaveClass(/show/);
+  await expect(page.locator('#tl-open-button')).toBeFocused();
+  await expect.poll(() => timeLabPracticeState(page)).toMatchObject({ active: false });
 });
 
 test('season start, saved final, completed, and pending states remain compact', async ({ page }, testInfo) => {

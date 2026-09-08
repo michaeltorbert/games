@@ -1,4 +1,4 @@
-const GAME_VERSION = '1.28.0';
+const GAME_VERSION = '1.29.0';
 let prevPlayerScore = -1, prevOpponentScore = -1;
 let playerRunTimer = 0, playerCelebrateTimer = 0, playerCelebrateDelayTimer = 0;
 const EZ = 5;
@@ -168,6 +168,9 @@ let activeSeasonBinding = null;
 let seasonSettlementPromise = null;
 let seasonActionBusy = false;
 let seasonEndActionBusy = false;
+let timeLabSession = null;
+let timeLabSessionCounter = 0;
+let timeLabFallbackCounter = 0;
 
 function mixSeed(seed, salt) {
   let value = (seed ^ salt) >>> 0;
@@ -539,6 +542,8 @@ function renderStartMode() {
   const quickPanel = document.getElementById('quick-game-panel');
   const seasonPanel = document.getElementById('season-panel');
   const startButton = document.getElementById('start-game-btn');
+  const timeLabButton = document.getElementById('tl-open-button');
+  if (timeLabButton) timeLabButton.disabled = seasonActionBusy || sessionInitialized;
   for (const input of document.querySelectorAll('input[name="play-mode"]')) {
     input.checked = input.value === selectedPlayMode;
   }
@@ -3816,7 +3821,549 @@ function spawnBurst(container, colors, runId) {
   setTimeout(() => burst.remove(), 1000);
 }
 
-const OVERLAY_IDS = ['ov-start', 'ov-td', 'ov-defense', 'ov-offense', 'ov-quarter', 'ov-halftime', 'ov-end'];
+// -- Time Lab ---------------------------------------------------------------
+// The controller below owns only ephemeral practice presentation. Its domain
+// state comes from FOOTBALL_TIME_LAB and never enters the live game state,
+// learning, opponent, stats, Season, or football RNG streams above.
+
+function timeLabElement(id) {
+  return document.getElementById(id);
+}
+
+function timeLabIsOpen() {
+  return Boolean(timeLabElement('ov-time-lab')?.classList.contains('show'));
+}
+
+function timeLabModeLabel(mode) {
+  return mode === 'clocks' ? 'Clocks practice'
+    : mode === 'calendar' ? 'Calendar practice'
+      : 'Mixed practice';
+}
+
+function nextTimeLabRootSeed() {
+  try {
+    const values = new Uint32Array(1);
+    window.crypto.getRandomValues(values);
+    return values[0] >>> 0;
+  } catch (error) {
+    // This counter is deliberately local to the practice shell. It neither
+    // reads nor resets any live-game random stream.
+    timeLabFallbackCounter = (timeLabFallbackCounter + 1) >>> 0;
+    let value = Math.imul(timeLabFallbackCounter ^ 0x54494d45, 0x9e3779b1) >>> 0;
+    value ^= value >>> 16;
+    return value >>> 0;
+  }
+}
+
+function setTimeLabView(view) {
+  const card = timeLabElement('ov-time-lab')?.querySelector('.tl-card');
+  if (card) card.dataset.tlView = view;
+  const views = {
+    menu: timeLabElement('tl-mode-view'),
+    question: timeLabElement('tl-question-view'),
+    recap: timeLabElement('tl-recap-view'),
+  };
+  Object.entries(views).forEach(([name, element]) => {
+    if (element) element.hidden = name !== view;
+  });
+}
+
+function focusTimeLabControl(selector) {
+  requestAnimationFrame(() => {
+    if (!timeLabIsOpen()) return;
+    const target = document.querySelector(selector);
+    if (target && !target.disabled && target.getClientRects().length > 0) {
+      target.focus({ preventScroll: true });
+    }
+  });
+}
+
+function focusTimeLabEntry() {
+  requestAnimationFrame(() => {
+    if (!timeLabElement('ov-start')?.classList.contains('show')) return;
+    timeLabElement('tl-open-button')?.focus({ preventScroll: true });
+  });
+}
+
+function renderTimeLabMenu() {
+  setTimeLabView('menu');
+  timeLabElement('tl-title').textContent = 'Clocks & Calendars';
+  timeLabElement('tl-subtitle').textContent = 'Choose one eight-question practice session. It stays separate from your game and season.';
+}
+
+function svgNode(name, attributes = {}) {
+  const node = document.createElementNS('http://www.w3.org/2000/svg', name);
+  Object.entries(attributes).forEach(([key, value]) => node.setAttribute(key, String(value)));
+  return node;
+}
+
+function appendTimeLabClock(parent, clock, label) {
+  const figure = document.createElement('figure');
+  figure.className = 'tl-clock-figure';
+  figure.dataset.time = `${clock.hour}:${String(clock.minute).padStart(2, '0')}`;
+  const svg = svgNode('svg', { viewBox: '0 0 120 120', 'aria-hidden': 'true', focusable: 'false' });
+  svg.classList.add('tl-clock-svg');
+  svg.appendChild(svgNode('circle', { cx: 60, cy: 60, r: 54, class: 'tl-clock-face' }));
+  for (let index = 0; index < 12; index++) {
+    const angle = (index * Math.PI) / 6;
+    const inner = index % 3 === 0 ? 43 : 47;
+    svg.appendChild(svgNode('line', {
+      x1: 60 + Math.sin(angle) * inner,
+      y1: 60 - Math.cos(angle) * inner,
+      x2: 60 + Math.sin(angle) * 50,
+      y2: 60 - Math.cos(angle) * 50,
+      class: index % 3 === 0 ? 'tl-clock-tick tl-clock-tick-major' : 'tl-clock-tick',
+    }));
+  }
+  [12, 3, 6, 9].forEach((number) => {
+    const positions = {
+      12: [60, 19], 3: [101, 65], 6: [60, 106], 9: [19, 65],
+    };
+    const text = svgNode('text', {
+      x: positions[number][0], y: positions[number][1], class: 'tl-clock-number',
+      'text-anchor': 'middle',
+    });
+    text.textContent = String(number);
+    svg.appendChild(text);
+  });
+  const minuteAngle = (clock.minute * Math.PI) / 30;
+  const hourAngle = (((clock.hour % 12) + (clock.minute / 60)) * Math.PI) / 6;
+  svg.appendChild(svgNode('line', {
+    x1: 60, y1: 60,
+    x2: 60 + Math.sin(hourAngle) * 27,
+    y2: 60 - Math.cos(hourAngle) * 27,
+    class: 'tl-clock-hand tl-clock-hour',
+  }));
+  svg.appendChild(svgNode('line', {
+    x1: 60, y1: 60,
+    x2: 60 + Math.sin(minuteAngle) * 39,
+    y2: 60 - Math.cos(minuteAngle) * 39,
+    class: 'tl-clock-hand tl-clock-minute',
+  }));
+  svg.appendChild(svgNode('circle', { cx: 60, cy: 60, r: 4, class: 'tl-clock-pin' }));
+  figure.appendChild(svg);
+  if (label) {
+    const caption = document.createElement('figcaption');
+    caption.textContent = label;
+    figure.appendChild(caption);
+  }
+  parent.appendChild(figure);
+  return figure;
+}
+
+function renderTimeLabClockVisual(container, visual) {
+  const data = visual.data;
+  if (visual.type === 'elapsed-clock') {
+    const row = document.createElement('div');
+    row.className = 'tl-elapsed-row';
+    appendTimeLabClock(row, data.clock, 'Start');
+    const move = document.createElement('div');
+    move.className = 'tl-time-move';
+    move.setAttribute('aria-hidden', 'true');
+    move.innerHTML = `<span>→</span><strong>+${data.moveMinutes === 60 ? '1 hour' : '30 min'}</strong>`;
+    row.appendChild(move);
+    if (data.targetClock) {
+      appendTimeLabClock(row, data.targetClock, 'Later');
+    } else {
+      const blank = document.createElement('div');
+      blank.className = 'tl-clock-blank';
+      blank.setAttribute('aria-hidden', 'true');
+      blank.innerHTML = '<span>?</span><small>Later</small>';
+      row.appendChild(blank);
+    }
+    container.appendChild(row);
+    return;
+  }
+
+  const row = document.createElement('div');
+  row.className = 'tl-clock-row';
+  appendTimeLabClock(row, data.clock, 'Practice clock');
+  if (data.showDigital && data.digitalTime) {
+    const digital = document.createElement('div');
+    digital.className = 'tl-digital-readout';
+    digital.textContent = data.digitalTime;
+    row.appendChild(digital);
+  }
+  container.appendChild(row);
+}
+
+function renderTimeLabAmPmVisual(container, visual) {
+  const data = visual.data;
+  const cueCopy = {
+    sunrise: ['☀', 'Just after sunrise'],
+    breakfast: ['🥣', 'Breakfast before school'],
+    'after-lunch': ['🥪', 'Just after lunch'],
+    'after-dinner': ['🍽', 'After dinner'],
+    bedtime: ['🛏', 'Getting ready for bed'],
+  }[data.illustrationCue] || ['◷', 'Time-of-day clue'];
+  const scene = document.createElement('div');
+  scene.className = `tl-day-scene tl-day-scene-${data.illustrationCue}`;
+  const cue = document.createElement('div');
+  cue.className = 'tl-scene-cue';
+  cue.setAttribute('aria-hidden', 'true');
+  cue.innerHTML = `<span>${cueCopy[0]}</span><strong>${cueCopy[1]}</strong>`;
+  const time = document.createElement('div');
+  time.className = 'tl-digital-time';
+  time.textContent = `${data.displayedTime} ${data.targetPeriod || '__'}`;
+  scene.append(cue, time);
+  container.appendChild(scene);
+}
+
+function renderTimeLabCalendarVisual(container, visual) {
+  const data = visual.data;
+  const table = document.createElement('table');
+  table.className = 'tl-calendar-table';
+  table.setAttribute('aria-label', visual.ariaLabel);
+  const caption = document.createElement('caption');
+  caption.textContent = `${data.calendar.monthName} ${data.calendar.year} practice calendar`;
+  table.appendChild(caption);
+  const head = document.createElement('thead');
+  const headRow = document.createElement('tr');
+  data.weekdayNames.forEach((weekday) => {
+    const cell = document.createElement('th');
+    cell.scope = 'col';
+    cell.textContent = weekday.slice(0, 3);
+    cell.setAttribute('aria-label', weekday);
+    headRow.appendChild(cell);
+  });
+  head.appendChild(headRow);
+  table.appendChild(head);
+  const body = document.createElement('tbody');
+  for (let offset = 0; offset < data.grid.length; offset += 7) {
+    const row = document.createElement('tr');
+    data.grid.slice(offset, offset + 7).forEach((date) => {
+      const cell = document.createElement('td');
+      if (Number.isInteger(date)) {
+        cell.textContent = String(date);
+        if (date === data.targetDate) {
+          cell.dataset.target = 'true';
+          cell.setAttribute('aria-label', data.targetWeekday
+            ? `${date}, ${data.targetWeekday}`
+            : `${date}, find its weekday`);
+        }
+      } else {
+        cell.setAttribute('aria-hidden', 'true');
+      }
+      row.appendChild(cell);
+    });
+    body.appendChild(row);
+  }
+  table.appendChild(body);
+  container.appendChild(table);
+}
+
+function renderTimeLabMonthVisual(container, visual) {
+  const data = visual.data;
+  const strip = document.createElement('div');
+  strip.className = 'tl-month-strip';
+  const target = data.targetMonth || '?';
+  const values = data.direction === 'after'
+    ? [data.sourceMonth, target]
+    : [target, data.sourceMonth];
+  values.forEach((value, index) => {
+    const item = document.createElement('span');
+    item.className = value === '?' ? 'tl-month-missing' : 'tl-month-name';
+    item.textContent = value;
+    strip.appendChild(item);
+    if (index === 0) {
+      const arrow = document.createElement('span');
+      arrow.className = 'tl-month-arrow';
+      arrow.textContent = '→';
+      arrow.setAttribute('aria-hidden', 'true');
+      strip.appendChild(arrow);
+    }
+  });
+  container.appendChild(strip);
+}
+
+function renderTimeLabVisual(visual) {
+  const container = timeLabElement('tl-visual');
+  container.replaceChildren();
+  container.dataset.visualType = visual.type;
+  container.dataset.visualStage = visual.stage;
+  container.removeAttribute('role');
+  container.removeAttribute('aria-label');
+  if (visual.type === 'calendar-grid') {
+    renderTimeLabCalendarVisual(container, visual);
+    return;
+  }
+  container.setAttribute('role', 'img');
+  container.setAttribute('aria-label', visual.ariaLabel);
+  if (['analog-clock', 'analog-digital', 'elapsed-clock'].includes(visual.type)) {
+    renderTimeLabClockVisual(container, visual);
+  } else if (visual.type === 'day-night') {
+    renderTimeLabAmPmVisual(container, visual);
+  } else if (visual.type === 'month-ladder') {
+    renderTimeLabMonthVisual(container, visual);
+  }
+}
+
+function timeLabFamilyHeading(familyId) {
+  const headings = {
+    'time-read-whole-hour': 'Read the whole hour',
+    'time-read-half-hour': 'Read the half hour',
+    'time-match-analog-digital': 'Match the clock',
+    'time-one-hour-later': 'Move one hour ahead',
+    'time-half-hour-later': 'Move half an hour ahead',
+    'time-am-or-pm': 'Choose the time label',
+    'calendar-find-date-day': 'Read the calendar',
+    'calendar-month-neighbor': 'Put the months in order',
+  };
+  return headings[familyId] || 'Practice question';
+}
+
+function timeLabResolutionCopy(current) {
+  if (current.workedExplanation) return 'Let’s work through this one together.';
+  if (current.resolution === 'retryCorrect') {
+    return current.evidenceClass === 'literacy'
+      ? 'You read it with the extra practice tip.'
+      : 'You solved it with the extra practice tip.';
+  }
+  if (current.resolution === 'firstTryCorrect') {
+    return current.evidenceClass === 'literacy' ? 'Nice reading.' : 'Nice solving.';
+  }
+  if (current.attempt === 2) return 'Not yet. Use the extra tip and try once more.';
+  return '';
+}
+
+function renderTimeLabQuestion(focusTarget = null) {
+  const snapshot = FOOTBALL_TIME_LAB.publicSnapshot(timeLabSession);
+  if (!snapshot?.current) return false;
+  const current = snapshot.current;
+  setTimeLabView('question');
+  timeLabElement('tl-title').textContent = 'Clocks & Calendars';
+  timeLabElement('tl-subtitle').textContent = `${timeLabModeLabel(snapshot.mode)} · guided practice`;
+  timeLabElement('tl-active-mode').textContent = timeLabModeLabel(snapshot.mode);
+  timeLabElement('tl-progress').textContent = `Question ${snapshot.questionNumber} of ${snapshot.total}`;
+  timeLabElement('tl-question-heading').textContent = timeLabFamilyHeading(current.familyId);
+  timeLabElement('tl-prompt').textContent = current.prompt.text;
+  timeLabElement('tl-guidance-copy').textContent = current.guidance.text;
+  renderTimeLabVisual(current.visual);
+
+  const choices = timeLabElement('tl-choices');
+  choices.replaceChildren();
+  choices.dataset.attempt = String(current.attempt);
+  current.choices.forEach((choice, index) => {
+    const button = document.createElement('button');
+    button.className = 'tl-choice-button';
+    button.id = `tl-choice-${index + 1}`;
+    button.type = 'button';
+    button.textContent = choice.label;
+    button.setAttribute('aria-label', choice.ariaLabel);
+    button.dataset.choiceId = choice.id;
+    button.dataset.questionInstanceId = current.questionInstanceId;
+    button.dataset.attempt = String(current.attempt);
+    button.dataset.missed = String(choice.missed);
+    button.disabled = choice.disabled;
+    if (choice.missed) button.classList.add('tl-choice-missed');
+    button.addEventListener('click', () => {
+      answerTimeLabChoice(
+        button.dataset.questionInstanceId,
+        button.dataset.choiceId,
+        Number(button.dataset.attempt),
+      );
+    });
+    choices.appendChild(button);
+  });
+
+  const feedback = timeLabElement('tl-feedback');
+  feedback.textContent = timeLabResolutionCopy(current);
+  feedback.dataset.state = current.workedExplanation ? 'worked'
+    : current.resolution ? 'correct'
+      : current.attempt === 2 ? 'retry' : 'ready';
+
+  const worked = timeLabElement('tl-worked');
+  const workedCopy = timeLabElement('tl-worked-copy');
+  worked.hidden = !current.workedExplanation;
+  workedCopy.textContent = current.workedExplanation?.text || '';
+
+  const next = timeLabElement('tl-next-button');
+  const canAdvance = Boolean(current.resolution || current.workedExplanation);
+  next.hidden = !canAdvance;
+  next.disabled = !canAdvance;
+  next.dataset.questionInstanceId = current.questionInstanceId;
+  next.textContent = snapshot.questionNumber === snapshot.total ? 'See Recap' : 'Next Question';
+  if (current.workedExplanation) {
+    next.setAttribute('aria-describedby', 'tl-worked-copy');
+  } else {
+    next.removeAttribute('aria-describedby');
+  }
+
+  if (focusTarget === 'next' && canAdvance) {
+    focusTimeLabControl('#tl-next-button');
+  } else if (focusTarget === 'choice') {
+    const preferred = Array.from(choices.querySelectorAll('.tl-choice-button')).find(button =>
+      !button.disabled && button.dataset.missed !== 'true'
+    ) || choices.querySelector('.tl-choice-button:not([disabled])');
+    if (preferred) focusTimeLabControl(`#${preferred.id}`);
+  }
+  return true;
+}
+
+function renderTimeLabRecap() {
+  const snapshot = FOOTBALL_TIME_LAB.publicSnapshot(timeLabSession);
+  if (!snapshot?.recap) return false;
+  setTimeLabView('recap');
+  timeLabElement('tl-title').textContent = 'Clocks & Calendars';
+  timeLabElement('tl-subtitle').textContent = `${timeLabModeLabel(snapshot.mode)} · session recap`;
+  timeLabElement('tl-recap-read').textContent = String(snapshot.recap.read);
+  timeLabElement('tl-recap-solved').textContent = String(snapshot.recap.solved);
+  timeLabElement('tl-recap-supported').textContent = String(snapshot.recap.supported);
+  const factWord = snapshot.recap.read === 1 ? 'fact' : 'facts';
+  const problemWord = snapshot.recap.solved === 1 ? 'problem' : 'problems';
+  const supportWord = snapshot.recap.supported === 1 ? 'question' : 'questions';
+  timeLabElement('tl-recap-copy').textContent = `You read ${snapshot.recap.read} ${factWord} and solved ${snapshot.recap.solved} ${problemWord}. You used extra support on ${snapshot.recap.supported} ${supportWord}.`;
+  focusTimeLabControl('#tl-done-button');
+  return true;
+}
+
+function renderTimeLabSession(focusTarget = null) {
+  if (!timeLabSession) {
+    renderTimeLabMenu();
+    return;
+  }
+  if (timeLabSession.status === 'active') renderTimeLabQuestion(focusTarget);
+  else if (timeLabSession.status === 'recap') renderTimeLabRecap();
+}
+
+function openTimeLab() {
+  const start = timeLabElement('ov-start');
+  if (state.phase !== 'start'
+    || sessionInitialized
+    || seasonActionBusy
+    || !start?.classList.contains('show')) return false;
+  timeLabSession = null;
+  renderTimeLabMenu();
+  activateOverlay('ov-time-lab');
+  return true;
+}
+
+function startTimeLab(mode, injectedRootSeed = null) {
+  if (!timeLabIsOpen() || timeLabSession || !FOOTBALL_TIME_LAB.MODES.includes(mode)) return false;
+  const rootSeed = injectedRootSeed === null ? nextTimeLabRootSeed() : Number(injectedRootSeed);
+  if (!Number.isInteger(rootSeed)) return false;
+  timeLabSessionCounter++;
+  timeLabSession = FOOTBALL_TIME_LAB.createSession(mode, {
+    sessionId: `time-lab-${mode}-${timeLabSessionCounter}`,
+    rootSeed,
+  });
+  renderTimeLabSession('choice');
+  return true;
+}
+
+function answerTimeLabChoice(questionInstanceId, choiceId, expectedAttempt) {
+  if (!timeLabIsOpen() || !timeLabSession) return false;
+  const next = FOOTBALL_TIME_LAB.answerSession(
+    timeLabSession,
+    questionInstanceId,
+    choiceId,
+    expectedAttempt,
+  );
+  if (next === timeLabSession) return false;
+  timeLabSession = next;
+  const current = FOOTBALL_TIME_LAB.publicSnapshot(timeLabSession).current;
+  renderTimeLabSession(current?.resolution || current?.workedExplanation ? 'next' : 'choice');
+  return true;
+}
+
+function advanceTimeLab(questionInstanceId) {
+  if (!timeLabIsOpen() || !timeLabSession) return false;
+  const next = FOOTBALL_TIME_LAB.nextSession(timeLabSession, questionInstanceId);
+  if (next === timeLabSession) return false;
+  timeLabSession = next;
+  renderTimeLabSession('choice');
+  return true;
+}
+
+function advanceTimeLabQuestion(button) {
+  return advanceTimeLab(button?.dataset?.questionInstanceId || '');
+}
+
+function returnToStartFromTimeLab() {
+  timeLabSession = null;
+  renderTimeLabMenu();
+  activateOverlay('ov-start');
+  focusTimeLabEntry();
+}
+
+function closeTimeLab() {
+  if (!timeLabIsOpen()) return false;
+  if (timeLabSession) timeLabSession = FOOTBALL_TIME_LAB.exitSession(timeLabSession);
+  returnToStartFromTimeLab();
+  return true;
+}
+
+function finishTimeLab() {
+  if (!timeLabIsOpen() || !timeLabSession) return false;
+  const next = FOOTBALL_TIME_LAB.doneSession(timeLabSession);
+  if (next === timeLabSession) return false;
+  timeLabSession = next;
+  returnToStartFromTimeLab();
+  return true;
+}
+
+function publicTimeLabSemanticState() {
+  const active = timeLabIsOpen();
+  const view = active
+    ? timeLabElement('ov-time-lab')?.querySelector('.tl-card')?.dataset.tlView || null
+    : null;
+  const snapshot = timeLabSession ? FOOTBALL_TIME_LAB.publicSnapshot(timeLabSession) : null;
+  return {
+    active,
+    view,
+    mode: snapshot?.mode || null,
+    status: snapshot?.status || null,
+    questionNumber: snapshot?.questionNumber || null,
+    total: snapshot?.total || null,
+    current: snapshot?.current ? {
+      familyId: snapshot.current.familyId,
+      evidenceClass: snapshot.current.evidenceClass,
+      purpose: snapshot.current.purpose,
+      attempt: snapshot.current.attempt,
+      supportLevel: snapshot.current.supportLevel,
+      resolution: snapshot.current.resolution,
+      choiceCount: snapshot.current.choices.length,
+      missedChoiceCount: snapshot.current.choices.filter(choice => choice.missed).length,
+      visualType: snapshot.current.visual.type,
+      visualStage: snapshot.current.visual.stage,
+      revealsAnswer: snapshot.current.visual.revealsAnswer,
+      worked: Boolean(snapshot.current.workedExplanation),
+    } : null,
+    tallies: snapshot ? {
+      read: snapshot.tallies.read,
+      solved: snapshot.tallies.solved,
+      supported: snapshot.tallies.supported,
+      firstTryCorrect: snapshot.tallies.firstTryCorrect,
+      retryCorrect: snapshot.tallies.retryCorrect,
+      secondMiss: snapshot.tallies.secondMiss,
+    } : null,
+    recap: snapshot?.recap ? {
+      read: snapshot.recap.read,
+      solved: snapshot.recap.solved,
+      supported: snapshot.recap.supported,
+    } : null,
+  };
+}
+
+function answerTimeLabForTest(kind) {
+  if (!timeLabIsOpen() || timeLabSession?.status !== 'active') return false;
+  const slot = timeLabSession.slots[timeLabSession.index];
+  const choice = kind === 'correct'
+    ? slot.question.choices.find(item => item.id === slot.question.correctChoiceId)
+    : kind === 'wrong'
+      ? slot.question.choices.find(item => item.id !== slot.question.correctChoiceId)
+      : null;
+  if (!choice) return false;
+  return answerTimeLabChoice(slot.question.questionInstanceId, choice.id, slot.attempt);
+}
+
+function advanceTimeLabForTest() {
+  if (timeLabSession?.status !== 'active') return false;
+  const slot = timeLabSession.slots[timeLabSession.index];
+  return advanceTimeLab(slot.question.questionInstanceId);
+}
+
+const OVERLAY_IDS = ['ov-start', 'ov-time-lab', 'ov-td', 'ov-defense', 'ov-offense', 'ov-quarter', 'ov-halftime', 'ov-end'];
 
 function setGameUiInert(isInert) {
   const wrap = document.getElementById('wrap');
@@ -3848,11 +4395,18 @@ function focusActiveOverlay(overlay) {
   requestAnimationFrame(() => {
     if (!overlay.classList.contains('show')) return;
     const quickPanel = document.getElementById('quick-game-panel');
+    const timeLabChoice = overlay.id !== 'ov-time-lab' ? null
+      : !timeLabSession
+        ? overlay.querySelector('.tl-mode-button:not([disabled])')
+        : timeLabSession.status === 'recap'
+          ? overlay.querySelector('#tl-done-button:not([disabled])')
+          : overlay.querySelector('#tl-next-button:not([hidden]):not([disabled])')
+            || overlay.querySelector('.tl-choice-button:not([disabled])');
     const startChoice = overlay.id !== 'ov-start' ? null
       : selectedPlayMode === 'quick' && !quickPanel?.hidden
         ? overlay.querySelector('input[name="rival"]:checked')
         : overlay.querySelector('input[name="play-mode"]:checked');
-    const target = startChoice || overlay.querySelector('.ov-btn:not([disabled])') || overlayFocusableElements(overlay)[0] || overlay;
+    const target = timeLabChoice || startChoice || overlay.querySelector('.ov-btn:not([disabled])') || overlayFocusableElements(overlay)[0] || overlay;
     if (target === overlay && !overlay.hasAttribute('tabindex')) overlay.setAttribute('tabindex', '-1');
     target.focus({ preventScroll: true });
   });
@@ -3913,6 +4467,17 @@ document.addEventListener('keydown', function(event) {
   if (event.key === 'Escape') {
     event.preventDefault();
     focusActiveOverlay(overlay);
+    return;
+  }
+  const activationControl = event.target instanceof Element
+    ? event.target.closest('button, input, select, textarea, a[href], [role="button"]')
+    : null;
+  const isActivationKey = event.key === 'Enter' || event.key === ' ' || event.code === 'Space';
+  if (event.repeat
+    && isActivationKey
+    && activationControl
+    && overlay.contains(activationControl)) {
+    event.preventDefault();
     return;
   }
   if (event.key !== 'Tab') return;
@@ -3978,8 +4543,13 @@ async function startSeasonGame() {
     else if (snapshot.action === 'retry') await FOOTBALL_SEASON.retryPending();
     snapshot = FOOTBALL_SEASON.snapshot();
     if (requestedAction === 'retry') return false;
-    if (sessionInitialized || selectedPlayMode !== 'season') return false;
     if (snapshot.status !== 'active' || snapshot.saveState === 'pending' || !snapshot.nextRivalId) return false;
+    const start = timeLabElement('ov-start');
+    if (sessionInitialized
+      || selectedPlayMode !== 'season'
+      || state.phase !== 'start'
+      || !start?.classList.contains('show')
+      || timeLabIsOpen()) return false;
 
     const match = FOOTBALL_OPPONENT.createMatch(snapshot.nextRivalId);
     initGameSession();
@@ -4557,6 +5127,7 @@ function renderGameToText() {
   return JSON.stringify({
     mode: state.phase,
     playMode: activeSeasonBinding || selectedPlayMode === 'season' ? 'season' : 'quick',
+    practice: publicTimeLabSemanticState(),
     season: publicSeasonDiagnostics(),
     match: state.match,
     quarter: state.quarter,
@@ -4862,6 +5433,24 @@ window.__footballTest = {
   routePossessionPresentation(message = 'Possession complete.') {
     routePossessionPresentation(message);
     return JSON.parse(renderGameToText());
+  },
+  practiceState() {
+    return publicTimeLabSemanticState();
+  },
+  openPracticeLab() {
+    return openTimeLab();
+  },
+  startPracticeLab(mode, rootSeed) {
+    return startTimeLab(mode, rootSeed);
+  },
+  answerPracticeLab(kind) {
+    return answerTimeLabForTest(kind);
+  },
+  advancePracticeLab() {
+    return advanceTimeLabForTest();
+  },
+  closePracticeLab() {
+    return closeTimeLab();
   },
   activeContracts() {
     return activeContractsSnapshot();

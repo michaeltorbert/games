@@ -166,7 +166,8 @@ Football is DOM-based and keeps one UI `state` object, but its football and
 instructional authority are split across ordered plain-global scripts:
 
 `copy.js` → `learning.js` → `stats.js` → `opponent.js` → `season.js` →
-`football-domain.js` → `contextual-questions.js` → `football.js`
+`football-domain.js` → `contextual-questions.js` → `time-lab.js` →
+`football.js`
 
 - `football-domain.js` owns the immutable tagged `activePlay` union
   (`scrimmage`, `punt`, `fieldGoal`, `conversion`) and independently validated,
@@ -176,6 +177,9 @@ instructional authority are split across ordered plain-global scripts:
   their immutable literacy/independent evidence classification, and structured
   stable choices. Scrimmage and special-team pools consume only their closed
   public context shapes.
+- `time-lab.js` owns DOM-free, validated clock and calendar practice fixtures,
+  question families, and ephemeral session transitions. It remains separate
+  from live-play, learning, stats, opponent, Season, and game RNG authorities.
 - `learning.js`, `stats.js`, and `opponent.js` own class-partitioned
   scheduling/support, privacy-safe class-partitioned linked history, and the
   exact frozen opponent plan respectively. Migrated unclassified evidence is

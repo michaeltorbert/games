@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 
-const overlayIds = ['ov-start', 'ov-td', 'ov-defense', 'ov-offense', 'ov-quarter', 'ov-halftime', 'ov-end'];
+const overlayIds = ['ov-start', 'ov-time-lab', 'ov-td', 'ov-defense', 'ov-offense', 'ov-quarter', 'ov-halftime', 'ov-end'];
 
 function primaryOnly(testInfo) {
   test.skip(
@@ -77,6 +77,7 @@ test('start overlay traps focus across the selected mode and visible rival radio
   const seasonMode = page.getByRole('radio', { name: /3-Game Season/ });
   const wakeForest = page.locator('input[name="rival"][value="wake-forest"]');
   const start = page.locator('#start-game-btn');
+  const timeLab = page.locator('#tl-open-button');
 
   await wakeForest.check();
   await wakeForest.focus();
@@ -85,7 +86,11 @@ test('start overlay traps focus across the selected mode and visible rival radio
   await page.keyboard.press('Shift+Tab');
   await expect(quickMode).toBeFocused();
   await page.keyboard.press('Shift+Tab');
+  await expect(timeLab).toBeFocused();
+  await page.keyboard.press('Shift+Tab');
   await expect(start).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(timeLab).toBeFocused();
   await page.keyboard.press('Tab');
   await expect(quickMode).toBeFocused();
   await page.keyboard.press('Tab');
@@ -96,6 +101,8 @@ test('start overlay traps focus across the selected mode and visible rival radio
   expect(await wakeForest.evaluate(element => element.getClientRects().length)).toBe(0);
   await page.keyboard.press('Tab');
   await expect(start).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(timeLab).toBeFocused();
   await page.keyboard.press('Tab');
   await expect(seasonMode).toBeFocused();
 });

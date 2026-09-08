@@ -259,6 +259,82 @@ test('a queued Season start cannot replace a Quick Game started while its real W
   expect(pageErrors).toEqual([]);
 });
 
+test('a queued Season start cannot overtake Time Lab overlay drift while its real Web Lock is held', async ({ page }, testInfo) => {
+  primaryOnly(testInfo);
+  const pageErrors = [];
+  page.on('pageerror', error => pageErrors.push(error.message));
+  await page.goto('/football/');
+  await replaceSeasonStorage(page, null);
+  const lockName = await page.evaluate(() => FOOTBALL_SEASON.STORAGE_LOCK_NAME);
+
+  await page.evaluate((name) => {
+    let release;
+    const held = new Promise(resolve => { release = resolve; });
+    window.__releaseSeasonTimeLabLock = release;
+    window.__heldSeasonTimeLabLock = navigator.locks.request(name, { mode: 'exclusive' }, async () => {
+      window.__seasonTimeLabLockHeld = true;
+      await held;
+    });
+  }, lockName);
+  await expect.poll(() => page.evaluate(() => window.__seasonTimeLabLockHeld === true)).toBe(true);
+
+  await page.getByRole('radio', { name: /3-Game Season/ }).check();
+  await page.locator('#start-game-btn').click();
+  await expect.poll(() => page.evaluate(() => FOOTBALL_SEASON.pendingKind())).toBe('create');
+  await expect.poll(() => page.evaluate(async (name) => {
+    const current = await navigator.locks.query();
+    return {
+      held: current.held.filter(lock => lock.name === name).length,
+      pending: current.pending.filter(lock => lock.name === name).length,
+    };
+  }, lockName)).toEqual({ held: 1, pending: 1 });
+  await expect(page.locator('#start-game-btn')).toBeDisabled();
+  await expect(page.locator('#tl-open-button')).toBeDisabled();
+  expect(await page.evaluate(() => window.__footballTest.openPracticeLab())).toBe(false);
+  await expect(page.locator('#ov-start')).toHaveClass(/show/);
+
+  const forcedPractice = await page.evaluate(() => {
+    activateOverlay('ov-time-lab');
+    return window.__footballTest.startPracticeLab('mixed', 1234);
+  });
+  expect(forcedPractice).toBe(true);
+  await expect(page.locator('#ov-time-lab')).toHaveClass(/show/);
+  await expect.poll(() => page.evaluate(() => window.__footballTest.practiceState())).toMatchObject({
+    active: true,
+    status: 'active',
+    questionNumber: 1,
+  });
+
+  await page.evaluate(() => window.__releaseSeasonTimeLabLock());
+  await expect.poll(() => page.evaluate(() => FOOTBALL_SEASON.pendingKind())).toBeNull();
+  await expect.poll(() => page.evaluate(() => FOOTBALL_SEASON.snapshot().status)).toBe('active');
+  await page.evaluate(() => window.__heldSeasonTimeLabLock);
+  await page.waitForTimeout(50);
+
+  const state = await page.evaluate(() => ({
+    activeOverlay: document.querySelector('.overlay.show')?.id || null,
+    phase: JSON.parse(render_game_to_text()).mode,
+    sessionInitialized,
+    binding: window.__footballTest.activeSeasonGame(),
+    practice: window.__footballTest.practiceState(),
+  }));
+  expect(state).toMatchObject({
+    activeOverlay: 'ov-time-lab',
+    phase: 'start',
+    sessionInitialized: false,
+    binding: null,
+    practice: {
+      active: true,
+      status: 'active',
+      questionNumber: 1,
+    },
+  });
+  const created = await page.evaluate((key) => JSON.parse(localStorage.getItem(key)).currentSeason, STORAGE_KEY);
+  expect(created.schedule).toEqual(SCHEDULE);
+  expect(created.results).toEqual([]);
+  expect(pageErrors).toEqual([]);
+});
+
 test('malformed, future, and failed creation states keep Quick Game available and require explicit recovery', async ({ page }, testInfo) => {
   primaryOnly(testInfo);
   await page.goto('/football/');
