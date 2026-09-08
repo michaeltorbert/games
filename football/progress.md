@@ -1071,3 +1071,16 @@ Original prompt: Implement Football issue #98 from the reconciled plan, with GPT
   on all 6/6 devices; and the complete Time Lab UI file passed 14 tests with 40
   intentional skips. No runtime code changed. The orchestrator's canonical
   full release rerun remains pending.
+- Superseding verification at `1956b16b946477945f0b57d69dd7dbef57df16f9`
+  completed 132 domain checks and 320 browser passes with 604 intentional
+  skips. The canonical command exited nonzero solely because strict artifact
+  verification found three extra empty duplicate directories
+  (`ipad-11-portrait 2`, `ipad-pro-13-portrait 2`, and
+  `iphone-15-portrait 3`). The orchestrator verified them empty and removed
+  exactly those three; with no source or test change, the unchanged
+  `npm run posttest:football:release` then passed 304 screenshots across six
+  projects, and the registry passed 4/4 against
+  `ff89eee5cc09bb4892f2267244e9a23ed4555d7c`. The seed-15 six-row March 2024
+  worked view was also visually checked at 393×852 with no clipping or errors.
+  Verification is complete via the split full suite plus strict verifier;
+  final reviews and deployment remain externally tracked in PR #106.
