@@ -83,6 +83,13 @@ TBD — document when prioritized.
 
 TBD — document when prioritized.
 
+## PR Visual Previews
+
+For UI changes, include representative phone screenshots directly in the PR
+body or a PR comment so the user can see the result easily. Phone screenshots
+are sufficient for these previews; tablet screenshots are not required unless
+explicitly requested. This does not reduce the device verification matrix below.
+
 ## Verification Matrix (Football)
 
 Any UI change to football must be verified against the primary targets before merge. Minimum matrix:
