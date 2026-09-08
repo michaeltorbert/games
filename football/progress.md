@@ -938,3 +938,149 @@ Original prompt: Decide what Football issue to do next with a current four-model
 - Exact-artifact independent review, commit, push, PR, full release artifact
   generation, merge, deployment, and live-version verification remain with the
   orchestrator. This writer made no GitHub write and claims no review consensus.
+
+---
+
+Original prompt: Implement Football issue #98 from the reconciled plan, with GPT-5.6 Sol Ultra as the sole writer and the named reviewers validating the exact artifact.
+
+## Football issue #98 Game Day Time Lab work log
+
+- Added one DOM-free `time-lab.js` authority for eight frozen Math Mammoth
+  Grade 1-A Chapter 4 clock and calendar families. Every family has exact
+  curriculum-source, concept, purpose, evidence-class, and answer-exposure
+  metadata; explicit Gregorian fixtures avoid `Date`, locale, timezone, current
+  date, and personal-date authority.
+- Added independent content and presentation RNG streams, coverage-first
+  eight-question Clocks, Calendar, and Mixed sessions, bounded session-only
+  recurrence, stable exact-once transitions, guided retry, worked explanation,
+  and truthful read/solved/supported recap accounting. Independent initial and
+  guided representations keep results hidden; worked representations may reveal
+  them.
+- Added a separate start-screen practice entry and modal controller with real
+  mode, answer, Back, Next, Done, Escape, focus-trap, and focus-restoration
+  paths. Analog clocks, digital times, AM/PM scenes, month order, and semantic
+  calendar tables share synchronized visible and accessible facts. Responsive
+  layouts preserve 44-point controls and above-fold cards on every configured
+  iPad and phone target.
+- Kept practice state ephemeral and outside Quick Game, Season, active-play,
+  pending-resolution, learning, stats, Coach Report, opponent, and all live RNG
+  authorities. Focused production tests prove a completed lab leaves storage
+  and live contracts byte-identical and that the next seeded live snap matches
+  a no-practice control.
+- Preserved `completedThroughPage: 145`, `includedThroughPage: 179`, every page
+  record, live-snap exclusion, and page-specific reason in
+  `curriculum-progress.json`. Only its global time boundary now distinguishes
+  forbidden synthetic live-snap facts from explicit validated Time Lab
+  fixtures. Root and Football agent guidance now document the added load order,
+  module authority, and the lab's separation from Coach Replay.
+- Added 16 DOM-free domain contracts and nine browser scenarios whose detailed
+  behavior runs on the primary iPad while layout runs on all six projects.
+  Release coverage now drives real start-screen, mode, answer, retry, worked,
+  Next, recap, and Done controls on every project and records five new canonical
+  screenshots per project. The artifact preparer creates the exact six project
+  directories, the default verifier remains strict over the complete matrix,
+  and a focused Time Lab scope validates all 30 new artifacts.
+- Writer verification passed the combined 128/128 DOM-free release command,
+  including 12/12 Time Lab domain contracts; 13/13 Time Lab UI checks with 35
+  intentional device skips; 18/18 focused overlay, focus, and restoration
+  checks; 6/6 cache/version contracts; 6/6 production Time Lab release-matrix
+  paths; the 30/30 focused artifact verifier; syntax checks for the changed
+  runtime, matrix, and artifact scripts; and `git diff --check`. Fresh iPad 11
+  landscape guided and iPhone 15 worked and recap artifacts were visually
+  inspected. The full writeful release suite, exact-artifact independent
+  review, commit, push, PR, merge, deployment, and live-version verification
+  remain orchestrator-owned.
+- Round-one review reconciliation corrected the supported tally's origin
+  ambiguity. Each scheduled-heightened slot now retains one internal
+  `related-miss` marker even when its visible support level becomes retry or
+  worked. The recap counts each question once when it uses retry, worked, or
+  scheduled-heightened extra support; successful scheduled revisits clear only
+  later pending related support without changing recurrence identity or
+  content. Learner copy now consistently calls this tally **Extra support**.
+- The same review added an active-overlay held-key guard for repeat-marked Enter
+  and Space activation on interactive controls inside the current modal. Real
+  keyboard coverage proves held Enter cannot activate a newly focused Next
+  button or cross Back/Done into the newly focused Open control, native Space
+  still answers, ordinary activation advances exactly once, post-release Open
+  still works, and saved Back/Done controls remain no-ops after the first close.
+- Worked teaching now remains visible and is also the accessible description of
+  the focused Next button after a second miss. A new-question render removes
+  that association so an earlier explanation cannot become stale.
+- Post-fix writer verification passed both focused primary-iPad scenarios, the
+  complete Time Lab UI matrix with 14 passes and 40 intentional skips, and all
+  seven primary-iPad overlay-accessibility checks. Runtime and UI-test syntax
+  checks plus `git diff --check` passed. The prescribed browser client reached
+  the Time Lab menu and a guided independent clock question with matching
+  semantic state, no console/page-error artifact, and clean visually inspected
+  captures. The writeful release gate remains orchestrator-owned.
+- The orchestrator's first all-device Time Lab UI pass exposed a test-only focus
+  race: the keyboard helper could focus the correct Q2 choice before the
+  product's queued focus frame restored the default choice. No runtime change
+  was needed. The helper now waits for that frame to settle and then focuses the
+  real locator. Writer recovery passed the full Time Lab UI file with 14 passes
+  and 40 intentional device skips, then passed the affected keyboard scenario
+  five consecutive times. Round-two focused checks also passed 16/16 domain
+  contracts, 10/10 primary overlay and copy contracts, and the primary
+  production Time Lab release-matrix path. The prescribed browser client reached
+  guided and retry practice with matching semantic state, no console/page-error
+  artifact, and a clean visually inspected retry capture.
+- The orchestrator's first complete post-reconciliation release run passed all
+  132 DOM-free checks and reached 318 browser passes with 599 intentional skips
+  before a Time Lab Escape assertion sampled focus ahead of its queued frame.
+  The exact scenario then passed 10/10 in isolation, confirming test timing
+  rather than a product failure. That one asynchronous focus assertion now
+  polls for focus to enter the active Time Lab overlay; the orchestrator owns
+  the complete writeful rerun.
+- Round-three exact-artifact review and a real Web Lock reproduction exposed a
+  Season-start race: practice could open while durable Season creation waited,
+  then the resumed action could bind a game over the lab. The accepted fix
+  disables and guards the Time Lab entry while the Season action is busy and
+  revalidates the untouched start overlay immediately before game
+  initialization. A production-lock regression preserves durable Season
+  creation while proving forced Time Lab drift cannot be hidden or bound over;
+  the existing queued Season-to-Quick escape remains unchanged.
+
+## Football v1.29.0 superseding Game Day Time Lab release
+
+- Football v1.29.0 supersedes v1.28.0 by adding voluntary, non-stakes Game Day
+  clock and calendar practice without weakening or changing live-snap
+  grounding, play resolution, learning, stats, Coach Report, opponent, or
+  Season contracts.
+- `GAME_VERSION`, all 15 Football asset query strings including `time-lab.js`,
+  the Football registry descriptor, and `version.json` are synchronized to
+  `1.29.0`. The existing `footballMathStats:v1` and
+  `footballMathSeason:v1` storage keys are unchanged and Time Lab writes
+  neither one.
+- The canonical release command now includes both Time Lab domain and UI
+  suites, while the preserved live-game release matrix gains menu, guided,
+  retry, worked, and recap artifacts on all six required device projects. This
+  writer did not run the full writeful release suite and made no commit, push,
+  PR, merge, deployment, or GitHub write.
+- The orchestrator's September 8 release refresh: the complete release command
+  exited 0 with 132 DOM-free checks, 320 browser passes, 604 intentional skips,
+  and all 304 screenshot artifacts verified; the registry gate passed 4/4. The
+  initial browser launch failed only because the pinned Chromium executable was
+  missing, then passed after that browser was restored. A real browser-client
+  check also reached and visually confirmed the clock-practice entry point.
+- A subsequent committed-artifact rerun exposed a test-only keyboard focus
+  race: question rendering had queued choice focus for the next animation
+  frame, so the test could focus Back before that queued callback retargeted
+  Enter to a choice. The test now settles scheduled focus and confirms Back is
+  focused before Enter. The exact keyboard scenario passed 10/10; the seeded
+  six-row March 2024 calendar passed initial, guided, and worked layout checks
+  on all 6/6 devices; and the complete Time Lab UI file passed 14 tests with 40
+  intentional skips. No runtime code changed. The orchestrator's canonical
+  full release rerun remains pending.
+- Superseding verification at `1956b16b946477945f0b57d69dd7dbef57df16f9`
+  completed 132 domain checks and 320 browser passes with 604 intentional
+  skips. The canonical command exited nonzero solely because strict artifact
+  verification found three extra empty duplicate directories
+  (`ipad-11-portrait 2`, `ipad-pro-13-portrait 2`, and
+  `iphone-15-portrait 3`). The orchestrator verified them empty and removed
+  exactly those three; with no source or test change, the unchanged
+  `npm run posttest:football:release` then passed 304 screenshots across six
+  projects, and the registry passed 4/4 against
+  `ff89eee5cc09bb4892f2267244e9a23ed4555d7c`. The seed-15 six-row March 2024
+  worked view was also visually checked at 393×852 with no clipping or errors.
+  Verification is complete via the split full suite plus strict verifier;
+  final reviews and deployment remain externally tracked in PR #106.

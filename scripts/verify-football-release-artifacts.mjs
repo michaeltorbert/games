@@ -10,6 +10,13 @@ const projects = [
   'ipad-11-landscape',
 ];
 const phoneProjects = new Set(['iphone-15-portrait', 'iphone-17-pro-max-portrait']);
+const timeLabLabels = [
+  '32-time-lab-menu',
+  '33-time-lab-guided',
+  '34-time-lab-retry',
+  '35-time-lab-worked',
+  '36-time-lab-recap',
+];
 
 const labels = [
   '01-start',
@@ -57,6 +64,7 @@ const labels = [
   '27-season-complete',
   '28-season-pending',
   '29-season-unconfirmed',
+  ...timeLabLabels,
 ];
 const phoneLabels = [
   '30-season-pending-corrupt',
@@ -64,6 +72,15 @@ const phoneLabels = [
 ];
 
 const matrixDir = path.join(process.cwd(), 'tests', 'artifacts', 'release-matrix');
+const scopeArguments = process.argv.slice(2);
+const artifactScope = scopeArguments.length === 0
+  ? 'full'
+  : scopeArguments.length === 1 && scopeArguments[0] === '--scope=time-lab'
+    ? 'time-lab'
+    : null;
+if (!artifactScope) {
+  throw new Error(`Unknown Football release artifact arguments "${scopeArguments.join(' ')}".`);
+}
 const expectedProjects = projects.slice().sort();
 const actualProjects = (await fs.readdir(matrixDir, { withFileTypes: true }))
   .filter(entry => entry.isDirectory())
@@ -76,27 +93,34 @@ if (JSON.stringify(actualProjects) !== JSON.stringify(expectedProjects)) {
 
 for (const project of projects) {
   const projectDir = path.join(matrixDir, project);
-  const expectedFiles = [
-    ...labels,
-    ...(phoneProjects.has(project) ? phoneLabels : []),
-  ].map(label => `${label}.png`).sort();
+  const expectedFiles = (artifactScope === 'time-lab'
+    ? timeLabLabels
+    : [
+      ...labels,
+      ...(phoneProjects.has(project) ? phoneLabels : []),
+    ]).map(label => `${label}.png`).sort();
   const actualFiles = (await fs.readdir(projectDir, { withFileTypes: true }))
     .filter(entry => entry.isFile())
     .map(entry => entry.name)
     .sort();
 
-  if (JSON.stringify(actualFiles) !== JSON.stringify(expectedFiles)) {
+  const missingFiles = expectedFiles.filter(file => !actualFiles.includes(file));
+  if (missingFiles.length > 0
+    || (artifactScope === 'full' && JSON.stringify(actualFiles) !== JSON.stringify(expectedFiles))) {
     throw new Error(`${project} artifacts differ. Expected ${expectedFiles.join(', ')}; got ${actualFiles.join(', ') || 'none'}.`);
   }
 
-  for (const file of actualFiles) {
+  for (const file of expectedFiles) {
     const stats = await fs.stat(path.join(projectDir, file));
     if (stats.size === 0) throw new Error(`${project}/${file} is empty.`);
   }
 }
 
-const expectedCount = projects.reduce(
-  (count, project) => count + labels.length + (phoneProjects.has(project) ? phoneLabels.length : 0),
-  0,
-);
-console.log(`Verified ${expectedCount} Football release screenshots across ${projects.length} projects.`);
+const expectedCount = artifactScope === 'time-lab'
+  ? projects.length * timeLabLabels.length
+  : projects.reduce(
+    (count, project) => count + labels.length + (phoneProjects.has(project) ? phoneLabels.length : 0),
+    0,
+  );
+const scopeLabel = artifactScope === 'time-lab' ? ' Time Lab' : '';
+console.log(`Verified ${expectedCount} Football${scopeLabel} release screenshots across ${projects.length} projects.`);

@@ -33,9 +33,10 @@ repository-level `AGENTS.md`.
   but only when the concept is genuinely supplied by the live football state.
   Approval through the end of a book authorizes concepts; it does not justify a
   random worksheet question during a snap. Clock, AM/PM, and calendar work must
-  remain unscheduled until Football has a truthful relevant source for it. A
-  future Coach Replay mode may provide pure curriculum practice without
-  football stakes once that mode is designed explicitly.
+  remain unscheduled in live snaps because they have no truthful live-play
+  source. The separate Game Day Time Lab may supply explicit, validated
+  practice fixtures outside football stakes, learning, stats, Coach Report, and
+  Season state; it is distinct from Coach Replay remediation.
 - Keep question-family source metadata auditable. Workbook-derived families
   must name their earliest relevant workbook page; football-only display or
   rule literacy must be labeled separately and must not claim a workbook page.

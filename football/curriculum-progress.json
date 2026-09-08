@@ -118,7 +118,7 @@
     "placeValueBand": "Values through 120 are appropriate for reading and small moves only when a genuine live football statistic supplies them",
     "includedBand": "Pages through 179 are approved for graded Football questions with guided-first support after page 145",
     "sourceMetadata": "Workbook-derived families record their exact earliest source page; football-only display and rule literacy is labeled separately and claims no workbook page",
-    "timeBoundary": "Do not synthesize clock, AM/PM, or calendar facts until the football game has a real relevant source for them",
+    "timeBoundary": "Do not synthesize clock, AM/PM, or calendar facts in live snaps; the separate Time Lab may use explicit, validated practice fixtures",
     "fieldConstraint": "Avoid confusing cross-midfield label arithmetic; use a separate math visualization when football field labels reverse"
   }
 }

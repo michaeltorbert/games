@@ -84,9 +84,32 @@ test('football runtime assets share one release version', async ({ page }) => {
       season: queryVersion(document.querySelector('script[src*="season.js"]').src),
       domain: queryVersion(document.querySelector('script[src*="football-domain.js"]').src),
       contextual: queryVersion(document.querySelector('script[src*="contextual-questions.js"]').src),
+      timeLab: queryVersion(document.querySelector('script[src*="time-lab.js"]').src),
       js: queryVersion(document.querySelector('script[src*="football.js"]').src),
       updater: queryVersion(document.querySelector('script[src*="shared/updater.js"]').src),
     };
   });
   expect(new Set(Object.values(versions)).size).toBe(1);
+});
+
+test('Time Lab recap names counted help as extra support', async ({ page }, testInfo) => {
+  test.skip(
+    testInfo.project.name !== 'ipad-11-landscape',
+    'The learner-copy contract needs one production-browser pass.',
+  );
+  await page.goto('/football/');
+  await expect(page.locator('#tl-recap-supported').locator('xpath=..').locator('dt')).toHaveText('Extra support');
+  await page.locator('#tl-open-button').click();
+  expect(await page.evaluate(() => window.__footballTest.startPracticeLab('mixed', 1234))).toBe(true);
+  expect(await page.evaluate(() => window.__footballTest.answerPracticeLab('wrong'))).toBe(true);
+  expect(await page.evaluate(() => window.__footballTest.answerPracticeLab('correct'))).toBe(true);
+  expect(await page.evaluate(() => window.__footballTest.advancePracticeLab())).toBe(true);
+  while ((await page.evaluate(() => window.__footballTest.practiceState().status)) === 'active') {
+    expect(await page.evaluate(() => window.__footballTest.answerPracticeLab('correct'))).toBe(true);
+    expect(await page.evaluate(() => window.__footballTest.advancePracticeLab())).toBe(true);
+  }
+  await expect(page.locator('#tl-recap-copy')).toHaveText(
+    'You read 4 facts and solved 4 problems. You used extra support on 1 question.',
+  );
+  await expect(page.locator('#ov-time-lab')).not.toContainText(/Used support|guided or worked support/iu);
 });

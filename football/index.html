@@ -4,14 +4,14 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <title>Football Math!</title>
-<link rel="apple-touch-icon" href="apple-touch-icon.png?v=1.28.0">
-<link rel="icon" type="image/png" href="apple-touch-icon.png?v=1.28.0">
+<link rel="apple-touch-icon" href="apple-touch-icon.png?v=1.29.0">
+<link rel="icon" type="image/png" href="apple-touch-icon.png?v=1.29.0">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow+Condensed:wght@600;700;800&display=swap">
-<link rel="stylesheet" href="../shared/fonts.css?v=1.28.0">
-<link rel="stylesheet" href="../shared/reset.css?v=1.28.0">
-<link rel="stylesheet" href="football.css?v=1.28.0">
+<link rel="stylesheet" href="../shared/fonts.css?v=1.29.0">
+<link rel="stylesheet" href="../shared/reset.css?v=1.29.0">
+<link rel="stylesheet" href="football.css?v=1.29.0">
 </head>
 <body>
 <div id="broadcast-shell">
@@ -168,7 +168,83 @@
       <div class="season-next" id="season-next">First up: UNC</div>
       <div class="season-status" id="season-status" role="status" aria-live="polite" aria-atomic="true"></div>
     </div>
-    <button class="ov-btn" id="start-game-btn" type="button" onclick="startGame()">Start Game</button>
+    <div class="start-action-row">
+      <button class="ov-btn" id="start-game-btn" type="button" onclick="startGame()">Start Game</button>
+      <button class="tl-entry-btn" id="tl-open-button" type="button" onclick="openTimeLab()">
+        <span class="tl-entry-title">Practice Clocks &amp; Calendars</span>
+        <span class="tl-entry-copy">A separate 8-question practice lab</span>
+      </button>
+    </div>
+  </div>
+</div>
+<div class="overlay" id="ov-time-lab" role="dialog" aria-modal="true" aria-labelledby="tl-title" aria-describedby="tl-subtitle" aria-hidden="true" inert>
+  <div class="overlay-card tl-card" data-tl-view="menu">
+    <div class="tl-topbar">
+      <span class="ov-broadcast-badge ov-badge-info">Practice Lab</span>
+      <button class="tl-back-button" id="tl-back-button" type="button" onclick="closeTimeLab()">Back</button>
+    </div>
+    <h1 class="tl-title" id="tl-title">Clocks &amp; Calendars</h1>
+    <p class="tl-subtitle" id="tl-subtitle">Choose one eight-question practice session. It stays separate from your game and season.</p>
+
+    <section class="tl-mode-view" id="tl-mode-view" aria-labelledby="tl-mode-heading">
+      <h2 id="tl-mode-heading">Choose a practice</h2>
+      <div class="tl-mode-options" role="group" aria-label="Time Lab practice modes">
+        <button class="tl-mode-button" id="tl-mode-clocks" type="button" onclick="startTimeLab('clocks')">
+          <span class="tl-mode-icon" aria-hidden="true">◷</span>
+          <strong>Clocks</strong>
+          <small>Read times, move ahead, and choose AM or PM</small>
+        </button>
+        <button class="tl-mode-button" id="tl-mode-calendar" type="button" onclick="startTimeLab('calendar')">
+          <span class="tl-mode-icon" aria-hidden="true">▦</span>
+          <strong>Calendar</strong>
+          <small>Find weekdays and put months in order</small>
+        </button>
+        <button class="tl-mode-button" id="tl-mode-mixed" type="button" onclick="startTimeLab('mixed')">
+          <span class="tl-mode-icon" aria-hidden="true">↔</span>
+          <strong>Mixed</strong>
+          <small>Try every clock and calendar skill once</small>
+        </button>
+      </div>
+    </section>
+
+    <section class="tl-question-view" id="tl-question-view" aria-labelledby="tl-question-heading" hidden>
+      <div class="tl-progress-row">
+        <span class="tl-mode-chip" id="tl-active-mode">Mixed practice</span>
+        <span class="tl-progress" id="tl-progress">Question 1 of 8</span>
+      </div>
+      <div class="tl-question-layout">
+        <div class="tl-problem-column">
+          <h2 id="tl-question-heading">Practice question</h2>
+          <p class="tl-prompt" id="tl-prompt"></p>
+          <div class="tl-visual" id="tl-visual"></div>
+          <div class="tl-guidance" id="tl-guidance">
+            <span class="tl-guidance-label">Practice tip</span>
+            <p id="tl-guidance-copy"></p>
+          </div>
+        </div>
+        <div class="tl-response-column">
+          <div class="tl-choices" id="tl-choices" role="group" aria-label="Choose an answer"></div>
+          <div class="tl-feedback" id="tl-feedback" role="status" aria-live="polite" aria-atomic="true"></div>
+          <section class="tl-worked" id="tl-worked" aria-labelledby="tl-worked-heading" hidden>
+            <h3 id="tl-worked-heading">Worked practice</h3>
+            <p id="tl-worked-copy"></p>
+          </section>
+          <button class="tl-next-button" id="tl-next-button" type="button" onclick="advanceTimeLabQuestion(this)" hidden>Next Question</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="tl-recap-view" id="tl-recap-view" aria-labelledby="tl-recap-heading" hidden>
+      <span class="tl-recap-kicker">Practice complete</span>
+      <h2 id="tl-recap-heading">Eight questions finished</h2>
+      <p id="tl-recap-copy"></p>
+      <dl class="tl-recap-grid">
+        <div><dt>Facts read</dt><dd id="tl-recap-read">0</dd></div>
+        <div><dt>Problems solved</dt><dd id="tl-recap-solved">0</dd></div>
+        <div><dt>Extra support</dt><dd id="tl-recap-supported">0</dd></div>
+      </dl>
+      <button class="tl-done-button" id="tl-done-button" type="button" onclick="finishTimeLab()">Done</button>
+    </section>
   </div>
 </div>
 <div class="overlay" id="ov-td" data-side="offense" role="dialog" aria-modal="true" aria-labelledby="ov-td-title" aria-describedby="ov-td-sub" aria-hidden="true" inert>
@@ -283,17 +359,18 @@
   </div>
 </div>
 
-<script src="copy.js?v=1.28.0"></script>
-<script src="learning.js?v=1.28.0"></script>
-<script src="stats.js?v=1.28.0"></script>
-<script src="opponent.js?v=1.28.0"></script>
-<script src="season.js?v=1.28.0"></script>
-<script src="football-domain.js?v=1.28.0"></script>
-<script src="contextual-questions.js?v=1.28.0"></script>
-<script src="football.js?v=1.28.0"></script>
+<script src="copy.js?v=1.29.0"></script>
+<script src="learning.js?v=1.29.0"></script>
+<script src="stats.js?v=1.29.0"></script>
+<script src="opponent.js?v=1.29.0"></script>
+<script src="season.js?v=1.29.0"></script>
+<script src="football-domain.js?v=1.29.0"></script>
+<script src="contextual-questions.js?v=1.29.0"></script>
+<script src="time-lab.js?v=1.29.0"></script>
+<script src="football.js?v=1.29.0"></script>
 <script>
   document.getElementById('version-display').textContent = `v${GAME_VERSION}`;
 </script>
-<script src="../shared/updater.js?v=1.28.0"></script>
+<script src="../shared/updater.js?v=1.29.0"></script>
 </body>
 </html>
