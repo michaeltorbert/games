@@ -51,10 +51,14 @@ async function finishRemainingCorrect(page) {
   }
 }
 
-async function focusCorrectPracticeChoice(page) {
+async function settleScheduledFocus(page) {
   await page.evaluate(() => new Promise(resolve => {
     requestAnimationFrame(() => requestAnimationFrame(resolve));
   }));
+}
+
+async function focusCorrectPracticeChoice(page) {
+  await settleScheduledFocus(page);
   const buttonId = await page.evaluate(() => {
     const slot = timeLabSession.slots[timeLabSession.index];
     const button = Array.from(document.querySelectorAll('#tl-choices .tl-choice-button'))
@@ -262,7 +266,9 @@ test('native Enter and Space plus held Back and Done retargeting stay exact once
 
   const staleBack = await page.locator('#tl-back-button').elementHandle();
   expect(staleBack).not.toBeNull();
+  await settleScheduledFocus(page);
   await page.locator('#tl-back-button').focus();
+  await expect(page.locator('#tl-back-button')).toBeFocused();
   await page.keyboard.down('Enter');
   await expect(page.locator('#ov-start')).toHaveClass(/show/);
   await expect(page.locator('#tl-open-button')).toBeFocused();
@@ -539,44 +545,80 @@ test('Time Lab controls remain 44pt and representative views stay above the fold
   const scenarios = [
     ['clocks', 1],
     ['calendar', 1],
+    ['calendar', 15, 'six-row-calendar'],
     ['mixed', 26],
   ];
-  for (const [mode, seed] of scenarios) {
+  const measureLayout = () => page.evaluate(() => {
+    const overlay = document.getElementById('ov-time-lab');
+    const card = overlay.querySelector('.tl-card');
+    const rect = card.getBoundingClientRect();
+    const controls = Array.from(overlay.querySelectorAll('button')).filter(button => (
+      !button.hidden && !button.disabled && button.getClientRects().length > 0
+    )).map(button => {
+      const box = button.getBoundingClientRect();
+      return { id: button.id, width: box.width, height: box.height };
+    });
+    return {
+      viewport: { width: innerWidth, height: innerHeight },
+      pageScroll: { x: scrollX, y: scrollY },
+      card: {
+        top: rect.top,
+        left: rect.left,
+        right: rect.right,
+        bottom: rect.bottom,
+        clientHeight: card.clientHeight,
+        scrollHeight: card.scrollHeight,
+      },
+      controls,
+    };
+  });
+  const expectLayoutToFit = (metrics, label) => {
+    expect(metrics.pageScroll, `${label} page scroll`).toEqual({ x: 0, y: 0 });
+    expect(metrics.card.top, `${label} card top`).toBeGreaterThanOrEqual(0);
+    expect(metrics.card.left, `${label} card left`).toBeGreaterThanOrEqual(0);
+    expect(metrics.card.right, `${label} card right`).toBeLessThanOrEqual(metrics.viewport.width + 1);
+    expect(metrics.card.bottom, `${label} card bottom`).toBeLessThanOrEqual(metrics.viewport.height + 1);
+    expect(metrics.card.scrollHeight, `${label} card overflow`).toBeLessThanOrEqual(metrics.card.clientHeight + 1);
+    for (const control of metrics.controls) {
+      expect(control.width, `${label} ${control.id} width`).toBeGreaterThanOrEqual(44);
+      expect(control.height, `${label} ${control.id} height`).toBeGreaterThanOrEqual(44);
+    }
+  };
+  for (const [mode, seed, fixtureKind] of scenarios) {
     await openLab(page);
     await startSeededMode(page, mode, seed);
-    const metrics = await page.evaluate(() => {
-      const overlay = document.getElementById('ov-time-lab');
-      const card = overlay.querySelector('.tl-card');
-      const rect = card.getBoundingClientRect();
-      const controls = Array.from(overlay.querySelectorAll('button')).filter(button => (
-        !button.hidden && !button.disabled && button.getClientRects().length > 0
-      )).map(button => {
-        const box = button.getBoundingClientRect();
-        return { id: button.id, width: box.width, height: box.height };
+    if (fixtureKind === 'six-row-calendar') {
+      const fixture = await page.evaluate(() => {
+        const slot = timeLabSession.slots[timeLabSession.index];
+        const data = slot.question.visuals.initial.data;
+        return {
+          id: data.calendar.id,
+          year: data.calendar.year,
+          monthIndex: data.calendar.monthIndex,
+          monthLength: data.calendar.monthLength,
+          firstWeekday: data.calendar.firstWeekday,
+          cellCount: data.grid.length,
+        };
       });
-      return {
-        viewport: { width: innerWidth, height: innerHeight },
-        pageScroll: { x: scrollX, y: scrollY },
-        card: {
-          top: rect.top,
-          left: rect.left,
-          right: rect.right,
-          bottom: rect.bottom,
-          clientHeight: card.clientHeight,
-          scrollHeight: card.scrollHeight,
-        },
-        controls,
-      };
-    });
-    expect(metrics.pageScroll).toEqual({ x: 0, y: 0 });
-    expect(metrics.card.top).toBeGreaterThanOrEqual(0);
-    expect(metrics.card.left).toBeGreaterThanOrEqual(0);
-    expect(metrics.card.right).toBeLessThanOrEqual(metrics.viewport.width + 1);
-    expect(metrics.card.bottom).toBeLessThanOrEqual(metrics.viewport.height + 1);
-    expect(metrics.card.scrollHeight).toBeLessThanOrEqual(metrics.card.clientHeight + 1);
-    for (const control of metrics.controls) {
-      expect(control.width, `${mode} ${control.id} width`).toBeGreaterThanOrEqual(44);
-      expect(control.height, `${mode} ${control.id} height`).toBeGreaterThanOrEqual(44);
+      expect(fixture).toEqual({
+        id: 'practice-march-2024',
+        year: 2024,
+        monthIndex: 2,
+        monthLength: 31,
+        firstWeekday: 5,
+        cellCount: 42,
+      });
+      await expect(page.locator('#tl-visual tbody tr')).toHaveCount(6);
+    }
+    expectLayoutToFit(await measureLayout(), `${mode} seed ${seed} initial`);
+    if (fixtureKind === 'six-row-calendar') {
+      expect(await page.evaluate(() => window.__footballTest.answerPracticeLab('wrong'))).toBe(true);
+      await expect(page.locator('#tl-visual')).toHaveAttribute('data-visual-stage', 'guided');
+      expectLayoutToFit(await measureLayout(), `${mode} seed ${seed} guided`);
+      expect(await page.evaluate(() => window.__footballTest.answerPracticeLab('wrong'))).toBe(true);
+      await expect(page.locator('#tl-visual')).toHaveAttribute('data-visual-stage', 'worked');
+      await expect(page.locator('#tl-worked')).toBeVisible();
+      expectLayoutToFit(await measureLayout(), `${mode} seed ${seed} worked`);
     }
     await page.locator('#tl-back-button').click();
   }

@@ -1062,3 +1062,12 @@ Original prompt: Implement Football issue #98 from the reconciled plan, with GPT
   initial browser launch failed only because the pinned Chromium executable was
   missing, then passed after that browser was restored. A real browser-client
   check also reached and visually confirmed the clock-practice entry point.
+- A subsequent committed-artifact rerun exposed a test-only keyboard focus
+  race: question rendering had queued choice focus for the next animation
+  frame, so the test could focus Back before that queued callback retargeted
+  Enter to a choice. The test now settles scheduled focus and confirms Back is
+  focused before Enter. The exact keyboard scenario passed 10/10; the seeded
+  six-row March 2024 calendar passed initial, guided, and worked layout checks
+  on all 6/6 devices; and the complete Time Lab UI file passed 14 tests with 40
+  intentional skips. No runtime code changed. The orchestrator's canonical
+  full release rerun remains pending.
