@@ -1932,7 +1932,10 @@ test('Chapter 8 arithmetic respects source identity, full-domain inclusion and e
   }
   const narrowed = { worktexts: { 'Math Mammoth Grade 1-B': { edition: 2026, includedThroughPage: 122 } } };
   assert.equal(questions.inspect(snap, narrowed).eligible.some(x => x.familyId === family.familyId), false);
-  assert.throws(() => questions.build(snap, family.familyId, { profile: narrowed }), /curriculum|ceiling/);
+  const diagnostic = questions.inspect(snap, narrowed).declined.find(x => x.familyId === family.familyId).reason.detail;
+  assert.match(diagnostic, /Math Mammoth Grade 1-B \(2026\) through page 123/);
+  assert.doesNotMatch(diagnostic, /179/);
+  assert.throws(() => questions.build(snap, family.familyId, { profile: narrowed }), /Grade 1-B \(2026\) through page 123/);
   assert.equal(questions.build(snap, family.familyId).answer.value, 13);
   assert.equal(questions.DEFAULT_PROFILE.computationMax, 10);
   for (const [a, b, allowed] of [[14,7,true], [20,16,true], [67,24,true], [100,7,true], [40,7,true], [21,14,false], [52,18,false], [43,7,false], [101,1,false]]) {
@@ -1946,4 +1949,20 @@ test('Chapter 8 arithmetic respects source identity, full-domain inclusion and e
   }
   const signed = makeSnap(domain, { totalYards: { player: -3, opponent: 83 }, driveStart: 40 }, 4);
   assert.equal(questions.inspect(signed).eligible.some(x => x.familyId === 'team-yards-add-ch8'), false);
+});
+
+
+test('published Grade 1-B source map matches every runtime family coordinate', async () => {
+  const { questions } = loadModules();
+  const progress = JSON.parse(await readFile(new URL('../football/curriculum-progress.json', import.meta.url), 'utf8'));
+  const source = progress.additionalWorktexts.find(book => book.title === 'Math Mammoth Grade 1-B');
+  const entries = source.sourceMap.flatMap(row => row.families.map(familyId => ({ familyId, row })));
+  const runtime = questions.FAMILY_REGISTRY.scrimmage.filter(family => family.worktext === source.title);
+  assert.deepEqual(entries.map(entry => entry.familyId).sort(), plain(runtime.map(family => family.familyId)).sort());
+  for (const family of runtime) {
+    const { row } = entries.find(entry => entry.familyId === family.familyId);
+    assert.equal(row.introducedOnPage, family.introducedOnPage, family.familyId);
+    assert.equal(row.coverageThroughPage, family.coverageThroughPage, family.familyId);
+    assert.equal(source.edition, family.edition);
+  }
 });

@@ -131,7 +131,14 @@
       "sourceMap": [
         {
           "families": [
-            "score-total-ch8",
+            "score-total-ch8"
+          ],
+          "introducedOnPage": 102,
+          "coverageThroughPage": 123,
+          "concepts": "Addition within 20 and up to 100; no carry pages 108/114, carrying 119\u2013121, fact review 123."
+        },
+        {
+          "families": [
             "team-yards-add-ch8"
           ],
           "introducedOnPage": 102,
@@ -140,11 +147,25 @@
         },
         {
           "families": [
-            "score-difference-ch8",
-            "goal-remaining-ch8",
-            "line-remaining-ch8"
+            "score-difference-ch8"
           ],
           "introducedOnPage": 110,
+          "coverageThroughPage": 143,
+          "concepts": "Subtraction within 20, no-borrow subtraction, whole tens minus one digit. General borrowing excluded."
+        },
+        {
+          "families": [
+            "goal-remaining-ch8"
+          ],
+          "introducedOnPage": 110,
+          "coverageThroughPage": 143,
+          "concepts": "Subtraction within 20, no-borrow subtraction, whole tens minus one digit. General borrowing excluded."
+        },
+        {
+          "families": [
+            "line-remaining-ch8"
+          ],
+          "introducedOnPage": 131,
           "coverageThroughPage": 143,
           "concepts": "Subtraction within 20, no-borrow subtraction, whole tens minus one digit. General borrowing excluded."
         }

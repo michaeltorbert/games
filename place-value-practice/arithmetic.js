@@ -34,14 +34,15 @@
   panel.append(title,setup,count,equation,instruction,choices,feedback,next,recap,storage);
   function save() { if(!writable)return; try { localStorage.setItem(KEY,JSON.stringify(model)); saveMessage=''; } catch { saveMessage='Your arithmetic progress stays in memory for this visit.'; } }
   function render() {
-    const view=api.view(model), q=model.question, finished=model.target!==null && model.completed>=model.target;
+    const view=api.view(model), q=model.question, revealed=q.misses.length>=3, finished=model.target!==null && model.completed>=model.target;
     length.value=model.target===null?'endless':String(model.target);
     count.textContent=finished?'Session complete':model.target===null?`Question ${model.sequence+1}`:`Question ${model.sequence+1} of ${model.target}`;
-    equation.textContent=q.complete?view.worked:view.prompt;
+    equation.textContent=q.complete||revealed?view.worked:view.prompt;
     choices.replaceChildren();
     q.choices.forEach(value=>{ const b=node('button',String(value),'button arithmetic-answer');b.type='button';b.disabled=q.complete||q.misses.includes(value);
       b.addEventListener('click',()=>{if(api.answer(model,value)){save();render(); if(model.question.complete)next.focus();}}); choices.append(b); });
-    feedback.textContent=q.complete?(q.misses.length?'You worked it out after trying again.':'Correct.'):(q.misses.length?'Try another number.':'');
+    feedback.textContent=q.complete?(revealed?'You selected the answer.':q.misses.length?'You worked it out after trying again.':'Correct.')
+      :revealed?'Here is the answer. Select it to finish this question.':q.misses.length?'Try another number.':'';
     next.hidden=!q.complete; next.textContent=finished?'Practice again':'Next';
     recap.textContent=finished?`${model.completed} completed · ${model.firstTry} first try · ${model.afterHelp} after trying again` : '';
     storage.textContent=saveMessage;
@@ -49,7 +50,6 @@
   function fresh() { model=api.create(length.value==='endless'?null:Number(length.value));save();render();choices.querySelector('button').focus(); }
   reset.addEventListener('click',fresh);
   // Changing length applies only when starting a new session, preserving an active attempt.
-  length.addEventListener('change',()=>{reset.focus();});
   next.addEventListener('click',()=>{if(model.target!==null&&model.completed>=model.target)fresh();else if(api.next(model)){save();render();choices.querySelector('button').focus();}});
   const placeText=window.render_game_to_text;
   function mode(value, persist=true) {
@@ -66,7 +66,8 @@
   place.addEventListener('click',()=>mode('place-value')); arithmetic.addEventListener('click',()=>mode('arithmetic'));
   window.render_game_to_text=()=>window.__placePracticeMode==='arithmetic'?JSON.stringify({mode:'arithmetic',question:api.view(model).prompt,
     choices:model.question.choices,misses:model.question.misses,complete:model.question.complete,completed:model.completed,target:model.target,
-    worked:model.question.complete?api.view(model).worked:null}):placeText();
+    revealed:model.question.misses.length>=3,
+    worked:model.question.complete||model.question.misses.length>=3?api.view(model).worked:null}):placeText();
   window.__arithmeticTest=Object.freeze({snapshot:()=>JSON.parse(JSON.stringify(model)),storageKey:KEY});
   mode(window.__placePracticeMode,false);
 })();

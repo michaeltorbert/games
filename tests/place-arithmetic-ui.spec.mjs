@@ -99,3 +99,39 @@ test('malformed arithmetic saves recover without touching place-value progress',
  await correct(page);expect((await snapshot(page)).completed).toBe(1);
  expect(await raw(page)).toBe(before);
 });
+
+
+test('three misses reveal the equation across reload, then require the correct choice before Next',async({page})=>{
+ await page.goto('/place-value-practice/');const before=await raw(page);
+ await page.getByRole('button',{name:'Arithmetic',exact:true}).click();
+ const view=await page.evaluate(()=>PLACE_ARITHMETIC.view(__arithmeticTest.snapshot()));
+ const choices=(await snapshot(page)).question.choices;
+ for(const value of choices.filter(value=>value!==view.answer)) {
+   await page.getByRole('button',{name:String(value),exact:true}).click();
+ }
+ const revealed=await snapshot(page);
+ expect(revealed.question.complete).toBe(false);expect(revealed.completed).toBe(0);
+ await expect(page.locator('#arithmetic-equation')).toHaveText(view.worked);
+ await expect(page.locator('#arithmetic-feedback')).toContainText('Here is the answer');
+ await expect(page.locator('#arithmetic-next')).toBeHidden();
+ const semantic=await page.evaluate(()=>JSON.parse(render_game_to_text()));
+ expect(semantic.revealed).toBe(true);expect(semantic.worked).toBe(view.worked);expect(semantic.complete).toBe(false);
+ await page.reload();expect(await snapshot(page)).toEqual(revealed);
+ await page.screenshot({path:`tests/artifacts/place-arithmetic-reveal-${test.info().project.name}.png`});
+ await expect(page.locator('#arithmetic-equation')).toHaveText(view.worked);
+ await expect(page.locator('#arithmetic-next')).toBeHidden();
+ for(const value of choices.filter(value=>value!==view.answer)) await expect(page.getByRole('button',{name:String(value),exact:true})).toBeDisabled();
+ await correct(page);expect((await snapshot(page)).completed).toBe(1);
+ await page.evaluate(()=>document.querySelector('.arithmetic-answer').click());
+ expect((await snapshot(page)).completed).toBe(1);
+ await page.locator('#arithmetic-next').click();expect((await snapshot(page)).sequence).toBe(1);
+ expect(await raw(page)).toBe(before);
+});
+
+test('changing arithmetic session length retains keyboard focus',async({page})=>{
+ await page.goto('/place-value-practice/');
+ await page.getByRole('button',{name:'Arithmetic',exact:true}).click();
+ const select=page.getByLabel('Arithmetic session length');
+ await select.focus();await select.selectOption('20');await expect(select).toBeFocused();
+ await page.keyboard.press('ArrowUp');await expect(select).toBeFocused();
+});

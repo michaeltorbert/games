@@ -219,7 +219,9 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
       ...(input.worktexts ? { worktexts: clone(input.worktexts) } : {}),
       // Factual workbook completion and the user-approved question ceiling are
       // separate. A permissive caller cannot widen either repository contract;
-      // narrower profiles are allowed and only remove candidates.
+      // narrower source profiles only remove candidates. computationMax is the
+      // legacy arithmetic bound; Chapter 8 uses arithmeticAllowed and the
+      // book-specific sourceStatus guard instead of this legacy maximum.
       completedThroughPage: Math.min(
         positiveInt(input.completedThroughPage, DEFAULT_PROFILE.completedThroughPage),
         DEFAULT_PROFILE.completedThroughPage,
@@ -1620,7 +1622,7 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
       let reason = commonReason;
       let result = null;
       if (!reason && !sourceStatus(meta, profile).included) {
-        reason = decline('curriculum-not-included', `Family comes from page ${meta.introducedOnPage}, but the approved question ceiling is page ${profile.includedThroughPage}.`);
+        reason = decline('curriculum-not-included', `Family requires ${meta.worktext} (${meta.edition}) through page ${meta.coverageThroughPage}; that source is outside the requested curriculum scope.`);
       }
       if (!reason) {
         try {
@@ -1783,7 +1785,7 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
 
     const profile = normalizeProfile(options.profile || DEFAULT_PROFILE);
     if (!sourceStatus(definition.meta, profile).included) {
-      throw contractError('curriculum-not-included', `${familyId} comes from page ${definition.meta.introducedOnPage}, beyond the approved question ceiling of page ${profile.includedThroughPage}.`);
+      throw contractError('curriculum-not-included', `${familyId} requires ${definition.meta.worktext} (${definition.meta.edition}) through page ${definition.meta.coverageThroughPage}; that source is outside the requested curriculum scope.`);
     }
 
     const result = definition.derive(source, profile);
