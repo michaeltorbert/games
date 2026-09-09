@@ -1532,65 +1532,113 @@
     .arithmetic-answer:disabled { opacity: .48; }
     #arithmetic-feedback { min-height: 28px; }
     .arithmetic-storage { font-size: .9rem; }
-    #fact-practice { width: min(100%, 760px); margin: auto; padding: 16px 24px 28px; }
-    #fact-practice h2 { font-size: 1.7rem; margin: 0 0 16px; }
-    #fact-practice .arithmetic-setup { margin-bottom: 12px; }
-    .facts-entry { display: flex; align-items: center; justify-content: center; gap: 16px; margin: 16px 0; }
-    #facts-equation { font-size: clamp(2rem, 6vw, 3rem); margin: 0; }
-    #facts-answer { min-width: 72px; min-height: 60px; padding: 4px; border-bottom: 3px solid #557465; text-align: center; font-size: 2.5rem; }
-    .facts-keypad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; max-width: 360px; margin: 0 auto 12px; }
-    .facts-keypad button { min-height: 48px; font-size: 1.25rem; background: white; border: 2px solid #d3ded6; }
-    .facts-controls { display: flex; justify-content: center; gap: 12px; }
-    .facts-controls .button { flex: 1; width: auto; max-width: 174px; padding: 10px; }
+    /* Facts is a stadium-first workspace; other practice modes keep their shell. */
+    .facts-active .app-shell { width: 100%; margin: 0; border: 0; border-radius: 0; box-shadow: none; display: grid; grid-template-columns: 1fr 1fr; overflow: visible; }
+    .facts-active .app-header { grid-column: 1 / -1; display: block; min-height: 78px; padding: 8px 20px 0; text-align: center; border: 0; }
+    .facts-active .app-header h1 { font-size: clamp(2rem, 3.4vw, 3.2rem); line-height: 1.15; letter-spacing: -.04em; }
+    .facts-active .eyebrow { font-size: .65rem; }
+    .facts-active .practice-modes { padding: 6px 16px 10px; gap: 8px; align-content: start; }
+    .facts-active .practice-modes[aria-label="Practice type"] { justify-content: end; }
+    .facts-active .practice-modes[aria-label="Arithmetic practice type"] { justify-content: start; }
+    .facts-active .practice-modes button { min-height: 44px; padding: 8px 12px; font-size: .86rem; }
+    #fact-practice { grid-column: 1 / -1; width: 100%; max-width: none; margin: 0; padding: 0; }
+    .facts-drive { position: relative; isolation: isolate; width: 100%; height: clamp(330px, 44vh, 500px); overflow: hidden; color: #fffdf0; background: #77b756; }
+    .facts-stadium { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: fill; z-index: -1; }
+    .facts-drive-header { position: absolute; z-index: 2; top: 6%; left: 5%; padding: 12px 24px 15px; background: #163c3d; border: 3px solid #8fa878; border-radius: 10px; box-shadow: 0 4px 0 #355c4b; }
+    .facts-drive-header h3 { margin: 0 0 2px; font-size: .9rem; color: #cce9d7; letter-spacing: .03em; }
+    .facts-drive-caption { display: flex; flex-direction: column; gap: 0; line-height: 1.3; }
+    #facts-yards { font-size: clamp(1.7rem, 2.8vw, 2.7rem); letter-spacing: -.03em; }
+    #facts-milestone { font-size: clamp(.85rem, 1.3vw, 1.15rem); }
+    .facts-drive-summary { position: absolute; right: 4%; top: 6%; max-width: 42%; padding: 8px 14px; border-radius: 8px; color: #173c38; background: #fff9e9; text-align: right; font-size: .85rem; }
+    #facts-touchdowns { font-size: 1.1rem; font-weight: 800; }
+    .facts-rule { margin: 2px 0 0; }
+    .facts-field { position: absolute; inset: 0; }
+    .facts-turf { position: absolute; left: 9%; right: 9%; top: 43%; bottom: 9%; }
+    .facts-turf::before { content: ''; position: absolute; left: 0; right: 0; bottom: 25%; border-top: 5px dotted #fff9de; opacity: .95; }
+    .facts-yard-line { position: absolute; bottom: -4%; transform: translateX(-50%); font-size: clamp(.9rem, 1.8vw, 1.8rem); line-height: 1; font-weight: 900; text-shadow: 0 2px 2px #2b6638; }
+    .facts-yard-line:not(:first-child)::before { content: ''; position: absolute; width: 3px; height: clamp(25px, 4vw, 48px); background: #fff9de; left: 50%; bottom: 175%; }
+    .facts-yard-line:not(:first-child)::after { content: ''; position: absolute; width: 23px; height: 16px; background: #007b83; clip-path: polygon(0 0, 100% 25%, 100% 75%, 0 100%); left: calc(50% + 3px); bottom: calc(175% + clamp(25px, 4vw, 48px) - 16px); }
+    .facts-ball { position: absolute; left: 0; bottom: 22%; height: 88%; width: auto; max-width: none; transform: translateX(-50%); filter: drop-shadow(0 4px 2px #284c4366); transition: left .5s ease-out; z-index: 1; }
+    #facts-award { position: absolute; left: 50%; top: 10%; transform: translateX(-50%); padding: 8px 18px; border-radius: 9px; background: #fff0a3; color: #153e3d; font-size: clamp(1.2rem, 2.2vw, 2rem); font-weight: 900; white-space: nowrap; }
+    .facts-drive--earned #facts-award { animation: facts-reward .5s ease-out; }
+    .facts-drive--touchdown .facts-ball { transition: none; }
+    @keyframes facts-reward { from { scale: .92; translate: 0 8px; } to { scale: 1; translate: 0 0; } }
+    .facts-dock { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(210px, 1fr) minmax(160px, .7fr); gap: 28px; align-items: center; padding: 24px clamp(24px, 4vw, 64px) 20px; background: var(--paper); }
+    .facts-question { min-width: 0; }
+    #facts-count { margin: 0 0 12px; font-size: 1rem; font-weight: 750; color: var(--ink-soft); }
+    .facts-entry { display: flex; align-items: center; gap: clamp(12px, 2vw, 28px); margin: 0 0 10px; }
+    #facts-equation { margin: 0; font-size: clamp(2.5rem, 6vw, 6rem); line-height: 1.2; letter-spacing: -.05em; white-space: nowrap; }
+    #facts-answer { display: block; min-width: 1.65em; min-height: 1.7em; padding: 0 8px; border: 3px solid #adb8b9; border-radius: 16px; text-align: center; font-size: clamp(2.5rem, 6vw, 6rem); line-height: 1.6; background: #fffdf9; }
+    .facts-keypad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; min-width: 0; }
+    .facts-keypad button { min-height: 52px; padding: 8px; font-size: 1.5rem; background: #fffdf9; border: 2px solid #d8d5cc; border-radius: 12px; }
+    .facts-keypad button:nth-child(10) { font-size: 1.05rem; }
+    .facts-keypad button:disabled { color: #718079; opacity: .65; }
+    .facts-controls { display: flex; flex-direction: column; gap: 14px; }
+    .facts-controls .button { min-height: 76px; width: 100%; padding: 10px; font-size: clamp(1.2rem, 2.2vw, 2rem); border-radius: 16px; }
+    .facts-controls .button--primary { background: #008992; color: white; }
+    .facts-controls .button--quiet { border: 3px solid #008992; color: #007982; background: transparent; }
+    .facts-controls .button:disabled { opacity: .65; }
+    #facts-feedback { margin: 0; min-height: 24px; font-size: .95rem; }
+    #facts-support { margin: 8px 0; padding: 8px 12px; border-left: 3px solid #008992; background: #e5f0e8; font-size: .95rem; }
+    #facts-recap { margin: 12px 0 0; color: #285849; font-weight: 700; }
+    .facts-meta { max-width: 1280px; margin: auto; padding: 12px clamp(20px, 4vw, 50px) 24px; }
+    #fact-practice .arithmetic-setup { margin: 0; gap: 12px; }
+    #fact-practice .arithmetic-setup label { display: flex; align-items: center; gap: 12px; font-weight: 600; }
+    #facts-length { width: 84px; min-height: 44px; border: 1px solid var(--line-strong); border-radius: 8px; padding: 8px; background: #fffdf9; }
+    #facts-length-error { flex-basis: 100%; margin: 0; color: #973d36; }
     #fact-practice button, #facts-report summary { min-height: 44px; }
-    #facts-feedback { min-height: 24px; }
-    #facts-support { padding: 12px; border-radius: 12px; background: #edf4ee; }
-    #facts-report { margin-top: 18px; }
+    #facts-report { margin-top: 12px; }
     #facts-report summary { cursor: pointer; padding: 10px 0; }
     #facts-report details { padding-left: 12px; }
     #facts-report p, .facts-storage { font-size: .9rem; }
-    .facts-active .app-header { min-height: 66px; padding-top: 10px; padding-bottom: 10px; }
-    .facts-active .practice-modes { padding-top: 8px; }
-    .facts-active .practice-modes button { padding: 8px 10px; min-height: 44px; font-size: .9rem; }
-    #fact-practice > h2 { margin-bottom: 4px; font-size: 1.45rem; }
-    #fact-practice > h2 + p { font-size: .9rem; margin-bottom: 12px; }
-    #fact-practice > section + p { margin: 10px 0 0; font-size: .9rem; color: #475a4d; }
-    #fact-practice .arithmetic-setup { margin-top: 20px; }
-    #fact-practice .facts-entry { margin: 12px 0; }
-    #facts-feedback { margin-bottom: 8px; }
-    .facts-drive { padding: 12px 16px 8px; border-radius: 14px; background: #214c39; color: #fffdf0; }
-    .facts-drive-header, .facts-drive-caption { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-    .facts-drive-header h3 { margin: 0; font-size: 1rem; }
-    #facts-touchdowns { font-size: .85rem; white-space: nowrap; }
-    .facts-field { padding: 0 14px; margin-top: 4px; }
-    .facts-turf { position: relative; height: 38px; border-top: 1px solid #99b5a4; border-bottom: 1px solid #99b5a4; }
-    .facts-yard-line { position: absolute; top: 0; bottom: 0; border-left: 1px solid #99b5a4; padding-left: 3px; font-size: .65rem; color: #e3ede3; }
-    .facts-yard-line:nth-child(5) { transform: translateX(-100%); border-left: 0; border-right: 1px solid #99b5a4; padding-left: 0; padding-right: 3px; }
-    .facts-ball { position: absolute; top: 19px; width: 25px; height: 15px; border: 2px solid #fff5ce; border-radius: 55% 45%; background: #ad5c26; transform: translateX(-50%) rotate(-20deg); transition: left .35s ease-out; box-shadow: 0 2px 3px #153526; }
-    .facts-ball::after { content: ''; position: absolute; width: 12px; height: 5px; left: 4px; top: 3px; border-top: 1px solid #fff5ce; background: repeating-linear-gradient(90deg, transparent 0 3px, #fff5ce 3px 4px); }
-    .facts-drive-caption { margin: 7px 0 0; font-size: .8rem; }
-    #facts-award { text-align: right; color: #ffebaf; }
-    .facts-drive--touchdown #facts-award { font-weight: 800; animation: facts-touchdown .65s ease-out; }
-    .facts-drive--touchdown .facts-ball { transition: none; }
-    .facts-drive-info { max-width: 620px; margin-top: 14px; font-size: .8rem; color: #475a4d; }
-    @keyframes facts-touchdown { 0% { transform: scale(.9); } 55% { transform: scale(1.15); } 100% { transform: scale(1); } }
-    @media (prefers-reduced-motion: reduce) { .facts-ball { transition: none; } .facts-drive--touchdown #facts-award { animation: none; } }
-    @media (min-width: 700px) and (max-height: 850px) and (orientation: landscape) {
-      .facts-active .app-header { min-height: 62px; padding-top: 8px; padding-bottom: 8px; }
-      #fact-practice { padding-top: 12px; }
-      #fact-practice > h2 { line-height: 1.25; }
-      #fact-practice > h2 + p { margin-bottom: 8px; }
-      #fact-practice .facts-entry { margin: 8px 0; }
-      #facts-equation { line-height: 1.2; }
-      #facts-answer { line-height: 1.2; }
-      .facts-keypad button { min-height: 44px; padding-top: 8px; padding-bottom: 8px; }
+    .facts-drive-info { margin: 12px 0 0; font-size: .8rem; color: #475a4d; }
+    .facts-storage { margin: 8px 0 0; }
+    @media (min-width: 700px) and (max-width: 1050px) {
+      .facts-turf { left: 15%; right: 15%; }
+      .facts-stadium { object-fit: cover; object-position: 83% center; }
+      .facts-dock { grid-template-columns: minmax(0, 1.4fr) minmax(180px, 1fr) minmax(120px, .65fr); gap: 16px; padding-left: 24px; padding-right: 24px; }
+      #facts-equation, #facts-answer { font-size: 3.4rem; }
+      .facts-controls .button { font-size: 1.3rem; }
     }
-    @media (max-width: 440px) {
-      #fact-practice { padding: 12px 16px 24px; }
-      #fact-practice > h2 { line-height: 1.25; }
-      #fact-practice .facts-entry { margin: 8px 0; }
-      #facts-answer { line-height: 1.2; }
-      .facts-keypad button { min-height: 44px; padding-top: 8px; padding-bottom: 8px; }
+    @media (max-width: 699px) {
+      .facts-active .app-shell { display: block; }
+      .facts-active .app-header { min-height: 59px; padding: 5px 16px 0; }
+      .facts-active .app-header h1 { font-size: 1.9rem; }
+      .facts-active .practice-modes { padding: 3px 10px; justify-content: center !important; gap: 6px; }
+      .facts-active .practice-modes button { padding: 8px 10px; font-size: .8rem; }
+      .facts-active .practice-modes[aria-label="Arithmetic practice type"] { padding-bottom: 6px; }
+      .facts-drive { height: clamp(230px, 29vh, 300px); }
+      .facts-stadium { object-fit: cover; object-position: 83% center; }
+      .facts-drive-header { top: 8px; left: 10px; padding: 7px 11px 9px; border-width: 2px; }
+      .facts-drive-header h3 { font-size: .68rem; }
+      #facts-yards { font-size: 1.4rem; }
+      #facts-milestone { font-size: .72rem; }
+      .facts-drive-summary { right: 9px; top: 10px; max-width: 43%; padding: 6px 8px; font-size: .66rem; }
+      #facts-touchdowns { font-size: .8rem; }
+      .facts-rule { line-height: 1.3; }
+      .facts-turf { top: 47%; left: 17%; right: 17%; }
+      .facts-ball { height: 100%; }
+      .facts-yard-line { font-size: .9rem; }
+      #facts-award { top: 39%; font-size: 1rem; padding: 3px 10px; }
+      .facts-dock { grid-template-columns: minmax(0, 1.65fr) minmax(110px, 1fr); gap: 10px 16px; padding: 12px 16px 16px; }
+      .facts-question { grid-column: 1 / -1; }
+      #facts-count { margin: 0 0 4px; font-size: .83rem; }
+      .facts-entry { justify-content: center; gap: 16px; margin: 0 0 6px; }
+      #facts-equation, #facts-answer { font-size: 2.7rem; }
+      #facts-answer { border-radius: 10px; border-width: 2px; min-height: 1.4em; line-height: 1.35; }
+      #facts-feedback, #facts-support { font-size: .8rem; }
+      #facts-feedback { min-height: 20px; }
+      .facts-keypad { gap: 5px; }
+      .facts-keypad button { min-height: 44px; padding: 6px; font-size: 1.1rem; border-radius: 9px; }
+      .facts-keypad button:nth-child(10) { font-size: .75rem; }
+      .facts-controls { gap: 12px; }
+      .facts-controls .button { min-height: 58px; font-size: 1.15rem; border-radius: 12px; }
+      .facts-meta { padding: 8px 16px 20px; }
+      #fact-practice .arithmetic-setup { font-size: .86rem; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .facts-ball { transition: none; }
+      .facts-drive--earned #facts-award { animation: none; }
     }
   </style>
 </head>
@@ -1876,12 +1924,12 @@
     </form>
   </dialog>
 
-  <script src="arithmetic-domain.js?v=1.5.0"></script>
+  <script src="arithmetic-domain.js?v=1.6.0"></script>
   <script>
     "use strict";
 
     (() => {
-      const GAME_VERSION = "1.5.0";
+      const GAME_VERSION = "1.6.0";
       document.getElementById('game-version').textContent = `Version ${GAME_VERSION}`;
       const SCHEMA_VERSION = 1;
       const STORAGE_KEY = "place-value-practice:progress:v1";
@@ -6630,8 +6678,8 @@
       if (window.__placePracticeMode === 'place-value') window.__placeValueActivate();
     })();
   </script>
-  <script src="fact-practice-domain.js?v=1.5.0"></script>
-  <script src="fact-practice.js?v=1.5.0"></script>
-  <script src="arithmetic.js?v=1.5.0"></script>
+  <script src="fact-practice-domain.js?v=1.6.0"></script>
+  <script src="fact-practice.js?v=1.6.0"></script>
+  <script src="arithmetic.js?v=1.6.0"></script>
 </body>
 </html>

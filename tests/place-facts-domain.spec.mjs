@@ -6,6 +6,24 @@ const copy=s=>JSON.parse(JSON.stringify(s));
 const finish=(s,ms=null)=>A.answer(s,s.attempt.id,A.byId[s.attempt.factId].answer,ms);
 const advance=s=>s.session.completed>=s.session.target?A.restart(s,10):A.next(s,s.attempt.id);
 
+test('every whole question count from one to one hundred round-trips without schema churn',()=>{
+ assert.equal(A.create().session.target,10);
+ for(let target=1;target<=100;target++){
+  const s=A.create(target);assert.equal(s.schemaVersion,2);assert.equal(s.session.target,target);
+  assert.deepEqual(A.normalize(copy(s)),s);finish(s);assert.deepEqual(A.normalize(copy(s)),s);
+  const total=s.drive.totalYards,facts=copy(s.facts);assert.equal(A.restart(s,target),true);
+  assert.equal(s.session.target,target);assert.equal(s.drive.totalYards,total);
+  for(const id of Object.keys(facts))assert.deepEqual(s.facts[id].history,facts[id].history);
+ }
+ for(const target of [0,-1,101,1.5,NaN,Infinity,'7',null,undefined]){
+  const s=A.create(7),before=copy(s);assert.equal(A.restart(s,target),false);assert.deepEqual(s,before);
+  assert.equal(A.create(target).session.target,10);const bad=copy(s);bad.session.target=target;assert.equal(A.normalize(bad),null);
+ }
+ for(const schemaVersion of [1,2])for(const target of [5,10]){const s=A.create(target);s.schemaVersion=schemaVersion;if(schemaVersion===1){delete s.drive;delete s.attempt.rewardSupported;}const restored=A.normalize(s);assert.ok(restored);assert.equal(restored.session.target,target);}
+ const full=A.create(100);for(let i=0;i<100;i++){finish(full);if(i<99)assert.equal(A.next(full,full.attempt.id),true);}
+ assert.equal(full.session.completed,100);assert.equal(A.next(full,full.attempt.id),false);assert.deepEqual(A.normalize(copy(full)),full);
+});
+
 test('drive awards exactly once at completion, with independent reward and learning classifications',()=>{
  for(const kind of ['first','warm','miss','voluntary','automatic','report']){
   const s=A.create(),id=s.attempt.id,answer=A.byId[s.attempt.factId].answer;

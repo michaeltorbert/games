@@ -20,6 +20,7 @@
   const order=['sub:7:5','add:7:6','add:2:3','sub:9:3',...catalog.map(f=>f.id)];
   const ordered=[...new Set(order)];
   const integer=(n,max=LIMIT)=>Number.isInteger(n)&&n>=0&&n<=max;
+  const validTarget=n=>integer(n,100)&&n>=1;
   const sample=n=>n===null||(integer(n,60000)&&n>=300&&n%100===0);
   const other=(s,family)=>s.serial-s.families[family].completed;
   const threshold=f=>f.answer<10?8000:10000;
@@ -74,7 +75,7 @@
     s.coverageCursor=(ordered.indexOf(f.id)+1)%200;
     return selected.diagnostics;
   }
-  function create(target=10,rng) {const s=blank();s.session.target=target===5?5:10;present(s,rng);return s;}
+  function create(target=10,rng) {const s=blank();s.session.target=validTarget(target)?target:10;present(s,rng);return s;}
   function retry(s,f) {s.facts[f.id].ticket={kind:'retry',dueOther:other(s,f.family)+2,created:s.serial};}
   function reportOpened(s,id) {
     const q=s.attempt;if(q.id!==id||q.complete)return false;
@@ -115,7 +116,7 @@
   }
   function next(s,id,rng) {if(s.attempt.id!==id||!s.attempt.complete||s.session.completed>=s.session.target)return false;return !!present(s,rng);}
   function restart(s,target,rng) {
-    if(![5,10].includes(target)||s.nonce>=LIMIT)return false;
+    if(!validTarget(target)||s.nonce>=LIMIT)return false;
     s.session={target,completed:0,firstTry:0,helped:0};return !!present(s,rng);
   }
   function normalize(raw) {
@@ -154,7 +155,7 @@
       if(presentations!==s.nonce)return null;
       for(const id of families)if(totals[id]!==s.families[id].completed)return null;
       const session=raw.session;
-      if(![5,10].includes(session.target)||!integer(session.completed,session.target)||session.completed>s.serial||!integer(session.firstTry,session.completed)||!integer(session.helped,session.completed)||session.firstTry+session.helped!==session.completed)return null;
+      if(!validTarget(session.target)||!integer(session.completed,session.target)||session.completed>s.serial||!integer(session.firstTry,session.completed)||!integer(session.helped,session.completed)||session.firstTry+session.helped!==session.completed)return null;
       s.session={target:session.target,completed:session.completed,firstTry:session.firstTry,helped:session.helped};
       const q=raw.attempt,f=byId[q.factId];
       if(!f||q.id!==s.nonce||!integer(q.misses,99)||typeof q.helped!=='boolean'||typeof q.complete!=='boolean'||typeof q.eligible!=='boolean'||
