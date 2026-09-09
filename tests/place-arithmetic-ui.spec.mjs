@@ -150,6 +150,32 @@ test('legacy embedded place-value self-tests remain intact',async({page},info)=>
  expect(result.failed).toBe(0);expect(result.passed).toBe(169);
 });
 
+test('invalid arithmetic JSON stays writable and persists recovered progress across restart and reload',async({page})=>{
+ await page.goto('/place-value-practice/');const before=await raw(page);
+ await page.evaluate(AKEY=>{
+   localStorage.setItem(AKEY,'{broken');
+   localStorage.setItem('place-value-practice:mode:v1','arithmetic');
+ },AKEY);
+ await page.reload();
+ expect(await raw(page,AKEY)).toBe('{broken');
+ expect(await raw(page)).toBe(before);
+ await correct(page);
+ const completed=await snapshot(page);
+ expect(completed.schemaVersion).toBe(3);expect(completed.completed).toBe(1);
+ expect(completed.learning.serial).toBe(1);
+ expect(JSON.parse(await raw(page,AKEY))).toEqual(completed);
+ await page.reload();expect(await snapshot(page)).toEqual(completed);
+ await page.locator('#arithmetic-next').click();
+ expect((await snapshot(page)).sequence).toBe(1);
+ await page.getByRole('button',{name:'Start new arithmetic session'}).click();
+ await correct(page);
+ const restarted=await snapshot(page);
+ expect(restarted.completed).toBe(1);expect(restarted.learning.serial).toBe(2);
+ expect(JSON.parse(await raw(page,AKEY))).toEqual(restarted);
+ await page.reload();expect(await snapshot(page)).toEqual(restarted);
+ expect(await raw(page)).toBe(before);
+});
+
 test('malformed arithmetic saves recover without touching place-value progress',async({page})=>{
  await page.goto('/place-value-practice/');const before=await raw(page);
  await page.evaluate(AKEY=>{

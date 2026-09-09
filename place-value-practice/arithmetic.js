@@ -3,15 +3,19 @@
   'use strict';
   const KEY='place-value-practice:arithmetic:v1', MODE_KEY='place-value-practice:mode:v1';
   const api=PLACE_ARITHMETIC;
-  let model, writable=true, saveMessage='', savedRaw=null, pendingChanges=0;
+  let model, writable=true, saveMessage='', savedRaw=null, pendingChanges=0, malformedJSON=false;
   try {
-    const raw=localStorage.getItem(KEY), parsed=raw ? JSON.parse(raw) : null;
-    savedRaw=raw;
+    savedRaw=localStorage.getItem(KEY);
+  } catch { writable=false;saveMessage='Your arithmetic progress stays in memory for this visit.'; }
+  if(writable) {
+    let parsed=null;
+    try { parsed=savedRaw===null ? null : JSON.parse(savedRaw); }
+    catch { malformedJSON=true; }
     if (parsed && typeof parsed.schemaVersion === 'number' && parsed.schemaVersion > api.SCHEMA_VERSION) {
       writable=false; saveMessage='This arithmetic save comes from a newer version. This session stays in memory.';
     }
     model=api.normalize(parsed);
-  } catch { writable=false;saveMessage='Your arithmetic progress stays in memory for this visit.'; }
+  }
   const node=(tag,text,className) => { const n=document.createElement(tag); if(text)n.textContent=text; if(className)n.className=className; return n; };
   const nav=node('nav',null,'practice-modes'); nav.setAttribute('aria-label','Practice type');
   const place=node('button','Place value','button'), arithmetic=node('button','Arithmetic','button');
@@ -98,7 +102,8 @@
     document.getElementById('settings-button').hidden=active;
     panel.hidden=!active;
     place.setAttribute('aria-pressed',String(!active)); arithmetic.setAttribute('aria-pressed',String(active));
-    if(active){if(!model){model=api.create();save();}render();}else window.__placeValueActivate();
+    // Keep invalid JSON bytes until a locked user action can check for conflicts.
+    if(active){if(!model){model=api.create();if(!malformedJSON)save();}render();}else window.__placeValueActivate();
   }
   place.addEventListener('click',()=>mode('place-value')); arithmetic.addEventListener('click',()=>mode('arithmetic'));
   window.render_game_to_text=()=>window.__placePracticeMode==='arithmetic'?JSON.stringify({mode:'arithmetic',question:api.view(model).prompt,
