@@ -8,6 +8,7 @@ async function correct(page,touch=false){const value=await page.evaluate(()=>PLA
 
 test('fresh and legacy arithmetic choices default to basic facts without changing larger-number saves',async({page})=>{
  await page.goto('/place-value-practice/');
+ await expect(page.locator('#game-version')).toHaveText('Version 1.4.1');
  await page.getByRole('button',{name:'Arithmetic',exact:true}).click();
  await expect(page.locator('#fact-practice')).toBeVisible();
  expect((await snapshot(page)).attempt.factId).toBe('sub:7:5');
