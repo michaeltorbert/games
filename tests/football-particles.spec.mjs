@@ -75,6 +75,8 @@ async function runOffenseGain(page, {
 }
 
 test('particles are limited to explosive offense plays and clean up', async ({ page }) => {
+  await page.clock.install({ time: new Date('2026-01-01T12:00:00Z') });
+  await page.clock.pauseAt(new Date('2026-01-01T12:00:01Z'));
   await openGame(page);
 
   expect(await runOffenseGain(page)).toEqual({
@@ -90,9 +92,11 @@ test('particles are limited to explosive offense plays and clean up', async ({ p
     gotFirstDown: false,
     isTouchdown: false,
   });
-  await page.waitForTimeout(560);
+  // Hold browser time still across assertions, regardless of worker contention.
+  // Production schedules particle removal at 640 ms after the committed play.
+  await page.clock.runFor(639);
   await expect(page.locator('.field-particle')).toHaveCount(5);
-  await page.waitForTimeout(140);
+  await page.clock.runFor(1);
   await expect(page.locator('.field-particle')).toHaveCount(0);
 
   expect(await runOffenseGain(page, { yardLine: 28, firstDownLine: 30 })).toMatchObject({

@@ -68,3 +68,50 @@ test('runtime rejects forged challenge metadata and uncommitted results supply n
   });
   expect(result).toEqual({ rejected: true, rows: [], current: [] });
 });
+
+test('coach stretch summary uses latest completion and retains unrelated practice needs', async ({ page }) => {
+  await page.goto('/football/?boot=offense-call');
+  const reports = await page.evaluate(() => {
+    const evidence = (playId, completedAt, concept, resolution) => ({
+      gameId: 'current-game', playId, completedAt, concept, resolution,
+      familyId: concept === 'line-to-gain' ? 'line-to-gain-fact-family' : 'drive-distance-plus-whole-tens',
+      attempts: [{ support: resolution === 'firstTryCorrect' ? 'initial' : 'guided' }],
+    });
+    const early = evidence('play-1', '2026-09-09T10:00:00Z', 'line-to-gain', 'firstTryCorrect');
+    const later = evidence('play-2', '2026-09-09T10:01:00Z', 'drive-distance', 'retryCorrect');
+    learningSession.byConcept = {
+      addition: { independent: { resolved: 3, firstTryCorrect: 3, retryCorrect: 0, secondMiss: 0 } },
+      difference: { independent: { resolved: 3, firstTryCorrect: 0, retryCorrect: 0, secondMiss: 3 } },
+      'line-to-gain': { independent: { resolved: 1, firstTryCorrect: 1, retryCorrect: 0, secondMiss: 0 } },
+      'drive-distance': { independent: { resolved: 1, firstTryCorrect: 0, retryCorrect: 1, secondMiss: 0 } },
+    };
+    learningSession.currentChallengeEvidence = [early, later];
+    const forward = buildCoachReport();
+    learningSession.currentChallengeEvidence = [later, early];
+    const reverse = buildCoachReport();
+    const success = evidence('play-3', '2026-09-09T10:02:00Z', 'drive-distance', 'firstTryCorrect');
+    learningSession.currentChallengeEvidence.push(success);
+    const recovered = buildCoachReport();
+    // Two unrelated support needs leave no safe replacement slot.
+    learningSession.byConcept = {
+      difference: { independent: { resolved: 2, firstTryCorrect: 0, retryCorrect: 0, secondMiss: 2 } },
+      addition: { literacy: { resolved: 2, firstTryCorrect: 0, retryCorrect: 2, secondMiss: 0 } },
+      'drive-distance': { independent: { resolved: 1, firstTryCorrect: 0, retryCorrect: 1, secondMiss: 0 } },
+    };
+    const twoNeeds = buildCoachReport();
+    return { forward, reverse, recovered, twoNeeds };
+  });
+  expect(reports.forward).toEqual([
+    { label: 'Practiced today', value: 'Practiced drive totals with support' },
+    { label: 'Practice next', value: 'Finding the difference' },
+  ]);
+  expect(reports.reverse).toEqual(reports.forward);
+  expect(reports.recovered).toEqual([
+    { label: 'Practiced today', value: 'Tried drive totals' },
+    { label: 'Practice next', value: 'Finding the difference' },
+  ]);
+  expect(reports.twoNeeds).toEqual([
+    { label: 'Building today', value: 'Finding the difference' },
+    { label: 'Practice next', value: 'Adding within 10' },
+  ]);
+});
