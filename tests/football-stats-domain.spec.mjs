@@ -375,7 +375,7 @@ test('schema v4 missing or unknown evidence class preserves safe rows but grants
 
   assert.equal(localStorage.raw(), seeded);
   assert.deepEqual(plain(stats.history().recentPlays.map(item => item.question.evidenceClass)), [null, null]);
-  assert.deepEqual(plain(stats.learningSnapshot()), { mastery: {}, lastResolvedByConcept: {} });
+  assert.deepEqual(plain(stats.learningSnapshot()), { mastery: {}, lastResolvedByConcept: {}, challengeEvidence: [] });
 
   const session = stats.createSession('current-class-validation');
   const details = {

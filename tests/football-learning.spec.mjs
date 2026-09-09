@@ -84,7 +84,7 @@ test('runtime keeps factual page-145 completion with a separate page-179 questio
       },
     ];
     const session = FOOTBALL_LEARNING.createSession();
-    session.recentFamilyIds.push('recent-family');
+    session.recentFamilyIdsByClass.independent.push('recent-family');
     const counts = { 'recent-family': 0, 'fresh-family': 0 };
     for (let index = 0; index < 2000; index++) {
       const draw = (index + 0.5) / 2000;
@@ -352,7 +352,7 @@ test('mastered concepts age back into refreshers while the latest supported resu
     const noStakesEntry = { ...entry, grading: 'noStakes' };
     const noStakesSession = FOOTBALL_LEARNING.createSession(mastered, latest('firstTryCorrect', 0), nowMs);
     const reachableSession = FOOTBALL_LEARNING.createSession(mastered, latest('firstTryCorrect', 0), nowMs);
-    reachableSession.recentFamilyIds.push(entry.familyId);
+    reachableSession.recentFamilyIdsByClass.independent.push(entry.familyId);
     const reachableEntries = [entry, {
       ...entry, id: 'fresh-other-family', familyId: 'fresh-other-family', concept: 'fresh-other-concept',
     }];

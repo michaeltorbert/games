@@ -64,6 +64,26 @@ repository-level `AGENTS.md`.
 - Apply the same instructional profile and retry/support policy on offense and
   defense.
 
+## Concept Challenge Preferences
+
+- `contextual-questions.js` owns the immutable six-family challenge map: only
+  independent line-to-gain and drive-distance have prerequisite/core/stretch
+  roles. Other concepts retain ordinary review; tier strings are not levels.
+- `learning.js` derives preferences from at most twelve valid committed results
+  per concept in thirty days. Exact-zero prerequisite results cannot promote
+  or recover. Promotion requires eight results, 80% first-try, five first-try
+  among the latest six without a second miss, and three unsupported core
+  successes. A second miss or two retries among three downshifts; three later
+  consecutive first-try results recover. One retry guides the next question.
+- Preserve the concept's selection budget when applying challenge weights.
+  Four consecutive stretch completions require an eligible lower refresh;
+  higher-only availability stays guided and leaves refresh due. Recency is
+  class-partitioned. Independent evidence cannot reduce literacy probability.
+- History is copied at game start from the existing schema-4 stats projection;
+  append only successfully finalized current rows once. The 200-row journal
+  limits available history; missing evidence cannot establish promotion. There
+  is no persisted level. Coach Report describes current committed work only.
+
 ## Play Integrity and Recovery
 
 - Complete and freeze one tagged `activePlay` (`scrimmage`, `punt`, `fieldGoal`,

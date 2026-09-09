@@ -1,4 +1,4 @@
-const GAME_VERSION = '1.30.0';
+const GAME_VERSION = '1.31.0';
 let prevPlayerScore = -1, prevOpponentScore = -1;
 let playerRunTimer = 0, playerCelebrateTimer = 0, playerCelebrateDelayTimer = 0;
 const EZ = 5;
@@ -207,7 +207,7 @@ function installRngStreams(rootSeed) {
 
 function createLearningSession() {
   const history = FOOTBALL_STATS.learningSnapshot();
-  return FOOTBALL_LEARNING.createSession(history.mastery, history.lastResolvedByConcept);
+  return FOOTBALL_LEARNING.createSession(history.mastery, history.lastResolvedByConcept, Date.now(), history.challengeEvidence);
 }
 
 let learningSession = null;
@@ -1313,6 +1313,11 @@ function validateQuestionInstance(activePlay, question) {
   if (!validEvidenceClass || sourceVisibleContradiction || independentExposureContradiction) {
     throw Object.assign(new Error('Question evidence classification contradicts its answer exposure.'), { code: 'malformed-question' });
   }
+  const expectedChallenge = FOOTBALL_CONTEXTUAL_QUESTIONS.CHALLENGE_MAP[question.familyId] || null;
+  if (!sameContractValue(question.challenge || null, expectedChallenge)
+    || (expectedChallenge && (question.concept !== expectedChallenge.concept || question.evidenceClass !== 'independent'))) {
+    throw Object.assign(new Error('Question challenge metadata contradicts the registered family.'), { code: 'malformed-question' });
+  }
   if (!Array.isArray(question.bindings) || question.bindings !== question.premises || !question.bindings.length) {
     throw Object.assign(new Error('Question bindings are missing or have drifted.'), { code: 'malformed-question' });
   }
@@ -1410,6 +1415,7 @@ function pickQuestion(activePlay) {
         : built;
     question = FOOTBALL_DOMAIN.deepFreeze(FOOTBALL_DOMAIN.clone({
       ...source,
+      ...(entry.challengeSelection ? { challengeSelection: entry.challengeSelection } : {}),
       contextId: activePlay.contextId,
       questionInstanceId: nextQuestionInstanceId(),
     }));
@@ -3611,7 +3617,8 @@ function commitPendingResolution({ focusNextCall = false } = {}) {
   applyCommittedOutcomeBookkeeping(activePlay, outcome);
   if (pending.policy !== 'questionBypass') recordQuestionResolution(pending.policy);
   syncQuestionMirrors();
-  finalizeStatsPlay(activePlay, validation.value, outcome);
+  const completedStatsRow = finalizeStatsPlay(activePlay, validation.value, outcome);
+  if (completedStatsRow) FOOTBALL_LEARNING.recordCommitted(learningSession, completedStatsRow);
   const settledPlacement = placement && state.pendingNextPossession
     ? FOOTBALL_DOMAIN.deepFreeze({
         nextPossession: state.pendingNextPossession,
@@ -4898,6 +4905,15 @@ function buildCoachReport() {
   add(rows.length ? 'Practice next' : 'Building today', independentNeed.find(item => !usedConcepts.has(item.concept)));
   add('Read today', literacyRead.find(item => !usedConcepts.has(item.concept)));
   add(rows.length ? 'Practice next' : 'Building today', literacyNeed.find(item => !usedConcepts.has(item.concept)));
+  const challengeWork = learningSession?.currentChallengeEvidence || [];
+  const stretchWork = challengeWork.find(row =>
+    FOOTBALL_CONTEXTUAL_QUESTIONS.CHALLENGE_MAP[row.familyId]?.role === 'stretch');
+  if (stretchWork) {
+    const supported = stretchWork.attempts.some(a => a.support === 'guided') || stretchWork.resolution !== 'firstTryCorrect';
+    const activity = stretchWork.concept === 'line-to-gain' ? 'missing-part equations' : 'drive totals';
+    const existing = rows.findIndex(row => row.value === COACH_CONCEPT_LABELS[stretchWork.concept]);
+    rows.splice(existing >= 0 ? existing : 1, 1, { label: 'Practiced today', value: `${supported ? 'Practiced' : 'Tried'} ${activity}${supported ? ' with support' : ''}` });
+  }
   if (rows.length < 2) {
     rows.push({
       label: 'Coach says',
