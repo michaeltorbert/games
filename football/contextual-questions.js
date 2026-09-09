@@ -595,6 +595,15 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
     return values.every((value) => Number.isFinite(value) && Math.abs(value) <= profile.computationMax);
   }
 
+  const CHALLENGE_MAP = deepFreeze({
+    'line-to-gain-exact': { concept: 'line-to-gain', role: 'prerequisite' },
+    'line-to-gain-missing-part': { concept: 'line-to-gain', role: 'core' },
+    'line-to-gain-surplus': { concept: 'line-to-gain', role: 'core' },
+    'line-to-gain-fact-family': { concept: 'line-to-gain', role: 'stretch' },
+    'drive-distance-scaffolded': { concept: 'drive-distance', role: 'core' },
+    'drive-distance-plus-whole-tens': { concept: 'drive-distance', role: 'stretch' },
+  });
+
   function makeMeta({
     familyId,
     skill,
@@ -627,8 +636,13 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
     if (curriculumSource === 'football-only' && introducedOnPage !== null) {
       throw new Error('Football-only families must not claim a workbook source page.');
     }
+    const challenge = CHALLENGE_MAP[familyId] || null;
+    if (challenge && (challenge.concept !== concept || evidenceClass !== 'independent' || playType !== 'scrimmage')) {
+      throw new Error('Challenge metadata contradicts the family contract.');
+    }
     return Object.freeze({
       id: familyId,
+      ...(challenge ? { challenge } : {}),
       familyId,
       skill,
       concept,
@@ -1572,6 +1586,9 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
       .filter((definition) => definition.meta.playType === playType)
       .map((definition) => ({ ...definition.meta })),
   ])));
+  for (const familyId of Object.keys(CHALLENGE_MAP)) {
+    if (!FAMILY_BY_ID.has(familyId)) throw new Error(`Unknown challenge family ${familyId}.`);
+  }
 
   for (const familyIds of Object.values(CALL_AFFINITIES)) {
     for (const familyId of familyIds) {
@@ -1872,6 +1889,7 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
     RULES,
     SPECIAL_BINDING_PATHS,
     FAMILY_REGISTRY,
+    CHALLENGE_MAP,
     CALL_AFFINITY_MULTIPLIER,
     CALL_AFFINITIES,
     selectionFor,

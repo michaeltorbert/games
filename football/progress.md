@@ -1092,3 +1092,9 @@ Original prompt: Implement Football issue #98 from the reconciled plan, with GPT
 - Legacy family identities and max-10 computation remain unchanged. New source-aware families use approved Chapter 8 inclusion through printed page 149, with factual completion unknown and guided-first support. No general borrowing, strategy demo, timing, or new adaptive policy.
 - Compact equations hide their result in initial/guided DOM and ARIA; existing retry, worked explanation, Coach Replay, and Continue remain intact.
 - Implementer verification: domain/context 72/72; existing context-integration/learning browser checks 76/76 on iPad 11 landscape; new ordinary-selection, retry, worked-review and Continue checks 6/6 across the device matrix. Registry 4/4 against exact base 486d4ef6a1fc33a3e3dc6eeba2e3fa675c3b072b, target football. Full release matrix and final review are pending with the coordinator.
+
+## 2026-09-09 — Football v1.31.0 adaptive challenge release
+
+- Added derived challenge preferences for independent line-to-gain and drive-distance only. Explicit metadata, promotion/downshift/recovery rules, lower refresh, class-specific recency, and one scheduler draw preserve frozen play authority and literacy's selection budget.
+- Stats supplies a bounded, sanitized historical projection; finalized current plays append once. Existing storage schema, curriculum data, and retry outcomes are unchanged. Coach Report describes actual current-game stretch practice and support.
+- `GAME_VERSION`, all 15 Football asset query strings, the Football registry descriptor, and `version.json` are synchronized to `1.31.0`. The final canonical release gate passed 142 DOM-free checks, 338 browser checks with 604 intentional device skips, and strict verification of all 304 screenshots across six projects; the explicit registry gate passed 4/4 against release base `6a05f426610b23f1347ed00014106cb44de0275f`.

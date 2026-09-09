@@ -323,7 +323,11 @@ const FOOTBALL_STATS = (() => {
       ? value.resolution
       : null;
     if (instructionalStatus === 'presented' && (!question || !resolution)) return null;
-    const attempts = instructionalStatus === 'presented' && Array.isArray(value.attempts)
+    const validCurrentAttempts = sourceSchema < EVIDENCE_CLASS_SCHEMA_VERSION
+      || (Array.isArray(value.attempts) && value.attempts.length <= 2
+        && value.attempts.every((a, i) => isRecord(a) && a.number === i + 1
+          && typeof a.correct === 'boolean' && ['none', 'initial', 'guided'].includes(a.support)));
+    const attempts = instructionalStatus === 'presented' && validCurrentAttempts && Array.isArray(value.attempts)
       ? value.attempts.slice(0, 2).map((attempt, index) => normalizeAttempt(attempt, index + 1))
       : [];
     const outcome = normalizeOutcome(playType, value.outcome, sourceSchema);
@@ -916,6 +920,15 @@ const FOOTBALL_STATS = (() => {
     return snapshot({
       mastery: store.mastery,
       lastResolvedByConcept: store.lastResolvedByConcept,
+      challengeEvidence: store.recentPlays.filter(row => row.question?.evidenceClass === 'independent'
+        && row.question.grading === 'gate' && row.instructionalStatus === 'presented').map(row => ({
+        gameId: row.gameId, playId: row.playId, playType: row.playType,
+        instructionalStatus: row.instructionalStatus, completedAt: row.completedAt,
+        familyId: row.links.familyId, concept: row.question?.concept,
+        evidenceClass: row.question?.evidenceClass, grading: row.question?.grading,
+        resolution: row.resolution,
+        attempts: row.attempts.map(a => ({ number: a.number, correct: a.correct, support: a.support })),
+      })),
     });
   }
 

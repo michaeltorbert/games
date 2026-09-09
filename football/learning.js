@@ -83,10 +83,127 @@ const FOOTBALL_LEARNING = (() => {
     }));
   }
 
-  function createSession(historicalMastery = {}, historicalLastResolved = {}, nowMs = Date.now()) {
+  const CHALLENGE_POLICY = Object.freeze({ version: 'concept-challenge-v1', window: 12, days: 30 });
+
+  function challengeMeta(entry) {
+    const meta = typeof FOOTBALL_CONTEXTUAL_QUESTIONS === 'undefined' ? null
+      : FOOTBALL_CONTEXTUAL_QUESTIONS.CHALLENGE_MAP[entry.familyId || entry.id];
+    return meta && entry.evidenceClass === 'independent' && entry.concept === meta.concept
+      && entry.grading === 'gate' ? meta : null;
+  }
+
+  // Accept only the closed projection of finalized stats rows. No question text,
+  // operands, elapsed time, or presentation state enters this evidence window.
+  function normalizeChallengeEvidence(rows, nowMs) {
+    const seen = new Map();
+    for (const row of Array.isArray(rows) ? rows : []) {
+      const meta = row && challengeMeta(row);
+      const time = typeof row?.completedAt === 'string' ? Date.parse(row.completedAt) : NaN;
+      if (!meta || row.playType !== 'scrimmage' || row.instructionalStatus !== 'presented'
+        || !Number.isFinite(time) || time > nowMs || nowMs - time > CHALLENGE_POLICY.days * 86400000
+        || ![row.gameId, row.playId].every(id => typeof id === 'string' && id.length > 0)
+        || !RESOLUTIONS.includes(row.resolution) || !Array.isArray(row.attempts)) continue;
+      const attempts = row.attempts;
+      const first = row.resolution === 'firstTryCorrect';
+      if (attempts.length !== (first ? 1 : 2)
+        || attempts.some((a, i) => !a || a.number !== i + 1 || typeof a.correct !== 'boolean'
+          || !['none', 'initial', 'guided'].includes(a.support))
+        || attempts[0].correct !== first
+        || (!first && attempts[1].correct !== (row.resolution === 'retryCorrect'))) continue;
+      const key = JSON.stringify([row.gameId, row.playId]);
+      const clean = { gameId: row.gameId, playId: row.playId, familyId: row.familyId,
+        concept: row.concept, evidenceClass: 'independent', grading: 'gate', playType: 'scrimmage',
+        instructionalStatus: 'presented', completedAt: new Date(time).toISOString(), resolution: row.resolution,
+        attempts: attempts.map(a => ({ number: a.number, correct: a.correct, support: a.support })) };
+      // Conflicting duplicate evidence is unusable, independent of input order.
+      if (seen.has(key) && JSON.stringify(seen.get(key)) !== JSON.stringify(clean)) seen.set(key, null);
+      else if (!seen.has(key)) seen.set(key, clean);
+    }
+    return [...seen.values()].filter(Boolean).sort((a, b) => Date.parse(a.completedAt) - Date.parse(b.completedAt)
+      || (JSON.stringify([a.gameId, a.playId]) < JSON.stringify([b.gameId, b.playId]) ? -1 : 1));
+  }
+
+  function challengeStateFor(session, concept) {
+    const all = session.challengeEvidence.filter(row => row.concept === concept);
+    // Exact remainder checks are retained for refresh but cannot promote or recover.
+    const rows = all.filter(row => challengeMeta(row).role !== 'prerequisite').slice(-CHALLENGE_POLICY.window);
+    let downshift = false;
+    let recovery = 0;
+    rows.forEach((row, i) => {
+      const trigger = row.resolution === 'secondMiss'
+        || (row.resolution === 'retryCorrect' && rows.slice(Math.max(0, i - 2), i + 1).filter(r => r.resolution === 'retryCorrect').length >= 2);
+      if (trigger) { downshift = true; recovery = 0; }
+      else if (downshift) {
+        recovery = row.resolution === 'firstTryCorrect' ? recovery + 1 : 0;
+        if (recovery >= 3) downshift = false;
+      }
+    });
+    const firsts = rows.filter(row => row.resolution === 'firstTryCorrect');
+    const lastSix = rows.slice(-6);
+    const promoted = rows.length >= 8 && firsts.length / rows.length >= 0.8
+      && lastSix.filter(row => row.resolution === 'firstTryCorrect').length >= 5
+      && !lastSix.some(row => row.resolution === 'secondMiss')
+      && firsts.filter(row => challengeMeta(row).role === 'core' && row.attempts[0].support !== 'guided').length >= 3;
+    let stretchRun = 0;
+    for (let i = all.length - 1; i >= 0 && challengeMeta(all[i]).role === 'stretch'; i--) stretchRun++;
+    const latest = rows.at(-1);
+    const indexed = session.historicalLastResolved[concept]?.independent;
+    const indexedNewer = indexed && indexed.resolvedAtMs <= session.nowMs
+      && session.nowMs - indexed.resolvedAtMs <= CHALLENGE_POLICY.days * 86400000
+      && (!latest || indexed.resolvedAtMs > Date.parse(latest.completedAt));
+    if (indexedNewer && indexed.resolution === 'secondMiss') downshift = true;
+    return { preference: downshift ? 'downshifted' : promoted && !indexedNewer ? 'promoted' : 'initial',
+      guided: downshift || latest?.resolution === 'retryCorrect' || Boolean(indexedNewer && indexed.resolution === 'retryCorrect'),
+      refreshDue: stretchRun >= 4 };
+  }
+
+  function recordCommitted(session, row) {
+    const projected = projectCommitted(row);
+    const clean = normalizeChallengeEvidence([projected], Math.max(session.nowMs, Date.now()));
+    if (!clean.length || session.challengeEvidence.some(r => r.gameId === row.gameId && r.playId === row.playId)) return false;
+    session.challengeEvidence.push(clean[0]);
+    session.challengeEvidence = normalizeChallengeEvidence(session.challengeEvidence, Math.max(session.nowMs, Date.now()));
+    session.currentChallengeEvidence.push(clean[0]);
+    return true;
+  }
+
+  function projectCommitted(row) {
+    return { gameId: row?.gameId, playId: row?.playId, playType: row?.playType,
+      instructionalStatus: row?.instructionalStatus, completedAt: row?.completedAt,
+      familyId: row?.links?.familyId, concept: row?.question?.concept,
+      evidenceClass: row?.question?.evidenceClass, grading: row?.question?.grading,
+      resolution: row?.resolution, attempts: row?.attempts?.map(a => ({ number: a.number, correct: a.correct, support: a.support })) };
+  }
+
+  function challengeOptions(entries, session) {
+    const roles = ['prerequisite', 'core', 'stretch'];
+    return entries.map(entry => {
+      const meta = challengeMeta(entry);
+      if (!meta) return { entry, factor: 1, diagnostic: null };
+      const state = challengeStateFor(session, meta.concept);
+      const available = entries.filter(e => challengeMeta(e)?.concept === meta.concept);
+      const preferred = state.refreshDue || state.preference !== 'promoted' ? 'core' : 'stretch';
+      const lower = available.filter(e => roles.indexOf(challengeMeta(e).role) < roles.indexOf(preferred));
+      const targetExists = available.some(e => challengeMeta(e).role === preferred);
+      const fallback = targetExists ? 'preferred-available' : lower.length ? 'nearest-lower' : 'higher-guided';
+      const lowerAvailable = available.some(e => challengeMeta(e).role !== 'stretch');
+      const table = state.preference === 'promoted' ? [0.25, 0.5, 2]
+        : state.preference === 'downshifted' ? [2, 2, 0.125] : [1, 1, 0.25];
+      const factor = state.refreshDue && lowerAvailable && meta.role === 'stretch' ? 0 : table[roles.indexOf(meta.role)];
+      return { entry, factor, diagnostic: Object.freeze({ policyVersion: CHALLENGE_POLICY.version,
+        concept: meta.concept, preferredRole: preferred, selectedRole: meta.role,
+        reason: state.refreshDue ? 'lower-refresh-due' : state.preference, fallback }),
+        guided: state.guided || fallback === 'higher-guided' };
+    });
+  }
+
+  function createSession(historicalMastery = {}, historicalLastResolved = {}, nowMs = Date.now(), historicalEvidence = []) {
     return {
       schemaVersion: PROFILE.schemaVersion,
       recentFamilyIds: [],
+      recentFamilyIdsByClass: { literacy: [], independent: [] },
+      challengeEvidence: normalizeChallengeEvidence(historicalEvidence, nowMs),
+      currentChallengeEvidence: [],
       bySkill: {},
       byConcept: {},
       latestResolvedByConcept: {},
@@ -183,6 +300,8 @@ const FOOTBALL_LEARNING = (() => {
     const identity = questionIdentity(question);
     session.recentFamilyIds.push(identity.familyId);
     session.recentFamilyIds = session.recentFamilyIds.slice(-PROFILE.recencyWindow);
+    session.recentFamilyIdsByClass[evidenceClass].push(identity.familyId);
+    session.recentFamilyIdsByClass[evidenceClass] = session.recentFamilyIdsByClass[evidenceClass].slice(-PROFILE.recencyWindow);
     addEvent(session, 'presented', {
       ...identity,
       ...eventPlayScope(context),
@@ -309,12 +428,13 @@ const FOOTBALL_LEARNING = (() => {
   }
 
   function weightedPick(entries, session, rng) {
-    const recent = new Set(session.recentFamilyIds);
+    if (!entries.length) return null;
+    const options = challengeOptions(entries, session);
     const purposeTotals = entries.reduce((totals, entry) => {
       totals[entry.purpose] = (totals[entry.purpose] || 0) + (entry.weight || 1);
       return totals;
     }, {});
-    const weighted = entries.map((entry) => {
+    const weighted = options.map(({ entry, factor, diagnostic, guided }) => {
       const multiplier = entry.selectionMultiplier === undefined ? 1 : entry.selectionMultiplier;
       if (!Number.isFinite(multiplier) || multiplier <= 0 || multiplier > 2) {
         throw new TypeError('selectionMultiplier must be a finite number greater than 0 and at most 2');
@@ -322,21 +442,32 @@ const FOOTBALL_LEARNING = (() => {
       const normalized = purposeWeight(entry) * ((entry.weight || 1) / purposeTotals[entry.purpose]);
       return {
         entry,
+        diagnostic, guided, factor,
         weight: Math.max(
           0.0001,
           (multiplier === 1 ? normalized : normalized * multiplier)
-            * adaptiveNeedMultiplier(session, entry)
-            * (recent.has(entry.familyId || entry.id) ? PROFILE.recencyMultiplier : 1)
+            * (challengeMeta(entry) ? 1 : adaptiveNeedMultiplier(session, entry))
+            * (session.recentFamilyIdsByClass[entry.evidenceClass]?.includes(entry.familyId || entry.id) ? PROFILE.recencyMultiplier : 1)
         ),
       };
     });
+    // Redistribute each ladder's existing budget. Success cannot steal probability
+    // from literacy or multiply the old mastery suppression a second time.
+    for (const concept of ['line-to-gain', 'drive-distance']) {
+      const group = weighted.filter(item => challengeMeta(item.entry)?.concept === concept);
+      const budget = group.reduce((sum, item) => sum + item.weight, 0);
+      const adjusted = group.reduce((sum, item) => sum + item.weight * item.factor, 0);
+      if (adjusted > 0) group.forEach(item => { item.weight *= item.factor * budget / adjusted; });
+    }
+    const selected = item => item.diagnostic ? { ...item.entry, challengeSelection: item.diagnostic,
+      challengeGuided: item.guided } : item.entry;
     const total = weighted.reduce((sum, item) => sum + item.weight, 0);
     let draw = rng() * total;
     for (const item of weighted) {
       draw -= item.weight;
-      if (draw <= 0) return item.entry;
+      if (item.weight > 0 && draw <= 0) return selected(item);
     }
-    return weighted[weighted.length - 1]?.entry || null;
+    return selected(weighted.filter(item => item.weight > 0).at(-1));
   }
 
   function supportFor(session, entryOrSkill, evidenceClassOrInitial = 'none', explicitInitial = 'none') {
@@ -346,6 +477,9 @@ const FOOTBALL_LEARNING = (() => {
     const initial = entry ? evidenceClassOrInitial : explicitInitial;
     if (typeof skill !== 'string' || !skill || !validEvidenceClass(evidenceClass)) {
       throw new TypeError('supportFor expects an entry or an explicit skill plus evidenceClass');
+    }
+    if (entry && challengeMeta(entry)) {
+      return entry.challengeGuided || challengeStateFor(session, entry.concept).guided ? 'guided' : initial;
     }
     const stats = session.bySkill[skill]?.[evidenceClass];
     if (!stats) return initial;
@@ -373,6 +507,12 @@ const FOOTBALL_LEARNING = (() => {
 
   return Object.freeze({
     PROFILE,
+    CHALLENGE_POLICY,
+    normalizeChallengeEvidence,
+    challengeStateFor,
+    challengeOptions,
+    projectCommitted,
+    recordCommitted,
     EVIDENCE_CLASSES,
     HISTORICAL_EVIDENCE_CLASSES,
     createSession,
