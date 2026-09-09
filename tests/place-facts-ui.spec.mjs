@@ -47,27 +47,34 @@ test('miss, voluntary help, automatic help and report completion all earn one ya
  }
 });
 
-test('touchdown carries overflow, celebrates only the live completion and supports reduced motion',async({page})=>{
+for(const startingYards of [95,98])test(`touchdown from ${startingYards} yards celebrates only the live completion and supports reduced motion`,async({page})=>{
  await boot(page);
- await page.evaluate(KEY=>{
+ const remaining=(startingYards+5)%100;
+ await page.evaluate(({KEY,startingYards})=>{
   const a=PLACE_FACTS,s=a.create();
-  for(let i=0;i<22;i++){if(i>=19)a.show(s,s.attempt.id);a.answer(s,s.attempt.id,a.byId[s.attempt.factId].answer);if(s.session.completed>=s.session.target)a.restart(s,10);else a.next(s,s.attempt.id);}
+  for(let i=0;i<(startingYards===95?19:22);i++){if(i>=19)a.show(s,s.attempt.id);a.answer(s,s.attempt.id,a.byId[s.attempt.factId].answer);if(s.session.completed>=s.session.target)a.restart(s,10);else a.next(s,s.attempt.id);}
   localStorage.setItem(KEY,JSON.stringify(s));
- },KEY);
- await page.reload();await expect(page.locator('#facts-yards')).toHaveText('98 of 100 yards');
+ },{KEY,startingYards});
+ await page.reload();await expect(page.locator('#facts-yards')).toHaveText(`${startingYards} of 100 yards`);
  await expect(page.locator('.facts-drive')).not.toHaveClass(/facts-drive--touchdown/);
- await page.emulateMedia({reducedMotion:'reduce'});await correct(page,true);
- await expect(page.locator('#facts-touchdowns')).toHaveText('1 touchdown');await expect(page.locator('#facts-yards')).toHaveText('3 of 100 yards');
+ await page.emulateMedia({reducedMotion:'no-preference'});await correct(page,true);
+ await expect(page.locator('.facts-drive')).toHaveClass(/facts-drive--touchdown/);
+ expect(await page.locator('.facts-ball').evaluate(el=>getComputedStyle(el).transitionProperty)).toBe('none');
+ await expect(page.locator('#facts-touchdowns')).toHaveText('1 touchdown');await expect(page.locator('#facts-yards')).toHaveText(`${remaining} of 100 yards`);
  await expect(page.locator('#facts-award')).toHaveText('Touchdown!');await expect(page.locator('#facts-next')).toBeFocused();
- await expect(page.locator('#facts-feedback')).toContainText('Touchdown! 3 yards into your next drive.');
+ await expect(page.locator('#facts-feedback')).toContainText(remaining?'Touchdown! 3 yards into your next drive.':'Touchdown! Start your next drive.');
+ await expect(page.locator('#facts-feedback')).not.toContainText('0 yards into');
  for(const selector of ['.facts-drive','#facts-next'])expect(await page.locator(selector).evaluate(el=>{const r=el.getBoundingClientRect();return r.top>=0&&r.bottom<=innerHeight;}),selector).toBe(true);
+ await page.emulateMedia({reducedMotion:'reduce'});
  expect(await page.locator('#facts-award').evaluate(el=>getComputedStyle(el).animationName)).toBe('none');
  expect(await page.locator('.facts-ball').evaluate(el=>getComputedStyle(el).transitionProperty)).toBe('none');
  await page.screenshot({path:test.info().outputPath('drive-touchdown.png')});
  const bytes=await page.evaluate(k=>localStorage.getItem(k),KEY);await page.reload();
  expect(await page.evaluate(k=>localStorage.getItem(k),KEY)).toBe(bytes);await expect(page.locator('.facts-drive')).not.toHaveClass(/facts-drive--touchdown/);
  await expect(page.locator('#facts-award')).not.toHaveText('Touchdown!');await expect(page.locator('#facts-feedback')).not.toContainText('Touchdown!');
- await expect(page.getByRole('progressbar',{name:'Touchdown drive'})).toHaveAttribute('aria-valuetext','3 of 100 yards; 1 touchdown');
+ await expect(page.getByRole('progressbar',{name:'Touchdown drive'})).toHaveAttribute('aria-valuetext',`${remaining} of 100 yards; 1 touchdown`);
+ await page.emulateMedia({reducedMotion:'no-preference'});
+ expect(await page.locator('.facts-ball').evaluate(el=>getComputedStyle(el).transitionProperty)).toBe('left');
 });
 
 test('legacy facts migrate on a locked action; damaged drive metadata preserves instructional records',async({page})=>{
@@ -80,7 +87,48 @@ test('legacy facts migrate on a locked action; damaged drive metadata preserves 
  await page.reload();expect(await page.evaluate(k=>localStorage.getItem(k),KEY)).toBe(corrupt);
  expect((await snapshot(page)).facts).toEqual(migrated.facts);expect((await snapshot(page)).drive.totalYards).toBe(0);
  await expect(page.locator('.facts-storage')).toContainText('Your learning progress is preserved');
- await page.locator('#facts-next').click();await settled(page);await correct(page);expect((await snapshot(page)).drive.totalYards).toBe(5);
+ await page.locator('#facts-next').click();await settled(page);await expect(page.locator('.facts-storage')).not.toContainText('saved drive could not be read');
+ await correct(page);expect((await snapshot(page)).drive.totalYards).toBe(5);
+});
+
+test('repair notice remains when a repaired drive cannot be saved',async({page})=>{
+ await boot(page);await correct(page);
+ await page.evaluate(KEY=>{const s=__factsTest.snapshot();s.drive.totalYards=-1;localStorage.setItem(KEY,JSON.stringify(s));},KEY);
+ await page.reload();await expect(page.locator('.facts-storage')).toContainText('saved drive could not be read');
+ await page.evaluate(()=>{Storage.prototype.setItem=function(){throw Error('quota');};});
+ await page.locator('#facts-next').click();await settled(page);
+ await expect(page.locator('.facts-storage')).toContainText('saved drive could not be read');
+ await expect(page.locator('.facts-drive-info')).toContainText('unsaved');
+});
+
+test('miss and shown-answer states keep the drive and practice controls reachable without obstruction',async({page})=>{
+ await boot(page);
+ async function reachable(complete,shown){
+  const selectors=['.facts-drive','#facts-equation','.facts-keypad','.facts-controls','#facts-feedback',...(shown?['#facts-support']:[]),...(complete?['#facts-next']:[])];
+  // A normal vertical scroll can reveal the whole working area together, even
+  // when the extra worked example moves the header above a short viewport.
+  await page.locator('.facts-drive').evaluate(el=>el.scrollIntoView({block:'start',behavior:'instant'}));
+  for(const selector of selectors){
+   await expect(page.locator(selector)).toBeVisible();
+   expect(await page.locator(selector).evaluate(el=>{
+    const r=el.getBoundingClientRect(),hit=document.elementFromPoint(r.left+r.width/2,r.top+r.height/2);
+    return r.top>=0&&r.bottom<=innerHeight&&r.left>=0&&r.right<=innerWidth&&el.contains(hit);
+   }),selector).toBe(true);
+  }
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+ }
+ for(const kind of ['miss','voluntary','automatic']){
+  await page.evaluate(KEY=>{const a=PLACE_FACTS,s=a.create();a.answer(s,s.attempt.id,2);a.next(s,s.attempt.id);localStorage.setItem(KEY,JSON.stringify(s));},KEY);
+  await page.reload();expect((await snapshot(page)).attempt.factId).toBe('add:7:6');
+  if(kind!=='voluntary')await enter(page,14,true);
+  if(kind==='automatic')await enter(page,15,true);
+  if(kind==='voluntary')await page.locator('#facts-show').click();
+  await settled(page);await reachable(false,kind!=='miss');
+  await correct(page,true);await reachable(true,kind!=='miss');
+  await expect(page.locator('#facts-feedback')).toContainText('+1 yard');
+  await expect(page.locator('#facts-next')).toBeFocused();
+  await page.screenshot({path:test.info().outputPath(`drive-${kind}-completed.png`)});
+ }
 });
 
 test('toggle-only report exposure also marks a warm prompt as supported for drive rewards',async({page})=>{

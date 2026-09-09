@@ -93,7 +93,7 @@
       if(!wasComplete&&model.attempt===prior&&prior.complete){
         const current=api.drive(model);lastAward={yards:current.totalYards-priorDrive.totalYards,touchdown:current.touchdowns>priorDrive.touchdowns};
       }
-      if(writable)try{savedRaw=JSON.stringify(model);localStorage.setItem(KEY,savedRaw);message='';}catch{memory();}
+      if(writable)try{savedRaw=JSON.stringify(model);localStorage.setItem(KEY,savedRaw);message='';if(!api.driveNeedsRepair(model))driveNotice='';}catch{memory();}
       const newPrompt=prior!==model.attempt;
       if(newPrompt){input='';report.open=false;lastAward=null;}
       render(newPrompt);
@@ -147,7 +147,7 @@
     ball.style.left=`${goal.yards}%`;
     drive.classList.toggle('facts-drive--touchdown',!!lastAward?.touchdown);
     award.textContent=lastAward?.touchdown?'Touchdown!':lastAward?`+${lastAward.yards} yard${lastAward.yards===1?'':'s'}`:'+5 first try · +1 with help';
-    if(lastAward&&q.complete)feedback.textContent+=` +${lastAward.yards} yard${lastAward.yards===1?'':'s'}.${lastAward.touchdown?` Touchdown! ${goal.yards} yards into your next drive.`:''}`;
+    if(lastAward&&q.complete)feedback.textContent+=` +${lastAward.yards} yard${lastAward.yards===1?'':'s'}.${lastAward.touchdown?(goal.yards===0?' Touchdown! Start your next drive.':` Touchdown! ${goal.yards} yards into your next drive.`):''}`;
     driveInfo.textContent=writable?'Your drive saves in this browser on this device. Starting a new session keeps your yards. Clearing browser data can remove them.':'Drive yards are unsaved and stay in memory for this visit.';
     next.hidden=!q.complete;next.textContent=done?'Practice again':'Next';
     recap.textContent=done?`Nice practice! ${model.session.completed} completed · ${model.session.firstTry} first try · ${model.session.helped} after another try or shown answer.`:'';
