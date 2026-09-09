@@ -1549,7 +1549,48 @@
     #facts-report summary { cursor: pointer; padding: 10px 0; }
     #facts-report details { padding-left: 12px; }
     #facts-report p, .facts-storage { font-size: .9rem; }
-    @media (max-width: 440px) { #fact-practice { padding: 12px 16px 24px; } }
+    .facts-active .app-header { min-height: 66px; padding-top: 10px; padding-bottom: 10px; }
+    .facts-active .practice-modes { padding-top: 8px; }
+    .facts-active .practice-modes button { padding: 8px 10px; min-height: 44px; font-size: .9rem; }
+    #fact-practice > h2 { margin-bottom: 4px; font-size: 1.45rem; }
+    #fact-practice > h2 + p { font-size: .9rem; margin-bottom: 12px; }
+    #fact-practice > section + p { margin: 10px 0 0; font-size: .9rem; color: #475a4d; }
+    #fact-practice .arithmetic-setup { margin-top: 20px; }
+    #fact-practice .facts-entry { margin: 12px 0; }
+    #facts-feedback { margin-bottom: 8px; }
+    .facts-drive { padding: 12px 16px 8px; border-radius: 14px; background: #214c39; color: #fffdf0; }
+    .facts-drive-header, .facts-drive-caption { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .facts-drive-header h3 { margin: 0; font-size: 1rem; }
+    #facts-touchdowns { font-size: .85rem; white-space: nowrap; }
+    .facts-field { padding: 0 14px; margin-top: 4px; }
+    .facts-turf { position: relative; height: 38px; border-top: 1px solid #99b5a4; border-bottom: 1px solid #99b5a4; }
+    .facts-yard-line { position: absolute; top: 0; bottom: 0; border-left: 1px solid #99b5a4; padding-left: 3px; font-size: .65rem; color: #e3ede3; }
+    .facts-yard-line:nth-child(5) { transform: translateX(-100%); border-left: 0; border-right: 1px solid #99b5a4; padding-left: 0; padding-right: 3px; }
+    .facts-ball { position: absolute; top: 19px; width: 25px; height: 15px; border: 2px solid #fff5ce; border-radius: 55% 45%; background: #ad5c26; transform: translateX(-50%) rotate(-20deg); transition: left .35s ease-out; box-shadow: 0 2px 3px #153526; }
+    .facts-ball::after { content: ''; position: absolute; width: 12px; height: 5px; left: 4px; top: 3px; border-top: 1px solid #fff5ce; background: repeating-linear-gradient(90deg, transparent 0 3px, #fff5ce 3px 4px); }
+    .facts-drive-caption { margin: 7px 0 0; font-size: .8rem; }
+    #facts-award { text-align: right; color: #ffebaf; }
+    .facts-drive--touchdown #facts-award { font-weight: 800; animation: facts-touchdown .65s ease-out; }
+    .facts-drive-info { max-width: 620px; margin-top: 14px; font-size: .8rem; color: #475a4d; }
+    @keyframes facts-touchdown { 0% { transform: scale(.9); } 55% { transform: scale(1.15); } 100% { transform: scale(1); } }
+    @media (prefers-reduced-motion: reduce) { .facts-ball { transition: none; } .facts-drive--touchdown #facts-award { animation: none; } }
+    @media (min-width: 700px) and (max-height: 850px) and (orientation: landscape) {
+      .facts-active .app-header { min-height: 62px; padding-top: 8px; padding-bottom: 8px; }
+      #fact-practice { padding-top: 12px; }
+      #fact-practice > h2 { line-height: 1.25; }
+      #fact-practice > h2 + p { margin-bottom: 8px; }
+      #fact-practice .facts-entry { margin: 8px 0; }
+      #facts-equation { line-height: 1.2; }
+      #facts-answer { line-height: 1.2; }
+      .facts-keypad button { min-height: 44px; padding-top: 8px; padding-bottom: 8px; }
+    }
+    @media (max-width: 440px) {
+      #fact-practice { padding: 12px 16px 24px; }
+      #fact-practice > h2 { line-height: 1.25; }
+      #fact-practice .facts-entry { margin: 8px 0; }
+      #facts-answer { line-height: 1.2; }
+      .facts-keypad button { min-height: 44px; padding-top: 8px; padding-bottom: 8px; }
+    }
   </style>
 </head>
 <body>
@@ -1834,12 +1875,12 @@
     </form>
   </dialog>
 
-  <script src="arithmetic-domain.js?v=1.4.1"></script>
+  <script src="arithmetic-domain.js?v=1.5.0"></script>
   <script>
     "use strict";
 
     (() => {
-      const GAME_VERSION = "1.4.1";
+      const GAME_VERSION = "1.5.0";
       document.getElementById('game-version').textContent = `Version ${GAME_VERSION}`;
       const SCHEMA_VERSION = 1;
       const STORAGE_KEY = "place-value-practice:progress:v1";
@@ -6588,8 +6629,8 @@
       if (window.__placePracticeMode === 'place-value') window.__placeValueActivate();
     })();
   </script>
-  <script src="fact-practice-domain.js?v=1.4.1"></script>
-  <script src="fact-practice.js?v=1.4.1"></script>
-  <script src="arithmetic.js?v=1.4.1"></script>
+  <script src="fact-practice-domain.js?v=1.5.0"></script>
+  <script src="fact-practice.js?v=1.5.0"></script>
+  <script src="arithmetic.js?v=1.5.0"></script>
 </body>
 </html>

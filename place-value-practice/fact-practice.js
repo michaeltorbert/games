@@ -3,6 +3,7 @@
   'use strict';
   const api=PLACE_FACTS,KEY='place-value-practice:facts:v1';
   let model=null,savedRaw=null,writable=true,message='',active=false,busy=false,input='',origin=null,timingInvalid=true,renderToken=0;
+  let lastAward=null,driveNotice='';
   const node=(tag,text,cls)=>{const n=document.createElement(tag);if(text)n.textContent=text;if(cls)n.className=cls;return n;};
   const panel=node('main');panel.id='fact-practice';panel.hidden=true;panel.setAttribute('aria-busy','false');
   const title=node('h2','Basic addition & subtraction');title.id='facts-title';panel.setAttribute('aria-labelledby',title.id);
@@ -12,6 +13,16 @@
   const button=(text,fn,cls='button')=>{const b=node('button',text,cls);b.type='button';b.addEventListener('click',fn);return b;};
   const reset=button('Start new fact session',()=>change(()=>api.restart(model,Number(length.value))),'button button--quiet');label.append(length);setup.append(label,reset);
   const count=node('p'),equation=node('h3');equation.id='facts-equation';
+  const drive=node('section',null,'facts-drive');drive.setAttribute('aria-labelledby','facts-drive-title');
+  const driveHeader=node('div',null,'facts-drive-header'),driveTitle=node('h3','Touchdown drive');driveTitle.id='facts-drive-title';
+  const touchdowns=node('span');touchdowns.id='facts-touchdowns';driveHeader.append(driveTitle,touchdowns);
+  const field=node('div',null,'facts-field');field.setAttribute('role','progressbar');field.setAttribute('aria-labelledby',driveTitle.id);
+  field.setAttribute('aria-valuemin','0');field.setAttribute('aria-valuemax','100');
+  const turf=node('div',null,'facts-turf');turf.setAttribute('aria-hidden','true');
+  for(const mark of [0,25,50,75,100]){const line=node('span',String(mark),'facts-yard-line');line.style.left=`${mark}%`;turf.append(line);}
+  const ball=node('span',null,'facts-ball');turf.append(ball);field.append(turf);
+  const driveCaption=node('p',null,'facts-drive-caption'),yards=node('strong'),award=node('span');yards.id='facts-yards';award.id='facts-award';driveCaption.append(yards,award);
+  drive.append(driveHeader,field,driveCaption);
   const display=node('output','…');display.id='facts-answer';display.setAttribute('aria-label','Your answer');display.setAttribute('aria-live','polite');
   const entry=node('div',null,'facts-entry');entry.append(equation,display);
   const keypad=node('div',null,'facts-keypad');keypad.setAttribute('role','group');keypad.setAttribute('aria-label','Answer keypad');
@@ -41,28 +52,35 @@
     if(report.open)return;
     event.preventDefault();openReport();
   });
-  report.addEventListener('toggle',()=>{if(report.open){invalidate();if(model&&!model.attempt.complete&&model.attempt.eligible)openReport();}});report.append(summary);
+  report.addEventListener('toggle',()=>{if(report.open){invalidate();if(model&&!model.attempt.complete&&(model.attempt.eligible||!model.attempt.rewardSupported))openReport();}});report.append(summary);
   const reportContent=node('div');report.append(reportContent);
   const storage=node('p');storage.className='facts-storage';storage.setAttribute('role','status');
-  panel.append(title,scope,setup,count,entry,keypad,controls,support,feedback,next,recap,report,storage);
+  const driveInfo=node('p',null,'facts-drive-info');
+  const scoring=node('p','Drive rewards: 5 yards on the first try without help; 1 yard after another try, Show me, or opening this report. No yards are lost. These are practice rewards, not learning checks.');reportContent.after(scoring);
+  // Keep session settings below the active question so the passive field does not
+  // displace answer controls on phones.
+  panel.append(title,scope,drive,count,entry,keypad,controls,support,feedback,next,recap,setup,report,driveInfo,storage);
   function invalidate(){origin=null;timingInvalid=true;renderToken++;}
   function equationVisible(){const r=equation.getBoundingClientRect();return document.visibilityState==='visible'&&r.top>=0&&r.bottom<=innerHeight&&r.left>=0&&r.right<=innerWidth;}
-  function memory(reason='Your fact progress stays in memory for this visit.'){writable=false;message=reason;invalidate();}
+  function memory(reason='Your fact progress and drive yards stay in memory for this visit.'){writable=false;message=reason;invalidate();}
   function parse(raw){try{return raw===null?null:JSON.parse(raw);}catch{return null;}}
   function readInitial(){
     try{savedRaw=localStorage.getItem(KEY);const parsed=parse(savedRaw);
-      if(parsed&&typeof parsed.schemaVersion==='number'&&parsed.schemaVersion>api.SCHEMA_VERSION)memory('This fact save comes from a newer version. This session stays in memory.');
-      model=api.normalize(parsed)||api.create();
-      if(savedRaw!==null&&!api.normalize(parsed)&&writable)message='The saved fact progress could not be read. Your next action starts a fresh saved practice.';
+      if(parsed&&typeof parsed.schemaVersion==='number'&&parsed.schemaVersion>api.SCHEMA_VERSION)memory('This fact save comes from a newer version. This session and its drive yards stay in memory.');
+      const restored=api.normalize(parsed);model=restored||api.create();
+      if(restored&&api.driveNeedsRepair(parsed))driveNotice='The saved drive could not be read, so it starts at zero. Your learning progress is preserved.';
+      if(savedRaw!==null&&!restored&&writable)message='The saved fact progress could not be read. Your next action starts a fresh saved practice.';
     }catch{memory();model=api.create();}
     length.value=String(model.session.target);
   }
   function refresh(){
     if(!writable)return true;
     const raw=localStorage.getItem(KEY);if(raw===savedRaw)return true;
-    const parsed=parse(raw);invalidate();input='';
-    if(parsed&&typeof parsed.schemaVersion==='number'&&parsed.schemaVersion>api.SCHEMA_VERSION){memory('This fact save comes from a newer version. This session stays in memory.');return false;}
-    report.open=false;model=api.normalize(parsed)||api.create();savedRaw=raw;message='Fact progress changed in another tab. Please try again.';return false;
+    const parsed=parse(raw);invalidate();input='';lastAward=null;
+    if(parsed&&typeof parsed.schemaVersion==='number'&&parsed.schemaVersion>api.SCHEMA_VERSION){memory('This fact save comes from a newer version. This session and its drive yards stay in memory.');return false;}
+    report.open=false;const restored=api.normalize(parsed);model=restored||api.create();
+    driveNotice=restored&&api.driveNeedsRepair(parsed)?'The saved drive could not be read, so it starts at zero. Your learning progress is preserved.':'';
+    savedRaw=raw;message='Fact progress changed in another tab. Please try again.';return false;
   }
   async function change(action){
     if(busy||!active)return;
@@ -70,11 +88,14 @@
     const run=()=>{
       try{if(!refresh()){render(false);return;}}catch{memory();}
       if(!active||model.attempt.id!==attemptId)return;
-      const prior=model.attempt,wasComplete=prior.complete;
+      const prior=model.attempt,wasComplete=prior.complete,priorDrive=api.drive(model);
       if(!action())return;
+      if(!wasComplete&&model.attempt===prior&&prior.complete){
+        const current=api.drive(model);lastAward={yards:current.totalYards-priorDrive.totalYards,touchdown:current.touchdowns>priorDrive.touchdowns};
+      }
       if(writable)try{savedRaw=JSON.stringify(model);localStorage.setItem(KEY,savedRaw);message='';}catch{memory();}
       const newPrompt=prior!==model.attempt;
-      if(newPrompt){input='';report.open=false;}
+      if(newPrompt){input='';report.open=false;lastAward=null;}
       render(newPrompt);
       if(active){if(model.attempt.complete&&!wasComplete)next.focus();else if(newPrompt)check.focus();}
     };
@@ -119,9 +140,18 @@
     check.disabled=q.complete;show.disabled=q.complete||q.helped;support.hidden=!q.helped;support.textContent=q.helped?api.help(f):'';
     feedback.textContent=q.complete?(q.helped?'You entered the shown answer.':q.misses?'You worked it out after another try.':'Correct.'):
       q.helped?'The answer is shown above. Enter it, then Check.':q.misses?'Try again, or choose Show me.':'Enter your answer, then Check.';
+    const goal=api.drive(model);
+    yards.textContent=`${goal.yards} of 100 yards`;
+    touchdowns.textContent=`${goal.touchdowns} touchdown${goal.touchdowns===1?'':'s'}`;
+    field.setAttribute('aria-valuenow',String(goal.yards));field.setAttribute('aria-valuetext',`${goal.yards} of 100 yards; ${touchdowns.textContent}`);
+    ball.style.left=`${goal.yards}%`;
+    drive.classList.toggle('facts-drive--touchdown',!!lastAward?.touchdown);
+    award.textContent=lastAward?.touchdown?'Touchdown!':lastAward?`+${lastAward.yards} yard${lastAward.yards===1?'':'s'}`:'+5 first try · +1 with help';
+    if(lastAward&&q.complete)feedback.textContent+=` +${lastAward.yards} yard${lastAward.yards===1?'':'s'}.${lastAward.touchdown?` Touchdown! ${goal.yards} yards into your next drive.`:''}`;
+    driveInfo.textContent=writable?'Your drive saves in this browser on this device. Starting a new session keeps your yards. Clearing browser data can remove them.':'Drive yards are unsaved and stay in memory for this visit.';
     next.hidden=!q.complete;next.textContent=done?'Practice again':'Next';
     recap.textContent=done?`Nice practice! ${model.session.completed} completed · ${model.session.firstTry} first try · ${model.session.helped} after another try or shown answer.`:'';
-    storage.textContent=message;renderReport();
+    storage.textContent=[message,driveNotice].filter(Boolean).join(' ');renderReport();
     if(startTiming){invalidate();const token=renderToken,id=q.id;requestAnimationFrame(()=>requestAnimationFrame(()=>{
       if(active&&token===renderToken&&model.attempt.id===id&&!q.complete&&!q.helped&&q.firstCorrect===null&&equationVisible()&&!report.open){origin=performance.now();timingInvalid=false;}
     }));}
@@ -134,9 +164,10 @@
     if(/^\d$/.test(event.key)||['Backspace','Delete','Enter'].includes(event.key)){event.preventDefault();if(event.key==='Enter')submit();else type(event.key);}
   });
   window.PLACE_FACT_UI=Object.freeze({panel,
-    activate(value){const first=model===null;active=value;panel.hidden=!value;invalidate();if(value){if(first)readInitial();render(first&&savedRaw===null);}},
+    activate(value){const first=model===null;active=value;panel.hidden=!value;document.body.classList.toggle('facts-active',value);lastAward=null;invalidate();if(value){if(first)readInitial();render(first&&savedRaw===null);}},
     text(){const q=model.attempt,f=api.byId[q.factId];return {mode:'arithmetic',submode:'facts',question:`${api.equation(f)} = ?`,answerEntry:q.complete?String(f.answer):input,
-      complete:q.complete,shown:q.helped,misses:q.misses,completed:model.session.completed,target:model.session.target,worked:q.helped?api.help(f):null};}
+      complete:q.complete,shown:q.helped,misses:q.misses,completed:model.session.completed,target:model.session.target,worked:q.helped?api.help(f):null,
+      drive:{...api.drive(model),lastAward:lastAward?.yards??null,celebrating:!!lastAward?.touchdown,saved:writable}};}
   });
   window.__factsTest=Object.freeze({storageKey:KEY,snapshot:()=>model&&JSON.parse(JSON.stringify(model)),timing:()=>({valid:!timingInvalid,started:origin!==null}),
     diagnostics:()=>model&&api.select(model).diagnostics});

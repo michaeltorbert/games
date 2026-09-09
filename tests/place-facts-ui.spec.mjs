@@ -6,9 +6,97 @@ async function boot(page){await page.addInitScript(()=>{localStorage.setItem('pl
 async function enter(page,value,touch=false){await settled(page);await page.locator('.facts-keypad').getByRole('button',{name:'Clear',exact:true}).click();if(touch){for(const digit of String(value))await page.locator('.facts-keypad').getByRole('button',{name:digit,exact:true}).click();await page.locator('#facts-check').click();}else{await page.locator('#facts-check').focus();await page.keyboard.type(String(value));await page.keyboard.press('Enter');}await settled(page);}
 async function correct(page,touch=false){const value=await page.evaluate(()=>PLACE_FACTS.byId[__factsTest.snapshot().attempt.factId].answer);await enter(page,value,touch);}
 
+test('drive keeps practice controls visible, gives one atomic award, and preserves yards between sessions',async({page})=>{
+ const errors=[];page.on('pageerror',e=>errors.push(e.message));await boot(page);
+ const field=page.getByRole('progressbar',{name:'Touchdown drive'});
+ await expect(field).toHaveAttribute('aria-valuenow','0');
+ for(const selector of ['#facts-equation','.facts-keypad','#facts-check','#facts-show']){
+  expect(await page.locator(selector).evaluate(el=>{const r=el.getBoundingClientRect();return r.top>=0&&r.bottom<=innerHeight&&r.left>=0&&r.right<=innerWidth;}),selector).toBe(true);
+ }
+ expect(await page.locator('#fact-practice button:visible').evaluateAll(bs=>bs.every(b=>b.getBoundingClientRect().height>=44))).toBe(true);
+ await page.screenshot({path:test.info().outputPath('drive-start.png')});
+ await page.evaluate(KEY=>{const write=Storage.prototype.setItem;window.factWrites=[];Storage.prototype.setItem=function(key,bytes){if(key===KEY)window.factWrites.push(JSON.parse(bytes));return write.call(this,key,bytes);};},KEY);
+ await correct(page,true);
+ const writes=await page.evaluate(()=>window.factWrites);expect(writes).toHaveLength(1);
+ expect(writes[0].attempt.complete).toBe(true);expect(writes[0].drive.totalYards).toBe(5);
+ await expect(field).toHaveAttribute('aria-valuenow','5');await expect(page.locator('#facts-feedback')).toContainText('+5 yards');
+ await expect(page.locator('#facts-next')).toBeFocused();
+ await page.evaluate(()=>{document.querySelector('#facts-check').click();document.querySelector('#facts-check').click();});
+ expect((await snapshot(page)).drive.totalYards).toBe(5);expect(await page.evaluate(()=>window.factWrites.length)).toBe(1);
+ await page.reload();await expect(field).toHaveAttribute('aria-valuenow','5');await expect(page.locator('#facts-feedback')).not.toContainText('+5');
+ await page.getByRole('button',{name:'Start new fact session'}).click();expect((await snapshot(page)).drive.totalYards).toBe(5);
+ await correct(page);expect((await snapshot(page)).drive.totalYards).toBe(10);
+ const state=await page.evaluate(()=>JSON.parse(render_game_to_text()));expect(state.drive).toMatchObject({totalYards:10,yards:10,touchdowns:0,lastAward:5,celebrating:false,saved:true});
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);expect(errors).toEqual([]);
+});
+
+test('miss, voluntary help, automatic help and report completion all earn one yard without learning cross-credit',async({page})=>{
+ await boot(page);let total=0;
+ for(const kind of ['miss','voluntary','automatic','report']){
+  await page.getByRole('button',{name:'Start new fact session'}).click();const s=await snapshot(page);
+  const answer=await page.evaluate(()=>PLACE_FACTS.byId[__factsTest.snapshot().attempt.factId].answer);
+  if(kind==='miss'||kind==='automatic')await enter(page,(answer+1)%19);
+  if(kind==='automatic')await enter(page,(answer+2)%19);
+  if(kind==='voluntary')await page.locator('#facts-show').click();
+  if(kind==='report')await page.locator('#facts-report > summary').click();
+  expect((await snapshot(page)).drive.totalYards).toBe(total);
+  await page.reload();expect((await snapshot(page)).drive.totalYards).toBe(total);
+  await correct(page);total++;
+  const after=await snapshot(page);expect(after.drive.totalYards).toBe(total);expect(after.facts[s.attempt.factId].checks).toBe(s.facts[s.attempt.factId].checks);
+  await expect(page.locator('#facts-feedback')).toContainText('+1 yard');
+ }
+});
+
+test('touchdown carries overflow, celebrates only the live completion and supports reduced motion',async({page})=>{
+ await boot(page);
+ await page.evaluate(KEY=>{
+  const a=PLACE_FACTS,s=a.create();
+  for(let i=0;i<22;i++){if(i>=19)a.show(s,s.attempt.id);a.answer(s,s.attempt.id,a.byId[s.attempt.factId].answer);if(s.session.completed>=s.session.target)a.restart(s,10);else a.next(s,s.attempt.id);}
+  localStorage.setItem(KEY,JSON.stringify(s));
+ },KEY);
+ await page.reload();await expect(page.locator('#facts-yards')).toHaveText('98 of 100 yards');
+ await expect(page.locator('.facts-drive')).not.toHaveClass(/facts-drive--touchdown/);
+ await page.emulateMedia({reducedMotion:'reduce'});await correct(page,true);
+ await expect(page.locator('#facts-touchdowns')).toHaveText('1 touchdown');await expect(page.locator('#facts-yards')).toHaveText('3 of 100 yards');
+ await expect(page.locator('#facts-award')).toHaveText('Touchdown!');await expect(page.locator('#facts-next')).toBeFocused();
+ await expect(page.locator('#facts-feedback')).toContainText('Touchdown! 3 yards into your next drive.');
+ for(const selector of ['.facts-drive','#facts-next'])expect(await page.locator(selector).evaluate(el=>{const r=el.getBoundingClientRect();return r.top>=0&&r.bottom<=innerHeight;}),selector).toBe(true);
+ expect(await page.locator('#facts-award').evaluate(el=>getComputedStyle(el).animationName)).toBe('none');
+ expect(await page.locator('.facts-ball').evaluate(el=>getComputedStyle(el).transitionProperty)).toBe('none');
+ await page.screenshot({path:test.info().outputPath('drive-touchdown.png')});
+ const bytes=await page.evaluate(k=>localStorage.getItem(k),KEY);await page.reload();
+ expect(await page.evaluate(k=>localStorage.getItem(k),KEY)).toBe(bytes);await expect(page.locator('.facts-drive')).not.toHaveClass(/facts-drive--touchdown/);
+ await expect(page.locator('#facts-award')).not.toHaveText('Touchdown!');await expect(page.locator('#facts-feedback')).not.toContainText('Touchdown!');
+ await expect(page.getByRole('progressbar',{name:'Touchdown drive'})).toHaveAttribute('aria-valuetext','3 of 100 yards; 1 touchdown');
+});
+
+test('legacy facts migrate on a locked action; damaged drive metadata preserves instructional records',async({page})=>{
+ await boot(page);await correct(page);await page.locator('#facts-next').click();await settled(page);
+ const legacy=await page.evaluate(KEY=>{const s=__factsTest.snapshot();s.schemaVersion=1;delete s.drive;delete s.attempt.rewardSupported;const bytes=JSON.stringify(s);localStorage.setItem(KEY,bytes);return bytes;},KEY);
+ await page.reload();expect(await page.evaluate(k=>localStorage.getItem(k),KEY)).toBe(legacy);
+ expect((await snapshot(page)).drive.totalYards).toBe(0);await correct(page);
+ const migrated=await page.evaluate(k=>JSON.parse(localStorage.getItem(k)),KEY);expect(migrated.schemaVersion).toBe(2);expect(migrated.serial).toBe(2);expect(migrated.drive.totalYards).toBe(5);
+ const corrupt=await page.evaluate(KEY=>{const s=__factsTest.snapshot();s.drive.totalYards=-8;const bytes=JSON.stringify(s);localStorage.setItem(KEY,bytes);return bytes;},KEY);
+ await page.reload();expect(await page.evaluate(k=>localStorage.getItem(k),KEY)).toBe(corrupt);
+ expect((await snapshot(page)).facts).toEqual(migrated.facts);expect((await snapshot(page)).drive.totalYards).toBe(0);
+ await expect(page.locator('.facts-storage')).toContainText('Your learning progress is preserved');
+ await page.locator('#facts-next').click();await settled(page);await correct(page);expect((await snapshot(page)).drive.totalYards).toBe(5);
+});
+
+test('toggle-only report exposure also marks a warm prompt as supported for drive rewards',async({page})=>{
+ await boot(page);
+ await page.evaluate(KEY=>{const s=__factsTest.snapshot();s.attempt.eligible=false;localStorage.setItem(KEY,JSON.stringify(s));},KEY);
+ await page.reload();expect((await snapshot(page)).attempt.rewardSupported).toBe(false);
+ await page.evaluate(()=>{const report=document.querySelector('#facts-report');report.open=true;report.dispatchEvent(new Event('toggle'));});
+ await expect(page.locator('#facts-report')).toHaveAttribute('open','');
+ await expect.poll(async()=>(await snapshot(page)).attempt.rewardSupported).toBe(true);
+ await page.reload();await correct(page);expect((await snapshot(page)).drive.totalYards).toBe(1);
+ expect((await snapshot(page)).session.firstTry).toBe(1);expect((await snapshot(page)).facts['sub:7:5'].checks).toBe(0);
+});
+
 test('fresh and legacy arithmetic choices default to basic facts without changing larger-number saves',async({page})=>{
  await page.goto('/place-value-practice/');
- await expect(page.locator('#game-version')).toHaveText('Version 1.4.1');
+ await expect(page.locator('#game-version')).toHaveText('Version 1.5.0');
  await page.getByRole('button',{name:'Arithmetic',exact:true}).click();
  await expect(page.locator('#fact-practice')).toBeVisible();
  expect((await snapshot(page)).attempt.factId).toBe('sub:7:5');
@@ -215,6 +303,7 @@ test('future and malformed facts are preserved at boot, and only a locked user a
 test('stale simultaneous tabs resynchronize; newer schema introduced after boot remains untouched',async({page,context})=>{
  await boot(page);await page.locator('#facts-show').click();const other=await context.newPage();await other.goto('/place-value-practice/');
  await correct(page);const saved=await page.evaluate(k=>localStorage.getItem(k),KEY);await correct(other);
+ expect((await snapshot(page)).drive.totalYards).toBe(1);expect((await snapshot(other)).drive.totalYards).toBe(1);
  expect(await other.evaluate(k=>localStorage.getItem(k),KEY)).toBe(saved);await expect(other.locator('.facts-storage')).toContainText('another tab');
  await page.locator('#facts-next').click();await settled(page);const newSaved=await page.evaluate(k=>localStorage.getItem(k),KEY);
  await other.getByRole('button',{name:'Start new fact session'}).click();await settled(other);expect(await other.evaluate(k=>localStorage.getItem(k),KEY)).toBe(newSaved);
@@ -233,6 +322,7 @@ test('unavailable locks, lock rejection, and failed storage keep usable memory-o
    if(failure==='read')Storage.prototype.getItem=function(){throw Error('blocked');};
   },failure);
   await correct(page);expect((await snapshot(page)).serial).toBe(1);await expect(page.locator('.facts-storage')).toContainText('memory');
+  expect((await snapshot(page)).drive.totalYards).toBe(5);await expect(page.locator('.facts-drive-info')).toContainText('unsaved');
   if(failure!=='read')expect(await page.evaluate(k=>localStorage.getItem(k),KEY)).toBe(before);
  }
 });
