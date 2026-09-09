@@ -1,4 +1,6 @@
 import { test, expect } from '@playwright/test';
+// This suite deliberately exercises the broader curriculum, now an explicit later-work choice.
+test.beforeEach(async({page})=>{await page.addInitScript(()=>localStorage.setItem('place-value-practice:arithmetic-mode:v1','mixed-later'));});
 const KEY='place-value-practice:progress:v1', AKEY='place-value-practice:arithmetic:v1';
 async function settled(page){await expect(page.locator('#arithmetic-practice')).toHaveAttribute('aria-busy','false');}
 async function raw(page,key=KEY){await settled(page);return page.evaluate(k=>localStorage.getItem(k),key);}
@@ -136,6 +138,8 @@ test('future arithmetic schema stays byte-identical and storage failure permits 
  expect(await raw(page,AKEY)).toBe(future);expect(await raw(page)).toBe(before);
  await page.addInitScript(()=>{Storage.prototype.getItem=function(){throw Error('unavailable');};Storage.prototype.setItem=function(){throw Error('unavailable');};});
  await page.reload();await page.getByRole('button',{name:'Arithmetic',exact:true}).click();
+ await expect(page.locator('#fact-practice')).toBeVisible();
+ await page.getByRole('button',{name:'For later: larger numbers',exact:true}).click();
  await correct(page);expect((await snapshot(page)).completed).toBe(1);
  await page.getByRole('button',{name:'Start new arithmetic session'}).click();
  expect((await snapshot(page)).learning.position).toBe(1);

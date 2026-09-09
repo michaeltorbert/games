@@ -5,7 +5,8 @@
   let model=null,savedRaw=null,writable=true,message='',active=false,busy=false,input='',origin=null,timingInvalid=true,renderToken=0;
   const node=(tag,text,cls)=>{const n=document.createElement(tag);if(text)n.textContent=text;if(cls)n.className=cls;return n;};
   const panel=node('main');panel.id='fact-practice';panel.hidden=true;panel.setAttribute('aria-busy','false');
-  const title=node('h2','Fact practice');title.id='facts-title';panel.setAttribute('aria-labelledby',title.id);
+  const title=node('h2','Basic addition & subtraction');title.id='facts-title';panel.setAttribute('aria-labelledby',title.id);
+  const scope=node('p','Add single-digit numbers and practice the matching subtraction facts. No two-digit addition.');
   const setup=node('div',null,'arithmetic-setup'),label=node('label','Session length '),length=node('select');length.setAttribute('aria-label','Fact practice session length');
   for(const value of [5,10]){const option=node('option',`${value} questions`);option.value=value;length.append(option);}length.value='10';
   const button=(text,fn,cls='button')=>{const b=node('button',text,cls);b.type='button';b.addEventListener('click',fn);return b;};
@@ -43,7 +44,7 @@
   report.addEventListener('toggle',()=>{if(report.open){invalidate();if(model&&!model.attempt.complete&&model.attempt.eligible)openReport();}});report.append(summary);
   const reportContent=node('div');report.append(reportContent);
   const storage=node('p');storage.className='facts-storage';storage.setAttribute('role','status');
-  panel.append(title,setup,count,entry,keypad,controls,support,feedback,next,recap,report,storage);
+  panel.append(title,scope,setup,count,entry,keypad,controls,support,feedback,next,recap,report,storage);
   function invalidate(){origin=null;timingInvalid=true;renderToken++;}
   function equationVisible(){const r=equation.getBoundingClientRect();return document.visibilityState==='visible'&&r.top>=0&&r.bottom<=innerHeight&&r.left>=0&&r.right<=innerWidth;}
   function memory(reason='Your fact progress stays in memory for this visit.'){writable=false;message=reason;invalidate();}

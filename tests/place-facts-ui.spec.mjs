@@ -6,6 +6,49 @@ async function boot(page){await page.addInitScript(()=>{localStorage.setItem('pl
 async function enter(page,value,touch=false){await settled(page);await page.locator('.facts-keypad').getByRole('button',{name:'Clear',exact:true}).click();if(touch){for(const digit of String(value))await page.locator('.facts-keypad').getByRole('button',{name:digit,exact:true}).click();await page.locator('#facts-check').click();}else{await page.locator('#facts-check').focus();await page.keyboard.type(String(value));await page.keyboard.press('Enter');}await settled(page);}
 async function correct(page,touch=false){const value=await page.evaluate(()=>PLACE_FACTS.byId[__factsTest.snapshot().attempt.factId].answer);await enter(page,value,touch);}
 
+test('fresh and legacy arithmetic choices default to basic facts without changing larger-number saves',async({page})=>{
+ await page.goto('/place-value-practice/');
+ await page.getByRole('button',{name:'Arithmetic',exact:true}).click();
+ await expect(page.locator('#fact-practice')).toBeVisible();
+ expect((await snapshot(page)).attempt.factId).toBe('sub:7:5');
+ expect(await page.evaluate(k=>localStorage.getItem(k),MIXED)).toBeNull();
+ for(const preference of [null,'mixed','facts','unknown']){
+  const saved=await page.evaluate(({SUB,MIXED,KEY,preference})=>{
+   const bytes=JSON.stringify(PLACE_ARITHMETIC.create());localStorage.setItem(MIXED,bytes);localStorage.removeItem(KEY);
+   if(preference===null)localStorage.removeItem(SUB);else localStorage.setItem(SUB,preference);return bytes;
+  },{SUB,MIXED,KEY,preference});
+  await page.reload();await expect(page.locator('#fact-practice')).toBeVisible();await expect(page.locator('#arithmetic-practice')).toBeHidden();
+  await expect(page.getByRole('button',{name:'Basic + and −',exact:true})).toHaveAttribute('aria-pressed','true');
+  await expect(page.locator('#fact-practice')).toContainText('No two-digit addition.');
+  expect((await snapshot(page)).attempt.factId).toBe('sub:7:5');
+  for(let i=0;i<10;i++){
+   const id=(await snapshot(page)).attempt.factId;
+   const [op,a,b]=id.split(':');
+   if(op==='add'){expect(Number(a)).toBeLessThanOrEqual(9);expect(Number(b)).toBeLessThanOrEqual(9);}
+   else{expect(op).toBe('sub');expect(Number(b)).toBeLessThanOrEqual(9);expect(Number(a)-Number(b)).toBeLessThanOrEqual(9);}
+   await correct(page);if(i<9)await page.locator('#facts-next').click();
+  }
+  await page.reload();expect((await snapshot(page)).session.completed).toBe(10);
+  expect(await page.evaluate(k=>localStorage.getItem(k),MIXED)).toBe(saved);
+ }
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+ await page.screenshot({path:test.info().outputPath('basic-default.png')});
+});
+
+test('larger-number work requires an explicit later choice, remembers it, and returns to basic facts',async({page})=>{
+ await page.goto('/place-value-practice/');await page.getByRole('button',{name:'Arithmetic',exact:true}).click();
+ await correct(page);const basic=await page.evaluate(k=>localStorage.getItem(k),KEY);
+ await page.getByRole('button',{name:'For later: larger numbers',exact:true}).click();
+ await expect(page.locator('#arithmetic-practice')).toBeVisible();await expect(page.locator('#arithmetic-practice')).toContainText('including two-digit addition and subtraction');
+ expect(await page.evaluate(k=>localStorage.getItem(k),SUB)).toBe('mixed-later');
+ await page.reload();await expect(page.locator('#arithmetic-practice')).toBeVisible();
+ expect(await page.evaluate(k=>localStorage.getItem(k),KEY)).toBe(basic);
+ const later=await page.evaluate(k=>localStorage.getItem(k),MIXED);
+ await page.getByRole('button',{name:'Basic + and −',exact:true}).click();await page.reload();
+ await expect(page.locator('#fact-practice')).toBeVisible();expect((await snapshot(page)).session.completed).toBe(1);
+ expect(await page.evaluate(k=>localStorage.getItem(k),MIXED)).toBe(later);
+});
+
 test('opening report removes independent credit durably and hides numeric family triples',async({page})=>{
  await boot(page);expect((await snapshot(page)).attempt.factId).toBe('sub:7:5');expect((await snapshot(page)).attempt.eligible).toBe(true);
  await page.locator('#facts-report > summary').click();await expect(page.locator('#facts-report')).toHaveAttribute('open','');
@@ -90,8 +133,8 @@ test('Enter preserves button actions and answer controls describe the current eq
  await page.locator('.facts-keypad').getByRole('button',{name:'2',exact:true}).focus();await page.keyboard.press('Enter');
  await expect(page.locator('#facts-answer')).toHaveText('2');expect((await snapshot(page)).attempt.complete).toBe(false);
  await page.locator('#facts-show').focus();await page.keyboard.press('Enter');expect((await snapshot(page)).attempt.helped).toBe(true);
- await page.getByRole('button',{name:'Mixed practice',exact:true}).focus();await page.keyboard.press('Enter');await expect(page.locator('#fact-practice')).toBeHidden();
- await page.getByRole('button',{name:'Fact practice',exact:true}).click();await correct(page);await page.locator('#facts-next').click();
+ await page.getByRole('button',{name:'For later: larger numbers',exact:true}).focus();await page.keyboard.press('Enter');await expect(page.locator('#fact-practice')).toBeHidden();
+ await page.getByRole('button',{name:'Basic + and −',exact:true}).click();await correct(page);await page.locator('#facts-next').click();
  await expect(page.locator('#facts-check')).toBeFocused();expect(await page.locator('#facts-equation').textContent()).not.toBe(oldEquation);
  await expect(page.locator('#facts-check')).toHaveAccessibleDescription(await page.locator('#facts-equation').textContent());
 });
@@ -122,8 +165,8 @@ test('report groups cover practiced facts once, including warm retries and check
 
 test('optional help and leaving/returning preserve exact active attempt and isolated bytes',async({page})=>{
  await boot(page);await page.locator('#facts-show').click();const shown=await snapshot(page);
- await page.getByRole('button',{name:'Mixed practice',exact:true}).click();const mixed=await page.evaluate(k=>localStorage.getItem(k),MIXED);
- await page.getByRole('button',{name:'Fact practice',exact:true}).click();expect(await snapshot(page)).toEqual(shown);
+ await page.getByRole('button',{name:'For later: larger numbers',exact:true}).click();const mixed=await page.evaluate(k=>localStorage.getItem(k),MIXED);
+ await page.getByRole('button',{name:'Basic + and −',exact:true}).click();expect(await snapshot(page)).toEqual(shown);
  await correct(page);await page.reload();expect((await snapshot(page)).attempt.complete).toBe(true);
  expect(await page.evaluate(k=>localStorage.getItem(k),MIXED)).toBe(mixed);
  await page.getByRole('button',{name:'Place value',exact:true}).click();await page.getByRole('button',{name:'Arithmetic',exact:true}).click();
@@ -151,7 +194,7 @@ test('blur, visibility, report, submode change and reload discard timing; a fres
   if(event==='blur')await page.evaluate(()=>window.dispatchEvent(new Event('blur')));
   if(event==='visibilitychange')await page.evaluate(()=>document.dispatchEvent(new Event('visibilitychange')));
   if(event==='report')await page.locator('#facts-report > summary').click();
-  if(event==='mode'){await page.getByRole('button',{name:'Mixed practice',exact:true}).click();await page.getByRole('button',{name:'Fact practice',exact:true}).click();}
+  if(event==='mode'){await page.getByRole('button',{name:'For later: larger numbers',exact:true}).click();await page.getByRole('button',{name:'Basic + and −',exact:true}).click();}
   if(event==='reload')await page.reload();
   await correct(page);const s=await snapshot(page),ms=s.facts[s.attempt.factId].history.at(-1).ms;
   if(event==='none'){expect(ms).toBeGreaterThanOrEqual(300);expect(ms%100).toBe(0);}else expect(ms).toBeNull();

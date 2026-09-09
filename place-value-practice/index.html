@@ -1520,7 +1520,7 @@
         animation-iteration-count: 1 !important;
       }
     }
-    .practice-modes { display: flex; justify-content: center; gap: 8px; padding: 14px 16px 0; }
+    .practice-modes { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; padding: 14px 16px 0; }
     .practice-modes button[aria-pressed="true"] { background: var(--ink, #24342d); color: white; }
     #arithmetic-practice { width: min(100%, 760px); margin: auto; padding: 24px; }
     #arithmetic-practice h2 { font-size: 1.7rem; margin: 0 0 20px; }
@@ -1834,12 +1834,12 @@
     </form>
   </dialog>
 
-  <script src="arithmetic-domain.js?v=1.4.0"></script>
+  <script src="arithmetic-domain.js?v=1.4.1"></script>
   <script>
     "use strict";
 
     (() => {
-      const GAME_VERSION = "1.4.0";
+      const GAME_VERSION = "1.4.1";
       const SCHEMA_VERSION = 1;
       const STORAGE_KEY = "place-value-practice:progress:v1";
       const MAX_QUEUE = 6;
@@ -6587,8 +6587,8 @@
       if (window.__placePracticeMode === 'place-value') window.__placeValueActivate();
     })();
   </script>
-  <script src="fact-practice-domain.js?v=1.4.0"></script>
-  <script src="fact-practice.js?v=1.4.0"></script>
-  <script src="arithmetic.js?v=1.4.0"></script>
+  <script src="fact-practice-domain.js?v=1.4.1"></script>
+  <script src="fact-practice.js?v=1.4.1"></script>
+  <script src="arithmetic.js?v=1.4.1"></script>
 </body>
 </html>
