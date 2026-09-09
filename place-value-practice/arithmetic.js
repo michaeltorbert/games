@@ -3,20 +3,22 @@
   'use strict';
   const KEY='place-value-practice:arithmetic:v1', MODE_KEY='place-value-practice:mode:v1';
   const api=PLACE_ARITHMETIC;
-  let model, writable=true, saveMessage='';
+  let model, writable=true, saveMessage='', savedRaw=null, pendingChanges=0;
   try {
     const raw=localStorage.getItem(KEY), parsed=raw ? JSON.parse(raw) : null;
+    savedRaw=raw;
     if (parsed && typeof parsed.schemaVersion === 'number' && parsed.schemaVersion > api.SCHEMA_VERSION) {
       writable=false; saveMessage='This arithmetic save comes from a newer version. This session stays in memory.';
     }
     model=api.normalize(parsed);
-  } catch { saveMessage='Arithmetic is available for this visit. Saving may be unavailable.'; }
+  } catch { writable=false;saveMessage='Your arithmetic progress stays in memory for this visit.'; }
   const node=(tag,text,className) => { const n=document.createElement(tag); if(text)n.textContent=text; if(className)n.className=className; return n; };
   const nav=node('nav',null,'practice-modes'); nav.setAttribute('aria-label','Practice type');
   const place=node('button','Place value','button'), arithmetic=node('button','Arithmetic','button');
   place.type=arithmetic.type='button'; nav.append(place,arithmetic);
   document.querySelector('.app-header').after(nav);
   const panel=node('main'); panel.id='arithmetic-practice'; panel.hidden=true;
+  panel.setAttribute('aria-busy','false');
   panel.setAttribute('aria-labelledby','arithmetic-title');
   document.getElementById('practice').after(panel);
   const title=node('h2','Arithmetic'); title.id='arithmetic-title';
@@ -34,24 +36,58 @@
   const recap=node('p'); recap.id='arithmetic-recap';
   const storage=node('p'); storage.className='arithmetic-storage';
   panel.append(title,setup,count,equation,instruction,choices,feedback,next,recap,storage);
-  function save() { if(!writable)return; try { localStorage.setItem(KEY,JSON.stringify(model)); saveMessage=''; } catch { saveMessage='Your arithmetic progress stays in memory for this visit.'; } }
+  function refreshBeforeWrite() {
+    if(!writable)return true;
+    const current=localStorage.getItem(KEY);
+    if(current===savedRaw)return true;
+    let parsed;try{parsed=JSON.parse(current);}catch{}
+    if(parsed && typeof parsed.schemaVersion==='number' && parsed.schemaVersion>api.SCHEMA_VERSION) {
+      writable=false;saveMessage='This arithmetic save comes from a newer version. This session stays in memory.';
+      return true;
+    }
+    model=api.normalize(parsed)||api.create();savedRaw=current;
+    saveMessage='Arithmetic progress changed in another tab. Please try again.';
+    return false;
+  }
+  function save() {
+    if(!writable)return;
+    try {
+      if(!refreshBeforeWrite() || !writable)return;
+      const serialized=JSON.stringify(model);localStorage.setItem(KEY,serialized);savedRaw=serialized;saveMessage='';
+    } catch { writable=false;saveMessage='Your arithmetic progress stays in memory for this visit.'; }
+  }
+  async function change(action) {
+    pendingChanges++;panel.setAttribute('aria-busy','true');
+    const run=()=>{
+      try { if(!refreshBeforeWrite()){render();return;} }
+      catch { writable=false;saveMessage='Your arithmetic progress stays in memory for this visit.'; }
+      if(action()){save();render();if(model.question.complete)next.focus();else choices.querySelector('button').focus();}
+    };
+    try { if(writable && navigator.locks) {
+      try { await navigator.locks.request(KEY,run); }
+      catch { writable=false;saveMessage='Your arithmetic progress stays in memory for this visit.';render(); }
+    } else {
+      if(writable){writable=false;saveMessage='Your arithmetic progress stays in memory for this visit.';}
+      run();
+    } } finally { pendingChanges--;panel.setAttribute('aria-busy',String(pendingChanges>0)); }
+  }
   function render() {
     const view=api.view(model), q=model.question, revealed=q.misses.length>=3, finished=model.target!==null && model.completed>=model.target;
     count.textContent=finished?'Session complete':model.target===null?`Question ${model.sequence+1}`:`Question ${model.sequence+1} of ${model.target}`;
     equation.textContent=q.complete||revealed?view.worked:view.prompt;
     choices.replaceChildren();
     q.choices.forEach(value=>{ const b=node('button',String(value),'button arithmetic-answer');b.type='button';b.disabled=q.complete||q.misses.includes(value);
-      b.addEventListener('click',()=>{if(api.answer(model,value)){save();render(); if(model.question.complete)next.focus();}}); choices.append(b); });
+      b.addEventListener('click',()=>change(()=>model.question===q && api.answer(model,value))); choices.append(b); });
     feedback.textContent=q.complete?(revealed?'You selected the answer.':q.misses.length?'You worked it out after trying again.':'Correct.')
       :revealed?'Here is the answer. Select it to finish this question.':q.misses.length?'Try another number.':'';
     next.hidden=!q.complete; next.textContent=finished?'Practice again':'Next';
     recap.textContent=finished?`${model.completed} completed · ${model.firstTry} first try · ${model.afterHelp} after trying again` : '';
     storage.textContent=saveMessage;
   }
-  function fresh() { model=api.restart(model,length.value==='endless'?null:Number(length.value));save();render();choices.querySelector('button').focus(); }
+  function fresh() { return change(()=>{model=api.restart(model,length.value==='endless'?null:Number(length.value));return true;}); }
   reset.addEventListener('click',fresh);
   // Changing length applies only when starting a new session, preserving an active attempt.
-  next.addEventListener('click',()=>{if(model.target!==null&&model.completed>=model.target)fresh();else if(api.next(model)){save();render();choices.querySelector('button').focus();}});
+  next.addEventListener('click',()=>{if(model.target!==null&&model.completed>=model.target)fresh();else {const q=model.question;change(()=>model.question===q && api.next(model));}});
   const placeText=window.render_game_to_text;
   function mode(value, persist=true) {
     window.__placePracticeMode=value;
