@@ -12,7 +12,9 @@
     "test:football:release": "node --test tests/football-domain.spec.mjs tests/football-learning-domain.spec.mjs tests/football-contextual-questions.spec.mjs tests/football-stats-domain.spec.mjs tests/football-season-domain.spec.mjs tests/football-time-lab-domain.spec.mjs tests/game-registry.spec.mjs && playwright test tests/football-challenge.spec.mjs tests/football-arithmetic-ui.spec.mjs tests/football-call-layout.spec.mjs tests/football-audio.spec.mjs tests/football-particles.spec.mjs tests/football-copy-contract.spec.mjs tests/football-fireworks.spec.mjs tests/football-overlay-accessibility.spec.mjs tests/football-context-integration.spec.mjs tests/football-learning.spec.mjs tests/football-stats.spec.mjs tests/football-coach-report.spec.mjs tests/football-opponent-tendencies.spec.mjs tests/football-presnap-hints.spec.mjs tests/football-rivals.spec.mjs tests/football-season.spec.mjs tests/football-time-lab-ui.spec.mjs tests/football-release-matrix.spec.mjs",
     "posttest:football:release": "node scripts/verify-football-release-artifacts.mjs",
     "test:football:arithmetic": "node --test tests/football-contextual-questions.spec.mjs && playwright test tests/football-arithmetic-ui.spec.mjs",
-    "test:place:arithmetic": "node --test tests/place-arithmetic-domain.spec.mjs && playwright test tests/place-arithmetic-ui.spec.mjs"
+    "test:place:arithmetic": "node --test tests/place-arithmetic-domain.spec.mjs && playwright test tests/place-arithmetic-ui.spec.mjs",
+    "test:place:facts": "node --test tests/place-facts-domain.spec.mjs && playwright test tests/place-facts-ui.spec.mjs",
+    "test:place:release": "node --test tests/place-arithmetic-domain.spec.mjs tests/place-facts-domain.spec.mjs tests/game-registry.spec.mjs && playwright test tests/place-arithmetic-ui.spec.mjs tests/place-facts-ui.spec.mjs"
   },
   "devDependencies": {
     "@playwright/test": "1.56.1"
