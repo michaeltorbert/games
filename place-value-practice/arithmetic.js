@@ -6,7 +6,7 @@
   let model, writable=true, saveMessage='';
   try {
     const raw=localStorage.getItem(KEY), parsed=raw ? JSON.parse(raw) : null;
-    if (parsed && typeof parsed.schemaVersion === 'number' && parsed.schemaVersion > 1) {
+    if (parsed && typeof parsed.schemaVersion === 'number' && parsed.schemaVersion > api.SCHEMA_VERSION) {
       writable=false; saveMessage='This arithmetic save comes from a newer version. This session stays in memory.';
     }
     model=api.normalize(parsed);
@@ -23,6 +23,8 @@
   const setup=node('div',null,'arithmetic-setup'), label=node('label','Session length '), length=node('select');
   length.setAttribute('aria-label','Arithmetic session length');
   for(const [v,t] of [['5','5 questions'],['10','10 questions'],['20','20 questions'],['endless','Endless']]) { const o=node('option',t);o.value=v;length.append(o); }
+  // The selector holds this visit's pending target, independently of the active session.
+  length.value=model ? (model.target===null?'endless':String(model.target)) : '10';
   const reset=node('button','Start new arithmetic session','button button--quiet'); reset.type='button'; label.append(length); setup.append(label,reset);
   const count=node('p'), equation=node('h3'); equation.id='arithmetic-equation';
   const instruction=node('p','Choose the number that makes the equation true.');
@@ -35,7 +37,6 @@
   function save() { if(!writable)return; try { localStorage.setItem(KEY,JSON.stringify(model)); saveMessage=''; } catch { saveMessage='Your arithmetic progress stays in memory for this visit.'; } }
   function render() {
     const view=api.view(model), q=model.question, revealed=q.misses.length>=3, finished=model.target!==null && model.completed>=model.target;
-    length.value=model.target===null?'endless':String(model.target);
     count.textContent=finished?'Session complete':model.target===null?`Question ${model.sequence+1}`:`Question ${model.sequence+1} of ${model.target}`;
     equation.textContent=q.complete||revealed?view.worked:view.prompt;
     choices.replaceChildren();
@@ -47,7 +48,7 @@
     recap.textContent=finished?`${model.completed} completed · ${model.firstTry} first try · ${model.afterHelp} after trying again` : '';
     storage.textContent=saveMessage;
   }
-  function fresh() { model=api.create(length.value==='endless'?null:Number(length.value));save();render();choices.querySelector('button').focus(); }
+  function fresh() { model=api.restart(model,length.value==='endless'?null:Number(length.value));save();render();choices.querySelector('button').focus(); }
   reset.addEventListener('click',fresh);
   // Changing length applies only when starting a new session, preserving an active attempt.
   next.addEventListener('click',()=>{if(model.target!==null&&model.completed>=model.target)fresh();else if(api.next(model)){save();render();choices.querySelector('button').focus();}});
