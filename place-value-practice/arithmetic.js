@@ -3,6 +3,8 @@
   'use strict';
   const KEY='place-value-practice:arithmetic:v1', MODE_KEY='place-value-practice:mode:v1';
   const api=PLACE_ARITHMETIC;
+  const SUBMODE_KEY='place-value-practice:arithmetic-mode:v1';
+  let submode='mixed';try{if(localStorage.getItem(SUBMODE_KEY)==='facts')submode='facts';}catch{}
   let model, writable=true, saveMessage='', savedRaw=null, pendingChanges=0, malformedJSON=false;
   try {
     savedRaw=localStorage.getItem(KEY);
@@ -21,10 +23,14 @@
   const place=node('button','Place value','button'), arithmetic=node('button','Arithmetic','button');
   place.type=arithmetic.type='button'; nav.append(place,arithmetic);
   document.querySelector('.app-header').after(nav);
+  const subnav=node('nav',null,'practice-modes');subnav.setAttribute('aria-label','Arithmetic practice type');
+  const mixed=node('button','Mixed practice','button'),facts=node('button','Fact practice','button');
+  mixed.type=facts.type='button';subnav.append(mixed,facts);nav.after(subnav);
   const panel=node('main'); panel.id='arithmetic-practice'; panel.hidden=true;
   panel.setAttribute('aria-busy','false');
   panel.setAttribute('aria-labelledby','arithmetic-title');
   document.getElementById('practice').after(panel);
+  panel.after(PLACE_FACT_UI.panel);
   const title=node('h2','Arithmetic'); title.id='arithmetic-title';
   const setup=node('div',null,'arithmetic-setup'), label=node('label','Session length '), length=node('select');
   length.setAttribute('aria-label','Arithmetic session length');
@@ -100,13 +106,18 @@
     document.getElementById('practice').hidden=active;
     document.getElementById('session-status').hidden=active;
     document.getElementById('settings-button').hidden=active;
-    panel.hidden=!active;
+    subnav.hidden=!active;
+    panel.hidden=!active||submode==='facts';
+    PLACE_FACT_UI.activate(active&&submode==='facts');
+    mixed.setAttribute('aria-pressed',String(submode==='mixed'));facts.setAttribute('aria-pressed',String(submode==='facts'));
     place.setAttribute('aria-pressed',String(!active)); arithmetic.setAttribute('aria-pressed',String(active));
     // Keep invalid JSON bytes until a locked user action can check for conflicts.
-    if(active){if(!model){model=api.create();if(!malformedJSON)save();}render();}else window.__placeValueActivate();
+    if(active){if(submode==='mixed'){if(!model){model=api.create();if(!malformedJSON)save();}render();}}else window.__placeValueActivate();
   }
+  function chooseSubmode(value){submode=value;try{localStorage.setItem(SUBMODE_KEY,value);}catch{}mode('arithmetic',false);}
+  mixed.addEventListener('click',()=>chooseSubmode('mixed'));facts.addEventListener('click',()=>chooseSubmode('facts'));
   place.addEventListener('click',()=>mode('place-value')); arithmetic.addEventListener('click',()=>mode('arithmetic'));
-  window.render_game_to_text=()=>window.__placePracticeMode==='arithmetic'?JSON.stringify({mode:'arithmetic',question:api.view(model).prompt,
+  window.render_game_to_text=()=>window.__placePracticeMode==='arithmetic'&&submode==='facts'?JSON.stringify(PLACE_FACT_UI.text()):window.__placePracticeMode==='arithmetic'?JSON.stringify({mode:'arithmetic',question:api.view(model).prompt,
     choices:model.question.choices,misses:model.question.misses,complete:model.question.complete,completed:model.completed,target:model.target,
     revealed:model.question.misses.length>=3,
     worked:model.question.complete||model.question.misses.length>=3?api.view(model).worked:null}):placeText();
