@@ -235,6 +235,9 @@ async function expectQuestionPlayType(page, playType, label) {
 }
 
 test('full football state matrix follows production transitions', async ({ page }, testInfo) => {
+  // This deliberate full playthrough captures every overlay and rival; allow
+  // shared-worker rendering time without changing individual assertion limits.
+  test.setTimeout(60_000);
   await page.addInitScript(() => {
     let seed = 0x36f00d;
     Math.random = () => {

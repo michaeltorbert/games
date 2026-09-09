@@ -31,8 +31,14 @@ test('explicit immutable two-ladder map covers only six of the 31 registered fam
   assert.equal(Object.keys(Q.CHALLENGE_MAP).length, 6);
   for (const e of families) {
     assert.ok(Object.isFrozen(e));
+    if (e.evidenceClass === 'independent'
+      && ['line-to-gain', 'drive-distance'].includes(e.concept)) {
+      assert.ok(Object.hasOwn(Q.CHALLENGE_MAP, e.familyId), `${e.familyId} must belong to its concept's challenge map`);
+      assert.deepEqual(e.challenge, Q.CHALLENGE_MAP[e.familyId]);
+    }
     if (e.challenge) {
       assert.ok(Object.isFrozen(e.challenge));
+      assert.equal(e.playType, 'scrimmage');
       assert.equal(e.evidenceClass, 'independent');
       assert.equal(e.concept, e.challenge.concept);
     }
@@ -116,4 +122,135 @@ test('commit ingestion is exactly once, historical evidence is copied, and recen
   L.recordPresented(s, entry(core));
   assert.equal(s.recentFamilyIdsByClass.independent.length, 1);
   assert.equal(s.recentFamilyIdsByClass.literacy.length, 0);
+});
+
+test('prerequisite failures guide immediately and prerequisite successes stay neutral across reload', () => {
+  const prerequisite = 'line-to-gain-exact';
+  const assertParity = (rows, preference, guided) => {
+    const current = session(rows);
+    const latest = rows.at(-1);
+    const reloaded = L.createSession({}, { 'line-to-gain': { independent: {
+      completedAt: latest.completedAt, resolution: latest.resolution,
+    } } }, now, rows);
+    const a = L.challengeStateFor(current, 'line-to-gain');
+    assert.equal(a.preference, preference);
+    assert.equal(a.guided, guided);
+    assert.deepEqual(L.challengeStateFor(reloaded, 'line-to-gain'), a);
+    assert.equal(L.supportFor(current, entry(core), 'initial'), guided ? 'guided' : 'initial');
+  };
+  const base = successes(8);
+  assertParity([...base, row(8, 'firstTryCorrect', prerequisite)], 'promoted', false);
+  assertParity([...base, row(8, 'retryCorrect', prerequisite)], 'promoted', true);
+  assertParity([...base, row(8, 'secondMiss', prerequisite)], 'downshifted', true);
+  assertParity([...base, row(8, 'retryCorrect', prerequisite), row(9, 'retryCorrect', prerequisite)], 'downshifted', true);
+  const failed = [...base, row(8, 'secondMiss', prerequisite)];
+  assertParity([...failed, ...Array.from({ length: 15 }, (_, i) => row(9 + i, 'firstTryCorrect', prerequisite))], 'downshifted', true);
+  assertParity([...failed, row(9), row(10, 'firstTryCorrect', prerequisite), row(11)], 'downshifted', true);
+  assertParity([...failed, row(9), row(10, 'firstTryCorrect', prerequisite), row(11), row(12)], 'promoted', false);
+  assert.equal(state([row(0, 'retryCorrect', prerequisite), row(1, 'firstTryCorrect', prerequisite)]).guided, true);
+});
+
+test('committed prerequisite ingestion and historical index use the same support evidence', () => {
+  const s = session(successes(8));
+  for (const [i, resolution] of [[8, 'retryCorrect'], [9, 'secondMiss']]) {
+    const r = row(i, resolution, 'line-to-gain-exact');
+    assert.equal(L.recordCommitted(s, { ...r, links: { familyId: r.familyId }, question: entry(r.familyId) }), true);
+    assert.equal(L.challengeStateFor(s, 'line-to-gain').guided, true);
+  }
+  assert.equal(L.challengeStateFor(s, 'line-to-gain').preference, 'downshifted');
+  const missing = L.createSession({}, { 'line-to-gain': { independent: {
+    completedAt: row(20).completedAt, resolution: 'secondMiss',
+  } } }, now, successes(8));
+  assert.equal(L.challengeStateFor(missing, 'line-to-gain').preference, 'downshifted');
+});
+
+test('newer index-only history conservatively suppresses promotion and guides only a retry', () => {
+  const retained = successes(8);
+  assert.equal(state(retained).preference, 'promoted');
+  for (const resolution of ['retryCorrect', 'firstTryCorrect']) {
+    const s = L.createSession({}, { 'line-to-gain': { independent: {
+      completedAt: row(20).completedAt, resolution,
+    } } }, now, retained);
+    const challenge = L.challengeStateFor(s, 'line-to-gain');
+    assert.equal(challenge.preference, 'initial', resolution);
+    assert.equal(challenge.guided, resolution === 'retryCorrect', resolution);
+    assert.equal(L.supportFor(s, entry(core), 'initial'), resolution === 'retryCorrect' ? 'guided' : 'initial');
+  }
+});
+
+test('real mapped families retain fresh, aged, historical-support and session-need budgets with one draw', () => {
+  const coreEntry = entry(core), stretchEntry = entry(stretch), literacy = entry('yards-to-go-read');
+  const mastery = { 'line-to-gain': { independent: { firstTryCorrect: 8, retryCorrect: 0, secondMiss: 0 } } };
+  const make = (days, resolution = 'firstTryCorrect', evidence = []) => L.createSession(mastery,
+    { 'line-to-gain': { independent: { resolution, completedAt: new Date(now - days * 86400000).toISOString() } } }, now, evidence);
+  const counts = (s, entries) => {
+    const totals = {}; let draws = 0;
+    for (let i = 0; i < 10000; i++) {
+      const id = L.weightedPick(entries, s, () => { draws++; return (i + .5) / 10000; }).familyId;
+      totals[id] = (totals[id] || 0) + 1;
+    }
+    assert.equal(draws, 10000);
+    return totals;
+  };
+  const pair = [coreEntry, literacy];
+  const fresh = counts(make(0), pair)[core];
+  const aged = counts(make(30), pair)[core];
+  const supported = counts(make(0, 'secondMiss'), pair)[core];
+  assert.ok(fresh < aged && aged < supported);
+  const currentNeed = make(30);
+  L.recordResolved(currentNeed, coreEntry, 'secondMiss');
+  assert.ok(counts(currentNeed, pair)[core] > supported);
+  // With identical baseline mastery/recency, promotion only reallocates the
+  // challenge concept's budget; it cannot change literacy's share.
+  const pool = [coreEntry, stretchEntry, literacy];
+  const initial = counts(make(30), pool);
+  const promoted = counts(make(30, 'firstTryCorrect', successes(8)), pool);
+  assert.equal(initial[literacy.familyId], promoted[literacy.familyId]);
+  assert.ok(promoted[stretch] > initial[stretch]);
+  const down = session([row(0, 'secondMiss')]);
+  const only = L.weightedPick([stretchEntry], down, () => .5);
+  assert.equal(only.familyId, stretch);
+  assert.equal(L.supportFor(down, only, 'initial'), 'guided');
+});
+
+test('index-only second miss requires three post-index core successes, with prerequisites neutral', () => {
+  const index = { 'line-to-gain': { independent: {
+    completedAt: row(10).completedAt, resolution: 'secondMiss',
+  } } };
+  for (let count = 0; count <= 3; count++) {
+    const recoveries = Array.from({ length: count }, (_, i) => row(12 + i * 2));
+    const prerequisites = Array.from({ length: 4 }, (_, i) => row(11 + i * 2, 'firstTryCorrect', 'line-to-gain-exact'));
+    const retained = [...successes(8), ...recoveries, ...prerequisites];
+    const s = L.createSession({}, index, now, retained);
+    const result = L.challengeStateFor(s, 'line-to-gain');
+    assert.equal(result.preference, count < 3 ? 'downshifted' : 'promoted', `recoveries=${count}`);
+    assert.equal(result.guided, count < 3, `recoveries=${count}`);
+    const reload = L.createSession({}, index, now, s.challengeEvidence);
+    assert.deepEqual(L.challengeStateFor(reload, 'line-to-gain'), result);
+  }
+  const interrupted = L.createSession({}, index, now,
+    [...successes(8), row(12), row(13), row(14, 'retryCorrect'), row(15), row(16)]);
+  assert.equal(L.challengeStateFor(interrupted, 'line-to-gain').preference, 'downshifted');
+});
+
+test('retained and index-only failures obey the same final twelve-result support window', () => {
+  const failure = row(0, 'secondMiss');
+  const index = { 'line-to-gain': { independent: {
+    completedAt: failure.completedAt, resolution: failure.resolution,
+  } } };
+  // No pair of retries within three results and no three consecutive successes:
+  // only an in-window earlier second miss can keep this sequence downshifted.
+  const mixed = Array.from({ length: 12 }, (_, i) => row(i + 1,
+    i % 3 === 0 ? 'retryCorrect' : 'firstTryCorrect'));
+  for (const count of [11, 12]) {
+    const newer = mixed.slice(0, count);
+    const baseline = state(newer);
+    assert.equal(baseline.preference, 'initial');
+    const omitted = L.challengeStateFor(L.createSession({}, index, now, newer), 'line-to-gain');
+    const retained = L.challengeStateFor(L.createSession({}, index, now, [failure, ...newer]), 'line-to-gain');
+    assert.deepEqual(omitted, retained, `newer rows=${count}`);
+    assert.equal(omitted.preference, count === 11 ? 'downshifted' : 'initial');
+    assert.equal(omitted.guided, count === 11);
+    if (count === 12) assert.deepEqual(omitted, baseline);
+  }
 });

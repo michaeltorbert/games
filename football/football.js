@@ -1,4 +1,4 @@
-const GAME_VERSION = '1.31.0';
+const GAME_VERSION = '1.31.1';
 let prevPlayerScore = -1, prevOpponentScore = -1;
 let playerRunTimer = 0, playerCelebrateTimer = 0, playerCelebrateDelayTimer = 0;
 const EZ = 5;
@@ -4906,13 +4906,21 @@ function buildCoachReport() {
   add('Read today', literacyRead.find(item => !usedConcepts.has(item.concept)));
   add(rows.length ? 'Practice next' : 'Building today', literacyNeed.find(item => !usedConcepts.has(item.concept)));
   const challengeWork = learningSession?.currentChallengeEvidence || [];
-  const stretchWork = challengeWork.find(row =>
-    FOOTBALL_CONTEXTUAL_QUESTIONS.CHALLENGE_MAP[row.familyId]?.role === 'stretch');
+  const stretchWork = challengeWork.filter(row =>
+    FOOTBALL_CONTEXTUAL_QUESTIONS.CHALLENGE_MAP[row.familyId]?.role === 'stretch')
+    .sort((a, b) => Date.parse(b.completedAt) - Date.parse(a.completedAt)
+      || JSON.stringify([b.gameId, b.playId]).localeCompare(JSON.stringify([a.gameId, a.playId])))[0];
   if (stretchWork) {
     const supported = stretchWork.attempts.some(a => a.support === 'guided') || stretchWork.resolution !== 'firstTryCorrect';
     const activity = stretchWork.concept === 'line-to-gain' ? 'missing-part equations' : 'drive totals';
     const existing = rows.findIndex(row => row.value === COACH_CONCEPT_LABELS[stretchWork.concept]);
-    rows.splice(existing >= 0 ? existing : 1, 1, { label: 'Practiced today', value: `${supported ? 'Practiced' : 'Tried'} ${activity}${supported ? ' with support' : ''}` });
+    // Keep unrelated practice needs within the two-row report. Prefer replacing
+    // this concept's row, then a strength/read row, or use an empty slot.
+    const replaceable = existing >= 0 ? existing : rows.findIndex(row =>
+      row.label !== 'Practice next' && row.label !== 'Building today');
+    const summary = { label: 'Practiced today', value: `${supported ? 'Practiced' : 'Tried'} ${activity}${supported ? ' with support' : ''}` };
+    if (replaceable >= 0) rows.splice(replaceable, 1, summary);
+    else if (rows.length < 2) rows.push(summary);
   }
   if (rows.length < 2) {
     rows.push({

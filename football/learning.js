@@ -125,13 +125,28 @@ const FOOTBALL_LEARNING = (() => {
 
   function challengeStateFor(session, concept) {
     const all = session.challengeEvidence.filter(row => row.concept === concept);
-    // Exact remainder checks are retained for refresh but cannot promote or recover.
+    // Prerequisite successes are neutral; their failures still request support.
     const rows = all.filter(row => challengeMeta(row).role !== 'prerequisite').slice(-CHALLENGE_POLICY.window);
+    const supportSequence = all.filter(row => challengeMeta(row).role !== 'prerequisite'
+      || row.resolution !== 'firstTryCorrect');
+    const indexed = session.historicalLastResolved[concept]?.independent;
+    const validIndex = indexed && indexed.resolvedAtMs <= session.nowMs
+      && session.nowMs - indexed.resolvedAtMs <= CHALLENGE_POLICY.days * 86400000;
+    // The capped journal may omit a historical failure. Replay that failure in
+    // time order before applying the same window cap as retained evidence.
+    if (validIndex && indexed.resolution === 'secondMiss' && !all.some(row =>
+      Date.parse(row.completedAt) === indexed.resolvedAtMs && row.resolution === indexed.resolution)) {
+      const next = supportSequence.findIndex(row => Date.parse(row.completedAt) > indexed.resolvedAtMs);
+      supportSequence.splice(next < 0 ? supportSequence.length : next, 0, {
+        completedAt: new Date(indexed.resolvedAtMs).toISOString(), resolution: 'secondMiss',
+      });
+    }
+    const supportRows = supportSequence.slice(-CHALLENGE_POLICY.window);
     let downshift = false;
     let recovery = 0;
-    rows.forEach((row, i) => {
+    supportRows.forEach((row, i) => {
       const trigger = row.resolution === 'secondMiss'
-        || (row.resolution === 'retryCorrect' && rows.slice(Math.max(0, i - 2), i + 1).filter(r => r.resolution === 'retryCorrect').length >= 2);
+        || (row.resolution === 'retryCorrect' && supportRows.slice(Math.max(0, i - 2), i + 1).filter(r => r.resolution === 'retryCorrect').length >= 2);
       if (trigger) { downshift = true; recovery = 0; }
       else if (downshift) {
         recovery = row.resolution === 'firstTryCorrect' ? recovery + 1 : 0;
@@ -146,12 +161,10 @@ const FOOTBALL_LEARNING = (() => {
       && firsts.filter(row => challengeMeta(row).role === 'core' && row.attempts[0].support !== 'guided').length >= 3;
     let stretchRun = 0;
     for (let i = all.length - 1; i >= 0 && challengeMeta(all[i]).role === 'stretch'; i--) stretchRun++;
-    const latest = rows.at(-1);
-    const indexed = session.historicalLastResolved[concept]?.independent;
-    const indexedNewer = indexed && indexed.resolvedAtMs <= session.nowMs
-      && session.nowMs - indexed.resolvedAtMs <= CHALLENGE_POLICY.days * 86400000
-      && (!latest || indexed.resolvedAtMs > Date.parse(latest.completedAt));
-    if (indexedNewer && indexed.resolution === 'secondMiss') downshift = true;
+    const latest = supportRows.at(-1);
+    const latestCommitted = all.at(-1);
+    const indexedNewer = validIndex
+      && (!latestCommitted || indexed.resolvedAtMs > Date.parse(latestCommitted.completedAt));
     return { preference: downshift ? 'downshifted' : promoted && !indexedNewer ? 'promoted' : 'initial',
       guided: downshift || latest?.resolution === 'retryCorrect' || Boolean(indexedNewer && indexed.resolution === 'retryCorrect'),
       refreshDue: stretchRun >= 4 };
@@ -446,13 +459,13 @@ const FOOTBALL_LEARNING = (() => {
         weight: Math.max(
           0.0001,
           (multiplier === 1 ? normalized : normalized * multiplier)
-            * (challengeMeta(entry) ? 1 : adaptiveNeedMultiplier(session, entry))
+            * adaptiveNeedMultiplier(session, entry)
             * (session.recentFamilyIdsByClass[entry.evidenceClass]?.includes(entry.familyId || entry.id) ? PROFILE.recencyMultiplier : 1)
         ),
       };
     });
-    // Redistribute each ladder's existing budget. Success cannot steal probability
-    // from literacy or multiply the old mastery suppression a second time.
+    // Redistribute each ladder's need-adjusted budget without applying mastery
+    // twice or changing another concept's probability through role preferences.
     for (const concept of ['line-to-gain', 'drive-distance']) {
       const group = weighted.filter(item => challengeMeta(item.entry)?.concept === concept);
       const budget = group.reduce((sum, item) => sum + item.weight, 0);
