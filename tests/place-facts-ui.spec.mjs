@@ -10,6 +10,7 @@ test('drive keeps practice controls visible, gives one atomic award, and preserv
  const errors=[];page.on('pageerror',e=>errors.push(e.message));await boot(page);
  const field=page.getByRole('progressbar',{name:'Touchdown drive'});
  await expect(field).toHaveAttribute('aria-valuenow','0');
+ await expect(page.locator('#facts-award')).toHaveText('5 yards first try without help; 1 otherwise.');
  for(const selector of ['#facts-equation','.facts-keypad','#facts-check','#facts-show']){
   expect(await page.locator(selector).evaluate(el=>{const r=el.getBoundingClientRect();return r.top>=0&&r.bottom<=innerHeight&&r.left>=0&&r.right<=innerWidth;}),selector).toBe(true);
  }
@@ -47,12 +48,12 @@ test('miss, voluntary help, automatic help and report completion all earn one ya
  }
 });
 
-for(const startingYards of [95,98])test(`touchdown from ${startingYards} yards celebrates only the live completion and supports reduced motion`,async({page})=>{
+for(const startingYards of [95,96,98])test(`touchdown from ${startingYards} yards celebrates only the live completion and supports reduced motion`,async({page})=>{
  await boot(page);
  const remaining=(startingYards+5)%100;
  await page.evaluate(({KEY,startingYards})=>{
   const a=PLACE_FACTS,s=a.create();
-  for(let i=0;i<(startingYards===95?19:22);i++){if(i>=19)a.show(s,s.attempt.id);a.answer(s,s.attempt.id,a.byId[s.attempt.factId].answer);if(s.session.completed>=s.session.target)a.restart(s,10);else a.next(s,s.attempt.id);}
+  for(let i=0;i<19+startingYards-95;i++){if(i>=19)a.show(s,s.attempt.id);a.answer(s,s.attempt.id,a.byId[s.attempt.factId].answer);if(s.session.completed>=s.session.target)a.restart(s,10);else a.next(s,s.attempt.id);}
   localStorage.setItem(KEY,JSON.stringify(s));
  },{KEY,startingYards});
  await page.reload();await expect(page.locator('#facts-yards')).toHaveText(`${startingYards} of 100 yards`);
@@ -62,7 +63,7 @@ for(const startingYards of [95,98])test(`touchdown from ${startingYards} yards c
  expect(await page.locator('.facts-ball').evaluate(el=>getComputedStyle(el).transitionProperty)).toBe('none');
  await expect(page.locator('#facts-touchdowns')).toHaveText('1 touchdown');await expect(page.locator('#facts-yards')).toHaveText(`${remaining} of 100 yards`);
  await expect(page.locator('#facts-award')).toHaveText('Touchdown!');await expect(page.locator('#facts-next')).toBeFocused();
- await expect(page.locator('#facts-feedback')).toContainText(remaining?'Touchdown! 3 yards into your next drive.':'Touchdown! Start your next drive.');
+ await expect(page.locator('#facts-feedback')).toContainText(remaining?`Touchdown! ${remaining} yard${remaining===1?'':'s'} into your next drive.`:'Touchdown! Start your next drive.');
  await expect(page.locator('#facts-feedback')).not.toContainText('0 yards into');
  for(const selector of ['.facts-drive','#facts-next'])expect(await page.locator(selector).evaluate(el=>{const r=el.getBoundingClientRect();return r.top>=0&&r.bottom<=innerHeight;}),selector).toBe(true);
  await page.emulateMedia({reducedMotion:'reduce'});
@@ -210,6 +211,28 @@ test('toggle-only report opening closes while its eligibility mutation waits for
  await page.evaluate(()=>window.releaseReportLock());await expect(page.locator('#facts-report')).toHaveAttribute('open','');
  expect((await snapshot(page)).attempt.eligible).toBe(false);
  await page.reload();await correct(page);expect((await snapshot(page)).facts['sub:7:5'].checks).toBe(0);
+});
+
+test('report stays closed during another locked action on eligible and warm prompts',async({page})=>{
+ await boot(page);
+ for(const warm of [false,true]){
+  await page.evaluate(({KEY,warm})=>{const s=PLACE_FACTS.create();s.attempt.eligible=!warm;localStorage.setItem(KEY,JSON.stringify(s));},{KEY,warm});
+  await page.reload();
+  await page.evaluate(()=>{
+   const original=navigator.locks.request.bind(navigator.locks);
+   navigator.locks.request=(key,fn)=>new Promise(resolve=>{window.releaseBusyLock=()=>{navigator.locks.request=original;return original(key,fn).then(resolve);};});
+  });
+  await page.locator('.facts-keypad').getByRole('button',{name:'3',exact:true}).click();await page.locator('#facts-check').click();
+  await expect(page.locator('#fact-practice')).toHaveAttribute('aria-busy','true');
+  await page.locator('#facts-report > summary').click();
+  const frames=await page.evaluate(async()=>{
+   const states=[];for(let i=0;i<5;i++){await new Promise(requestAnimationFrame);states.push({open:document.querySelector('#facts-report').open,supported:__factsTest.snapshot().attempt.rewardSupported});}return states;
+  });
+  expect(frames).toEqual(Array.from({length:5},()=>({open:false,supported:false})));
+  await page.evaluate(()=>window.releaseBusyLock());await settled(page);
+  await page.locator('#facts-report > summary').click();await expect(page.locator('#facts-report')).toHaveAttribute('open','');
+  expect((await snapshot(page)).attempt.rewardSupported).toBe(true);
+ }
 });
 
 test('stale-tab refresh closes an open report before showing a newer eligible attempt',async({page,context})=>{

@@ -45,7 +45,7 @@
     openingReport=true;const attempt=model.attempt;
     try{
       await change(()=>api.reportOpened(model,attempt.id));
-      if(active&&model.attempt===attempt&&(attempt.complete||!attempt.eligible))report.open=true;
+      if(active&&model.attempt===attempt&&(attempt.complete||(!attempt.eligible&&attempt.rewardSupported)))report.open=true;
     }finally{openingReport=false;}
   }
   summary.addEventListener('click',event=>{
@@ -146,8 +146,8 @@
     field.setAttribute('aria-valuenow',String(goal.yards));field.setAttribute('aria-valuetext',`${goal.yards} of 100 yards; ${touchdowns.textContent}`);
     ball.style.left=`${goal.yards}%`;
     drive.classList.toggle('facts-drive--touchdown',!!lastAward?.touchdown);
-    award.textContent=lastAward?.touchdown?'Touchdown!':lastAward?`+${lastAward.yards} yard${lastAward.yards===1?'':'s'}`:'+5 first try · +1 with help';
-    if(lastAward&&q.complete)feedback.textContent+=` +${lastAward.yards} yard${lastAward.yards===1?'':'s'}.${lastAward.touchdown?(goal.yards===0?' Touchdown! Start your next drive.':` Touchdown! ${goal.yards} yards into your next drive.`):''}`;
+    award.textContent=lastAward?.touchdown?'Touchdown!':lastAward?`+${lastAward.yards} yard${lastAward.yards===1?'':'s'}`:'5 yards first try without help; 1 otherwise.';
+    if(lastAward&&q.complete)feedback.textContent+=` +${lastAward.yards} yard${lastAward.yards===1?'':'s'}.${lastAward.touchdown?(goal.yards===0?' Touchdown! Start your next drive.':` Touchdown! ${goal.yards} yard${goal.yards===1?'':'s'} into your next drive.`):''}`;
     driveInfo.textContent=writable?'Your drive saves in this browser on this device. Starting a new session keeps your yards. Clearing browser data can remove them.':'Drive yards are unsaved and stay in memory for this visit.';
     next.hidden=!q.complete;next.textContent=done?'Practice again':'Next';
     recap.textContent=done?`Nice practice! ${model.session.completed} completed · ${model.session.firstTry} first try · ${model.session.helped} after another try or shown answer.`:'';
