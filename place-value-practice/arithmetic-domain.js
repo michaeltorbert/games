@@ -20,6 +20,7 @@ const PLACE_ARITHMETIC = (() => {
   // Fixed family-first mixing: basic facts occupy four of twelve slots. This
   // sequence never consumes or changes a place-value review/adaptation counter.
   const MIX = Object.freeze(['facts-add','facts-subtract','add-no-carry','add-carry','facts-add','facts-subtract','complete-ten','missing-addend','subtract-no-borrow','tens-minus-digit','three-addends','repeated-subtraction']);
+  const SCHEMA_VERSION = 2;
   const integer = n => Number.isSafeInteger(n) && n >= 0;
   const valid = (family, operands) => Object.hasOwn(FAMILIES, family) && Array.isArray(operands)
     && operands.length === (FAMILIES[family].size || 2) && operands.every(integer) && FAMILIES[family].valid(operands);
@@ -36,27 +37,37 @@ const PLACE_ARITHMETIC = (() => {
     return pools.get(family);
   }
   function draw(rng, length) { const n = Number(rng()); return Math.floor(Math.max(0,Math.min(.999999999, Number.isFinite(n) ? n : .5))*length); }
-  function question(sequence, rng = Math.random) {
-    const family = MIX[sequence % MIX.length], tuples = pool(family), operands = [...tuples[draw(rng,tuples.length)]];
+  const offsetValid = offset => integer(offset) && offset < MIX.length;
+  const slot = (sequence, startOffset) => (sequence % MIX.length + startOffset) % MIX.length;
+  function question(sequence, rng = Math.random, startOffset = 0) {
+    if (!offsetValid(startOffset)) throw new RangeError('Invalid arithmetic start offset');
+    const family = MIX[slot(sequence, startOffset)], tuples = pool(family), operands = [...tuples[draw(rng,tuples.length)]];
     const answer = FAMILIES[family].answer(operands), choices = [answer];
     for (const n of [answer-1,answer+1,answer-2,answer+2,answer-3,answer+3,0,100]) if (n >= 0 && n <= 100 && !choices.includes(n) && choices.length<4) choices.push(n);
     for(let i=choices.length-1;i>0;i--) { const j=draw(rng,i+1); [choices[i],choices[j]]=[choices[j],choices[i]]; }
     return { id: sequence, family, operands, choices, misses: [], complete: false };
   }
-  function create(target=10, rng=Math.random) { return { schemaVersion:1, sequence:0, target: [5,10,20,null].includes(target)?target:10, completed:0, firstTry:0, afterHelp:0, question:question(0,rng) }; }
+  function create(target=10, rng=Math.random, startOffset=0) { return { schemaVersion:SCHEMA_VERSION, startOffset, sequence:0, target: [5,10,20,null].includes(target)?target:10, completed:0, firstTry:0, afterHelp:0, question:question(0,rng,startOffset) }; }
+  // Continue after completed slots; an abandoned question does not consume a slot.
+  function restart(state, target=10, rng=Math.random) {
+    if (!state || !offsetValid(state.startOffset) || !integer(state.completed)) throw new RangeError('Invalid arithmetic restart position');
+    return create(target, rng, slot(state.completed, state.startOffset));
+  }
   function normalize(raw) {
-    if (!raw || typeof raw !== 'object' || raw.schemaVersion !== 1) return null;
+    if (!raw || typeof raw !== 'object' || ![1,SCHEMA_VERSION].includes(raw.schemaVersion)) return null;
+    const startOffset = raw.schemaVersion === 1 ? 0 : raw.startOffset;
+    if (!offsetValid(startOffset)) return null;
     if (![raw.sequence,raw.completed,raw.firstTry,raw.afterHelp].every(integer) || ![5,10,20,null].includes(raw.target)
       || raw.firstTry+raw.afterHelp !== raw.completed || (raw.target !== null && raw.completed > raw.target)) return null;
     const q=raw.question;
-    if (!q || q.id !== raw.sequence || !valid(q.family,q.operands) || q.family !== MIX[raw.sequence%MIX.length]
+    if (!q || q.id !== raw.sequence || !valid(q.family,q.operands) || q.family !== MIX[slot(raw.sequence,startOffset)]
       || typeof q.complete !== 'boolean' || !Array.isArray(q.choices) || q.choices.length !== 4 || new Set(q.choices).size !== 4
       || !q.choices.every(n=>integer(n)&&n<=100) || !q.choices.includes(FAMILIES[q.family].answer(q.operands))
       || !Array.isArray(q.misses) || new Set(q.misses).size !== q.misses.length
       || !q.misses.every(n=>q.choices.includes(n)&&n!==FAMILIES[q.family].answer(q.operands))
       || raw.completed !== raw.sequence + (q.complete ? 1 : 0)
       || (q.complete && (q.misses.length ? raw.afterHelp : raw.firstTry) < 1)) return null;
-    return { schemaVersion:1, sequence:raw.sequence, target:raw.target, completed:raw.completed, firstTry:raw.firstTry, afterHelp:raw.afterHelp,
+    return { schemaVersion:SCHEMA_VERSION, startOffset, sequence:raw.sequence, target:raw.target, completed:raw.completed, firstTry:raw.firstTry, afterHelp:raw.afterHelp,
       question:{id:q.id,family:q.family,operands:[...q.operands],choices:[...q.choices],misses:[...q.misses],complete:q.complete} };
   }
   function answer(state, value) {
@@ -68,12 +79,12 @@ const PLACE_ARITHMETIC = (() => {
   }
   function next(state,rng=Math.random) {
     if(!state.question.complete || (state.target !== null && state.completed >= state.target)) return false;
-    state.sequence++; state.question=question(state.sequence,rng); return true;
+    state.sequence++; state.question=question(state.sequence,rng,state.startOffset); return true;
   }
   function view(state) { const q=state.question, family=FAMILIES[q.family], result=family.answer(q.operands);
     return {family:q.family,prompt:family.text(q.operands)+(q.family==='complete-ten'||q.family==='missing-addend'?'':' = ?'),
       worked:q.family==='complete-ten'||q.family==='missing-addend'?`${q.operands[0]} + ${result} = ${q.operands[0]+result}`:`${family.text(q.operands)} = ${result}`,
       answer:result,source:family.source}; }
-  return Object.freeze({ FAMILIES,MIX,valid,question,create,normalize,answer,next,view });
+  return Object.freeze({ SCHEMA_VERSION,FAMILIES,MIX,valid,question,create,restart,normalize,answer,next,view });
 })();
 globalThis.PLACE_ARITHMETIC = PLACE_ARITHMETIC;
