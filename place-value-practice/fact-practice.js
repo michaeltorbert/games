@@ -13,6 +13,7 @@
   length.type='number';length.min='1';length.max='100';length.step='1';length.inputMode='numeric';length.value='10';length.id='facts-length';
   const lengthError=node('p');lengthError.id='facts-length-error';lengthError.setAttribute('role','alert');lengthError.hidden=true;length.setAttribute('aria-describedby',lengthError.id);
   length.addEventListener('input',()=>{length.removeAttribute('aria-invalid');lengthError.hidden=true;});
+  length.addEventListener('keydown',event=>{if(event.key==='Enter'&&!event.ctrlKey&&!event.metaKey&&!event.altKey){event.preventDefault();restartSession();}});
   const button=(text,fn,cls='button')=>{const b=node('button',text,cls);b.type='button';b.addEventListener('click',fn);return b;};
   const reset=button('Start new fact session',restartSession,'button button--quiet');label.append(length);setup.append(label,reset,lengthError);
   const count=node('p'),equation=node('h3');count.id='facts-count';equation.id='facts-equation';
@@ -21,10 +22,10 @@
   const touchdowns=node('span');touchdowns.id='facts-touchdowns';driveHeader.append(driveTitle);
   const field=node('div',null,'facts-field');field.setAttribute('role','progressbar');field.setAttribute('aria-labelledby',driveTitle.id);
   field.setAttribute('aria-valuemin','0');field.setAttribute('aria-valuemax','100');
-  const scenery=node('img',null,'facts-stadium');scenery.src='assets/touchdown-stadium-v1.png?v=1.6.0';scenery.alt='';scenery.width=2048;scenery.height=768;scenery.decoding='async';
+  const scenery=node('img',null,'facts-stadium');scenery.src='assets/touchdown-stadium-v1.webp?v=1.6.1';scenery.alt='';scenery.width=2048;scenery.height=768;scenery.decoding='async';
   const turf=node('div',null,'facts-turf');turf.setAttribute('aria-hidden','true');
   for(const mark of [0,25,50,75,100]){const line=node('span',String(mark),'facts-yard-line');line.style.left=`${mark}%`;turf.append(line);}
-  const ball=node('img',null,'facts-ball');ball.src='assets/touchdown-runner-v1.png?v=1.6.0';ball.alt='';ball.decoding='async';turf.append(ball);field.append(turf);
+  const ball=node('img',null,'facts-ball');ball.src='assets/touchdown-runner-v1.webp?v=1.6.1';ball.alt='';ball.decoding='async';turf.append(ball);field.append(turf);
   const driveCaption=node('div',null,'facts-drive-caption'),yards=node('strong'),milestone=node('span'),award=node('span');yards.id='facts-yards';milestone.id='facts-milestone';award.id='facts-award';driveCaption.append(yards,milestone);
   driveHeader.append(driveCaption);
   const rule=node('p','First try without help: 5 yards. Otherwise: 1 yard.','facts-rule');rule.id='facts-rule';
@@ -42,7 +43,8 @@
   const controls=node('div',null,'facts-controls');controls.append(check,show);
   const support=node('p');support.id='facts-support';
   const feedback=node('p');feedback.id='facts-feedback';feedback.setAttribute('role','status');
-  const recap=node('p');recap.id='facts-recap';recap.tabIndex=-1;
+  const recap=node('div');recap.id='facts-recap';recap.tabIndex=-1;
+  const recapText=node('p'),again=button('Practice again',restartSession,'button button--primary');again.id='facts-again';recap.append(recapText,again);
   const question=node('div',null,'facts-question');question.append(count,entry,support,feedback,recap);
   const dock=node('div',null,'facts-dock');dock.append(question,keypad,controls);
   const report=node('details');report.id='facts-report';const summary=node('summary','Grown-up report');
@@ -166,7 +168,8 @@
     count.textContent=done?'Session complete':`Question ${Math.min(model.session.completed+(q.complete?0:1),model.session.target)} of ${model.session.target}`;
     equation.textContent=`${api.equation(f)} =`;display.textContent=q.complete?String(f.answer):input||'…';
     for(const b of keypad.querySelectorAll('button'))b.disabled=q.complete;
-    check.disabled=q.complete;show.disabled=q.complete||q.helped;support.hidden=!q.helped;support.textContent=q.helped?api.help(f):'';
+    check.disabled=q.complete;show.disabled=q.complete||q.helped;support.hidden=!q.helped||done;support.textContent=q.helped?api.help(f):'';
+    keypad.hidden=done;controls.hidden=done;dock.classList.toggle('facts-dock--complete',done);
     feedback.textContent=q.complete?(q.helped?'You entered the shown answer.':q.misses?'You worked it out after another try.':'Correct.'):
       q.helped?'The answer is shown above. Enter it, then Submit.':q.misses?'Try again, or choose Show me.':'Enter your answer, then Submit.';
     const goal=api.drive(model);
@@ -180,8 +183,10 @@
     award.hidden=!lastAward;drive.classList.toggle('facts-drive--earned',!!lastAward);
     if(lastAward&&q.complete)feedback.textContent+=` +${lastAward.yards} yard${lastAward.yards===1?'':'s'}.${lastAward.touchdown?(goal.yards===0?' Touchdown! Start your next drive.':` Touchdown! ${goal.yards} yard${goal.yards===1?'':'s'} into your next drive.`):''}`;
     driveInfo.textContent=writable?'Your drive saves in this browser on this device. Starting a new session keeps your yards. Clearing browser data can remove them.':'Drive yards are unsaved and stay in memory for this visit.';
-    recap.hidden=!done;recap.textContent=done?`Nice practice! ${model.session.completed} completed. ${model.session.firstTry} first try. ${model.session.helped} after another try or shown answer. Start a new session when you are ready.`:'';
-    storage.textContent=[message,driveNotice].filter(Boolean).join(' ');renderReport();
+    recap.hidden=!done;recapText.textContent=done?`Nice practice! ${model.session.completed} completed. ${model.session.firstTry} first try. ${model.session.helped} after another try or shown answer.`:'';
+    const storageMessage=[message,driveNotice].filter(Boolean).join(' ');
+    if(storage.textContent!==storageMessage)storage.textContent=storageMessage;
+    renderReport();
     if(startTiming){invalidate();const token=renderToken,id=q.id;requestAnimationFrame(()=>requestAnimationFrame(()=>{
       if(active&&token===renderToken&&model.attempt.id===id&&!q.complete&&!q.helped&&q.firstCorrect===null&&equationVisible()&&!report.open){origin=performance.now();timingInvalid=false;}
     }));}

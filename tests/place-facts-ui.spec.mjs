@@ -39,6 +39,62 @@ test('numeric question count accepts exact counts, rejects invalid input, and st
  await page.reload();await page.clock.runFor(5000);expect((await snapshot(page)).session.completed).toBe(1);
 });
 
+test('desktop and ultrawide art preserves aspect ratio with a small decoded WebP payload',async({page})=>{
+ const loaded=[];page.on('response',response=>{if(/touchdown-.*\.(?:png|webp)/.test(response.url()))loaded.push(response);});
+ await boot(page);
+ for(const viewport of [{width:1536,height:1024},{width:3440,height:1440}]){
+  await page.setViewportSize(viewport);await page.locator('.facts-stadium').evaluate(img=>img.decode());await page.locator('.facts-ball').evaluate(img=>img.decode());
+  expect(await page.locator('.facts-stadium').evaluate(img=>({fit:getComputedStyle(img).objectFit,position:getComputedStyle(img).objectPosition,width:img.naturalWidth,height:img.naturalHeight}))).toEqual({fit:'cover',position:'50% 55%',width:2048,height:768});
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+  await correct(page);await autoNext(page);await expect(page.locator('#facts-answer')).toHaveText('…');await expect(page.locator('#facts-check')).toBeEnabled();
+  await page.screenshot({path:test.info().outputPath(`${viewport.width}-auto-next.png`)});
+ }
+ expect(loaded).toHaveLength(2);let bytes=0;
+ for(const response of loaded){expect(response.url()).toMatch(/\.webp\?v=1\.6\.1$/);bytes+=(await response.body()).length;}
+ expect(bytes).toBeLessThan(300000);
+});
+
+test('Enter starts an exact-count session and final recap offers an adjacent visible restart',async({page})=>{
+ await boot(page);const count=page.locator('#facts-length');const original=await snapshot(page);
+ await count.fill('101');await count.press('Enter');await expect(count).toHaveAttribute('aria-invalid','true');expect(await snapshot(page)).toEqual(original);
+ await count.fill('1');await count.press('Enter');await settled(page);expect((await snapshot(page)).session.target).toBe(1);
+ await page.locator('#facts-show').click();await correct(page);const done=await snapshot(page);
+ const again=page.getByRole('button',{name:'Practice again',exact:true});await expect(again).toBeVisible();await expect(page.locator('.facts-keypad')).toBeHidden();
+ expect(await again.evaluate(el=>{const r=el.getBoundingClientRect(),p=document.querySelector('#facts-recap').getBoundingClientRect();return r.height>=44&&r.width>=44&&r.top>=p.top&&r.bottom<=innerHeight&&r.left>=0&&r.right<=innerWidth;})).toBe(true);
+ await page.clock.runFor(5000);expect(await snapshot(page)).toEqual(done);
+ await again.click();await settled(page);const restarted=await snapshot(page);
+ expect(restarted.session.completed).toBe(0);expect(restarted.session.target).toBe(1);expect(restarted.drive).toEqual(done.drive);expect(restarted.attempt.id).toBe(done.attempt.id+1);
+ await expect(again).toBeHidden();await expect(page.locator('#facts-check')).toBeEnabled();await expect(page.locator('#facts-next')).toHaveCount(0);
+});
+
+test('automatic refresh does not repeat an unchanged stale-tab live announcement',async({page})=>{
+ await boot(page);
+ await page.evaluate(KEY=>{
+  window.staleAnnouncements=[];const status=document.querySelector('.facts-storage');
+  new MutationObserver(()=>window.staleAnnouncements.push(status.textContent)).observe(status,{childList:true,subtree:true,characterData:true});
+  const s=__factsTest.snapshot();PLACE_FACTS.answer(s,s.attempt.id,PLACE_FACTS.byId[s.attempt.factId].answer);localStorage.setItem(KEY,JSON.stringify(s));
+ },KEY);
+ await correct(page);await expect(page.locator('.facts-storage')).toContainText('another tab');
+ const remote=await page.evaluate(KEY=>{const s=JSON.parse(localStorage.getItem(KEY));PLACE_FACTS.next(s,s.attempt.id);localStorage.setItem(KEY,JSON.stringify(s));return s;},KEY);
+ await autoNext(page);expect(await snapshot(page)).toEqual(remote);
+ expect(await page.evaluate(()=>window.staleAnnouncements.filter(message=>message.includes('another tab')))).toEqual(['Fact progress changed in another tab. Please try again.']);
+ await correct(page);await expect(page.locator('.facts-storage')).toHaveText('');expect((await snapshot(page)).drive.totalYards).toBe(10);
+});
+
+test('a success timer that fires during a busy report lock reschedules one automatic next',async({page})=>{
+ await boot(page);await correct(page);const completed=await snapshot(page);
+ await page.evaluate(()=>{const request=navigator.locks.request.bind(navigator.locks);navigator.locks.request=(key,fn)=>new Promise(resolve=>{window.releaseBusyReport=()=>{navigator.locks.request=request;return request(key,fn).then(resolve);};});});
+ await page.locator('#facts-report > summary').click();await expect(page.locator('#fact-practice')).toHaveAttribute('aria-busy','true');
+ await page.clock.runFor(650);expect(await page.evaluate(()=>__factsTest.snapshot())).toEqual(completed);
+ expect(JSON.parse(await page.evaluate(()=>render_game_to_text())).autoAdvancePending).toBe(false);
+ await page.evaluate(()=>window.releaseBusyReport());await settled(page);
+ expect(JSON.parse(await page.evaluate(()=>render_game_to_text())).autoAdvancePending).toBe(true);
+ await page.clock.runFor(649);expect(await snapshot(page)).toEqual(completed);
+ await page.clock.runFor(1);await settled(page);const next=await snapshot(page);
+ expect(next.attempt.id).toBe(completed.attempt.id+1);expect(next.drive).toEqual(completed.drive);expect(next.serial).toBe(completed.serial);
+ await page.clock.runFor(2000);expect(await snapshot(page)).toEqual(next);await expect(page.locator('#facts-check')).toBeFocused();
+});
+
 test('correct completion saves once, holds success for 650ms and advances without another tap',async({page})=>{
  await boot(page);await enter(page,3);const missed=await snapshot(page);await page.clock.runFor(2000);expect(await snapshot(page)).toEqual(missed);
  await page.getByRole('button',{name:'Start new fact session'}).click();await settled(page);
@@ -227,7 +283,7 @@ test('toggle-only report exposure also marks a warm prompt as supported for driv
 
 test('fresh and legacy arithmetic choices default to basic facts without changing larger-number saves',async({page})=>{
  await page.goto('/place-value-practice/');
- await expect(page.locator('#game-version')).toHaveText('Version 1.6.0');
+ await expect(page.locator('#game-version')).toHaveText('Version 1.6.1');
  await page.getByRole('button',{name:'Arithmetic',exact:true}).click();
  await expect(page.locator('#fact-practice')).toBeVisible();
  expect((await snapshot(page)).attempt.factId).toBe('sub:7:5');
@@ -340,7 +396,7 @@ test('five and ten question sessions with touch and keyboard; report, focus, rec
   expect((await page.evaluate(()=>JSON.parse(render_game_to_text()))).submode).toBe('facts');
  }
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
- expect(await page.locator('#fact-practice button').evaluateAll(bs=>bs.every(b=>b.getBoundingClientRect().height>=44))).toBe(true);
+ expect(await page.locator('#fact-practice button:visible').evaluateAll(bs=>bs.every(b=>b.getBoundingClientRect().height>=44))).toBe(true);
  expect(await page.locator('#fact-practice input').count()).toBe(1);expect(errors).toEqual([]);
  await page.screenshot({path:test.info().outputPath('facts-recap.png')});
 });
