@@ -14,7 +14,7 @@
     "test:football:arithmetic": "node --test tests/football-contextual-questions.spec.mjs && playwright test tests/football-arithmetic-ui.spec.mjs",
     "test:place:arithmetic": "node --test tests/place-arithmetic-domain.spec.mjs && playwright test tests/place-arithmetic-ui.spec.mjs",
     "test:place:facts": "node --test tests/place-facts-domain.spec.mjs && playwright test tests/place-facts-ui.spec.mjs",
-    "test:place:release": "node --test tests/place-arithmetic-domain.spec.mjs tests/place-facts-domain.spec.mjs tests/game-registry.spec.mjs && playwright test tests/place-arithmetic-ui.spec.mjs tests/place-facts-ui.spec.mjs"
+    "test:place:release": "node --test tests/place-arithmetic-domain.spec.mjs tests/place-facts-domain.spec.mjs tests/game-registry.spec.mjs && playwright test tests/place-arithmetic-ui.spec.mjs tests/place-facts-ui.spec.mjs tests/place-updater.spec.mjs"
   },
   "devDependencies": {
     "@playwright/test": "1.56.1"

@@ -22,10 +22,10 @@
   const score=node('span');score.id='facts-score';driveHeader.append(driveTitle);
   const field=node('div',null,'facts-field');field.setAttribute('role','progressbar');field.setAttribute('aria-labelledby',driveTitle.id);
   field.setAttribute('aria-valuemin','0');field.setAttribute('aria-valuemax','100');
-  const scenery=node('img',null,'facts-stadium');scenery.src='assets/touchdown-stadium-v1.webp?v=1.6.2';scenery.alt='';scenery.width=2048;scenery.height=768;scenery.decoding='async';
+  const scenery=node('img',null,'facts-stadium');scenery.src='assets/touchdown-stadium-v1.webp?v=1.6.3';scenery.alt='';scenery.width=2048;scenery.height=768;scenery.decoding='async';
   const turf=node('div',null,'facts-turf');turf.setAttribute('aria-hidden','true');
   for(const mark of [0,25,50,75,100]){const line=node('span',String(mark),'facts-yard-line');line.style.left=`${mark}%`;turf.append(line);}
-  const ball=node('img',null,'facts-ball');ball.src='assets/touchdown-runner-v1.webp?v=1.6.2';ball.alt='';ball.decoding='async';turf.append(ball);field.append(turf);
+  const ball=node('img',null,'facts-ball');ball.src='assets/touchdown-runner-v1.webp?v=1.6.3';ball.alt='';ball.decoding='async';turf.append(ball);field.append(turf);
   const driveCaption=node('div',null,'facts-drive-caption'),yards=node('strong'),milestone=node('span'),award=node('span');yards.id='facts-yards';milestone.id='facts-milestone';award.id='facts-award';driveCaption.append(yards,milestone);
   driveHeader.append(driveCaption);
   const rule=node('p','First try: +5 yards. Wrong answer or help: −5 yards. Finish after help or a retry: +1 yard.','facts-rule');rule.id='facts-rule';

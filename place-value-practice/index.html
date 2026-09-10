@@ -1927,12 +1927,12 @@
     </form>
   </dialog>
 
-  <script src="arithmetic-domain.js?v=1.6.2"></script>
+  <script src="arithmetic-domain.js?v=1.6.3"></script>
   <script>
     "use strict";
 
+    const GAME_VERSION = "1.6.3";
     (() => {
-      const GAME_VERSION = "1.6.2";
       document.getElementById('game-version').textContent = `Version ${GAME_VERSION}`;
       const SCHEMA_VERSION = 1;
       const STORAGE_KEY = "place-value-practice:progress:v1";
@@ -6681,8 +6681,9 @@
       if (window.__placePracticeMode === 'place-value') window.__placeValueActivate();
     })();
   </script>
-  <script src="fact-practice-domain.js?v=1.6.2"></script>
-  <script src="fact-practice.js?v=1.6.2"></script>
-  <script src="arithmetic.js?v=1.6.2"></script>
+  <script src="fact-practice-domain.js?v=1.6.3"></script>
+  <script src="fact-practice.js?v=1.6.3"></script>
+  <script src="arithmetic.js?v=1.6.3"></script>
+  <script src="../shared/updater.js?v=1.6.3"></script>
 </body>
 </html>
