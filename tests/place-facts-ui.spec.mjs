@@ -50,7 +50,7 @@ test('desktop and ultrawide art preserves aspect ratio with a small decoded WebP
   await page.screenshot({path:test.info().outputPath(`${viewport.width}-auto-next.png`)});
  }
  expect(loaded).toHaveLength(2);let bytes=0;
- for(const response of loaded){expect(response.url()).toMatch(/\.webp\?v=1\.6\.2$/);bytes+=(await response.body()).length;}
+ for(const response of loaded){expect(response.url()).toMatch(/\.webp\?v=1\.6\.3$/);bytes+=(await response.body()).length;}
  expect(bytes).toBeLessThan(300000);
 });
 
@@ -322,7 +322,7 @@ test('toggle-only report exposure also marks a warm prompt as supported for driv
 
 test('fresh and legacy arithmetic choices default to basic facts without changing larger-number saves',async({page})=>{
  await page.goto('/place-value-practice/');
- await expect(page.locator('#game-version')).toHaveText('Version 1.6.2');
+ await expect(page.locator('#game-version')).toHaveText('Version 1.6.3');
  await page.getByRole('button',{name:'Arithmetic',exact:true}).click();
  await expect(page.locator('#fact-practice')).toBeVisible();
  expect((await snapshot(page)).attempt.factId).toBe('sub:7:5');
