@@ -50,7 +50,7 @@ test('desktop and ultrawide art preserves aspect ratio with a small decoded WebP
   await page.screenshot({path:test.info().outputPath(`${viewport.width}-auto-next.png`)});
  }
  expect(loaded).toHaveLength(2);let bytes=0;
- for(const response of loaded){expect(response.url()).toMatch(/\.webp\?v=1\.6\.1$/);bytes+=(await response.body()).length;}
+ for(const response of loaded){expect(response.url()).toMatch(/\.webp\?v=1\.6\.2$/);bytes+=(await response.body()).length;}
  expect(bytes).toBeLessThan(300000);
 });
 
@@ -148,7 +148,7 @@ test('drive keeps practice controls visible, gives one atomic award, and preserv
  const errors=[];page.on('pageerror',e=>errors.push(e.message));await boot(page);
  const field=page.getByRole('progressbar',{name:'Touchdown drive'});
  await expect(field).toHaveAttribute('aria-valuenow','0');
- await expect(page.locator('#facts-rule')).toHaveText('First try without help: 5 yards. Otherwise: 1 yard.');
+ await expect(page.locator('#facts-rule')).toHaveText('First try: +5 yards. Wrong answer or help: −5 yards. Finish after help or a retry: +1 yard.');
  for(const selector of ['#facts-equation','.facts-keypad','#facts-check','#facts-show']){
   expect(await page.locator(selector).evaluate(el=>{const r=el.getBoundingClientRect();return r.top>=0&&r.bottom<=innerHeight&&r.left>=0&&r.right<=innerWidth;}),selector).toBe(true);
  }
@@ -171,6 +171,7 @@ test('drive keeps practice controls visible, gives one atomic award, and preserv
 
 test('miss, voluntary help, automatic help and report completion all earn one yard without learning cross-credit',async({page})=>{
  await boot(page);let total=0;
+ await expect(page.getByRole('button',{name:'Help me',exact:true})).toBeVisible();
  for(const kind of ['miss','voluntary','automatic','report']){
   await page.getByRole('button',{name:'Start new fact session'}).click();const s=await snapshot(page);
   const answer=await page.evaluate(()=>PLACE_FACTS.byId[__factsTest.snapshot().attempt.factId].answer);
@@ -178,6 +179,7 @@ test('miss, voluntary help, automatic help and report completion all earn one ya
   if(kind==='automatic')await enter(page,(answer+2)%19);
   if(kind==='voluntary')await page.locator('#facts-show').click();
   if(kind==='report')await page.locator('#facts-report > summary').click();
+  if(kind!=='report')total=Math.max(0,total-(kind==='automatic'?10:5));
   expect((await snapshot(page)).drive.totalYards).toBe(total);
   await page.reload();expect((await snapshot(page)).drive.totalYards).toBe(total);
   await correct(page);total++;
@@ -186,12 +188,38 @@ test('miss, voluntary help, automatic help and report completion all earn one ya
  }
 });
 
+test('wrong answers and requested help visibly move the runner backwards and persist across reload',async({page})=>{
+ await boot(page);
+ for(let i=0;i<4;i++){await correct(page);await autoNext(page);}
+ const field=page.getByRole('progressbar',{name:'Touchdown drive'});
+ await expect(field).toHaveAttribute('aria-valuenow','20');
+ const start=await page.locator('.facts-ball').evaluate(el=>parseFloat(el.style.left));
+ const answer=await page.evaluate(()=>PLACE_FACTS.byId[__factsTest.snapshot().attempt.factId].answer);
+ await enter(page,(answer+1)%19);
+ await expect(page.locator('#facts-yards')).toHaveText('15 / 100 yards');
+ await expect(page.locator('#facts-feedback')).toContainText('−5 yards');
+ expect(await page.locator('#facts-award').evaluate(el=>{const a=el.getBoundingClientRect();return ['.facts-drive-header','.facts-drive-summary'].every(selector=>{const b=document.querySelector(selector).getBoundingClientRect();return a.right<=b.left||a.left>=b.right||a.bottom<=b.top||a.top>=b.bottom;});})).toBe(true);
+ await page.screenshot({path:test.info().outputPath('drive-wrong-setback.png')});
+ const missed=await page.locator('.facts-ball').evaluate(el=>parseFloat(el.style.left));expect(missed).toBeLessThan(start);
+ await page.reload();await expect(field).toHaveAttribute('aria-valuenow','15');
+ await page.getByRole('button',{name:'Help me',exact:true}).click();
+ await expect(page.locator('#facts-yards')).toHaveText('10 / 100 yards');
+ await expect(page.locator('#facts-feedback')).toContainText('−5 yards');
+ expect(await page.locator('#facts-award').evaluate(el=>{const a=el.getBoundingClientRect();return ['.facts-drive-header','.facts-drive-summary'].every(selector=>{const b=document.querySelector(selector).getBoundingClientRect();return a.right<=b.left||a.left>=b.right||a.bottom<=b.top||a.top>=b.bottom;});})).toBe(true);
+ await page.screenshot({path:test.info().outputPath('drive-help-setback.png')});
+ expect(await page.locator('.facts-ball').evaluate(el=>parseFloat(el.style.left))).toBeLessThan(missed);
+ await page.evaluate(()=>document.querySelector('#facts-show').click());expect((await snapshot(page)).drive.totalYards).toBe(10);
+ await page.reload();await expect(field).toHaveAttribute('aria-valuenow','10');
+ await correct(page);await expect(page.locator('#facts-yards')).toHaveText('11 / 100 yards');
+ await expect(page.locator('#facts-score')).toHaveText('Score: 0');
+});
+
 for(const startingYards of [95,96,98])test(`touchdown from ${startingYards} yards celebrates only the live completion and supports reduced motion`,async({page})=>{
  await boot(page);
  const remaining=(startingYards+5)%100;
  await page.evaluate(({KEY,startingYards})=>{
   const a=PLACE_FACTS,s=a.create();
-  for(let i=0;i<19+startingYards-95;i++){if(i>=19)a.show(s,s.attempt.id);a.answer(s,s.attempt.id,a.byId[s.attempt.factId].answer);if(s.session.completed>=s.session.target)a.restart(s,10);else a.next(s,s.attempt.id);}
+  for(let i=0;i<19+startingYards-95;i++){if(i>=19)a.reportOpened(s,s.attempt.id);a.answer(s,s.attempt.id,a.byId[s.attempt.factId].answer);if(s.session.completed>=s.session.target)a.restart(s,10);else a.next(s,s.attempt.id);}
   localStorage.setItem(KEY,JSON.stringify(s));
  },{KEY,startingYards});
  await page.reload();await expect(page.locator('#facts-yards')).toHaveText(`${startingYards} / 100 yards`);
@@ -199,8 +227,8 @@ for(const startingYards of [95,96,98])test(`touchdown from ${startingYards} yard
  await page.emulateMedia({reducedMotion:'no-preference'});await correct(page,true);
  await expect(page.locator('.facts-drive')).toHaveClass(/facts-drive--touchdown/);
  expect(await page.locator('.facts-ball').evaluate(el=>getComputedStyle(el).transitionProperty)).toBe('none');
- await expect(page.locator('#facts-touchdowns')).toHaveText('1 touchdown');await expect(page.locator('#facts-yards')).toHaveText(`${remaining} / 100 yards`);
- await expect(page.locator('#facts-award')).toHaveText('Touchdown!');await expect(page.locator('#facts-check')).toBeDisabled();
+ await expect(page.locator('#facts-score')).toHaveText('Score: 6');await expect(page.locator('#facts-yards')).toHaveText(`${remaining} / 100 yards`);
+ await expect(page.locator('#facts-award')).toHaveText('Touchdown! +6 points');await expect(page.locator('#facts-check')).toBeDisabled();
  await expect(page.locator('#facts-feedback')).toContainText(remaining?`Touchdown! ${remaining} yard${remaining===1?'':'s'} into your next drive.`:'Touchdown! Start your next drive.');
  await expect(page.locator('#facts-feedback')).not.toContainText('0 yards into');
  for(const selector of ['.facts-drive','#facts-check'])expect(await page.locator(selector).evaluate(el=>{const r=el.getBoundingClientRect();return r.top>=0&&r.bottom<=innerHeight;}),selector).toBe(true);
@@ -210,8 +238,8 @@ for(const startingYards of [95,96,98])test(`touchdown from ${startingYards} yard
  await page.screenshot({path:test.info().outputPath('drive-touchdown.png')});
  const bytes=await page.evaluate(k=>localStorage.getItem(k),KEY);await page.reload();
  expect(await page.evaluate(k=>localStorage.getItem(k),KEY)).toBe(bytes);await expect(page.locator('.facts-drive')).not.toHaveClass(/facts-drive--touchdown/);
- await expect(page.locator('#facts-award')).not.toHaveText('Touchdown!');await expect(page.locator('#facts-feedback')).not.toContainText('Touchdown!');
- await expect(page.getByRole('progressbar',{name:'Touchdown drive'})).toHaveAttribute('aria-valuetext',`${remaining} of 100 yards; 1 touchdown`);
+ await expect(page.locator('#facts-award')).not.toHaveText('Touchdown! +6 points');await expect(page.locator('#facts-feedback')).not.toContainText('Touchdown!');
+ await expect(page.getByRole('progressbar',{name:'Touchdown drive'})).toHaveAttribute('aria-valuetext',`${remaining} of 100 yards; Score: 6`);
  await page.emulateMedia({reducedMotion:'no-preference'});
  expect(await page.locator('.facts-ball').evaluate(el=>getComputedStyle(el).transitionProperty)).toBe('left');
 });
@@ -283,7 +311,7 @@ test('toggle-only report exposure also marks a warm prompt as supported for driv
 
 test('fresh and legacy arithmetic choices default to basic facts without changing larger-number saves',async({page})=>{
  await page.goto('/place-value-practice/');
- await expect(page.locator('#game-version')).toHaveText('Version 1.6.1');
+ await expect(page.locator('#game-version')).toHaveText('Version 1.6.2');
  await page.getByRole('button',{name:'Arithmetic',exact:true}).click();
  await expect(page.locator('#fact-practice')).toBeVisible();
  expect((await snapshot(page)).attempt.factId).toBe('sub:7:5');
