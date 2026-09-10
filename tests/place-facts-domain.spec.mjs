@@ -49,14 +49,51 @@ test('drive survives abandonment and sessions; touchdowns derive with overflow a
  for(let i=0;i<19;i++){finish(s);advance(s);}
  assert.equal(s.drive.totalYards,95);
  const before=s.drive.totalYards;A.restart(s,5);assert.equal(s.drive.totalYards,before);
- for(let i=0;i<3;i++){A.show(s,s.attempt.id);finish(s);advance(s);}
+ for(let i=0;i<3;i++){A.reportOpened(s,s.attempt.id);finish(s);advance(s);}
  assert.deepEqual(A.drive(s),{totalYards:98,yards:98,touchdowns:0});
  finish(s);assert.deepEqual(A.drive(s),{totalYards:103,yards:3,touchdowns:1});
  s=A.normalize(copy(s));A.restart(s,10);
  for(let i=0;i<19;i++){finish(s);advance(s);}
- A.show(s,s.attempt.id);finish(s);advance(s);A.show(s,s.attempt.id);finish(s);
+ A.reportOpened(s,s.attempt.id);finish(s);advance(s);A.reportOpened(s,s.attempt.id);finish(s);
  assert.deepEqual(A.drive(s),{totalYards:200,yards:0,touchdowns:2});
  const totals=copy(s.drive);A.restart(s,5);assert.deepEqual(s.drive,totals);
+});
+
+test('misses persist five-yard setbacks and automatic support never adds a second setback',()=>{
+ let s=A.create();for(let i=0;i<4;i++){finish(s);advance(s);}
+ const id=s.attempt.id,wrong=(A.byId[s.attempt.factId].answer+1)%19;
+ assert.equal(s.drive.totalYards,20);
+ A.answer(s,id,wrong);assert.equal(s.drive.totalYards,15);assert.equal(s.attempt.helped,false);
+ s=A.normalize(copy(s));assert.ok(s);assert.equal(s.drive.totalYards,15);
+ A.answer(s,id,wrong);assert.equal(s.drive.totalYards,10);assert.equal(s.attempt.helped,true);
+ const supported=copy(s);assert.equal(A.show(s,id),false);assert.deepEqual(s,supported);
+ finish(s);assert.equal(s.drive.totalYards,11);assert.deepEqual(A.normalize(copy(s)),s);
+});
+
+test('voluntary help charges once; stale, completed and invalid actions cannot move the drive',()=>{
+ let s=A.create();for(let i=0;i<4;i++){finish(s);advance(s);}
+ const id=s.attempt.id,before=copy(s);
+ assert.equal(A.show(s,id-1),false);assert.equal(A.answer(s,id,19),false);assert.deepEqual(s,before);
+ assert.equal(A.show(s,id),true);assert.equal(s.drive.totalYards,15);
+ s=A.normalize(copy(s));const shown=copy(s);
+ assert.equal(A.show(s,id),false);assert.deepEqual(s,shown);
+ finish(s);assert.equal(s.drive.totalYards,16);const done=copy(s);
+ assert.equal(A.show(s,id),false);assert.equal(A.answer(s,id,0),false);assert.deepEqual(s,done);
+ advance(s);const next=copy(s);assert.equal(A.show(s,id),false);assert.deepEqual(s,next);
+ const total=s.drive.totalYards;A.reportOpened(s,s.attempt.id);assert.equal(s.drive.totalYards,total);
+ finish(s);assert.equal(s.drive.totalYards,total+1);
+});
+
+test('setbacks clamp at the current drive start and preserve every banked touchdown',()=>{
+ for(const touchdowns of [0,1,2])for(const action of ['miss','help']){
+  let s=A.create();for(let i=0;i<touchdowns*20;i++){finish(s);advance(s);}
+  for(let i=0;i<3;i++){A.reportOpened(s,s.attempt.id);finish(s);advance(s);}
+  assert.equal(A.drive(s).yards,3);
+  if(action==='miss')A.answer(s,s.attempt.id,(A.byId[s.attempt.factId].answer+1)%19);else A.show(s,s.attempt.id);
+  assert.deepEqual(A.drive(s),{totalYards:touchdowns*100,yards:0,touchdowns});
+  s=A.normalize(copy(s));assert.ok(s);assert.equal(A.drive(s).touchdowns,touchdowns);
+  finish(s);assert.deepEqual(A.drive(s),{totalYards:touchdowns*100+1,yards:1,touchdowns});
+ }
 });
 
 test('schema 1 migration preserves evidence with no retroactive awards and conservative unfinished report exposure',()=>{

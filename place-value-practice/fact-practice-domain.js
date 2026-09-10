@@ -81,7 +81,15 @@
     const q=s.attempt;if(q.id!==id||q.complete)return false;
     q.eligible=false;q.firstMs=null;q.rewardSupported=true;return true;
   }
+  function loseYards(s) {
+    // Completed touchdowns are banked; only the current drive moves backward.
+    s.drive.totalYards-=Math.min(5,s.drive.totalYards%100);
+  }
   function show(s,id) {
+    const q=s.attempt;if(q.id!==id||q.complete||q.helped)return false;
+    loseYards(s);return exposeHelp(s,id);
+  }
+  function exposeHelp(s,id) {
     const q=s.attempt;if(q.id!==id||q.complete||q.helped)return false;
     q.helped=true;q.firstMs=null;q.rewardSupported=true;const f=byId[q.factId];
     s.families[f.family].exposedAt=other(s,f.family);
@@ -93,7 +101,7 @@
     const q=s.attempt;if(q.id!==id||q.complete||!integer(value,18)||s.serial>=LIMIT-60)return false;
     const f=byId[q.factId],r=s.facts[f.id],correct=value===f.answer;
     if(q.firstCorrect===null){q.firstCorrect=correct;q.firstMs=!q.helped&&sample(ms)?ms:null;}
-    if(!correct){q.misses=Math.min(99,q.misses+1);retry(s,f);if(q.misses>=2)show(s,id);return true;}
+    if(!correct){loseYards(s);q.misses=Math.min(99,q.misses+1);retry(s,f);if(q.misses>=2)exposeHelp(s,id);return true;}
     q.complete=true;s.serial++;s.families[f.family].completed++;r.completed++;
     s.session.completed++;const unsupported=q.misses===0&&!q.helped;
     // Motivation follows completion, not spacing eligibility, speed, or check credit.
