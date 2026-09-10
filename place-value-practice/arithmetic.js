@@ -101,6 +101,8 @@
   // Changing length applies only when starting a new session, preserving an active attempt.
   next.addEventListener('click',()=>{if(model.target!==null&&model.completed>=model.target)fresh();else {const q=model.question;change(()=>model.question===q && api.next(model));}});
   const placeText=window.render_game_to_text;
+  const placeAdvance=window.advanceTime;
+  window.advanceTime=milliseconds=>window.__placePracticeMode==='arithmetic'&&submode==='facts'?PLACE_FACT_UI.advanceTime(milliseconds):placeAdvance(milliseconds);
   function mode(value, persist=true) {
     window.__placePracticeMode=value;
     if(persist)try{localStorage.setItem(MODE_KEY,value);}catch{}

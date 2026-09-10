@@ -6,6 +6,105 @@ const copy=s=>JSON.parse(JSON.stringify(s));
 const finish=(s,ms=null)=>A.answer(s,s.attempt.id,A.byId[s.attempt.factId].answer,ms);
 const advance=s=>s.session.completed>=s.session.target?A.restart(s,10):A.next(s,s.attempt.id);
 
+test('every whole question count from one to one hundred round-trips without schema churn',()=>{
+ assert.equal(A.create().session.target,10);
+ for(let target=1;target<=100;target++){
+  const s=A.create(target);assert.equal(s.schemaVersion,2);assert.equal(s.session.target,target);
+  assert.deepEqual(A.normalize(copy(s)),s);finish(s);assert.deepEqual(A.normalize(copy(s)),s);
+  const total=s.drive.totalYards,facts=copy(s.facts);assert.equal(A.restart(s,target),true);
+  assert.equal(s.session.target,target);assert.equal(s.drive.totalYards,total);
+  for(const id of Object.keys(facts))assert.deepEqual(s.facts[id].history,facts[id].history);
+ }
+ for(const target of [0,-1,101,1.5,NaN,Infinity,'7',null,undefined]){
+  const s=A.create(7),before=copy(s);assert.equal(A.restart(s,target),false);assert.deepEqual(s,before);
+  assert.equal(A.create(target).session.target,10);const bad=copy(s);bad.session.target=target;assert.equal(A.normalize(bad),null);
+ }
+ for(const schemaVersion of [1,2])for(const target of [5,10]){const s=A.create(target);s.schemaVersion=schemaVersion;if(schemaVersion===1){delete s.drive;delete s.attempt.rewardSupported;}const restored=A.normalize(s);assert.ok(restored);assert.equal(restored.session.target,target);}
+ const full=A.create(100);for(let i=0;i<100;i++){finish(full);if(i<99)assert.equal(A.next(full,full.attempt.id),true);}
+ assert.equal(full.session.completed,100);assert.equal(A.next(full,full.attempt.id),false);assert.deepEqual(A.normalize(copy(full)),full);
+});
+
+test('drive awards exactly once at completion, with independent reward and learning classifications',()=>{
+ for(const kind of ['first','warm','miss','voluntary','automatic','report']){
+  const s=A.create(),id=s.attempt.id,answer=A.byId[s.attempt.factId].answer;
+  if(kind==='warm')s.attempt.eligible=false;
+  if(kind==='miss'||kind==='automatic')A.answer(s,id,(answer+1)%19);
+  if(kind==='automatic')A.answer(s,id,(answer+2)%19);
+  if(kind==='voluntary')A.show(s,id);
+  if(kind==='report')A.reportOpened(s,id);
+  assert.equal(s.drive.totalYards,0,`${kind}: no pre-completion award`);
+  finish(s,1000);const expected=['first','warm'].includes(kind)?5:1;
+  assert.equal(s.drive.totalYards,expected,kind);
+  const saved=copy(s);assert.equal(finish(s),false);assert.deepEqual(s,saved);
+  assert.deepEqual(A.normalize(saved),s);
+  assert.equal(s.facts[s.attempt.factId].checks,kind==='first'?1:0);
+  if(kind==='report'){assert.equal(s.session.firstTry,1);assert.equal(s.attempt.helped,false);}
+  const restored=A.normalize(saved);assert.equal(finish(restored),false);assert.equal(restored.drive.totalYards,expected);
+  assert.equal(A.answer(restored,id+1,answer),false);
+ }
+});
+
+test('drive survives abandonment and sessions; touchdowns derive with overflow and subsequent rewards',()=>{
+ let s=A.create(5);
+ for(let i=0;i<19;i++){finish(s);advance(s);}
+ assert.equal(s.drive.totalYards,95);
+ const before=s.drive.totalYards;A.restart(s,5);assert.equal(s.drive.totalYards,before);
+ for(let i=0;i<3;i++){A.show(s,s.attempt.id);finish(s);advance(s);}
+ assert.deepEqual(A.drive(s),{totalYards:98,yards:98,touchdowns:0});
+ finish(s);assert.deepEqual(A.drive(s),{totalYards:103,yards:3,touchdowns:1});
+ s=A.normalize(copy(s));A.restart(s,10);
+ for(let i=0;i<19;i++){finish(s);advance(s);}
+ A.show(s,s.attempt.id);finish(s);advance(s);A.show(s,s.attempt.id);finish(s);
+ assert.deepEqual(A.drive(s),{totalYards:200,yards:0,touchdowns:2});
+ const totals=copy(s.drive);A.restart(s,5);assert.deepEqual(s.drive,totals);
+});
+
+test('schema 1 migration preserves evidence with no retroactive awards and conservative unfinished report exposure',()=>{
+ for(const state of ['fresh','warm','miss','shown','complete']){
+  const original=A.create();
+  if(state==='warm')A.reportOpened(original,original.attempt.id);
+  if(state==='miss')A.answer(original,original.attempt.id,3);
+  if(state==='shown')A.show(original,original.attempt.id);
+  if(state==='complete')finish(original,1000);
+  const legacy=copy(original);legacy.schemaVersion=1;delete legacy.drive;delete legacy.attempt.rewardSupported;
+  const restored=A.normalize(legacy);assert.ok(restored,state);assert.equal(restored.schemaVersion,2);assert.equal(restored.drive.totalYards,0);
+  assert.deepEqual(restored.facts,legacy.facts);assert.deepEqual(restored.families,legacy.families);assert.deepEqual(restored.session,legacy.session);
+  if(state==='complete'){assert.equal(finish(restored),false);assert.equal(restored.drive.totalYards,0);}
+  else{finish(restored);assert.equal(restored.drive.totalYards,state==='fresh'?5:1);}
+  assert.ok(A.normalize(copy(restored)));
+ }
+});
+
+test('invalid drive metadata repairs alone, future schemas fail closed, and reward totals stay bounded',()=>{
+ const s=A.create();finish(s);
+ for(const value of [undefined,null,-1,1.5,NaN,Infinity,'5',Number.MAX_SAFE_INTEGER,6]){
+  const raw=copy(s);raw.drive={totalYards:value};assert.equal(A.driveNeedsRepair(raw),true);
+  const restored=A.normalize(raw);assert.ok(restored);assert.equal(restored.drive.totalYards,0);
+  assert.deepEqual(restored.facts,s.facts);assert.deepEqual(restored.session,s.session);
+ }
+ const missing=copy(s);delete missing.drive;assert.ok(A.normalize(missing));assert.equal(A.driveNeedsRepair(missing),true);
+ const future=copy(s);future.schemaVersion=3;assert.equal(A.normalize(future),null);
+ const malformedFlag=A.create();delete malformedFlag.attempt.rewardSupported;
+ const repaired=A.normalize(malformedFlag);finish(repaired);assert.equal(repaired.drive.totalYards,1);
+ const limit=A.create();limit.serial=A.LIMIT-60;limit.drive.totalYards=limit.serial*5;
+ assert.equal(finish(limit),false);assert.equal(Number.isSafeInteger(limit.drive.totalYards),true);
+});
+
+test('reward totals and report-only reward flag never influence scheduling or learning evidence',()=>{
+ const left=A.create(),right=A.create();
+ for(let i=0;i<250;i++){
+  // Vary only motivational state, then compare all instructional consumers.
+  right.drive.totalYards=0;right.attempt.rewardSupported=true;
+  assert.deepEqual(A.select(left),A.select(right));
+  if(i%7===0){A.show(left,left.attempt.id);A.show(right,right.attempt.id);}
+  else if(i%5===0){const wrong=(A.byId[left.attempt.factId].answer+1)%19;A.answer(left,left.attempt.id,wrong,1000);A.answer(right,right.attempt.id,wrong,1000);}
+  finish(left,1500);finish(right,1500);
+  assert.deepEqual(left.facts,right.facts);assert.deepEqual(left.families,right.families);assert.deepEqual(left.session,right.session);
+  assert.deepEqual(A.report(left),A.report(right));assert.equal(left.coverageCursor,right.coverageCursor);
+  advance(left);advance(right);
+ }
+});
+
 test('report exposure persists lost independent eligibility without wrong or helped evidence',()=>{
  let s=A.create();const id=s.attempt.id;assert.equal(s.attempt.factId,'sub:7:5');assert.equal(s.attempt.eligible,true);
  assert.equal(A.reportOpened(s,id+1),false);assert.equal(A.reportOpened(s,id),true);
@@ -134,7 +233,7 @@ test('timing samples enforce bounds, rounding, help exclusions and per-fact thre
 
 test('strict saves reject malformed counters, IDs, history, ticket and attempt fields; strip unknown fields',()=>{
  const s=A.create();finish(s,1000);
- const bad=[r=>r.schemaVersion=2,r=>r.serial=-1,r=>r.serial=A.LIMIT,r=>r.nonce=0,r=>r.coverageCursor=200,
+ const bad=[r=>r.schemaVersion=3,r=>r.serial=-1,r=>r.serial=A.LIMIT,r=>r.nonce=0,r=>r.coverageCursor=200,
   r=>r.attempt.factId='add:99:1',r=>r.attempt.misses=100,r=>r.attempt.firstMs=1,r=>r.attempt.complete=false,
   r=>r.facts['sub:7:5'].history[0].serial=2,r=>r.facts['sub:7:5'].history[0].outcome='mastered',
   r=>r.facts['sub:7:5'].ticket.kind='invented',r=>r.facts['sub:7:5'].ticket.dueOther=A.LIMIT,
