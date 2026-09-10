@@ -179,7 +179,7 @@
     field.setAttribute('aria-valuenow',String(goal.yards));field.setAttribute('aria-valuetext',`${goal.yards} of 100 yards; ${score.textContent}`);
     ball.style.left=`${goal.yards}%`;
     drive.classList.toggle('facts-drive--touchdown',!!lastAward?.touchdown);
-    const movement=lastAward?(lastAward.penalty?(lastAward.yards===0?'At the start of this drive':`−${Math.abs(lastAward.yards)} yards`):`+${lastAward.yards} yard${lastAward.yards===1?'':'s'}`):'';
+    const movement=lastAward?(lastAward.penalty?(lastAward.yards===0?'At the start of this drive':`−${Math.abs(lastAward.yards)} yard${Math.abs(lastAward.yards)===1?'':'s'}`):`+${lastAward.yards} yard${lastAward.yards===1?'':'s'}`):'';
     award.textContent=lastAward?.touchdown?'Touchdown! +6 points':movement;
     award.hidden=!lastAward;drive.classList.toggle('facts-drive--earned',!!lastAward);
     if(lastAward&&q.complete)feedback.textContent+=` +${lastAward.yards} yard${lastAward.yards===1?'':'s'}.${lastAward.touchdown?(goal.yards===0?' Touchdown! Start your next drive.':` Touchdown! ${goal.yards} yard${goal.yards===1?'':'s'} into your next drive.`):''}`;

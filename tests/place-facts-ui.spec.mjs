@@ -214,6 +214,17 @@ test('wrong answers and requested help visibly move the runner backwards and per
  await expect(page.locator('#facts-score')).toHaveText('Score: 0');
 });
 
+test('one-yard setback uses singular copy and zero-yard help stays observable',async({page})=>{
+ await boot(page);await page.getByRole('button',{name:'Help me',exact:true}).click();await correct(page);await autoNext(page);
+ await expect(page.locator('#facts-yards')).toHaveText('1 / 100 yards');
+ const answer=await page.evaluate(()=>PLACE_FACTS.byId[__factsTest.snapshot().attempt.factId].answer);
+ await enter(page,(answer+1)%19);await expect(page.locator('#facts-award')).toHaveText('−1 yard');
+ await expect(page.locator('#facts-feedback')).toContainText('−1 yard.');
+ await page.getByRole('button',{name:'Help me',exact:true}).click();await settled(page);
+ expect(await page.evaluate(()=>JSON.parse(render_game_to_text()).drive.lastAward)).toBe(0);
+ await page.reload();expect(await page.evaluate(()=>JSON.parse(render_game_to_text()).drive.lastAward)).toBe(null);
+});
+
 for(const startingYards of [95,96,98])test(`touchdown from ${startingYards} yards celebrates only the live completion and supports reduced motion`,async({page})=>{
  await boot(page);
  const remaining=(startingYards+5)%100;
