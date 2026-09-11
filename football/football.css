@@ -3569,6 +3569,22 @@ body::after {
   }
 }
 
+/* Keep the complete question and feedback controls clear of iPad Safari's
+   bottom chrome at the primary 1180 x 820 landscape target. */
+@media (hover: none) and (pointer: coarse) and (min-width: 1080px) and (max-height: 850px) and (orientation: landscape) {
+  #wrap:is([data-phase="question"], [data-phase="feedback"]) #field-stage {
+    padding-bottom: 48px;
+  }
+
+  #wrap:is([data-phase="question"], [data-phase="feedback"]) #field-wrap {
+    height: 220px;
+  }
+
+  #ui-desk:is([data-phase="question"], [data-phase="feedback"]) {
+    margin-top: -38px;
+  }
+}
+
 @media (max-width: 760px) {
   body {
     padding: 8px 8px 6px;
