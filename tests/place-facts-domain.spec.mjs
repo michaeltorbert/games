@@ -4,12 +4,13 @@ import '../place-value-practice/fact-practice-domain.js';
 const A=globalThis.PLACE_FACTS;
 const copy=s=>JSON.parse(JSON.stringify(s));
 const finish=(s,ms=null)=>A.answer(s,s.attempt.id,A.byId[s.attempt.factId].answer,ms);
-const advance=s=>s.session.completed>=s.session.target?A.restart(s,10):A.next(s,s.attempt.id);
+const resolveKick=s=>{if(A.pendingKick(s)){if(s.attempt.kind!=='extraPoint')A.next(s,s.attempt.id);finish(s);}};
+const advance=s=>{resolveKick(s);return A.sessionDone(s)?A.restart(s,10):A.next(s,s.attempt.id);};
 
 test('every whole question count from one to one hundred round-trips without schema churn',()=>{
  assert.equal(A.create().session.target,10);
  for(let target=1;target<=100;target++){
-  const s=A.create(target);assert.equal(s.schemaVersion,2);assert.equal(s.session.target,target);
+  const s=A.create(target);assert.equal(s.schemaVersion,3);assert.equal(s.session.target,target);
   assert.deepEqual(A.normalize(copy(s)),s);finish(s);assert.deepEqual(A.normalize(copy(s)),s);
   const total=s.drive.totalYards,facts=copy(s.facts);assert.equal(A.restart(s,target),true);
   assert.equal(s.session.target,target);assert.equal(s.drive.totalYards,total);
@@ -20,8 +21,8 @@ test('every whole question count from one to one hundred round-trips without sch
   assert.equal(A.create(target).session.target,10);const bad=copy(s);bad.session.target=target;assert.equal(A.normalize(bad),null);
  }
  for(const schemaVersion of [1,2])for(const target of [5,10]){const s=A.create(target);s.schemaVersion=schemaVersion;if(schemaVersion===1){delete s.drive;delete s.attempt.rewardSupported;}const restored=A.normalize(s);assert.ok(restored);assert.equal(restored.session.target,target);}
- const full=A.create(100);for(let i=0;i<100;i++){finish(full);if(i<99)assert.equal(A.next(full,full.attempt.id),true);}
- assert.equal(full.session.completed,100);assert.equal(A.next(full,full.attempt.id),false);assert.deepEqual(A.normalize(copy(full)),full);
+ const full=A.create(100);for(let i=0;i<100;i++){finish(full);if(i<99)assert.equal(advance(full),true);}
+ assert.equal(full.session.completed,100);resolveKick(full);assert.equal(A.next(full,full.attempt.id),false);assert.deepEqual(A.normalize(copy(full)),full);
 });
 
 test('drive awards exactly once at completion, with independent reward and learning classifications',()=>{
@@ -52,11 +53,11 @@ test('drive survives abandonment and sessions; touchdowns derive with overflow a
  for(let i=0;i<3;i++){A.reportOpened(s,s.attempt.id);finish(s);advance(s);}
  assert.deepEqual(A.drive(s),{totalYards:98,yards:98,touchdowns:0});
  finish(s);assert.deepEqual(A.drive(s),{totalYards:103,yards:3,touchdowns:1});
- s=A.normalize(copy(s));A.restart(s,10);
+ s=A.normalize(copy(s));resolveKick(s);A.restart(s,10);
  for(let i=0;i<19;i++){finish(s);advance(s);}
  A.reportOpened(s,s.attempt.id);finish(s);advance(s);A.reportOpened(s,s.attempt.id);finish(s);
  assert.deepEqual(A.drive(s),{totalYards:200,yards:0,touchdowns:2});
- const totals=copy(s.drive);A.restart(s,5);assert.deepEqual(s.drive,totals);
+ resolveKick(s);const totals=copy(s.drive);A.restart(s,5);assert.deepEqual(s.drive,totals);
 });
 
 test('misses persist five-yard setbacks and automatic support never adds a second setback',()=>{
@@ -104,7 +105,7 @@ test('schema 1 migration preserves evidence with no retroactive awards and conse
   if(state==='shown')A.show(original,original.attempt.id);
   if(state==='complete')finish(original,1000);
   const legacy=copy(original);legacy.schemaVersion=1;delete legacy.drive;delete legacy.attempt.rewardSupported;
-  const restored=A.normalize(legacy);assert.ok(restored,state);assert.equal(restored.schemaVersion,2);assert.equal(restored.drive.totalYards,0);
+  const restored=A.normalize(legacy);assert.ok(restored,state);assert.equal(restored.schemaVersion,3);assert.equal(restored.drive.totalYards,0);
   assert.deepEqual(restored.facts,legacy.facts);assert.deepEqual(restored.families,legacy.families);assert.deepEqual(restored.session,legacy.session);
   if(state==='complete'){assert.equal(finish(restored),false);assert.equal(restored.drive.totalYards,0);}
   else{finish(restored);assert.equal(restored.drive.totalYards,state==='fresh'?5:1);}
@@ -120,7 +121,7 @@ test('invalid drive metadata repairs alone, future schemas fail closed, and rewa
   assert.deepEqual(restored.facts,s.facts);assert.deepEqual(restored.session,s.session);
  }
  const missing=copy(s);delete missing.drive;assert.ok(A.normalize(missing));assert.equal(A.driveNeedsRepair(missing),true);
- const future=copy(s);future.schemaVersion=3;assert.equal(A.normalize(future),null);
+ const future=copy(s);future.schemaVersion=4;assert.equal(A.normalize(future),null);
  const malformedFlag=A.create();delete malformedFlag.attempt.rewardSupported;
  const repaired=A.normalize(malformedFlag);finish(repaired);assert.equal(repaired.drive.totalYards,1);
  const limit=A.create();limit.serial=A.LIMIT-60;limit.drive.totalYards=limit.serial*5;
@@ -138,7 +139,7 @@ test('reward totals and report-only reward flag never influence scheduling or le
   finish(left,1500);finish(right,1500);
   assert.deepEqual(left.facts,right.facts);assert.deepEqual(left.families,right.families);assert.deepEqual(left.session,right.session);
   assert.deepEqual(A.report(left),A.report(right));assert.equal(left.coverageCursor,right.coverageCursor);
-  advance(left);advance(right);
+  left.drive={totalYards:0,extraPoints:0,kicksResolved:0};right.drive={totalYards:0,extraPoints:0,kicksResolved:0};advance(left);advance(right);
  }
 });
 
@@ -270,7 +271,7 @@ test('timing samples enforce bounds, rounding, help exclusions and per-fact thre
 
 test('strict saves reject malformed counters, IDs, history, ticket and attempt fields; strip unknown fields',()=>{
  const s=A.create();finish(s,1000);
- const bad=[r=>r.schemaVersion=3,r=>r.serial=-1,r=>r.serial=A.LIMIT,r=>r.nonce=0,r=>r.coverageCursor=200,
+ const bad=[r=>r.schemaVersion=4,r=>r.serial=-1,r=>r.serial=A.LIMIT,r=>r.nonce=0,r=>r.coverageCursor=200,
   r=>r.attempt.factId='add:99:1',r=>r.attempt.misses=100,r=>r.attempt.firstMs=1,r=>r.attempt.complete=false,
   r=>r.facts['sub:7:5'].history[0].serial=2,r=>r.facts['sub:7:5'].history[0].outcome='mastered',
   r=>r.facts['sub:7:5'].ticket.kind='invented',r=>r.facts['sub:7:5'].ticket.dueOther=A.LIMIT,
@@ -296,4 +297,62 @@ test('make-ten support exposes its related within-ten family and numeric exhaust
  assert.equal(s.families['family:3:7:10'].exposedAt,A.other(s,'family:3:7:10'));assert.ok(A.normalize(copy(s)));
  const full=copy(s);full.serial=A.LIMIT-60;const before=copy(full);assert.equal(finish(full),false);assert.deepEqual(full,before);
  full.nonce=A.LIMIT;assert.equal(A.restart(full,10),false);
+});
+
+const touchdown=()=>{const s=A.create(20);for(let i=0;i<20;i++){finish(s);if(i<19)A.next(s,s.attempt.id);}return s;};
+test('a session-final touchdown persists exactly one bonus and blocks restart until it is answered',()=>{
+ let s=touchdown();assert.equal(A.score(s),6);assert.equal(A.pendingKick(s),true);assert.equal(A.sessionDone(s),false);
+ const td=copy(s);assert.equal(A.restart(s,10),false);assert.deepEqual(s,td);
+ s=A.normalize(copy(s));assert.ok(s);const touchdownId=s.attempt.id;
+ assert.equal(A.next(s,touchdownId),true);assert.equal(s.attempt.kind,'extraPoint');assert.equal(s.session.completed,20);
+ assert.equal(A.next(s,touchdownId),false);assert.equal(A.restart(s,10),false);
+ s=A.normalize(copy(s));const kickId=s.attempt.id,fid=s.attempt.factId,serial=s.serial,session=copy(s.session),yards=s.drive.totalYards;
+ finish(s,1000);assert.equal(s.attempt.kickResult,'good');assert.equal(A.score(s),7);assert.equal(s.drive.totalYards,yards);assert.equal(s.serial,serial+1);
+ assert.equal(s.facts[fid].history.at(-1).serial,s.serial);assert.equal(s.session.completed,session.completed);
+ assert.equal(s.session.firstTry,session.firstTry);assert.equal(s.session.helped,session.helped);assert.equal(s.session.bonusCompleted,1);
+ assert.equal(A.sessionDone(s),true);assert.equal(A.pendingKick(s),false);
+ const complete=copy(s);assert.equal(finish(s),false);assert.equal(A.next(s,kickId),false);assert.deepEqual(s,complete);
+ s=A.normalize(complete);assert.equal(A.score(s),7);assert.equal(A.restart(s,1),true);assert.equal(s.attempt.kind,'drive');assert.equal(A.score(s),7);
+});
+
+test('extra-point retries, help and report exposure forfeit the point without changing overflow yards',()=>{
+ for(const support of ['miss','help','automatic','report']){
+  let s=A.create(100);for(let i=0;i<19;i++){finish(s);A.next(s,s.attempt.id);}
+  for(let i=0;i<3;i++){A.reportOpened(s,s.attempt.id);finish(s);A.next(s,s.attempt.id);}
+  finish(s);assert.equal(s.drive.totalYards,103);A.next(s,s.attempt.id);assert.equal(s.attempt.kind,'extraPoint');
+  const id=s.attempt.id,wrong=(A.byId[s.attempt.factId].answer+1)%19;
+  if(support==='miss'||support==='automatic')A.answer(s,id,wrong);
+  if(support==='automatic')A.answer(s,id,wrong);
+  if(support==='help')A.show(s,id);
+  if(support==='report')A.reportOpened(s,id);
+  assert.equal(s.drive.totalYards,103);assert.equal(s.attempt.complete,false);
+  s=A.normalize(copy(s));assert.ok(s);assert.equal(A.restart(s,5),false);finish(s);
+  assert.equal(s.attempt.kickResult,'missed');assert.equal(A.score(s),6,support);assert.equal(s.drive.totalYards,103);assert.equal(s.drive.kicksResolved,1);assert.equal(s.session.bonusCompleted,1);
+  assert.deepEqual(A.normalize(copy(s)),s);assert.equal(A.next(s,id),true);assert.equal(s.attempt.kind,'drive');
+ }
+});
+
+test('legacy touchdowns migrate with no retroactive kick and corrupt optional bonus metadata cannot mint points',()=>{
+ const old=touchdown();old.schemaVersion=2;delete old.attempt.kind;delete old.session.bonusCompleted;
+ old.drive={totalYards:100};const migrated=A.normalize(old);assert.ok(migrated);assert.equal(migrated.schemaVersion,3);
+ assert.equal(A.score(migrated),6);assert.equal(A.pendingKick(migrated),false);assert.equal(A.sessionDone(migrated),true);
+ assert.deepEqual(migrated.drive,{totalYards:100,extraPoints:0,kicksResolved:1});assert.deepEqual(migrated.facts,old.facts);
+ const active=touchdown();A.next(active,active.attempt.id);
+ for(const corrupt of [d=>d.extraPoints=2,d=>d.kicksResolved=2,d=>delete d.extraPoints]){
+  const raw=copy(active);corrupt(raw.drive);assert.equal(A.driveNeedsRepair(raw),true);
+  const fixed=A.normalize(raw);assert.ok(fixed);assert.equal(fixed.attempt.kind,'extraPoint');assert.equal(A.restart(fixed,5),false);
+  const serial=fixed.serial;finish(fixed);assert.equal(fixed.attempt.kickResult,'unscored');assert.equal(fixed.serial,serial+1);assert.equal(A.score(fixed),0);assert.equal(fixed.drive.extraPoints,0);
+  assert.ok(A.normalize(copy(fixed)));
+ }
+});
+
+
+test('inconsistent completed kick rewards repair motivation while preserving learning',()=>{
+ for(const missed of [false,true]){
+  const s=touchdown();A.next(s,s.attempt.id);if(missed)A.show(s,s.attempt.id);finish(s);
+  const raw=copy(s);raw.drive.extraPoints=missed?1:0;
+  assert.equal(A.driveNeedsRepair(raw),true);const fixed=A.normalize(raw);assert.ok(fixed);
+  assert.deepEqual(fixed.facts,s.facts);assert.equal(fixed.attempt.kickResult,'unscored');
+  assert.equal(A.score(fixed),0);assert.equal(finish(fixed),false);assert.ok(A.normalize(copy(fixed)));
+ }
 });

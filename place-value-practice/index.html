@@ -1562,6 +1562,12 @@
     #facts-award { position: absolute; left: 50%; top: 35%; transform: translateX(-50%); padding: 8px 18px; border-radius: 9px; background: #fff0a3; color: #153e3d; font-size: clamp(1.2rem, 2.2vw, 2rem); font-weight: 900; white-space: nowrap; }
     .facts-drive--earned #facts-award { animation: facts-reward .5s ease-out; }
     .facts-drive--touchdown .facts-ball { transition: none; }
+    .facts-kick-ball { display: none; position: absolute; left: 60%; bottom: 18%; font-size: clamp(2rem, 5vw, 4rem); line-height: 1; }
+    .facts-drive--kick .facts-kick-ball { display: block; }
+    .facts-drive--kick .facts-ball { visibility: hidden; }
+    .facts-drive--kick-good .facts-kick-ball { animation: facts-kick .6s ease-out forwards; }
+    @keyframes facts-kick { to { left: 94%; bottom: 62%; transform: translateX(-50%) rotate(-35deg) scale(.45); } }
+
     @keyframes facts-reward { from { scale: .92; translate: 0 8px; } to { scale: 1; translate: 0 0; } }
     .facts-dock { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(210px, 1fr) minmax(160px, .7fr); gap: 28px; align-items: center; padding: 24px clamp(24px, 4vw, 64px) 20px; background: var(--paper); }
     .facts-question { min-width: 0; }
@@ -1642,6 +1648,7 @@
     @media (prefers-reduced-motion: reduce) {
       .facts-ball { transition: none; }
       .facts-drive--earned #facts-award { animation: none; }
+      .facts-drive--kick-good .facts-kick-ball { animation: none; }
     }
   </style>
 </head>
@@ -1927,11 +1934,11 @@
     </form>
   </dialog>
 
-  <script src="arithmetic-domain.js?v=1.6.3"></script>
+  <script src="arithmetic-domain.js?v=1.7.0"></script>
   <script>
     "use strict";
 
-    const GAME_VERSION = "1.6.3";
+    const GAME_VERSION = "1.7.0";
     (() => {
       document.getElementById('game-version').textContent = `Version ${GAME_VERSION}`;
       const SCHEMA_VERSION = 1;
@@ -6681,9 +6688,9 @@
       if (window.__placePracticeMode === 'place-value') window.__placeValueActivate();
     })();
   </script>
-  <script src="fact-practice-domain.js?v=1.6.3"></script>
-  <script src="fact-practice.js?v=1.6.3"></script>
-  <script src="arithmetic.js?v=1.6.3"></script>
-  <script src="../shared/updater.js?v=1.6.3"></script>
+  <script src="fact-practice-domain.js?v=1.7.0"></script>
+  <script src="fact-practice.js?v=1.7.0"></script>
+  <script src="arithmetic.js?v=1.7.0"></script>
+  <script src="../shared/updater.js?v=1.7.0"></script>
 </body>
 </html>
