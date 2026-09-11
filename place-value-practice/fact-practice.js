@@ -22,10 +22,11 @@
   const score=node('span');score.id='facts-score';driveHeader.append(driveTitle);
   const field=node('div',null,'facts-field');field.setAttribute('role','progressbar');field.setAttribute('aria-labelledby',driveTitle.id);
   field.setAttribute('aria-valuemin','0');field.setAttribute('aria-valuemax','100');
-  const scenery=node('img',null,'facts-stadium');scenery.src='assets/touchdown-stadium-v1.webp?v=1.6.3';scenery.alt='';scenery.width=2048;scenery.height=768;scenery.decoding='async';
+  const scenery=node('img',null,'facts-stadium');scenery.src='assets/touchdown-stadium-v1.webp?v=1.7.0';scenery.alt='';scenery.width=2048;scenery.height=768;scenery.decoding='async';
   const turf=node('div',null,'facts-turf');turf.setAttribute('aria-hidden','true');
   for(const mark of [0,25,50,75,100]){const line=node('span',String(mark),'facts-yard-line');line.style.left=`${mark}%`;turf.append(line);}
-  const ball=node('img',null,'facts-ball');ball.src='assets/touchdown-runner-v1.webp?v=1.6.3';ball.alt='';ball.decoding='async';turf.append(ball);field.append(turf);
+  const ball=node('img',null,'facts-ball');ball.src='assets/touchdown-runner-v1.webp?v=1.7.0';ball.alt='';ball.decoding='async';turf.append(ball);field.append(turf);
+  const kickBall=node('span','🏈','facts-kick-ball');kickBall.setAttribute('aria-hidden','true');field.append(kickBall);
   const driveCaption=node('div',null,'facts-drive-caption'),yards=node('strong'),milestone=node('span'),award=node('span');yards.id='facts-yards';milestone.id='facts-milestone';award.id='facts-award';driveCaption.append(yards,milestone);
   driveHeader.append(driveCaption);
   const rule=node('p','First try: +5 yards. Wrong answer or help: −5 yards. Finish after help or a retry: +1 yard.','facts-rule');rule.id='facts-rule';
@@ -66,7 +67,7 @@
   const reportContent=node('div');report.append(reportContent);
   const storage=node('p');storage.className='facts-storage';storage.setAttribute('role','status');
   const driveInfo=node('p',null,'facts-drive-info');
-  const scoring=node('p','Drive rules: 5 yards on the first try without help; 1 yard for finishing after a retry, Help me, or opening this report. Each wrong answer or Help me moves back 5 yards, stopping at the start of the current drive. Automatic help after two misses adds no extra loss. A touchdown scores 6 points; earned points stay safe. These are practice rewards, not learning checks.');reportContent.after(scoring,scope);
+  const scoring=node('p','Drive rules: 5 yards on the first try without help; 1 yard for finishing after a retry, Help me, or opening this report. Each wrong answer or Help me moves back 5 yards, stopping at the start of the current drive. Automatic help after two misses adds no extra loss. A touchdown scores 6 points, followed by a bonus extra-point question. A first-try answer without help or report exposure earns 1 more point. A miss or help forfeits that point; finish the question for practice. Kicks never change yards and do not count toward your chosen session length. Earned points stay safe. These are practice rewards, not learning checks.');reportContent.after(scoring,scope);
   const meta=node('div',null,'facts-meta');meta.append(setup,report,driveInfo,storage);
   panel.append(title,drive,dock,meta);
   function cancelAdvance(){advanceEpoch++;if(pendingAdvance)clearTimeout(pendingAdvance.timer);pendingAdvance=null;}
@@ -76,12 +77,13 @@
     await change(()=>api.next(model,pending.id),pending.epoch);
   }
   function scheduleAdvance(){
-    if(pendingAdvance||!active||busy||restarting||document.visibilityState==='hidden'||!model?.attempt.complete||model.session.completed>=model.session.target)return;
+    if(pendingAdvance||!active||busy||restarting||document.visibilityState==='hidden'||!model?.attempt.complete||api.sessionDone(model))return;
     const delay=lastAward?.touchdown?TOUCHDOWN_MS:ADVANCE_MS;
     const pending={id:model.attempt.id,epoch:advanceEpoch,due:performance.now()+delay,timer:null};
     pendingAdvance=pending;pending.timer=setTimeout(()=>advance(pending),delay);
   }
   async function restartSession(){
+    if(model&&(api.pendingKick(model)||model.attempt.kind==='extraPoint'&&!model.attempt.complete))return;
     const target=length.valueAsNumber;
     if(!Number.isInteger(target)||target<1||target>100){length.setAttribute('aria-invalid','true');lengthError.textContent='Enter a whole number from 1 to 100.';lengthError.hidden=false;length.focus();return;}
     length.removeAttribute('aria-invalid');lengthError.hidden=true;
@@ -122,13 +124,13 @@
       const prior=model.attempt,wasComplete=prior.complete,priorDrive=api.drive(model),priorMisses=prior.misses,wasHelped=prior.helped;
       if(!action())return;
       if(!wasComplete&&model.attempt===prior&&(prior.complete||prior.misses>priorMisses||prior.helped!==wasHelped)){
-        const current=api.drive(model);lastAward={yards:current.totalYards-priorDrive.totalYards,touchdown:current.touchdowns>priorDrive.touchdowns,penalty:!prior.complete};
+        const current=api.drive(model);lastAward={yards:current.totalYards-priorDrive.totalYards,touchdown:current.touchdowns>priorDrive.touchdowns,penalty:!prior.complete,kick:prior.kind==='extraPoint'};
       }
       if(writable)try{savedRaw=JSON.stringify(model);localStorage.setItem(KEY,savedRaw);message='';if(!api.driveNeedsRepair(model))driveNotice='';}catch{memory();}
       const newPrompt=prior!==model.attempt;
       if(newPrompt){cancelAdvance();input='';report.open=false;lastAward=null;}
       render(newPrompt);
-      if(active){if(model.session.completed>=model.session.target)recap.focus({preventScroll:true});else if(newPrompt)check.focus({preventScroll:true});}
+      if(active){if(api.sessionDone(model))recap.focus({preventScroll:true});else if(newPrompt)check.focus({preventScroll:true});}
     };
     try {
       if(writable&&navigator.locks)try{await navigator.locks.request(KEY,run);}catch{memory();run();}
@@ -164,8 +166,12 @@
     reportContent.append(familyList);
   }
   function render(startTiming=false){
-    if(!model)return;const q=model.attempt,f=api.byId[q.factId],done=model.session.completed>=model.session.target;
-    count.textContent=done?'Session complete':`Question ${Math.min(model.session.completed+(q.complete?0:1),model.session.target)} of ${model.session.target}`;
+    if(!model)return;const q=model.attempt,f=api.byId[q.factId],done=api.sessionDone(model),kick=q.kind==='extraPoint',pendingKick=api.pendingKick(model),kickFailed=q.misses>0||q.helped||q.rewardSupported;
+    const kickLocked=pendingKick||kick&&!q.complete;reset.disabled=kickLocked;length.disabled=kickLocked;
+    check.textContent=kick?(kickFailed?'Finish practice':'Kick for +1'):'Submit';
+    driveTitle.textContent=kick?'Extra-point kick':'Touchdown drive';
+    rule.textContent=kick?'First try without help: +1 point. Miss or help: no extra point.':'First try: +5 yards. Wrong answer or help: −5 yards. Finish after help or a retry: +1 yard.';
+    count.textContent=done?'Session complete':kick?'Bonus kick':`Question ${Math.min(model.session.completed+(q.complete?0:1),model.session.target)} of ${model.session.target}`;
     equation.textContent=`${api.equation(f)} =`;display.textContent=q.complete?String(f.answer):input||'…';
     for(const b of keypad.querySelectorAll('button'))b.disabled=q.complete;
     check.disabled=q.complete;show.disabled=q.complete||q.helped;support.hidden=!q.helped||done;support.textContent=q.helped?api.help(f):'';
@@ -173,19 +179,28 @@
     feedback.textContent=q.complete?(q.helped?'You entered the shown answer.':q.misses?'You worked it out after another try.':'Correct.'):
       q.helped?'The answer is shown above. Enter it, then Submit.':q.misses?'Try again, or choose Help me.':'Enter your answer, then Submit.';
     const goal=api.drive(model);
-    yards.textContent=`${goal.yards} / 100 yards`;
-    milestone.textContent=`Next milestone: ${Math.min(100,(Math.floor(goal.yards/25)+1)*25)} yards`;
-    score.textContent=`Score: ${goal.touchdowns*6}`;
-    field.setAttribute('aria-valuenow',String(goal.yards));field.setAttribute('aria-valuetext',`${goal.yards} of 100 yards; ${score.textContent}`);
+    yards.textContent=kick?(q.complete?'Kick complete':kickFailed?'Kick missed':'Kick for +1'):`${goal.yards} / 100 yards`;
+    milestone.textContent=kick?`Next drive: ${goal.yards} / 100 yards`:`Next milestone: ${Math.min(100,(Math.floor(goal.yards/25)+1)*25)} yards`;
+    score.textContent=`Score: ${api.score(model)}`;
+    field.setAttribute('aria-valuenow',String(goal.yards));field.setAttribute('aria-valuetext',kick?`Extra-point kick; ${score.textContent}; next drive ${goal.yards} of 100 yards`:`${goal.yards} of 100 yards; ${score.textContent}`);
     ball.style.left=`${goal.yards}%`;
     drive.classList.toggle('facts-drive--touchdown',!!lastAward?.touchdown);
-    const movement=lastAward?(lastAward.penalty?(lastAward.yards===0?'At the start of this drive':`−${Math.abs(lastAward.yards)} yard${Math.abs(lastAward.yards)===1?'':'s'}`):`+${lastAward.yards} yard${lastAward.yards===1?'':'s'}`):'';
+    const movement=lastAward&&!kick?(lastAward.penalty?(lastAward.yards===0?'At the start of this drive':`−${Math.abs(lastAward.yards)} yard${Math.abs(lastAward.yards)===1?'':'s'}`):`+${lastAward.yards} yard${lastAward.yards===1?'':'s'}`):'';
     award.textContent=lastAward?.touchdown?'Touchdown! +6 points':movement;
-    award.hidden=!lastAward;drive.classList.toggle('facts-drive--earned',!!lastAward);
-    if(lastAward&&q.complete)feedback.textContent+=` +${lastAward.yards} yard${lastAward.yards===1?'':'s'}.${lastAward.touchdown?(goal.yards===0?' Touchdown! Start your next drive.':` Touchdown! ${goal.yards} yard${goal.yards===1?'':'s'} into your next drive.`):''}`;
-    if(lastAward?.penalty&&!q.complete)feedback.textContent+=` ${movement}. Your score stays ${goal.touchdowns*6}.`;
+    award.hidden=!lastAward||kick;drive.classList.toggle('facts-drive--earned',!!lastAward&&!kick);
+    if(lastAward&&!kick&&q.complete)feedback.textContent+=` +${lastAward.yards} yard${lastAward.yards===1?'':'s'}.${lastAward.touchdown?(goal.yards===0?' Touchdown! Extra-point kick next.':` Touchdown! ${goal.yards} yard${goal.yards===1?'':'s'} saved for your next drive. Extra-point kick next.`):''}`;
+    if(lastAward?.penalty&&!kick&&!q.complete)feedback.textContent+=` ${movement}. Your score stays ${api.score(model)}.`;
+    if(kick){
+      const missed=q.misses>0||q.helped||q.rewardSupported;
+      feedback.textContent=q.complete?(q.kickResult==='good'?'Extra point is good! +1 point.':q.kickResult==='unscored'?'Extra-point practice complete. Score unchanged.':'Extra point missed. Your touchdown points are safe.'):
+        missed?(q.helped?'Extra point missed. Enter the shown answer to finish.':'Extra point missed. Try again to finish the practice question.'):'One correct answer without help kicks the extra point!';
+      if(q.complete){award.hidden=false;award.textContent=q.kickResult==='good'?'Extra point! +1':q.kickResult==='unscored'?'Practice complete':'Extra point missed';}
+      else if(missed){award.hidden=false;award.textContent='Extra point missed';}
+    }
+    drive.classList.toggle('facts-drive--kick',kick);
+    drive.classList.toggle('facts-drive--kick-good',kick&&q.kickResult==='good');
     driveInfo.textContent=writable?'Your drive saves in this browser on this device. Starting a new session keeps your yards. Clearing browser data can remove them.':'Drive yards are unsaved and stay in memory for this visit.';
-    recap.hidden=!done;recapText.textContent=done?`Nice practice! ${model.session.completed} completed. ${model.session.firstTry} first try. ${model.session.helped} after another try or shown answer.`:'';
+    recap.hidden=!done;recapText.textContent=done?`Nice practice! ${model.session.completed} completed. ${model.session.firstTry} first try. ${model.session.helped} after another try or shown answer.${model.session.bonusCompleted?` Plus ${model.session.bonusCompleted} extra-point question${model.session.bonusCompleted===1?'':'s'}.`:''}`:'';
     const storageMessage=[message,driveNotice].filter(Boolean).join(' ');
     if(storage.textContent!==storageMessage)storage.textContent=storageMessage;
     renderReport();
@@ -204,8 +219,8 @@
     activate(value){const first=model===null;cancelAdvance();lifecycle++;active=value;panel.hidden=!value;document.body.classList.toggle('facts-active',value);lastAward=null;invalidate();if(value){if(first)readInitial();render(first&&savedRaw===null);scheduleAdvance();}},
     advanceTime(ms){if(!active||!pendingAdvance||!Number.isFinite(ms)||ms<0)return;const pending=pendingAdvance;clearTimeout(pending.timer);const remaining=Math.max(0,pending.due-performance.now()-ms);pending.due=performance.now()+remaining;if(remaining===0)return advance(pending);pending.timer=setTimeout(()=>advance(pending),remaining);},
     text(){const q=model.attempt,f=api.byId[q.factId];return {mode:'arithmetic',submode:'facts',question:`${api.equation(f)} = ?`,answerEntry:q.complete?String(f.answer):input,
-      complete:q.complete,shown:q.helped,misses:q.misses,completed:model.session.completed,target:model.session.target,worked:q.helped?api.help(f):null,autoAdvancePending:!!pendingAdvance,
-      drive:{...api.drive(model),score:api.drive(model).touchdowns*6,lastAward:lastAward?.yards??null,celebrating:!!lastAward?.touchdown,saved:writable}};}
+      play: q.kind,kickResult:q.kickResult,extraPointPending:api.pendingKick(model),bonusCompleted:model.session.bonusCompleted,complete:q.complete,shown:q.helped,misses:q.misses,completed:model.session.completed,target:model.session.target,worked:q.helped?api.help(f):null,autoAdvancePending:!!pendingAdvance,
+      drive:{...api.drive(model),score:api.score(model),lastAward:lastAward?.yards??null,celebrating:!!lastAward?.touchdown,saved:writable}};}
   });
   window.__factsTest=Object.freeze({storageKey:KEY,snapshot:()=>model&&JSON.parse(JSON.stringify(model)),timing:()=>({valid:!timingInvalid,started:origin!==null}),
     diagnostics:()=>model&&api.select(model).diagnostics});

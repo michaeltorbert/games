@@ -31,10 +31,10 @@
     return `${equation(f)} = ${f.answer}, and ${f.answer} − ${f.b} = ${f.a}.`;
   }
   function blank() {
-    return {schemaVersion:2,serial:0,nonce:0,coverageCursor:0,drive:{totalYards:0},
+    return {schemaVersion:3,serial:0,nonce:0,coverageCursor:0,drive:{totalYards:0,extraPoints:0,kicksResolved:0},
       families:Object.fromEntries(families.map(id=>[id,{completed:0,exposedAt:null}])),
       facts:Object.fromEntries(catalog.map(f=>[f.id,{seen:0,lastSeen:null,completed:0,checks:0,history:[],ticket:null}])),
-      session:{target:10,completed:0,firstTry:0,helped:0},attempt:null};
+      session:{target:10,completed:0,firstTry:0,helped:0,bonusCompleted:0},attempt:null};
   }
   function eligible(s,f,gap) {const e=s.families[f.family].exposedAt;return e===null||other(s,f.family)-e>=gap;}
   function select(s,rng=()=>0) {
@@ -65,11 +65,11 @@
     const roll=Number(rng()), index=kind==='coverage'?0:Math.floor((Number.isFinite(roll)?Math.max(0,Math.min(.999999,roll)):0)*choices.length);
     return {fact:choices[index],diagnostics:{slot,queue:kind,relaxed}};
   }
-  function present(s,rng) {
+  function present(s,rng,kind='drive') {
     if(s.nonce>=LIMIT)return false;
     const selected=select(s,rng),f=selected.fact,r=s.facts[f.id];
     const independent=eligible(s,f,5);
-    s.attempt={id:++s.nonce,factId:f.id,misses:0,helped:false,complete:false,eligible:independent,firstMs:null,firstCorrect:null,rewardSupported:false};
+    s.attempt={id:++s.nonce,kind,kickResult:null,factId:f.id,misses:0,helped:false,complete:false,eligible:independent,firstMs:null,firstCorrect:null,rewardSupported:false};
     r.seen=Math.min(LIMIT,r.seen+1);r.lastSeen=s.serial;
     s.families[f.family].exposedAt=other(s,f.family);
     s.coverageCursor=(ordered.indexOf(f.id)+1)%200;
@@ -83,7 +83,7 @@
   }
   function loseYards(s) {
     // Completed touchdowns are banked; only the current drive moves backward.
-    s.drive.totalYards-=Math.min(5,s.drive.totalYards%100);
+    if(s.attempt.kind!=='extraPoint')s.drive.totalYards-=Math.min(5,s.drive.totalYards%100);
   }
   function show(s,id) {
     const q=s.attempt;if(q.id!==id||q.complete||q.helped)return false;
@@ -103,11 +103,22 @@
     if(q.firstCorrect===null){q.firstCorrect=correct;q.firstMs=!q.helped&&sample(ms)?ms:null;}
     if(!correct){loseYards(s);q.misses=Math.min(99,q.misses+1);retry(s,f);if(q.misses>=2)exposeHelp(s,id);return true;}
     q.complete=true;s.serial++;s.families[f.family].completed++;r.completed++;
-    s.session.completed++;const unsupported=q.misses===0&&!q.helped;
+    const unsupported=q.misses===0&&!q.helped;
     // Motivation follows completion, not spacing eligibility, speed, or check credit.
     // The controller saves this award and the completed attempt in one locked write.
-    s.drive.totalYards+=unsupported&&!q.rewardSupported?5:1;
-    if(unsupported)s.session.firstTry++;else s.session.helped++;
+    if(q.kind==='extraPoint'){
+      // A repaired/orphaned bonus question may still teach, but cannot invent points.
+      if(pendingKick(s)){
+        q.kickResult=unsupported&&!q.rewardSupported?'good':'missed';
+        if(q.kickResult==='good')s.drive.extraPoints++;
+        s.drive.kicksResolved++;
+      }else q.kickResult='unscored';
+      s.session.bonusCompleted++;
+    }else{
+      s.drive.totalYards+=unsupported&&!q.rewardSupported?5:1;
+      s.session.completed++;
+      if(unsupported)s.session.firstTry++;else s.session.helped++;
+    }
     const check=unsupported&&q.eligible;
     if(check)r.checks++;
     r.history.push({serial:s.serial,outcome:q.helped?'shown':q.misses?'retry':'first-correct',eligible:check,ms:q.firstMs});
@@ -122,20 +133,30 @@
     }
     return true;
   }
-  function next(s,id,rng) {if(s.attempt.id!==id||!s.attempt.complete||s.session.completed>=s.session.target)return false;return !!present(s,rng);}
+  function pendingKick(s) {return Math.floor(s.drive.totalYards/100)>s.drive.kicksResolved;}
+  function score(s) {return Math.floor(s.drive.totalYards/100)*6+s.drive.extraPoints;}
+  function sessionDone(s) {return s.session.completed>=s.session.target&&!pendingKick(s)&&!(s.attempt.kind==='extraPoint'&&!s.attempt.complete);}
+  function next(s,id,rng) {
+    if(s.attempt.id!==id||!s.attempt.complete||sessionDone(s))return false;
+    return !!present(s,rng,pendingKick(s)?'extraPoint':'drive');
+  }
   function restart(s,target,rng) {
-    if(!validTarget(target)||s.nonce>=LIMIT)return false;
-    s.session={target,completed:0,firstTry:0,helped:0};return !!present(s,rng);
+    if(!validTarget(target)||s.nonce>=LIMIT||pendingKick(s)||s.attempt.kind==='extraPoint'&&!s.attempt.complete)return false;
+    s.session={target,completed:0,firstTry:0,helped:0,bonusCompleted:0};return !!present(s,rng);
   }
   function normalize(raw) {
     // Fail learning evidence closed; partial repairs could create false checks.
     // Optional drive metadata is independently repairable below.
     try {
-      if(!raw||![1,2].includes(raw.schemaVersion)||!integer(raw.serial,LIMIT-60)||!integer(raw.nonce)||raw.nonce<1||!integer(raw.coverageCursor,199))return null;
+      if(!raw||![1,2,3].includes(raw.schemaVersion)||!integer(raw.serial,LIMIT-60)||!integer(raw.nonce)||raw.nonce<1||!integer(raw.coverageCursor,199))return null;
       const s=blank();s.serial=raw.serial;s.nonce=raw.nonce;s.coverageCursor=raw.coverageCursor;
       // Legacy practice never receives retroactive rewards. Damage to optional
       // motivation data must not discard valid learning evidence.
-      if(raw.schemaVersion===2&&!driveNeedsRepair(raw))s.drive.totalYards=raw.drive.totalYards;
+      if(raw.schemaVersion>=2&&!driveNeedsRepair(raw)){
+        s.drive.totalYards=raw.drive.totalYards;
+        s.drive.kicksResolved=raw.schemaVersion===2?Math.floor(raw.drive.totalYards/100):raw.drive.kicksResolved;
+        s.drive.extraPoints=raw.schemaVersion===2?0:raw.drive.extraPoints;
+      }
       let completions=0;
       for(const id of families) {
         const v=raw.families[id];if(!integer(v.completed,s.serial)||!(v.exposedAt===null||integer(v.exposedAt,s.serial-v.completed)))return null;
@@ -162,14 +183,16 @@
       }
       if(presentations!==s.nonce)return null;
       for(const id of families)if(totals[id]!==s.families[id].completed)return null;
-      const session=raw.session;
-      if(!validTarget(session.target)||!integer(session.completed,session.target)||session.completed>s.serial||!integer(session.firstTry,session.completed)||!integer(session.helped,session.completed)||session.firstTry+session.helped!==session.completed)return null;
-      s.session={target:session.target,completed:session.completed,firstTry:session.firstTry,helped:session.helped};
-      const q=raw.attempt,f=byId[q.factId];
-      if(!f||q.id!==s.nonce||!integer(q.misses,99)||typeof q.helped!=='boolean'||typeof q.complete!=='boolean'||typeof q.eligible!=='boolean'||
+      const session=raw.session,bonusCompleted=raw.schemaVersion<3?0:session.bonusCompleted;
+      if(!validTarget(session.target)||!integer(session.completed,session.target)||session.completed>s.serial||!integer(session.firstTry,session.completed)||!integer(session.helped,session.completed)||session.firstTry+session.helped!==session.completed||!integer(bonusCompleted,s.serial-session.completed))return null;
+      s.session={target:session.target,completed:session.completed,firstTry:session.firstTry,helped:session.helped,bonusCompleted};
+      const q=raw.attempt,f=byId[q.factId],kind=raw.schemaVersion<3?'drive':q.kind,kickResult=raw.schemaVersion<3?null:q.kickResult;
+      if(!['drive','extraPoint'].includes(kind)||!f||q.id!==s.nonce||!integer(q.misses,99)||typeof q.helped!=='boolean'||typeof q.complete!=='boolean'||typeof q.eligible!=='boolean'||
         ![null,true,false].includes(q.firstCorrect)||!sample(q.firstMs)||q.misses>=2&&!q.helped||q.helped&&q.firstMs!==null||
         q.firstCorrect===null&&(q.misses>0||q.complete||q.firstMs!==null)||q.firstCorrect===false&&q.misses===0||q.misses>0&&q.firstCorrect!==false||
-        q.complete&&session.completed===0||!q.complete&&(session.completed===session.target||q.firstCorrect===true)||s.facts[f.id].seen===0)return null;
+        q.complete&&(kind==='drive'?session.completed===0:bonusCompleted===0)||!q.complete&&(session.completed===session.target&&kind==='drive'||q.firstCorrect===true)||s.facts[f.id].seen===0)return null;
+      if(kind==='extraPoint'&&q.complete?!['good','missed','unscored'].includes(kickResult):kickResult!==null)return null;
+      if(kickResult==='good'&&(q.misses||q.helped||q.rewardSupported!==false))return null;
       if((q.misses||q.helped)&&!q.complete&&s.facts[f.id].ticket?.kind!=='retry')return null;
       if(q.complete){const latest=s.facts[f.id].history.at(-1);if(!latest||latest.serial!==s.serial||latest.outcome!==(q.helped?'shown':q.misses?'retry':'first-correct')||latest.eligible!==(q.eligible&&!q.helped&&!q.misses)||latest.ms!==q.firstMs)return null;}
       // v1 cannot distinguish report exposure from a warm, ineligible prompt.
@@ -177,13 +200,25 @@
       // its learning eligibility or any historical first-try classifications.
       const rewardSupported=raw.schemaVersion===1?!q.eligible:
         typeof q.rewardSupported==='boolean'?q.rewardSupported:true;
-      s.attempt={id:q.id,factId:q.factId,misses:q.misses,helped:q.helped,complete:q.complete,eligible:q.eligible,firstMs:q.complete?q.firstMs:null,firstCorrect:q.firstCorrect,
+      s.attempt={id:q.id,kind,kickResult:driveNeedsRepair(raw)&&kind==='extraPoint'&&q.complete?'unscored':kickResult,factId:q.factId,misses:q.misses,helped:q.helped,complete:q.complete,eligible:q.eligible,firstMs:q.complete?q.firstMs:null,firstCorrect:q.firstCorrect,
         rewardSupported:rewardSupported||q.helped};
       return s;
     }catch{return null;}
   }
   function driveNeedsRepair(raw) {
-    return raw?.schemaVersion===2&&(!raw.drive||!integer(raw.drive.totalYards,raw.serial*5));
+    if(![2,3].includes(raw?.schemaVersion))return false;
+    const d=raw.drive;
+    if(!d||!integer(d.totalYards,raw.serial*5))return true;
+    if(raw.schemaVersion===2)return false;
+    const touchdowns=Math.floor(d.totalYards/100);
+    if(!integer(d.kicksResolved,touchdowns)||!integer(d.extraPoints,d.kicksResolved)||touchdowns-d.kicksResolved>1)return true;
+    const q=raw.attempt;
+    if(q?.kind==='extraPoint'&&q.complete&&q.kickResult!=='unscored'){
+      if(d.kicksResolved!==touchdowns||d.kicksResolved===0)return true;
+      if(q.kickResult==='good'&&d.extraPoints===0)return true;
+      if(q.kickResult==='missed'&&d.extraPoints===d.kicksResolved)return true;
+    }
+    return false;
   }
   function drive(s) {
     const totalYards=s.drive.totalYards;
@@ -196,6 +231,6 @@
         typicalMs:timed.length?timed[Math.floor(timed.length/2)]:null};});
     return {rows,additionChecked:rows.filter(r=>r.id.startsWith('add:')&&r.checks>0).length,subtractionChecked:rows.filter(r=>r.id.startsWith('sub:')&&r.checks>0).length};
   }
-  globalThis.PLACE_FACTS=Object.freeze({SCHEMA_VERSION:2,LIMIT,HISTORY,INTERVALS,catalog:Object.freeze(catalog),families:Object.freeze(families),byId:Object.freeze(byId),
-    create,normalize,select,answer,show,reportOpened,next,restart,report,equation,help,threshold,other,drive,driveNeedsRepair});
+  globalThis.PLACE_FACTS=Object.freeze({SCHEMA_VERSION:3,LIMIT,HISTORY,INTERVALS,catalog:Object.freeze(catalog),families:Object.freeze(families),byId:Object.freeze(byId),
+    create,normalize,select,answer,show,reportOpened,next,restart,report,equation,help,threshold,other,drive,driveNeedsRepair,pendingKick,score,sessionDone});
 })();
