@@ -164,6 +164,30 @@ async function assertNextDownQuestionAboveFold(page, label) {
   }
 }
 
+async function assertAnswerPanelClearance(page, label, minimumClearance = 16) {
+  const metrics = await page.evaluate(() => {
+    const desk = document.querySelector('#ui-desk').getBoundingClientRect();
+    const answers = Array.from(document.querySelectorAll('#btn-row .ans-btn:not(.hidden)'))
+      .map(button => button.getBoundingClientRect());
+    return {
+      viewportHeight: window.innerHeight,
+      deskBottom: desk.bottom,
+      answerCount: answers.length,
+      answerBottom: answers.length ? Math.max(...answers.map(answer => answer.bottom)) : null,
+      answerHeights: answers.map(answer => answer.height),
+    };
+  });
+
+  expect(metrics.answerCount, `${label}: visible answer choices`).toBeGreaterThan(0);
+  expect(metrics.viewportHeight - metrics.deskBottom, `${label}: safe space below the answer panel`)
+    .toBeGreaterThanOrEqual(minimumClearance);
+  expect(metrics.viewportHeight - metrics.answerBottom, `${label}: safe space below answer controls`)
+    .toBeGreaterThanOrEqual(minimumClearance);
+  for (const height of metrics.answerHeights) {
+    expect(height, `${label}: answer target height`).toBeGreaterThanOrEqual(44);
+  }
+}
+
 test.describe('football call-layout above-the-fold', () => {
   test('opening snap (Start Game -> offense call)', async ({ page }, testInfo) => {
     const { pageErrors, consoleErrors } = attachErrorListeners(page);
@@ -217,6 +241,30 @@ test.describe('football call-layout above-the-fold', () => {
       body: await page.screenshot({ fullPage: false }),
       contentType: 'image/png',
     });
+
+    expect(pageErrors, 'page errors').toEqual([]);
+    expect(consoleErrors, 'console errors').toEqual([]);
+  });
+
+  test('short iPad landscape keeps question and feedback clear of bottom browser chrome', async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name !== 'ipad-11-landscape', 'Primary short-landscape compatibility check');
+    const { pageErrors, consoleErrors } = attachErrorListeners(page);
+    await page.setViewportSize({ width: 1180, height: 740 });
+
+    await showNextDownQuestion(page);
+    await assertNextDownQuestionAboveFold(page, 'short iPad question');
+    await assertAnswerPanelClearance(page, 'short iPad question');
+
+    const correctChoiceId = await page.evaluate(
+      () => window.__footballTest.activeContracts().questionInstance.correctChoiceId,
+    );
+    await page.evaluate(
+      (choiceId) => window.__footballTest.answerChoice(choiceId),
+      correctChoiceId,
+    );
+    await expect(page.locator('#ui-desk')).toHaveAttribute('data-phase', 'feedback');
+    await page.evaluate(() => clearTimeout(advTimer));
+    await assertAnswerPanelClearance(page, 'short iPad feedback');
 
     expect(pageErrors, 'page errors').toEqual([]);
     expect(consoleErrors, 'console errors').toEqual([]);

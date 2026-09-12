@@ -1104,3 +1104,24 @@ Original prompt: Implement Football issue #98 from the reconciled plan, with GPT
 - Corrected prerequisite failure support and reload parity, including missing-journal second-miss recovery within the final twelve-result window. Prerequisite successes remain neutral for promotion and recovery.
 - Restored existing adaptive need/mastery/freshness budgets before challenge-role redistribution, preserving one scheduler draw and higher-only guided fallback. Coach Report uses the latest committed stretch result without erasing unrelated practice needs.
 - Synchronized `GAME_VERSION`, all 15 Football asset query strings, the Football registry descriptor, and `version.json` to `1.31.1`; unrelated games remain unchanged. Focused pre-version validation passed 76 domain tests and 3 primary-device challenge browser tests. Full release matrix and final release verification remain pending.
+---
+
+Original prompt: Show what Football issue #101 looks like before and after a proposed fix, using real screenshots where possible.
+
+## Issue #101 visual prototype
+
+- Reproduced the primary iPad 11 landscape question state at 1180 x 820.
+- Confirmed the current layout technically fits, but the lower answer row sits against the viewport edge with no useful allowance for Safari chrome or a safe area.
+- Prototyped a question/feedback-only compact field at short coarse-pointer landscape heights and enabled `viewport-fit=cover`.
+- Preserved the existing answer sizes while creating visible space below the answer panel.
+- Passed the three focused call-layout checks and the primary iPad release-matrix project (six passed, one phone-only check skipped).
+- Saved matching before and after screenshots in the task visualization folder for user review.
+- TODO: If the prototype is approved, add explicit bottom-clearance assertions for question and feedback, verify the full six-device matrix, obtain independent review, and complete the normal PR/release workflow for #101.
+
+## 2026-09-10 — Football v1.31.2 (#101, superseding release entry)
+
+- Added a short-landscape question/feedback layout that reduces only the noninteractive field while retaining the existing answer sizes and the existing inset viewport behavior on phones.
+- Added a deterministic 1180 x 740 regression check for both question and feedback phases. It requires at least 16 CSS pixels below the answer panel and preserves 44-point minimum touch targets.
+- Synchronized `GAME_VERSION`, all 15 Football asset query strings, the Football registry descriptor, and `version.json` to `1.31.2`; unrelated games remain unchanged.
+- The release gate passed 148 DOM-free checks and 345 browser checks with 609 intentional project-specific skips. macOS created three extra empty device directories during artifact collection; after removing only those empty duplicates, the unchanged strict verifier passed all 304 screenshots across six projects. Representative question screenshots for every required device and orientation were visually inspected.
+- The final tracked artifact is frozen for the user-requested Claude, Sol-medium, Gemini, and Grok review, reconciliation, and peer closeout before PR publication.
