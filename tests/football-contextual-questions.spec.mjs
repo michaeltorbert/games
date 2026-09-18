@@ -26,6 +26,16 @@ function plain(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
+function completedArithmeticSnaps(domain) {
+  return [
+    makeSnap(domain, { yardLine: 53, yardsToGo: 17, firstDownLine: 70,
+      scores: { player: 7, opponent: 6 }, totalYards: { player: 7, opponent: 6 } }, 6),
+    makeSnap(domain, { yardLine: 53, yardsToGo: 17, firstDownLine: 70,
+      scores: { player: 23, opponent: 4 }, totalYards: { player: 23, opponent: 14 } }, 4),
+    makeSnap(domain, { scores: { player: 27, opponent: 4 } }, 4),
+  ];
+}
+
 function deepFrozen(value, seen = new Set()) {
   if (!value || typeof value !== 'object' || seen.has(value)) return true;
   seen.add(value);
@@ -482,6 +492,9 @@ test('every family authors the exact evidence class and independent families hid
     ],
     independent: [
       'score-total-ch8', 'score-difference-ch8', 'team-yards-add-ch8', 'line-remaining-ch8', 'goal-remaining-ch8',
+      'score-total-ch8-within-20', 'score-total-ch8-ones-add',
+      'team-yards-add-ch8-within-20', 'team-yards-add-ch8-ones-add',
+      'score-difference-ch8-ones-subtract', 'line-remaining-ch8-ones-subtract', 'goal-remaining-ch8-ones-subtract',
       'line-to-gain-missing-part',
       'line-to-gain-exact',
       'line-to-gain-surplus',
@@ -505,10 +518,11 @@ test('every family authors the exact evidence class and independent families hid
       [...expected[evidenceClass]].sort(),
     );
   }
-  assert.equal(registry.length, 31);
+  assert.equal(registry.length, 38);
   assert.equal(Object.isFrozen(registry[0]), true);
 
   const scenarios = [
+    ...completedArithmeticSnaps(domain),
     makeSnap(domain, { yardsToGo: 14, firstDownLine: 44, scores: { player: 14, opponent: 7 } }, 7),
     makeSnap(domain, {
       quarter: 3, down: 2, yardLine: 30, firstDownLine: 35, yardsToGo: 5,
@@ -641,6 +655,7 @@ test('yards-to-go reading keeps the source value out of the prompt and in the ac
 test('every exported family builds one exact, grounded, recursively frozen schema-3 worked review', () => {
   const { domain, questions } = loadModules();
   const scenarios = [
+    ...completedArithmeticSnaps(domain),
     makeSnap(domain, { yardsToGo: 14, firstDownLine: 44, scores: { player: 14, opponent: 7 } }, 7),
     makeSnap(domain, {
       quarter: 3, down: 2, yardLine: 30, firstDownLine: 35, yardsToGo: 5,
@@ -670,6 +685,13 @@ test('every exported family builds one exact, grounded, recursively frozen schem
   ];
   const expected = {
     'score-total-ch8': ['score-total-ch8', 'add', ['playerScore', 'opponentScore']],
+    'score-total-ch8-within-20': ['score-total-ch8', 'add', ['playerScore', 'opponentScore']],
+    'score-total-ch8-ones-add': ['score-total-ch8', 'add', ['playerScore', 'opponentScore']],
+    'team-yards-add-ch8-within-20': ['team-yards-add-ch8', 'add', ['teamTotalYards', 'proposedGain']],
+    'team-yards-add-ch8-ones-add': ['team-yards-add-ch8', 'add', ['teamTotalYards', 'proposedGain']],
+    'score-difference-ch8-ones-subtract': ['score-difference-ch8', 'absoluteDifference', ['playerScore', 'opponentScore']],
+    'line-remaining-ch8-ones-subtract': ['line-remaining-ch8', 'missingPart', ['yardsToGo', 'proposedGain']],
+    'goal-remaining-ch8-ones-subtract': ['goal-remaining-ch8', 'goalDistanceAfterGain', ['ballYardLine', 'goalLine', 'proposedGain']],
     'score-difference-ch8': ['score-difference-ch8', 'absoluteDifference', ['playerScore', 'opponentScore']],
     'team-yards-add-ch8': ['team-yards-add-ch8', 'add', ['teamTotalYards', 'proposedGain']],
     'line-remaining-ch8': ['line-remaining-ch8', 'missingPart', ['yardsToGo', 'proposedGain']],
@@ -1924,7 +1946,7 @@ test('call affinity annotates but never filters the truthful eligible pool', () 
 
 test('Chapter 8 arithmetic respects source identity, full-domain inclusion and explicit borrowing boundaries', () => {
   const { questions, domain } = loadModules();
-  const snap = makeSnap(domain, { scores: { player: 7, opponent: 6 } }, 4);
+  const snap = makeSnap(domain, { scores: { player: 17, opponent: 6 } }, 4);
   const family = questions.FAMILY_REGISTRY.scrimmage.find(x => x.familyId === 'score-total-ch8');
   assert.deepEqual(plain(questions.sourceStatus(family)), { included: true, guided: true });
   for (const source of [{ worktext: 'unknown' }, { edition: 2025 }]) {
@@ -1936,12 +1958,12 @@ test('Chapter 8 arithmetic respects source identity, full-domain inclusion and e
   assert.match(diagnostic, /Math Mammoth Grade 1-B \(2026\) through page 123/);
   assert.doesNotMatch(diagnostic, /179/);
   assert.throws(() => questions.build(snap, family.familyId, { profile: narrowed }), /Grade 1-B \(2026\) through page 123/);
-  assert.equal(questions.build(snap, family.familyId).answer.value, 13);
+  assert.equal(questions.build(snap, family.familyId).answer.value, 23);
   assert.equal(questions.DEFAULT_PROFILE.computationMax, 10);
   for (const [a, b, allowed] of [[14,7,true], [20,16,true], [67,24,true], [100,7,true], [40,7,true], [21,14,false], [52,18,false], [43,7,false], [101,1,false]]) {
     assert.equal(questions.arithmeticAllowed('subtract',a,b), allowed, `${a}-${b}`);
     const source = makeSnap(domain, { scores: { player:a, opponent:b } }, 4);
-    assert.equal(questions.inspect(source).eligible.some(x => x.familyId === 'score-difference-ch8'), allowed, `${a}-${b} scoreboard`);
+    assert.equal(questions.inspect(source).eligible.some(x => x.concept === 'score-difference-ch8'), allowed, `${a}-${b} scoreboard`);
   }
   for (let a = 0; a <= 110; a++) for (let b = 0; b <= 110; b++) {
     const expected = a <= 100 && b <= a && (a <= 20 || (a < 100 && Math.floor(a/10) >= Math.floor(b/10) && a%10 >= b%10) || (a%10 === 0 && b < 10));
@@ -1952,10 +1974,127 @@ test('Chapter 8 arithmetic respects source identity, full-domain inclusion and e
 });
 
 
+test('completed arithmetic variants are disjoint, sourced and balanced on offense and defense', () => {
+  const { questions, domain } = loadModules();
+  const cases = [
+    ['score-total-ch8', 7, 6, 'within-20'],
+    ['score-total-ch8', 9, 9, 'within-20'],
+    ['score-total-ch8', 10, 9, 'ones-add'],
+    ['score-total-ch8', 23, 4, 'ones-add'],
+    ['score-total-ch8', 4, 23, 'ones-add'],
+    ['score-total-ch8', 99, 0, 'ones-add'],
+    ['score-total-ch8', 27, 5, null],
+    ['score-total-ch8', 23, 14, null],
+    ['score-total-ch8', 10, 10, null],
+    ['score-difference-ch8', 47, 5, 'ones-subtract'],
+    ['score-difference-ch8', 14, 2, 'ones-subtract'],
+    ['score-difference-ch8', 19, 9, 'ones-subtract'],
+    ['score-difference-ch8', 99, 9, 'ones-subtract'],
+    ['score-difference-ch8', 14, 7, null],
+    ['score-difference-ch8', 20, 7, null],
+    ['score-difference-ch8', 100, 7, null],
+    ['score-difference-ch8', 67, 24, null],
+  ];
+  for (const possession of ['offense', 'defense']) for (const [concept, a, b, suffix] of cases) {
+    const snap = makeSnap(domain, { possession, scores: { player: a, opponent: b } }, 4);
+    const before = JSON.stringify(snap);
+    const variants = questions.inspect(snap).eligible.filter(row => row.concept === concept);
+    assert.equal(variants.length, 1, `${possession} ${concept} ${a},${b}`);
+    const entry = variants[0];
+    assert.equal(entry.familyId, suffix ? `${concept}-${suffix}` : concept);
+    assert.deepEqual(plain(questions.sourceStatus(entry)), { included: true, guided: !suffix });
+    assert.equal(entry.weight, 2);
+    assert.equal(entry.purpose, 'approvedExtension');
+    const q = questions.build(snap, entry.familyId);
+    assert.equal(q.answer.value, concept === 'score-total-ch8' ? a + b : a - b);
+    for (const stage of ['initial', 'guided']) {
+      assert.equal(q.visuals[stage].revealsAnswer, false);
+      assert.equal(q.visuals[stage].result, null);
+    }
+    assert.equal(JSON.stringify(snap), before);
+  }
+  const snap = makeSnap(domain, { scores: { player: 7, opponent: 6 } }, 4);
+  for (const [page, included] of [[106, false], [107, true], [113, true]]) {
+    const profile = { worktexts: { 'Math Mammoth Grade 1-B': { edition: 2026, includedThroughPage: page } } };
+    assert.equal(questions.inspect(snap, profile).eligible.some(row => row.familyId === 'score-total-ch8-within-20'), included);
+  }
+  assert.equal(questions.inspect(snap, { worktexts: { 'Math Mammoth Grade 1-B': { edition: 2025, includedThroughPage: 149 } } }).eligible.some(row => row.concept === 'score-total-ch8'), false);
+});
+
+test('ordered team yardage and unordered score addition retain one correctly supported relation', () => {
+  const { questions, domain } = loadModules();
+  for (const possession of ['offense', 'defense']) {
+    for (const [a, b, suffix] of [[4, 13, null], [13, 4, 'ones-add'], [7, 6, 'within-20'], [27, 5, null]]) {
+      const snap = makeSnap(domain, { possession, yardLine: 50, driveStart: 50,
+        totalYards: { player: a, opponent: a }, scores: { player: a, opponent: b } }, b);
+      for (const concept of ['team-yards-add-ch8', 'score-total-ch8']) {
+        const wanted = concept === 'score-total-ch8' && a === 4 ? 'ones-add' : suffix;
+        const entries = questions.inspect(snap).eligible.filter(row => row.concept === concept);
+        assert.equal(entries.length, 1, `${possession} ${concept} ${a}+${b}`);
+        const entry = entries[0];
+        assert.equal(entry.familyId, wanted ? `${concept}-${wanted}` : concept);
+        assert.equal(entry.purpose, 'approvedExtension');
+        assert.equal(entry.weight, 2);
+        const status = questions.sourceStatus(entry);
+        assert.deepEqual(plain(status), { included: true, guided: !wanted });
+        const q = questions.build(snap, entry.familyId, { support: status.guided ? 'guided' : 'initial' });
+        assert.equal(q.concept, concept);
+        assert.equal(q.support, wanted ? 'initial' : 'guided');
+        assert.equal(q.answer.value, a + b);
+        assert.equal(q.visuals[q.support].result, null);
+      }
+    }
+  }
+});
+
+test('line and goal remainder variants respect the completed ones-subtraction boundary in both directions', () => {
+  const { questions, domain } = loadModules();
+  const cases = [[14, 2, 'ones-subtract'], [19, 9, 'ones-subtract'], [47, 5, 'ones-subtract'],
+    [99, 9, 'ones-subtract'], [14, 7, null], [20, 7, null], [40, 7, null], [43, 7, 'excluded']];
+  for (const possession of ['offense', 'defense']) for (const [a, b, suffix] of cases) {
+    for (const concept of ['line-remaining-ch8', 'goal-remaining-ch8']) {
+      const yardLine = concept === 'goal-remaining-ch8'
+        ? (possession === 'offense' ? 100 - a : a)
+        : (possession === 'offense' ? 1 : 99);
+      const snap = makeSnap(domain, { possession, yardLine, driveStart: yardLine, yardsToGo: a }, b);
+      const entries = questions.inspect(snap).eligible.filter(row => row.concept === concept);
+      assert.equal(entries.length, suffix === 'excluded' ? 0 : 1, `${possession} ${concept} ${a}-${b}`);
+      if (suffix === 'excluded') continue;
+      const entry = entries[0];
+      assert.equal(entry.familyId, suffix ? `${concept}-${suffix}` : concept);
+      assert.equal(entry.weight, 2);
+      assert.equal(entry.purpose, 'approvedExtension');
+      const status = questions.sourceStatus(entry);
+      assert.deepEqual(plain(status), { included: true, guided: !suffix });
+      const q = questions.build(snap, entry.familyId, { support: status.guided ? 'guided' : 'initial' });
+      assert.equal(q.answer.value, a - b);
+      assert.equal(q.visuals[q.support].result, null);
+      assert.equal(q.visuals[q.support].revealsAnswer, false);
+    }
+  }
+});
+
+test('within-20 retry hints use completed addition strategies without revealing the result', () => {
+  const { questions, domain } = loadModules();
+  for (const [a, b] of [[7, 6], [9, 9]]) {
+    const snap = makeSnap(domain, { scores: { player: a, opponent: b } }, 4);
+    const q = questions.build(snap, 'score-total-ch8-within-20', { support: 'guided' });
+    assert.equal(q.hint.text, `Work out ${a} + ${b}. Use a double you know, make ten, or count on.`);
+    assert.equal(q.visuals.guided.ariaLabel, `Use a double you know, make ten, or count on. ${a} + ${b}; the answer is hidden.`);
+    assert.equal(q.visuals.guided.result, null);
+    assert.equal(q.visuals.guided.revealsAnswer, false);
+    assert.doesNotMatch(q.visuals.guided.ariaLabel, /tens and ones/);
+  }
+});
+
 test('published Grade 1-B source map matches every runtime family coordinate', async () => {
   const { questions } = loadModules();
   const progress = JSON.parse(await readFile(new URL('../football/curriculum-progress.json', import.meta.url), 'utf8'));
   const source = progress.additionalWorktexts.find(book => book.title === 'Math Mammoth Grade 1-B');
+  assert.equal(source.completedThroughPage, 113);
+  assert.equal(source.asOfDate, '2026-09-18');
+  assert.equal(source.completedThroughPage, questions.WORKTEXTS[source.title].completedThroughPage);
+  assert.equal(source.includedThroughPage, questions.WORKTEXTS[source.title].includedThroughPage);
   const entries = source.sourceMap.flatMap(row => row.families.map(familyId => ({ familyId, row })));
   const runtime = questions.FAMILY_REGISTRY.scrimmage.filter(family => family.worktext === source.title);
   assert.deepEqual(entries.map(entry => entry.familyId).sort(), plain(runtime.map(family => family.familyId)).sort());

@@ -9,7 +9,7 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
   const INCLUDED_THROUGH_PAGE = 179;
   const WORKTEXTS = deepFreeze({
     'Math Mammoth Grade 1-A': { edition: 2026, includedThroughPage: 179, completedThroughPage: 145 },
-    'Math Mammoth Grade 1-B': { edition: 2026, includedThroughPage: 149, completedThroughPage: null },
+    'Math Mammoth Grade 1-B': { edition: 2026, includedThroughPage: 149, completedThroughPage: 113 },
   });
 
   // Bare legacy page limits refer only to Grade 1-A. Book-specific limits may
@@ -720,7 +720,7 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
   }
 
   const ARITHMETIC_RELATIONS = [
-    { id: 'score-total-ch8', operation: 'add', page: 102, through: 123,
+    { id: 'score-total-ch8', operation: 'add', page: 102, through: 123, unorderedOperands: true,
       relation(snap) { return { a: snap.context.scores.player, b: snap.context.scores.opponent,
         bindings: [contextBinding(snap, 'playerScore', '/context/scores/player'), contextBinding(snap, 'opponentScore', '/context/scores/opponent')],
         operands: ['playerScore', 'opponentScore'], context: 'The two teams have scored', ask: 'How many points in all?' }; } },
@@ -742,31 +742,56 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
           bindings: [...goalBindings(snap), contextBinding(snap, 'proposedGain', '/proposal/appliedGain')],
           operands: ['ballYardLine', 'goalLine', 'proposedGain'], context: 'Distance to the goal, minus this gain:', ask: 'How many yards would remain to the goal?' }; } },
   ];
-  const ARITHMETIC_FAMILIES = ARITHMETIC_RELATIONS.map((spec) => ({
-    meta: makeMeta({ familyId: spec.id, skill: spec.operation === 'add' ? 'addition' : 'difference',
-      concept: spec.id, purpose: 'approvedExtension', tier: 'chapter-8-arithmetic', weight: 2,
-      operationType: spec.operation, answerExposure: 'modeled-with-result-hidden', evidenceClass: 'independent',
-      curriculumSource: 'workbook', worktext: 'Math Mammoth Grade 1-B', edition: 2026,
-      introducedOnPage: spec.page, coverageThroughPage: spec.through }),
-    derive(snap) {
-      const relation = spec.relation(snap);
-      const plus = spec.operation === 'add';
-      if (!relation || !arithmeticAllowed(plus ? 'add' : 'subtract', relation.a, relation.b)
-        || (relation.a <= 10 && relation.b <= 10 && (!plus || relation.a + relation.b <= 10))) {
-        return { decline: decline('outside-chapter-8-relation', 'No supported wider arithmetic relation in these public facts.') };
-      }
-      const { a, b } = relation, operator = plus ? '+' : '−', answer = plus ? a + b : a - b;
-      const equation = `${a} ${operator} ${b}`;
-      return eligible(makeSemantic({ bindings: relation.bindings, operationType: spec.operation,
-        operandIds: relation.operands, answer, prompt: `${relation.context} ${equation}. ${relation.ask}`,
-        hint: `Work out ${equation}. Use the tens and ones or count on or back.`,
-        explanation: `${equation} = ${answer}.`, choiceSpec: numericChoiceSpec(0, 100),
-        visualType: 'arithmetic-equation', visualData: { a, b, operator },
-        initialAriaLabel: `${equation} equals an unknown number.`,
-        guidedAriaLabel: `Use the tens and ones: ${equation}; the answer is hidden.`,
-        workedAriaLabel: `${equation} equals ${answer}.` }));
-    },
-  }));
+  // These disjoint domains retain each relation's concept and selection budget.
+  // Later Chapter 8 arithmetic remains in the original guided family.
+  const COMPLETED_ARITHMETIC_DOMAINS = {
+    add: [
+      { suffix: 'within-20', page: 102, through: 107,
+        strategyHint: 'Use a double you know, make ten, or count on.',
+        accepts: (a, b) => a <= 9 && b <= 9 && a + b <= 20 },
+      { suffix: 'ones-add', page: 108, through: 109,
+        accepts: (a, b) => a >= 10 && a <= 99 && b <= 9 && a % 10 + b <= 9 },
+    ],
+    subtract: [
+      { suffix: 'ones-subtract', page: 110, through: 111,
+        accepts: (a, b) => a >= 10 && a <= 99 && b <= 9 && a % 10 >= b },
+    ],
+  };
+  const ARITHMETIC_FAMILIES = ARITHMETIC_RELATIONS.flatMap((spec) => {
+    const domains = COMPLETED_ARITHMETIC_DOMAINS[spec.operation === 'add' ? 'add' : 'subtract'];
+    return [null, ...domains].map((domain) => ({
+      meta: makeMeta({ familyId: domain ? `${spec.id}-${domain.suffix}` : spec.id, skill: spec.operation === 'add' ? 'addition' : 'difference',
+        concept: spec.id, purpose: 'approvedExtension', tier: 'chapter-8-arithmetic', weight: 2,
+        operationType: spec.operation, answerExposure: 'modeled-with-result-hidden', evidenceClass: 'independent',
+        curriculumSource: 'workbook', worktext: 'Math Mammoth Grade 1-B', edition: 2026,
+        introducedOnPage: domain?.page ?? spec.page, coverageThroughPage: domain?.through ?? spec.through }),
+      derive(snap) {
+        const relation = spec.relation(snap);
+        const plus = spec.operation === 'add';
+        if (!relation || !arithmeticAllowed(plus ? 'add' : 'subtract', relation.a, relation.b)
+          || (relation.a <= 10 && relation.b <= 10 && (!plus || relation.a + relation.b <= 10))) {
+          return { decline: decline('outside-chapter-8-relation', 'No supported wider arithmetic relation in these public facts.') };
+        }
+        const { a, b } = relation, operator = plus ? '+' : '−', answer = plus ? a + b : a - b;
+        const completedDomain = domains.find(candidate => candidate.accepts(a, b)
+          || (spec.unorderedOperands && candidate.accepts(b, a)));
+        if ((domain && completedDomain !== domain) || (!domain && completedDomain)) {
+          return { decline: decline('outside-arithmetic-variant', 'This relation belongs to a different curriculum domain.') };
+        }
+        const equation = `${a} ${operator} ${b}`;
+        return eligible(makeSemantic({ bindings: relation.bindings, operationType: spec.operation,
+          operandIds: relation.operands, answer, prompt: `${relation.context} ${equation}. ${relation.ask}`,
+          hint: `Work out ${equation}. ${domain?.strategyHint || 'Use the tens and ones or count on or back.'}`,
+          explanation: `${equation} = ${answer}.`, choiceSpec: numericChoiceSpec(0, 100),
+          visualType: 'arithmetic-equation', visualData: { a, b, operator },
+          initialAriaLabel: `${equation} equals an unknown number.`,
+          guidedAriaLabel: domain?.strategyHint
+            ? `${domain.strategyHint} ${equation}; the answer is hidden.`
+            : `Use the tens and ones: ${equation}; the answer is hidden.`,
+          workedAriaLabel: `${equation} equals ${answer}.` }));
+      },
+    }));
+  });
 
   const FAMILY_DEFINITIONS = [
     ...ARITHMETIC_FAMILIES,
@@ -1437,7 +1462,7 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
   // explanation; the surrounding goal and football meaning make that model
   // useful without adding another source of numeric truth.
   const WORKED_REVIEW_SPECS = deepFreeze({
-    ...Object.fromEntries(ARITHMETIC_RELATIONS.map(({ id }) => [id, { title: 'Work Out the Play Numbers', goal: 'Calculate with the public score or yardage facts.', footballMeaning: 'The equation uses the scores or yards from this exact play.' }])),
+    ...Object.fromEntries(ARITHMETIC_FAMILIES.map(({ meta }) => [meta.familyId, { title: 'Work Out the Play Numbers', goal: 'Calculate with the public score or yardage facts.', footballMeaning: 'The equation uses the scores or yards from this exact play.' }])),
     'yards-to-go-read': {
       title: 'Read the Distance',
       goal: 'Find the yards needed on the scoreboard.',

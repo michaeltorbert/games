@@ -1125,3 +1125,20 @@ Original prompt: Show what Football issue #101 looks like before and after a pro
 - Synchronized `GAME_VERSION`, all 15 Football asset query strings, the Football registry descriptor, and `version.json` to `1.31.2`; unrelated games remain unchanged.
 - The release gate passed 148 DOM-free checks and 345 browser checks with 609 intentional project-specific skips. macOS created three extra empty device directories during artifact collection; after removing only those empty duplicates, the unchanged strict verifier passed all 304 screenshots across six projects. Representative question screenshots for every required device and orientation were visually inspected.
 - The final tracked artifact is frozen for the user-requested Claude, Sol-medium, Gemini, and Grok review, reconciliation, and peer closeout before PR publication.
+
+## 2026-09-18 — Football v1.32.0 (#130, superseding release entry)
+
+- Recorded instructor-confirmed Math Mammoth Grade 1-B (2026) completion through printed page 113 on 2026-09-18; retained Grade 1-A history and the separate Grade 1-B page-149 inclusion ceiling.
+- Added seven mutually exclusive variants for single-digit addition within 20 and two-digit plus/minus one-digit without regrouping or borrowing. They reuse the parent concept, purpose and weight; broader approved arithmetic remains guided. No worksheet-only unknowns or general completed subtraction-within-20 claim were added.
+- Preserved immutable play facts, evidence classes, retry/Coach Replay/Continue behavior and football RNG. Existing grounded missing-part and fact-family prompts remain available.
+- Synchronized the Football version and all 15 asset cache keys to 1.32.0; unrelated game descriptors and versions are unchanged.
+- Implementer verification passed: 40 focused contextual domain tests; three primary-iPad arithmetic interaction tests; registry 4/4 against exact base 78ad6c34d3502e17d036989cf6616ecbfd168b11; layout 19 passed with five intentional device skips; and the canonical complete release gate with 149 domain checks, 357 browser passes, 609 intentional device skips and all 304 required release screenshots verified across six projects.
+- The bundled web-game client ran, text state and errors were checked, and completed-arithmetic initial screenshots were visually inspected for all six targets, plus primary-iPad offense/defense worked states and the two-digit addition/subtraction worked states. The client uses a default desktop viewport; target-device assertions and screenshots use the repository Playwright matrix. This is emulated browser verification, not a physical-device run.
+- No implementation TODO remains. The tested release candidate is ready to freeze for the requested five-seat review and authorized PR/release workflow; release/review evidence will be kept outside the tracked artifact.
+
+### Issue #130 review corrections
+
+- Restricted commutative completed-domain matching to unordered score totals. Team total yards plus proposed gain retains operand order, so 4 + 13 stays guided while 13 + 4 uses completed ones-add support.
+- Added offense/defense tests for that distinction and explicit line-to-gain/goal-distance completed, later-guided and unsupported-borrowing boundaries. Each relation still exposes exactly one family with its original concept, purpose and weight.
+- Within-20 addition retry hints now suggest a known double, making ten or counting on; source-bound answers remain hidden. No retry/Continue, RNG or version behavior changed. Zero operands remain allowed; no new zero-operand filter was introduced.
+- Superseding verification passed: 43 focused contextual checks, three primary-iPad arithmetic interaction checks, and the complete release gate with 152 domain checks, 357 browser passes, 609 intentional device skips and 304 verified screenshots across six projects. The bundled client was rerun; the revised primary-iPad retry screenshot and semantic state were inspected with the result hidden, attempt 2, guided support and no browser errors.
