@@ -720,7 +720,7 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
   }
 
   const ARITHMETIC_RELATIONS = [
-    { id: 'score-total-ch8', operation: 'add', page: 102, through: 123,
+    { id: 'score-total-ch8', operation: 'add', page: 102, through: 123, unorderedOperands: true,
       relation(snap) { return { a: snap.context.scores.player, b: snap.context.scores.opponent,
         bindings: [contextBinding(snap, 'playerScore', '/context/scores/player'), contextBinding(snap, 'opponentScore', '/context/scores/opponent')],
         operands: ['playerScore', 'opponentScore'], context: 'The two teams have scored', ask: 'How many points in all?' }; } },
@@ -747,10 +747,10 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
   const COMPLETED_ARITHMETIC_DOMAINS = {
     add: [
       { suffix: 'within-20', page: 102, through: 107,
+        strategyHint: 'Use a double you know, make ten, or count on.',
         accepts: (a, b) => a <= 9 && b <= 9 && a + b <= 20 },
       { suffix: 'ones-add', page: 108, through: 109,
-        accepts: (a, b) => (a >= 10 && a <= 99 && b <= 9 && a % 10 + b <= 9)
-          || (b >= 10 && b <= 99 && a <= 9 && b % 10 + a <= 9) },
+        accepts: (a, b) => a >= 10 && a <= 99 && b <= 9 && a % 10 + b <= 9 },
     ],
     subtract: [
       { suffix: 'ones-subtract', page: 110, through: 111,
@@ -773,18 +773,21 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
           return { decline: decline('outside-chapter-8-relation', 'No supported wider arithmetic relation in these public facts.') };
         }
         const { a, b } = relation, operator = plus ? '+' : '−', answer = plus ? a + b : a - b;
-        const completedDomain = domains.find(candidate => candidate.accepts(a, b));
+        const completedDomain = domains.find(candidate => candidate.accepts(a, b)
+          || (spec.unorderedOperands && candidate.accepts(b, a)));
         if ((domain && completedDomain !== domain) || (!domain && completedDomain)) {
           return { decline: decline('outside-arithmetic-variant', 'This relation belongs to a different curriculum domain.') };
         }
         const equation = `${a} ${operator} ${b}`;
         return eligible(makeSemantic({ bindings: relation.bindings, operationType: spec.operation,
           operandIds: relation.operands, answer, prompt: `${relation.context} ${equation}. ${relation.ask}`,
-          hint: `Work out ${equation}. Use the tens and ones or count on or back.`,
+          hint: `Work out ${equation}. ${domain?.strategyHint || 'Use the tens and ones or count on or back.'}`,
           explanation: `${equation} = ${answer}.`, choiceSpec: numericChoiceSpec(0, 100),
           visualType: 'arithmetic-equation', visualData: { a, b, operator },
           initialAriaLabel: `${equation} equals an unknown number.`,
-          guidedAriaLabel: `Use the tens and ones: ${equation}; the answer is hidden.`,
+          guidedAriaLabel: domain?.strategyHint
+            ? `${domain.strategyHint} ${equation}; the answer is hidden.`
+            : `Use the tens and ones: ${equation}; the answer is hidden.`,
           workedAriaLabel: `${equation} equals ${answer}.` }));
       },
     }));

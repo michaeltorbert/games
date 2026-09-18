@@ -29,6 +29,7 @@ for (const possession of ['offense', 'defense']) test(`completed arithmetic keep
   const wrong = initial.question.choices.map((choice, index) => choice.id !== initial.question.correctChoiceId ? index : null).filter(index => index !== null);
   await page.locator(`#b${wrong[0]}`).click();
   await expect(page.locator('#math-overlay')).not.toContainText('= 13');
+  await expect(page.locator('#math-overlay')).toHaveAttribute('aria-label', 'Use a double you know, make ten, or count on. 7 + 6; the answer is hidden.');
   expect(await page.evaluate(() => JSON.parse(render_game_to_text()).mode)).toBe('question');
   await page.locator(`#b${wrong[1]}`).click();
   await expect(page.locator('#math-overlay')).toContainText('= 13');
