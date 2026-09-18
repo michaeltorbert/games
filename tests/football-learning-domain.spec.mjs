@@ -26,8 +26,8 @@ const session = rows => L.createSession({}, {}, now, rows);
 const state = rows => L.challengeStateFor(session(rows), 'line-to-gain');
 const successes = n => Array.from({ length: n }, (_, i) => row(i));
 
-test('explicit immutable two-ladder map covers only six of the 31 registered families', () => {
-  assert.equal(families.length, 31);
+test('explicit immutable two-ladder map covers only six of the 38 registered families', () => {
+  assert.equal(families.length, 38);
   assert.equal(Object.keys(Q.CHALLENGE_MAP).length, 6);
   for (const e of families) {
     assert.ok(Object.isFrozen(e));

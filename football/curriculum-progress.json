@@ -126,9 +126,34 @@
       "title": "Math Mammoth Grade 1-B",
       "edition": 2026,
       "includedThroughPage": 149,
-      "completedThroughPage": null,
-      "completionMeaning": "Current exact completion is unknown; inclusion through Chapter 8 is not completion.",
+      "completedThroughPage": 113,
+      "asOfDate": "2026-09-18",
+      "completionMeaning": "Instructor-confirmed completion through printed page 113; inclusion through page 149 remains separate from completion.",
+      "completedLessonMap": [
+        { "pages": "100-101", "concepts": "Mixed review; isolated count-back examples do not establish general subtraction within 20." },
+        { "pages": "102-107", "concepts": "Single-digit addition within 20, just-one-more, make-ten with 8 and 9, doubles, and missing addends." },
+        { "pages": "108-109", "concepts": "Two-digit plus one-digit without regrouping; tens unchanged." },
+        { "pages": "110-113", "concepts": "Two-digit minus one-digit without borrowing; missing-number equations. General within-20 subtraction is not claimed." }
+      ],
       "sourceMap": [
+        {
+          "families": ["score-total-ch8-within-20", "team-yards-add-ch8-within-20"],
+          "introducedOnPage": 102,
+          "coverageThroughPage": 107,
+          "concepts": "Single-digit addition within 20; excludes existing within-10 overlap."
+        },
+        {
+          "families": ["score-total-ch8-ones-add", "team-yards-add-ch8-ones-add"],
+          "introducedOnPage": 108,
+          "coverageThroughPage": 109,
+          "concepts": "Two-digit plus one-digit without regrouping; ones sum at most 9."
+        },
+        {
+          "families": ["score-difference-ch8-ones-subtract", "goal-remaining-ch8-ones-subtract", "line-remaining-ch8-ones-subtract"],
+          "introducedOnPage": 110,
+          "coverageThroughPage": 111,
+          "concepts": "Two-digit minuend through 99, single-digit subtrahend no larger than its ones digit; direct Subtract From the Ones lesson."
+        },
         {
           "families": [
             "score-total-ch8"
