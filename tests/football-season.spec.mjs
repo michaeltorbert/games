@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './curriculum-fixture.mjs';
 
 const STORAGE_KEY = 'footballMathSeason:v1';
 const SCHEDULE = ['unc', 'nc-state', 'wake-forest'];
@@ -110,6 +110,7 @@ test('Quick Game preserves exact season bytes while start controls and semantic 
   });
 
   await page.locator('#start-game-btn').click();
+  await expect.poll(()=>page.evaluate(()=>sessionInitialized)).toBe(true);
   expect(await page.evaluate(() => JSON.parse(render_game_to_text()).match.opponent.id)).toBe('wake-forest');
   await page.evaluate(() => window.__footballTest.seedDriveState({
     possession: 'offense', direction: 1, quarter: 4,
@@ -136,6 +137,7 @@ test('an abandoned rung reopens with a new game ID and W-L-T results advance the
   await expect(page.getByRole('radio', { name: /3-Game Season/ })).toBeChecked();
   await expect(page.locator('#start-game-btn')).toHaveText('Play Game 1');
   await page.locator('#start-game-btn').click();
+  await expect.poll(()=>page.evaluate(()=>sessionInitialized)).toBe(true);
   const replayBinding = await page.evaluate(() => window.__footballTest.activeSeasonGame());
   expect(replayBinding).toMatchObject({ gameNumber: 1, rivalId: 'unc' });
   expect(replayBinding.gameId).not.toBe(firstBinding.gameId);
@@ -155,6 +157,7 @@ test('an abandoned rung reopens with a new game ID and W-L-T results advance the
     if (index < outcomes.length - 1) {
       await expect(page.locator('#start-game-btn')).toHaveText(`Play Game ${index + 2}`);
       await page.locator('#start-game-btn').click();
+      await expect.poll(()=>page.evaluate(()=>sessionInitialized)).toBe(true);
       const binding = await page.evaluate(() => window.__footballTest.activeSeasonGame());
       expect(binding).toMatchObject({
         gameNumber: index + 2,

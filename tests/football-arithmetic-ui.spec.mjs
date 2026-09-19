@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './curriculum-fixture.mjs';
 
 for (const possession of ['offense', 'defense']) test(`completed arithmetic keeps initial, retry and worked support on ${possession}`, async ({ page }) => {
   const errors = [];
@@ -43,6 +43,7 @@ for (const possession of ['offense', 'defense']) test(`completed arithmetic keep
 // These use the ordinary positive-weight selector and call button, never a forced family.
 test('Chapter 8 families are ordinarily selected with hidden results and working retry/Continue', async ({ page }) => {
   await page.goto('/football/?boot=offense-call');
+  await page.evaluate(()=>{curriculumSession=Object.freeze({worktext:'Math Mammoth Grade 1-B',edition:2026,completedThroughPage:187});});
   const draws = await page.evaluate(() => {
     const found = {};
     for (let i = 0; i < 500; i++) {
@@ -69,7 +70,7 @@ test('Chapter 8 families are ordinarily selected with hidden results and working
       return __footballTest.activeContracts().questionInstance;
     }, { draw });
     expect(q.familyId).toBe(familyId);
-    expect(q.support).toBe(familyId.includes('-ones-') ? 'initial' : 'guided');
+    expect(q.support).toBe('initial');
     expect(new Set(q.choices.map(c => c.value)).size).toBe(4);
     expect(q.visuals.guided.result).toBeNull();
     await expect(page.locator('#math-overlay')).toContainText('= ?');

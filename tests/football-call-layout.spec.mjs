@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './curriculum-fixture.mjs';
 
 /**
  * Minimum viable verifier for issue #36 that directly targets issue #43:

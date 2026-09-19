@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './curriculum-fixture.mjs';
 
 const FACTS='place-value-practice:facts:v1';
 const MIXED='place-value-practice:arithmetic:v1';

@@ -13,6 +13,12 @@ repository-level `AGENTS.md`.
   use. Treat it as an intentional repository asset, not an accidental binary.
 - The learner's dated progress and near-term lesson map live in
   `curriculum-progress.json`.
+- Grade 1-B runtime availability now comes from `shared/curriculum.js` and a
+  learner-confirmed page at each game start. Its full catalog reaches page 187;
+  the historical inclusion 149 is not a runtime cap or an advance permission.
+  Keep the dated instructor-confirmed page 113 record separate from these
+  browser-local learner reports. Grade 1-B uses completion-only eligibility;
+  Grade 1-A and Time Lab retain their existing guided-first/source boundaries.
 - Do not infer that the learner completed two pages on every calendar day.
   `usualPagesPerDay` is a pacing norm; `completedThroughPage` changes only when
   the user provides a new progress update.

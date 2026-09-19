@@ -5,15 +5,18 @@ const PLACE_ARITHMETIC = (() => {
     worktext: 'Math Mammoth Grade 1-B', edition: 2026, introducedOnPage, coverageThroughPage,
   });
   const FAMILIES = Object.freeze({
-    'facts-add': { source: source(102, 123), valid: ([a,b]) => a >= 0 && b >= 0 && a <= 20 && b <= 20 && a+b <= 20, answer: ([a,b]) => a+b, text: ([a,b]) => `${a} + ${b}` },
-    'facts-subtract': { source: source(131,143), valid: ([a,b]) => a >= 0 && a <= 20 && b >= 0 && b <= a, answer: ([a,b]) => a-b, text: ([a,b]) => `${a} − ${b}` },
+    // Evergreen fact retrieval uses single-digit addends and their inverse
+    // subtraction facts. Larger within-20 and two-digit work stays represented
+    // by the page-gated lesson families below.
+    'facts-add': { source: source(17, 187), valid: ([a,b]) => a >= 0 && b >= 0 && a <= 9 && b <= 9, answer: ([a,b]) => a+b, text: ([a,b]) => `${a} + ${b}` },
+    'facts-subtract': { source: source(17,187), valid: ([a,b]) => a >= 0 && a <= 18 && b >= 0 && b <= 9 && a-b >= 0 && a-b <= 9, answer: ([a,b]) => a-b, text: ([a,b]) => `${a} − ${b}` },
     'add-no-carry': { source: source(108,114), valid: ([a,b]) => a >= 10 && a <= 99 && b >= 0 && b <= 99 && a+b <= 99 && a%10+b%10 < 10, answer: ([a,b]) => a+b, text: ([a,b]) => `${a} + ${b}` },
     'add-carry': { source: source(119,121), valid: ([a,b]) => a >= 10 && a <= 99 && b >= 1 && b <= 99 && a+b <= 100 && a%10+b%10 >= 10, answer: ([a,b]) => a+b, text: ([a,b]) => `${a} + ${b}` },
     'complete-ten': { source: source(117,117), valid: ([a,b]) => a >= 1 && a <= 99 && a%10 !== 0 && b === 10-a%10, answer: ([a,b]) => b, text: ([a,b]) => `${a} + ? = ${a+b}` },
     'missing-addend': { source: source(129,139), valid: ([a,b]) => a >= 0 && a <= 99 && b >= 0 && b <= 99 && a+b <= 100 && (a+b <= 20 || a%10+b%10 < 10 || ((a+b)%10 === 0 && b <= 9)), answer: ([a,b]) => b, text: ([a,b]) => `${a} + ? = ${a+b}` },
     'subtract-no-borrow': { source: source(110,137), valid: ([a,b]) => a >= 10 && a <= 99 && b >= 0 && b <= a && a%10 >= b%10, answer: ([a,b]) => a-b, text: ([a,b]) => `${a} − ${b}` },
     'tens-minus-digit': { source: source(142,143), valid: ([a,b]) => a >= 20 && a <= 100 && a%10 === 0 && b >= 1 && b <= 9, answer: ([a,b]) => a-b, text: ([a,b]) => `${a} − ${b}` },
-    'three-addends': { source: source(103,124), size: 3, valid: ([a,b,c]) => a >= 0 && b >= 0 && c >= 0 && a+b+c <= 20, answer: ([a,b,c]) => a+b+c, text: ([a,b,c]) => `${a} + ${b} + ${c}` },
+    'three-addends': { source: source(101,124), size: 3, valid: ([a,b,c]) => a >= 0 && b >= 0 && c >= 0 && a+b+c <= 20, answer: ([a,b,c]) => a+b+c, text: ([a,b,c]) => `${a} + ${b} + ${c}` },
     'repeated-subtraction': { source: source(39,39), size: 3, valid: ([a,b,c]) => a >= 0 && a <= 10 && b >= 0 && c >= 0 && b+c <= a, answer: ([a,b,c]) => a-b-c, text: ([a,b,c]) => `${a} − ${b} − ${c}` },
   });
   Object.values(FAMILIES).forEach(Object.freeze);
@@ -23,6 +26,9 @@ const PLACE_ARITHMETIC = (() => {
   const SCHEMA_VERSION = 3;
   const ORDER = Object.freeze(Object.keys(FAMILIES));
   const COVERAGE = Object.freeze(ORDER.slice(2));
+  let curriculumPage=null;
+  const allowed=(family,operands,page=curriculumPage)=>page===null||MATH_CURRICULUM.arithmeticPage(family,operands)<=page;
+  const configure=page=>{if(!MATH_CURRICULUM.validPage(page))throw new RangeError('Invalid page');curriculumPage=page;};
   const OUTCOMES = Object.freeze(['firstTry','retryCorrect1','retryCorrect2','revealed']);
   const HISTORY_LIMIT = 20;
   const advanceSeed = seed => (Math.imul(seed,1664525)+1013904223) >>> 0;
@@ -37,7 +43,13 @@ const PLACE_ARITHMETIC = (() => {
     if(recent.length>=5 && recent.slice(-5).every(row=>row.outcome==='firstTry'))return .5;
     return 1;
   }
-  function selectFamily(learning) {
+  function selectFamily(learning,page=curriculumPage) {
+    if(page!==null){
+      const eligible=ORDER.filter(f=>pool(f).some(operands=>allowed(f,operands,page)));
+      if(!eligible.length)return null;
+      const planned=selectFamily(learning,null);
+      return eligible.includes(planned)?planned:eligible[learning.position%eligible.length];
+    }
     const p=learning.position, phase=p%5, block=Math.floor(p/5);
     if(phase===0 || phase===3)return phase===0?'facts-add':'facts-subtract';
     if(phase===1 || phase===4)return COVERAGE[block*2+(phase===4?1:0)];
@@ -88,13 +100,14 @@ const PLACE_ARITHMETIC = (() => {
     return buildQuestion(sequence,MIX[slot(sequence,startOffset)],rng);
   }
   function buildQuestion(sequence,family,rng) {
-    const tuples = pool(family), operands = [...tuples[draw(rng,tuples.length)]];
+    const tuples = pool(family).filter(operands=>allowed(family,operands)), operands = [...tuples[draw(rng,tuples.length)]];
     const answer = FAMILIES[family].answer(operands), choices = [answer];
     for (const n of [answer-1,answer+1,answer-2,answer+2,answer-3,answer+3,0,100]) if (n >= 0 && n <= 100 && !choices.includes(n) && choices.length<4) choices.push(n);
     for(let i=choices.length-1;i>0;i--) { const j=draw(rng,i+1); [choices[i],choices[j]]=[choices[j],choices[i]]; }
     return { id: sequence, family, operands, choices, misses: [], complete: false };
   }
   function scheduledQuestion(sequence,learning,rng) {
+    if(selectFamily(learning)===null)throw new RangeError('No completed arithmetic skills');
     return {...buildQuestion(sequence,selectFamily(learning),rng),serial:learning.serial+1};
   }
   function create(target=10, rng=Math.random) {
@@ -112,6 +125,7 @@ const PLACE_ARITHMETIC = (() => {
   }
   function normalize(raw) {
     if (!raw || typeof raw !== 'object' || ![1,2,SCHEMA_VERSION].includes(raw.schemaVersion)) return null;
+    if(raw.curriculumPage!==undefined&&(!Number.isInteger(raw.curriculumPage)||raw.curriculumPage<0||raw.curriculumPage>187))return null;
     const legacy=raw.schemaVersion<3;
     const startOffset = raw.schemaVersion === 1 ? 0 : raw.startOffset;
     if (legacy && !offsetValid(startOffset)) return null;
@@ -140,9 +154,14 @@ const PLACE_ARITHMETIC = (() => {
     if(q.complete && restored.serial>0) {
       const last=learning.history[q.family].at(-1);
       if(!last || last.serial!==restored.serial || last.misses!==q.misses.length)return null;
-    } else if(!q.complete && !Object.hasOwn(restored,'legacyOffset') && q.family!==selectFamily(learning))return null;
+    } else if(!q.complete && !Object.hasOwn(restored,'legacyOffset') && q.family!==selectFamily(learning,raw.curriculumPage??null))return null;
     if(q.complete && restored.serial===0 && !Object.hasOwn(restored,'legacyOffset'))return null;
-    return {schemaVersion:SCHEMA_VERSION,sequence:raw.sequence,target:raw.target,completed:raw.completed,firstTry:raw.firstTry,afterHelp:raw.afterHelp,learning,question:restored};
+    return {schemaVersion:SCHEMA_VERSION,sequence:raw.sequence,target:raw.target,completed:raw.completed,firstTry:raw.firstTry,afterHelp:raw.afterHelp,learning,question:restored,...(raw.curriculumPage!==undefined?{curriculumPage:raw.curriculumPage}:{})};
+  }
+  function repair(state,rng=Math.random){
+    if(!state.question.complete&&(!allowed(state.question.family,state.question.operands)||state.question.family!==selectFamily(state.learning)))state.question=scheduledQuestion(state.sequence,state.learning,rng);
+    if(curriculumPage!==null)state.curriculumPage=curriculumPage;
+    return state;
   }
   function answer(state, value) {
     const q=state.question;
@@ -168,6 +187,6 @@ const PLACE_ARITHMETIC = (() => {
     return {family:q.family,prompt:family.text(q.operands)+(q.family==='complete-ten'||q.family==='missing-addend'?'':' = ?'),
       worked:q.family==='complete-ten'||q.family==='missing-addend'?`${q.operands[0]} + ${result} = ${q.operands[0]+result}`:`${family.text(q.operands)} = ${result}`,
       answer:result,source:family.source}; }
-  return Object.freeze({ SCHEMA_VERSION,FAMILIES,MIX,HISTORY_LIMIT,familyWeight,selectFamily,valid,question,create,restart,normalize,answer,next,view });
+  return Object.freeze({ SCHEMA_VERSION,FAMILIES,MIX,HISTORY_LIMIT,familyWeight,selectFamily,valid,question,create,restart,normalize,answer,next,view,configure,repair });
 })();
 globalThis.PLACE_ARITHMETIC = PLACE_ARITHMETIC;

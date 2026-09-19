@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './curriculum-fixture.mjs';
 
 async function openGame(page, reducedMotion = 'no-preference') {
   await page.emulateMedia({ reducedMotion });

@@ -6,10 +6,13 @@
   'use strict';
   const LIMIT=1000000000, HISTORY=12, INTERVALS=[8,24,60];
   const catalog=[], byId=Object.create(null), families=[];
+  let curriculumPage=null;
+  const allowed=f=>curriculumPage===null||(f.source.page??Infinity)<=curriculumPage;
+  const configure=page=>{if(!MATH_CURRICULUM.validPage(page))throw new RangeError('Invalid page');curriculumPage=page;};
   function add(op,a,b,x,y) {
     const id=`${op}:${a}:${b}`;
     if(byId[id])return;
-    const fact=Object.freeze({id,op,a,b,answer:op==='add'?a+b:a-b,family:`family:${x}:${y}:${x+y}`});
+    const fact=Object.freeze({id,op,a,b,answer:op==='add'?a+b:a-b,family:`family:${x}:${y}:${x+y}`,source:Object.freeze({worktext:'Math Mammoth Grade 1-B',edition:2026,page:typeof MATH_CURRICULUM==='undefined'?null:MATH_CURRICULUM.factPage(op,a,b)})});
     catalog.push(fact);byId[id]=fact;
   }
   for(let x=0;x<=9;x++)for(let y=x;y<=9;y++) {
@@ -38,8 +41,9 @@
   }
   function eligible(s,f,gap) {const e=s.families[f.family].exposedAt;return e===null||other(s,f.family)-e>=gap;}
   function select(s,rng=()=>0) {
-    let pool=catalog.filter(f=>eligible(s,f,s.facts[f.id].ticket?.kind==='retry'?2:5)), relaxed=[];
-    if(!pool.length){pool=catalog.slice();relaxed.push('family-avoidance');}
+    let pool=catalog.filter(f=>allowed(f)&&eligible(s,f,s.facts[f.id].ticket?.kind==='retry'?2:5)), relaxed=[];
+    if(!pool.length){pool=catalog.filter(allowed);relaxed.push('family-avoidance');}
+    if(!pool.length)throw new RangeError('No completed fact skills');
     const slot=s.serial%4, due=(f,kind)=>{const t=s.facts[f.id].ticket;return t&&t.kind===kind&&other(s,f.family)>=t.dueOther;};
     const coverage=items=>items.slice().sort((a,b)=>{
       const aa=s.facts[a.id],bb=s.facts[b.id];
@@ -76,6 +80,7 @@
     return selected.diagnostics;
   }
   function create(target=10,rng) {const s=blank();s.session.target=validTarget(target)?target:10;present(s,rng);return s;}
+  function repair(s){if(!s.attempt.complete&&!allowed(byId[s.attempt.factId])){const prior=s.attempt;present(s,()=>0,prior.kind);if(prior.kind==='extraPoint'&&(prior.misses||prior.helped||prior.rewardSupported))s.attempt.rewardSupported=true;}return s;}
   function retry(s,f) {s.facts[f.id].ticket={kind:'retry',dueOther:other(s,f.family)+2,created:s.serial};}
   function reportOpened(s,id) {
     const q=s.attempt;if(q.id!==id||q.complete)return false;
@@ -232,5 +237,5 @@
     return {rows,additionChecked:rows.filter(r=>r.id.startsWith('add:')&&r.checks>0).length,subtractionChecked:rows.filter(r=>r.id.startsWith('sub:')&&r.checks>0).length};
   }
   globalThis.PLACE_FACTS=Object.freeze({SCHEMA_VERSION:3,LIMIT,HISTORY,INTERVALS,catalog:Object.freeze(catalog),families:Object.freeze(families),byId:Object.freeze(byId),
-    create,normalize,select,answer,show,reportOpened,next,restart,report,equation,help,threshold,other,drive,driveNeedsRepair,pendingKick,score,sessionDone});
+    create,normalize,select,answer,show,reportOpened,next,restart,report,equation,help,threshold,other,drive,driveNeedsRepair,pendingKick,score,sessionDone,configure,repair});
 })();

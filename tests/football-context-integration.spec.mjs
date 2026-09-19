@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './curriculum-fixture.mjs';
 
 function primaryOnly(testInfo) {
   test.skip(
@@ -3602,7 +3602,8 @@ test('every entry path initializes one fresh learning/RNG session exactly once',
   expect(await page.evaluate(() => window.__footballTest.learningState())).toBeNull();
   expect(await page.evaluate(() => window.__rootRandomDraws)).toBe(0);
   await page.locator('#ov-start .ov-btn').click();
-  expect(await page.evaluate(() => window.__footballTest.learningState())).not.toBeNull();
+  // Start now resolves the asynchronous curriculum prompt before initGameSession.
+  await expect.poll(() => page.evaluate(() => window.__footballTest.learningState())).not.toBeNull();
   expect(await page.evaluate(() => window.__rootRandomDraws)).toBe(1);
   const firstGameId = await page.evaluate(() => window.__footballTest.statsSession().gameId);
   expect(await page.evaluate(() => {
@@ -3618,7 +3619,7 @@ test('every entry path initializes one fresh learning/RNG session exactly once',
   expect(await page.evaluate(() => window.__footballTest.learningState())).toBeNull();
   expect(await page.evaluate(() => window.__rootRandomDraws)).toBe(1);
   await page.locator('#ov-start .ov-btn').click();
-  expect(await page.evaluate(() => window.__footballTest.learningState())).not.toBeNull();
+  await expect.poll(() => page.evaluate(() => window.__footballTest.learningState())).not.toBeNull();
   expect(await page.evaluate(() => window.__rootRandomDraws)).toBe(2);
   expect(await page.evaluate(() => window.__footballTest.statsSession().gameId)).not.toBe(firstGameId);
 

@@ -1,4 +1,4 @@
-const GAME_VERSION = '1.32.0';
+const GAME_VERSION = '1.33.0';
 let prevPlayerScore = -1, prevOpponentScore = -1;
 let playerRunTimer = 0, playerCelebrateTimer = 0, playerCelebrateDelayTimer = 0;
 const EZ = 5;
@@ -213,6 +213,8 @@ function createLearningSession() {
 let learningSession = null;
 let statsSession = null;
 let pendingStatsPlay = null;
+let curriculumSession = null;
+let curriculumStartBusy = false;
 
 function initGameSession(rootSeed) {
   if (sessionInitialized) throw new Error('Football game session is already initialized');
@@ -1033,6 +1035,7 @@ function outcomeMessage(messagesByCall, callKey) {
 
 function contextualQuestionProfile() {
   return {
+    worktexts:{'Math Mammoth Grade 1-B':{edition:2026,completedThroughPage:curriculumSession?.completedThroughPage??MATH_CURRICULUM.BASELINE.completedThroughPage}},
     completedThroughPage: FOOTBALL_LEARNING.PROFILE.completedThroughPage,
     includedThroughPage: FOOTBALL_LEARNING.PROFILE.includedThroughPage,
     computationMax: FOOTBALL_LEARNING.PROFILE.computationMax,
@@ -4585,8 +4588,16 @@ async function startSeasonGame() {
   }
 }
 
-function startGame() {
-  return selectedPlayMode === 'season' ? startSeasonGame() : startQuickGame();
+async function startGame() {
+  if(curriculumStartBusy||sessionInitialized)return false;
+  curriculumStartBusy=true;
+  try{
+    const mode=selectedPlayMode;
+    const progress=await CURRICULUM_UI.ask();
+    if(!progress||selectedPlayMode!==mode||state.phase!=='start'||timeLabIsOpen())return false;
+    curriculumSession=progress;
+    return selectedPlayMode === 'season' ? startSeasonGame() : startQuickGame();
+  }finally{curriculumStartBusy=false;}
 }
 
 function showTD(side = 'offense') {
@@ -5156,6 +5167,7 @@ function renderGameToText() {
     visible: !document.getElementById('math-overlay')?.hidden,
   } : null;
   return JSON.stringify({
+    curriculum:CURRICULUM_UI.text(),
     mode: state.phase,
     playMode: activeSeasonBinding || selectedPlayMode === 'season' ? 'season' : 'quick',
     practice: publicTimeLabSemanticState(),

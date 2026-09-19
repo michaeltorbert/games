@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './curriculum-fixture.mjs';
 
 test('firework runs cancel stale callbacks and keep opponent bursts subdued', async ({ page }) => {
   await page.goto('/football/');

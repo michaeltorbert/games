@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './curriculum-fixture.mjs';
 
 function primaryOnly(testInfo) {
   test.skip(testInfo.project.name !== 'ipad-11-landscape', 'Learning contract checks run once on the primary target.');

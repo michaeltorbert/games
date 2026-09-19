@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './curriculum-fixture.mjs';
 // This suite deliberately exercises the broader curriculum, now an explicit later-work choice.
 test.beforeEach(async({page})=>{await page.addInitScript(()=>localStorage.setItem('place-value-practice:arithmetic-mode:v1','mixed-later'));});
 const KEY='place-value-practice:progress:v1', AKEY='place-value-practice:arithmetic:v1';
@@ -22,7 +22,7 @@ test('arithmetic preserves place-value bytes through retry, reload, duplicate co
  const before=await raw(page);
  expect(JSON.parse(before).reviewQueues.exact).toHaveLength(1);
  expect(JSON.parse(before).gateOpportunities.zeroTens.status).toBe('pending');
- await page.getByRole('button',{name:'Arithmetic',exact:true}).click();
+ await page.getByRole('button',{name:'Arithmetic',exact:true}).click();await settled(page);
  const q=(await snapshot(page)).question;
  const answer=await page.evaluate(()=>PLACE_ARITHMETIC.view(__arithmeticTest.snapshot()).answer);
  const wrong=q.choices.find(x=>x!==answer);
@@ -45,7 +45,7 @@ test('arithmetic preserves place-value bytes through retry, reload, duplicate co
  const current=await snapshot(page);
  expect(await raw(page)).toBe(before);
  await page.getByRole('button',{name:'Place value',exact:true}).click();
- await page.getByRole('button',{name:'Arithmetic',exact:true}).click();
+ await page.getByRole('button',{name:'Arithmetic',exact:true}).click();await settled(page);
  expect(await snapshot(page)).toEqual(current);
  expect(await raw(page)).toBe(before);
  expect(errors).toEqual([]);
@@ -55,7 +55,7 @@ test('arithmetic preserves place-value bytes through retry, reload, duplicate co
 
 test('all curriculum families appear in normal sessions; finite recap and endless restart use only arithmetic progress',async({page})=>{
  await page.goto('/place-value-practice/');const before=await raw(page);
- await page.getByRole('button',{name:'Arithmetic',exact:true}).click();
+ await page.getByRole('button',{name:'Arithmetic',exact:true}).click();await settled(page);
  await page.getByLabel('Arithmetic session length').selectOption('20');
  await page.getByRole('button',{name:'Start new arithmetic session'}).click();
  const seen=new Set();
@@ -92,7 +92,7 @@ test('every outcome persists once and Arithmetic boot leaves absent, malformed a
 });
 
 test('future schema introduced after boot remains byte-identical through completion and Start',async({page})=>{
- await page.goto('/place-value-practice/');await page.getByRole('button',{name:'Arithmetic',exact:true}).click();
+ await page.goto('/place-value-practice/');await page.getByRole('button',{name:'Arithmetic',exact:true}).click();await settled(page);
  const future=' { "schemaVersion": 99, "untouched": true } ';
  await page.evaluate(({AKEY,future})=>localStorage.setItem(AKEY,future),{AKEY,future});
  await correct(page);await page.locator('#arithmetic-next').click();
@@ -102,7 +102,7 @@ test('future schema introduced after boot remains byte-identical through complet
 });
 
 test('stale tab cannot duplicate an observation or overwrite a newer question with Start',async({page,context})=>{
- await page.goto('/place-value-practice/');await page.getByRole('button',{name:'Arithmetic',exact:true}).click();
+ await page.goto('/place-value-practice/');await page.getByRole('button',{name:'Arithmetic',exact:true}).click();await settled(page);
  const other=await context.newPage();await other.goto('/place-value-practice/');
  await correct(page);const completed=await raw(page,AKEY);
  await correct(other);expect(await raw(other,AKEY)).toBe(completed);
@@ -114,7 +114,7 @@ test('stale tab cannot duplicate an observation or overwrite a newer question wi
 });
 
 test('write failure keeps observations in memory without changing either saved progress key',async({page})=>{
- await page.goto('/place-value-practice/');await page.getByRole('button',{name:'Arithmetic',exact:true}).click();
+ await page.goto('/place-value-practice/');await page.getByRole('button',{name:'Arithmetic',exact:true}).click();await settled(page);
  const before=await raw(page), arithmeticBefore=await raw(page,AKEY);
  await page.evaluate(()=>{Storage.prototype.setItem=function(){throw Error('quota');};});
  await correct(page);expect((await snapshot(page)).learning.serial).toBe(1);
@@ -137,9 +137,8 @@ test('future arithmetic schema stays byte-identical and storage failure permits 
  await page.locator('#arithmetic-next').click();
  expect(await raw(page,AKEY)).toBe(future);expect(await raw(page)).toBe(before);
  await page.addInitScript(()=>{Storage.prototype.getItem=function(){throw Error('unavailable');};Storage.prototype.setItem=function(){throw Error('unavailable');};});
- await page.reload();await page.getByRole('button',{name:'Arithmetic',exact:true}).click();
- await expect(page.locator('#fact-practice')).toBeVisible();
- await page.getByRole('button',{name:'For later: larger numbers',exact:true}).click();
+ await page.reload();await page.getByRole('button',{name:'Arithmetic',exact:true}).click();await settled(page);
+ await expect(page.locator('#arithmetic-practice')).toBeVisible();
  await correct(page);expect((await snapshot(page)).completed).toBe(1);
  await page.getByRole('button',{name:'Start new arithmetic session'}).click();
  expect((await snapshot(page)).learning.position).toBe(1);
@@ -198,7 +197,7 @@ test('malformed arithmetic saves recover without touching place-value progress',
 
 test('three misses reveal the equation across reload, then require the correct choice before Next',async({page})=>{
  await page.goto('/place-value-practice/');const before=await raw(page);
- await page.getByRole('button',{name:'Arithmetic',exact:true}).click();
+ await page.getByRole('button',{name:'Arithmetic',exact:true}).click();await settled(page);
  const view=await page.evaluate(()=>PLACE_ARITHMETIC.view(__arithmeticTest.snapshot()));
  const choices=(await snapshot(page)).question.choices;
  for(const value of choices.filter(value=>value!==view.answer)) {
@@ -225,7 +224,7 @@ test('three misses reveal the equation across reload, then require the correct c
 
 test('changing arithmetic session length retains keyboard focus',async({page})=>{
  await page.goto('/place-value-practice/');
- await page.getByRole('button',{name:'Arithmetic',exact:true}).click();
+ await page.getByRole('button',{name:'Arithmetic',exact:true}).click();await settled(page);
  const select=page.getByLabel('Arithmetic session length');
  await select.focus();await select.selectOption('20');await expect(select).toBeFocused();
  await page.keyboard.press('ArrowUp');await expect(select).toBeFocused();
@@ -234,7 +233,7 @@ test('changing arithmetic session length retains keyboard focus',async({page})=>
 
 test('pending finite and endless lengths survive retry, reveal, answer, Next and mode changes until Start',async({page})=>{
  await page.goto('/place-value-practice/');const before=await raw(page);
- await page.getByRole('button',{name:'Arithmetic',exact:true}).click();
+ await page.getByRole('button',{name:'Arithmetic',exact:true}).click();await settled(page);
  const select=page.getByLabel('Arithmetic session length'),start=page.getByRole('button',{name:'Start new arithmetic session'});
  await expect(select).toHaveValue('10');
  for(const [pending,target] of [['5',5],['endless',null],['20',20]]) {
@@ -249,7 +248,7 @@ test('pending finite and endless lengths survive retry, reveal, answer, Next and
    await correct(page);await expect(select).toHaveValue(pending);
    await page.locator('#arithmetic-next').click();await expect(select).toHaveValue(pending);
    await page.getByRole('button',{name:'Place value',exact:true}).click();
-   await page.getByRole('button',{name:'Arithmetic',exact:true}).click();
+   await page.getByRole('button',{name:'Arithmetic',exact:true}).click();await settled(page);
    await expect(select).toHaveValue(pending);expect((await snapshot(page)).target).toBe(active.target);
    await start.click();
    const restarted=await snapshot(page);
@@ -264,7 +263,7 @@ test('pending finite and endless lengths survive retry, reveal, answer, Next and
 
 test('four short sessions guarantee coverage through reload, Practice again and zero-progress Start',async({page})=>{
  await page.goto('/place-value-practice/');const before=await raw(page);
- await page.getByRole('button',{name:'Arithmetic',exact:true}).click();
+ await page.getByRole('button',{name:'Arithmetic',exact:true}).click();await settled(page);
  const select=page.getByLabel('Arithmetic session length'),start=page.getByRole('button',{name:'Start new arithmetic session'});
  await select.selectOption('5');await start.click();
  const families=[];
@@ -292,7 +291,7 @@ test('four short sessions guarantee coverage through reload, Practice again and 
 
 test('schema three stays writable through reload, reveal, answer, reload and Next',async({page})=>{
  await page.goto('/place-value-practice/');const before=await raw(page);
- await page.getByRole('button',{name:'Arithmetic',exact:true}).click();
+ await page.getByRole('button',{name:'Arithmetic',exact:true}).click();await settled(page);
  await correct(page);await page.getByRole('button',{name:'Start new arithmetic session'}).click();
  const initial=await snapshot(page);expect(initial.schemaVersion).toBe(3);expect(initial.learning.position).toBe(1);
  await page.reload();expect(await snapshot(page)).toEqual(initial);
