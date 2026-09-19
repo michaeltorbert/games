@@ -4,11 +4,12 @@
   const api=PLACE_FACTS,KEY='place-value-practice:facts:v1';
   let model=null,savedRaw=null,writable=true,message='',active=false,busy=false,input='',origin=null,timingInvalid=true,renderToken=0;
   let lastAward=null,driveNotice='',pendingAdvance=null,advanceEpoch=0,lifecycle=0,restartIntent=0,restarting=false,whenIdle=Promise.resolve();
+  let sessionPage=null;
   const ADVANCE_MS=650,TOUCHDOWN_MS=900;
   const node=(tag,text,cls)=>{const n=document.createElement(tag);if(text)n.textContent=text;if(cls)n.className=cls;return n;};
   const panel=node('main');panel.id='fact-practice';panel.hidden=true;panel.setAttribute('aria-busy','false');
-  const title=node('h2','Basic addition & subtraction','sr-only');title.id='facts-title';panel.setAttribute('aria-labelledby',title.id);
-  const scope=node('p','Add single-digit numbers and practice the matching subtraction facts. No two-digit addition.');
+  const title=node('h2','Fact focus','sr-only');title.id='facts-title';panel.setAttribute('aria-labelledby',title.id);
+  const scope=node('p','Focused, spaced retrieval of single-digit addition and matching subtraction facts.');
   const setup=node('div',null,'arithmetic-setup'),label=node('label','Questions this session'),length=node('input');length.setAttribute('aria-label','Fact practice question count');
   length.type='number';length.min='1';length.max='100';length.step='1';length.inputMode='numeric';length.value='10';length.id='facts-length';
   const lengthError=node('p');lengthError.id='facts-length-error';lengthError.setAttribute('role','alert');lengthError.hidden=true;length.setAttribute('aria-describedby',lengthError.id);
@@ -77,7 +78,7 @@
     await change(()=>api.next(model,pending.id),pending.epoch);
   }
   function scheduleAdvance(){
-    if(pendingAdvance||!active||busy||restarting||document.visibilityState==='hidden'||!model?.attempt.complete||api.sessionDone(model))return;
+    if(pendingAdvance||!active||busy||restarting||sessionPage!==null&&sessionPage<17||document.visibilityState==='hidden'||!model?.attempt.complete||api.sessionDone(model))return;
     const delay=lastAward?.touchdown?TOUCHDOWN_MS:ADVANCE_MS;
     const pending={id:model.attempt.id,epoch:advanceEpoch,due:performance.now()+delay,timer:null};
     pendingAdvance=pending;pending.timer=setTimeout(()=>advance(pending),delay);
@@ -87,6 +88,7 @@
     const target=length.valueAsNumber;
     if(!Number.isInteger(target)||target<1||target>100){length.setAttribute('aria-invalid','true');lengthError.textContent='Enter a whole number from 1 to 100.';lengthError.hidden=false;length.focus();return;}
     length.removeAttribute('aria-invalid');lengthError.hidden=true;
+    cancelAdvance();restarting=true;panel.setAttribute('aria-busy','true');const progress=await CURRICULUM_UI.ask();panel.setAttribute('aria-busy','false');restarting=false;if(!progress){scheduleAdvance();return;}sessionPage=progress.completedThroughPage;api.configure(sessionPage);if(sessionPage<17){message='No fact lessons completed yet. Return after printed page 17.';render();return;}
     cancelAdvance();const intent=++restartIntent,life=lifecycle;restarting=true;
     try{await whenIdle;if(active&&life===lifecycle&&intent===restartIntent)await change(()=>api.restart(model,target));}
     finally{if(intent===restartIntent){restarting=false;scheduleAdvance();}}
@@ -98,7 +100,7 @@
   function readInitial(){
     try{savedRaw=localStorage.getItem(KEY);const parsed=parse(savedRaw);
       if(parsed&&typeof parsed.schemaVersion==='number'&&parsed.schemaVersion>api.SCHEMA_VERSION)memory('This fact save comes from a newer version. This session and its drive yards stay in memory.');
-      const restored=api.normalize(parsed);model=restored||api.create();
+      const restored=api.normalize(parsed);model=api.repair(restored||api.create());
       if(restored&&api.driveNeedsRepair(parsed))driveNotice='The saved drive could not be read, so it starts at zero. Your learning progress is preserved.';
       if(savedRaw!==null&&!restored&&writable)message='The saved fact progress could not be read. Your next action starts a fresh saved practice.';
     }catch{memory();model=api.create();}
@@ -109,12 +111,12 @@
     const raw=localStorage.getItem(KEY);if(raw===savedRaw)return true;
     const parsed=parse(raw);cancelAdvance();invalidate();input='';lastAward=null;
     if(parsed&&typeof parsed.schemaVersion==='number'&&parsed.schemaVersion>api.SCHEMA_VERSION){memory('This fact save comes from a newer version. This session and its drive yards stay in memory.');return false;}
-    report.open=false;const restored=api.normalize(parsed);model=restored||api.create();
+    report.open=false;const restored=api.normalize(parsed);model=api.repair(restored||api.create());
     driveNotice=restored&&api.driveNeedsRepair(parsed)?'The saved drive could not be read, so it starts at zero. Your learning progress is preserved.':'';
     savedRaw=raw;message='Fact progress changed in another tab. Please try again.';return false;
   }
   async function change(action,automaticEpoch=null){
-    if(busy||!active)return;
+    if(busy||!active||sessionPage!==null&&sessionPage<17)return;
     busy=true;panel.setAttribute('aria-busy','true');const attemptId=model.attempt.id,life=lifecycle;
     let finish;whenIdle=new Promise(resolve=>{finish=resolve;});
     const run=()=>{
@@ -166,6 +168,8 @@
     reportContent.append(familyList);
   }
   function render(startTiming=false){
+    dock.hidden=sessionPage!==null&&sessionPage<17;
+    if(dock.hidden){storage.textContent=message;return;}
     if(!model)return;const q=model.attempt,f=api.byId[q.factId],done=api.sessionDone(model),kick=q.kind==='extraPoint',pendingKick=api.pendingKick(model),kickFailed=q.misses>0||q.helped||q.rewardSupported;
     const kickLocked=pendingKick||kick&&!q.complete;reset.disabled=kickLocked;length.disabled=kickLocked;
     check.textContent=kick?(kickFailed?'Finish practice':'Kick for +1'):'Submit';
@@ -216,9 +220,9 @@
     if(/^\d$/.test(event.key)||['Backspace','Delete','Enter'].includes(event.key)){event.preventDefault();if(event.key==='Enter')submit();else type(event.key);}
   });
   window.PLACE_FACT_UI=Object.freeze({panel,
-    activate(value){const first=model===null;cancelAdvance();lifecycle++;active=value;panel.hidden=!value;document.body.classList.toggle('facts-active',value);lastAward=null;invalidate();if(value){if(first)readInitial();render(first&&savedRaw===null);scheduleAdvance();}},
+    activate(value,page,football=true){const first=model===null;cancelAdvance();lifecycle++;active=value;panel.hidden=!value;document.body.classList.toggle('facts-active',value&&football);lastAward=null;invalidate();if(value){drive.hidden=!football;if(page!==null&&page!==undefined)sessionPage=page;if(sessionPage!==null)api.configure(sessionPage);if(first)readInitial();render(first&&savedRaw===null);scheduleAdvance();}},
     advanceTime(ms){if(!active||!pendingAdvance||!Number.isFinite(ms)||ms<0)return;const pending=pendingAdvance;clearTimeout(pending.timer);const remaining=Math.max(0,pending.due-performance.now()-ms);pending.due=performance.now()+remaining;if(remaining===0)return advance(pending);pending.timer=setTimeout(()=>advance(pending),remaining);},
-    text(){const q=model.attempt,f=api.byId[q.factId];return {mode:'arithmetic',submode:'facts',question:`${api.equation(f)} = ?`,answerEntry:q.complete?String(f.answer):input,
+    text(){if(sessionPage!==null&&sessionPage<17)return {mode:'arithmetic-unavailable',page:sessionPage};const q=model.attempt,f=api.byId[q.factId];return {mode:'arithmetic',submode:'facts',question:`${api.equation(f)} = ?`,answerEntry:q.complete?String(f.answer):input,
       play: q.kind,kickResult:q.kickResult,extraPointPending:api.pendingKick(model),bonusCompleted:model.session.bonusCompleted,complete:q.complete,shown:q.helped,misses:q.misses,completed:model.session.completed,target:model.session.target,worked:q.helped?api.help(f):null,autoAdvancePending:!!pendingAdvance,
       drive:{...api.drive(model),score:api.score(model),lastAward:lastAward?.yards??null,celebrating:!!lastAward?.touchdown,saved:writable}};}
   });

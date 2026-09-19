@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './curriculum-fixture.mjs';
 
 const PRIMARY_PROJECT = 'ipad-11-landscape';
 

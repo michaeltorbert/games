@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './curriculum-fixture.mjs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
@@ -528,6 +528,7 @@ test('full football state matrix follows production transitions', async ({ page 
   await expect(page.locator('#rival-preview-matchup')).toHaveText('DUKE VS WAKE FOREST');
   await assertOverlay(page, testInfo, 'ov-start', 'start', '16-wake-forest-start');
   await page.locator('#start-game-btn').click();
+  await expect.poll(()=>page.evaluate(()=>sessionInitialized)).toBe(true);
   await page.evaluate(() => window.__footballTest.seedDriveState({
     rivalId: 'wake-forest',
     possession: 'defense',
@@ -863,6 +864,7 @@ test('season start, saved final, completed, and pending states remain compact', 
   });
   await page.reload();
   await page.locator('#start-game-btn').click();
+  await expect.poll(()=>page.evaluate(()=>sessionInitialized)).toBe(true);
   await page.evaluate(async (key) => {
     const nativeSetItem = Storage.prototype.setItem;
     Storage.prototype.setItem = function(name, value) {
@@ -885,6 +887,7 @@ test('season start, saved final, completed, and pending states remain compact', 
   await page.reload();
   await expect(page.locator('#start-game-btn')).toHaveText('Play Game 1');
   await page.locator('#start-game-btn').click();
+  await expect.poll(()=>page.evaluate(()=>sessionInitialized)).toBe(true);
   await page.evaluate(() => {
     window.__footballTest.seedDriveState({
       gameId: 'release-mismatched-live-game',
@@ -913,6 +916,7 @@ test('phone pending-result recovery keeps corrupt and future copy plus both acti
   await page.reload();
   await page.getByRole('radio', { name: /3-Game Season/ }).check();
   await page.locator('#start-game-btn').click();
+  await expect.poll(()=>page.evaluate(()=>sessionInitialized)).toBe(true);
   await expect(page.locator('#ui-desk')).toHaveAttribute('data-phase', 'call');
 
   await page.evaluate((key) => {

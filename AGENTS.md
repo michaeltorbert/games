@@ -136,13 +136,23 @@ games. Override both explicitly when validating another release target:
 REGISTRY_RELEASE_BASE=<git-revision> REGISTRY_RELEASE_TARGET=<game-id> npm run test:registry
 ```
 
+For the coordinated curriculum release, use exactly
+`REGISTRY_RELEASE_TARGET=football,place-value-practice` with both release suites.
+The verifier permits those two targets only; all Kayak/Prague descriptors and
+versions must still match the declared exact release base.
+
 ## Curriculum Content
 
 - Identify curriculum pages by worktext, edition, and printed page (for example,
   Math Mammoth Grade 1-B, 2026, page 20); never compare pages across books as
   bare numbers. Preserve legacy Grade 1-A references when adding Grade 1-B.
 - Keep confirmed learner completion separate from the approved content scope.
-  Current content work prioritizes arithmetic through Grade 1-B Chapter 8;
+  Grade 1-B (2026) runtime scope covers the whole book through printed page 187,
+  using `shared/curriculum.js` as its catalog/baseline/availability authority.
+  Grade 1-B is completion-only; the start prompt accepts learner-reported pages.
+  Grade 1-A retains its existing inclusion/completion and guided-first policy.
+  Place by Place supplies runnable Chapters 5-10 practice, including the shapes,
+  measurement, graphs, and coins that cannot be grounded in live Football;
   strategy demonstrations, response-time tracking, and new adaptive progression
   are separate follow-ups, not prerequisites for adding arithmetic questions.
   Preserve existing retry/support behavior when adding content.

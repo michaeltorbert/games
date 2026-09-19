@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './curriculum-fixture.mjs';
 
 function primaryOnly(testInfo) {
   test.skip(testInfo.project.name !== 'ipad-11-landscape', 'Rival engine contracts run once on the primary target.');
@@ -189,6 +189,7 @@ test('picker previews without RNG, commits only on Start, and rematches the sele
     .toEqual({ mode: 'start', initialized: false });
 
   await page.locator('#start-game-btn').click();
+  await expect.poll(()=>page.evaluate(()=>sessionInitialized)).toBe(true);
   const committed = await page.evaluate(() => ({
     render: JSON.parse(render_game_to_text()),
     stateMatch: state.match,

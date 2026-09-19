@@ -2094,7 +2094,7 @@ test('published Grade 1-B source map matches every runtime family coordinate', a
   assert.equal(source.completedThroughPage, 113);
   assert.equal(source.asOfDate, '2026-09-18');
   assert.equal(source.completedThroughPage, questions.WORKTEXTS[source.title].completedThroughPage);
-  assert.equal(source.includedThroughPage, questions.WORKTEXTS[source.title].includedThroughPage);
+  assert.equal(source.runtimeCatalogThroughPage, questions.WORKTEXTS[source.title].includedThroughPage);
   const entries = source.sourceMap.flatMap(row => row.families.map(familyId => ({ familyId, row })));
   const runtime = questions.FAMILY_REGISTRY.scrimmage.filter(family => family.worktext === source.title);
   assert.deepEqual(entries.map(entry => entry.familyId).sort(), plain(runtime.map(family => family.familyId)).sort());

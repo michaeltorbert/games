@@ -317,18 +317,13 @@ function assertReleaseBasePreserved({
     'string',
     'REGISTRY_RELEASE_TARGET must be a string game ID.',
   );
-  assert.match(
-    targetId,
-    SLUG_PATTERN,
-    'REGISTRY_RELEASE_TARGET must be a lowercase URL-safe slug.',
-  );
+  const targets=targetId==='football,place-value-practice'?['football','place-value-practice']:[targetId];
+  for(const target of targets)assert.match(target,SLUG_PATTERN,'REGISTRY_RELEASE_TARGET must be one slug or football,place-value-practice.');
 
   const currentById = new Map(currentGames.map((game) => [game.id, game]));
   const violations = [];
 
-  if (!currentById.has(targetId)) {
-    violations.push(`release target "${targetId}" is missing from the current checkout`);
-  }
+  for(const target of targets)if(!currentById.has(target))violations.push(`release target "${target}" is missing from the current checkout`);
 
   for (const baselineId of baselineIds) {
     const baselineGame = baselineGames.find((game) => game.id === baselineId);
@@ -339,7 +334,7 @@ function assertReleaseBasePreserved({
       );
       continue;
     }
-    if (baselineId === targetId) continue;
+    if (targets.includes(baselineId)) continue;
 
     if (!isDeepStrictEqual(currentGame, baselineGame)) {
       violations.push(

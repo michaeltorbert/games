@@ -9,7 +9,7 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
   const INCLUDED_THROUGH_PAGE = 179;
   const WORKTEXTS = deepFreeze({
     'Math Mammoth Grade 1-A': { edition: 2026, includedThroughPage: 179, completedThroughPage: 145 },
-    'Math Mammoth Grade 1-B': { edition: 2026, includedThroughPage: 149, completedThroughPage: 113 },
+    'Math Mammoth Grade 1-B': { edition: 2026, includedThroughPage: 187, completedThroughPage: 113 },
   });
 
   // Bare legacy page limits refer only to Grade 1-A. Book-specific limits may
@@ -21,6 +21,10 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
     if (!book || (meta.edition ?? 2026) !== book.edition) return { included: false, guided: true };
     const request = profile.worktexts?.[title];
     if (request && request.edition !== book.edition) return { included: false, guided: true };
+    if(title==='Math Mammoth Grade 1-B' && typeof MATH_CURRICULUM!=='undefined'){
+      const page=request?.completedThroughPage??MATH_CURRICULUM.BASELINE.completedThroughPage;
+      return {included:MATH_CURRICULUM.validPage(page)&&meta.introducedOnPage<=page,guided:false};
+    }
     const ceiling = title === 'Math Mammoth Grade 1-A' ? profile.includedThroughPage : book.includedThroughPage;
     const requested = request?.includedThroughPage;
     const limit = Number.isInteger(requested) && requested >= 0 ? Math.min(ceiling, requested) : ceiling;
@@ -630,7 +634,7 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
       throw new Error('Independent evidence must keep the answer outside the source-visible model.');
     }
     if (!CURRICULUM_SOURCES.includes(curriculumSource)) throw new Error(`Unknown curriculum source ${curriculumSource}.`);
-    if (curriculumSource === 'workbook' && (!Number.isInteger(introducedOnPage) || introducedOnPage < 1 || introducedOnPage > INCLUDED_THROUGH_PAGE)) {
+    if (curriculumSource === 'workbook' && (!Number.isInteger(introducedOnPage) || introducedOnPage < 1 || introducedOnPage > (worktext==='Math Mammoth Grade 1-B'?187:INCLUDED_THROUGH_PAGE))) {
       throw new Error('Workbook-sourced families need an exact introducedOnPage within the approved book.');
     }
     if (curriculumSource === 'football-only' && introducedOnPage !== null) {
@@ -765,9 +769,10 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
         operationType: spec.operation, answerExposure: 'modeled-with-result-hidden', evidenceClass: 'independent',
         curriculumSource: 'workbook', worktext: 'Math Mammoth Grade 1-B', edition: 2026,
         introducedOnPage: domain?.page ?? spec.page, coverageThroughPage: domain?.through ?? spec.through }),
-      derive(snap) {
+      derive(snap,profile) {
         const relation = spec.relation(snap);
         const plus = spec.operation === 'add';
+        if(relation&&typeof MATH_CURRICULUM!=='undefined'&&MATH_CURRICULUM.operationPage(plus?'add':'subtract',relation.a,relation.b)>(profile?.worktexts?.['Math Mammoth Grade 1-B']?.completedThroughPage??113))return {decline:decline('curriculum-not-completed','This operand domain belongs to a later printed page.')};
         if (!relation || !arithmeticAllowed(plus ? 'add' : 'subtract', relation.a, relation.b)
           || (relation.a <= 10 && relation.b <= 10 && (!plus || relation.a + relation.b <= 10))) {
           return { decline: decline('outside-chapter-8-relation', 'No supported wider arithmetic relation in these public facts.') };

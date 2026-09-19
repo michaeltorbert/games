@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './curriculum-fixture.mjs';
 
 test('copy tables cover their exact runtime key domains', async ({ page }) => {
   await page.goto('/football/');

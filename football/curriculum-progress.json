@@ -126,6 +126,8 @@
       "title": "Math Mammoth Grade 1-B",
       "edition": 2026,
       "includedThroughPage": 149,
+      "runtimeCatalogThroughPage": 187,
+      "runtimeAvailabilityPolicy": "Grade 1-B uses learner-confirmed completion from shared/curriculum.js; historical inclusion 149 no longer caps or unlocks runtime questions. Grade 1-A policy is unchanged.",
       "completedThroughPage": 113,
       "asOfDate": "2026-09-18",
       "completionMeaning": "Instructor-confirmed completion through printed page 113; inclusion through page 149 remains separate from completion.",

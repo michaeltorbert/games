@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './curriculum-fixture.mjs';
 
 test('a real stretch play records once, reports this game, and restores only historical evidence', async ({ page }) => {
   await page.goto('/football/?boot=offense-call');
