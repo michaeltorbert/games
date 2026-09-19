@@ -46,3 +46,20 @@ test('lowering a restored arithmetic session preserves history and blocks future
  const restored=await page.evaluate(()=>({state:__arithmeticTest.snapshot(),required:MATH_CURRICULUM.arithmeticPage(__arithmeticTest.snapshot().question.family,__arithmeticTest.snapshot().question.operands)}));
  expect(restored.state.learning).toEqual(saved.history);expect(restored.state.sequence).toBe(saved.sequence);expect(restored.required).toBeLessThanOrEqual(113);
 });
+test('a fact-focus restart that lowers the page survives presentation changes and the prompt is centered',async({page},info)=>{
+ test.skip(info.project.name!=='ipad-11-landscape','Lane ownership once');
+ await page.goto('/football/');await page.locator('#start-game-btn').click();
+ const dialog=await page.locator('.curriculum-dialog').boundingBox(),size=page.viewportSize();
+ expect(Math.abs(dialog.x+dialog.width/2-size.width/2)).toBeLessThan(2);expect(Math.abs(dialog.y+dialog.height/2-size.height/2)).toBeLessThan(2);
+ await page.locator('#curriculum-cancel').click();
+ await page.goto('/place-value-practice/');await confirm(page,187);
+ await page.getByRole('button',{name:'Arithmetic',exact:true}).click();await confirm(page);
+ await page.getByRole('button',{name:'Fact focus',exact:true}).click();await confirm(page);
+ await page.getByRole('button',{name:'Start new fact session',exact:true}).click();await confirm(page,113);
+ expect(await page.evaluate(()=>PLACE_FACT_UI.page())).toBe(113);
+ await page.getByRole('button',{name:'Just arithmetic',exact:true}).click();
+ expect(await page.evaluate(()=>PLACE_FACT_UI.page())).toBe(113);
+ await page.getByRole('button',{name:'Mixed practice',exact:true}).click();await page.getByRole('button',{name:'Fact focus',exact:true}).click();
+ expect(await page.evaluate(()=>PLACE_FACT_UI.page())).toBe(113);
+ expect(await page.evaluate(()=>PLACE_FACTS.byId[__factsTest.snapshot().attempt.factId].source.page)).toBeLessThanOrEqual(113);
+});

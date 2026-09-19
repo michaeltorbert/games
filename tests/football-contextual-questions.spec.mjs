@@ -2105,3 +2105,33 @@ test('published Grade 1-B source map matches every runtime family coordinate', a
     assert.equal(source.edition, family.edition);
   }
 });
+
+test('Grade 1-B contextual arithmetic is completion-gated by the shared curriculum authority', async () => {
+  const curriculumSource = await readFile(new URL('../shared/curriculum.js', import.meta.url), 'utf8');
+  const ctx = vm.createContext({});
+  vm.runInContext(curriculumSource, ctx, { filename: 'curriculum.js' });
+  vm.runInContext(opponentSource, ctx, { filename: 'opponent.js' });
+  vm.runInContext(domainSource, ctx, { filename: 'football-domain.js' });
+  vm.runInContext(copySource, ctx, { filename: 'copy.js' });
+  vm.runInContext(questionsSource, ctx, { filename: 'contextual-questions.js' });
+  const questions = ctx.FOOTBALL_CONTEXTUAL_QUESTIONS, domain = ctx.FOOTBALL_DOMAIN;
+  const profile = page => ({ worktexts: { 'Math Mammoth Grade 1-B': { edition: 2026, completedThroughPage: page } } });
+  const score = (a, b) => makeSnap(domain, { scores: { player: a, opponent: b } }, 4);
+  // Later-page relations: two-digit plus two-digit, subtraction across ten, two-digit minus two-digit.
+  for (const [a, b] of [[23, 14], [14, 7], [67, 24]]) {
+    const at113 = questions.inspect(score(a, b), profile(113));
+    assert.equal(at113.eligible.some(row => row.familyId.startsWith('score-')), false, `${a},${b} at 113`);
+    assert.ok(at113.declined.filter(row => row.familyId.startsWith('score-')).every(row => row.reason.code === 'curriculum-not-completed'), `${a},${b} decline code`);
+    assert.ok(questions.inspect(score(a, b), profile(187)).eligible.some(row => row.familyId.startsWith('score-')), `${a},${b} at 187`);
+  }
+  // Completed relations stay available at 113 with their exact completed variant.
+  assert.ok(questions.inspect(score(7, 6), profile(113)).eligible.some(row => row.familyId === 'score-total-ch8-within-20'));
+  assert.ok(questions.inspect(score(10, 9), profile(113)).eligible.some(row => row.familyId === 'score-total-ch8-ones-add'));
+  assert.ok(questions.inspect(score(47, 5), profile(113)).eligible.some(row => row.familyId === 'score-difference-ch8-ones-subtract'));
+  // Every eligible Grade 1-B workbook family at a page was introduced at or before that page.
+  for (const page of [113, 120, 137, 187]) for (const [a, b] of [[23, 14], [14, 7], [67, 24], [7, 6], [47, 5]]) {
+    for (const row of questions.inspect(score(a, b), profile(page)).eligible) {
+      if (row.worktext === 'Math Mammoth Grade 1-B' && row.familyId.startsWith('score-difference')) assert.ok(row.introducedOnPage <= page, `${row.familyId} ${page}`);
+    }
+  }
+});

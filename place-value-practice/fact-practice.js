@@ -220,6 +220,7 @@
     if(/^\d$/.test(event.key)||['Backspace','Delete','Enter'].includes(event.key)){event.preventDefault();if(event.key==='Enter')submit();else type(event.key);}
   });
   window.PLACE_FACT_UI=Object.freeze({panel,
+    page:()=>sessionPage,
     activate(value,page,football=true){const first=model===null;cancelAdvance();lifecycle++;active=value;panel.hidden=!value;document.body.classList.toggle('facts-active',value&&football);lastAward=null;invalidate();if(value){drive.hidden=!football;if(page!==null&&page!==undefined)sessionPage=page;if(sessionPage!==null)api.configure(sessionPage);if(first)readInitial();render(first&&savedRaw===null);scheduleAdvance();}},
     advanceTime(ms){if(!active||!pendingAdvance||!Number.isFinite(ms)||ms<0)return;const pending=pendingAdvance;clearTimeout(pending.timer);const remaining=Math.max(0,pending.due-performance.now()-ms);pending.due=performance.now()+remaining;if(remaining===0)return advance(pending);pending.timer=setTimeout(()=>advance(pending),remaining);},
     text(){if(sessionPage!==null&&sessionPage<17)return {mode:'arithmetic-unavailable',page:sessionPage};const q=model.attempt,f=api.byId[q.factId];return {mode:'arithmetic',submode:'facts',question:`${api.equation(f)} = ?`,answerEntry:q.complete?String(f.answer):input,

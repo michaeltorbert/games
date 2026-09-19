@@ -7,7 +7,7 @@
   const LIMIT=1000000000, HISTORY=12, INTERVALS=[8,24,60];
   const catalog=[], byId=Object.create(null), families=[];
   let curriculumPage=null;
-  const allowed=f=>curriculumPage===null||f.source.page<=curriculumPage;
+  const allowed=f=>curriculumPage===null||(f.source.page??Infinity)<=curriculumPage;
   const configure=page=>{if(!MATH_CURRICULUM.validPage(page))throw new RangeError('Invalid page');curriculumPage=page;};
   function add(op,a,b,x,y) {
     const id=`${op}:${a}:${b}`;

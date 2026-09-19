@@ -118,6 +118,8 @@
   window.advanceTime=milliseconds=>window.__placePracticeMode==='arithmetic'&&submode==='facts'?PLACE_FACT_UI.advanceTime(milliseconds):placeAdvance(milliseconds);
   async function mode(value, persist=true) {
     if(value==='arithmetic'&&sessionPages[submode]===null){panel.setAttribute('aria-busy','true');PLACE_FACT_UI.panel.setAttribute('aria-busy','true');const progress=await CURRICULUM_UI.ask();if(!progress){panel.setAttribute('aria-busy','false');PLACE_FACT_UI.panel.setAttribute('aria-busy','false');return false;}sessionPages[submode]=progress.completedThroughPage;}
+    // A confirmed restart inside a lane owns that lane's frozen page; re-activation must not restore a stale one.
+    sessionPages.facts=PLACE_FACT_UI.page()??sessionPages.facts;sessionPages.book=PLACE_BOOK_UI.page()??sessionPages.book;
     window.__placePracticeMode=value;
     if(persist)try{localStorage.setItem(MODE_KEY,value);}catch{}
     const active=value==='arithmetic';
@@ -136,7 +138,7 @@
     football.setAttribute('aria-pressed',String(presentation==='football'));plain.setAttribute('aria-pressed',String(presentation==='plain'));
     place.setAttribute('aria-pressed',String(!active)); arithmetic.setAttribute('aria-pressed',String(active));
     // Keep invalid JSON bytes until a locked user action can check for conflicts.
-    if(empty){panel.hidden=false;choices.replaceChildren();equation.textContent='No arithmetic lessons completed yet.';feedback.textContent='Choose Book practice after completing its first lesson on page 17.';next.hidden=true;panel.setAttribute('aria-busy','false');PLACE_FACT_UI.panel.setAttribute('aria-busy','false');return true;}
+    if(empty){panel.hidden=false;choices.replaceChildren();equation.textContent='No arithmetic lessons completed yet.';feedback.textContent='Choose Whole book after completing its first lesson on page 17.';next.hidden=true;panel.setAttribute('aria-busy','false');PLACE_FACT_UI.panel.setAttribute('aria-busy','false');return true;}
     if(active){if(submode==='mixed'){api.configure(sessionPages.mixed);if(!model){model=api.repair(api.create());if(!malformedJSON)save();}else api.repair(model);render();}}else window.__placeValueActivate();
     panel.setAttribute('aria-busy','false');PLACE_FACT_UI.panel.setAttribute('aria-busy','false');
     return true;

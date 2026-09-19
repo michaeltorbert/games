@@ -1035,7 +1035,7 @@ function outcomeMessage(messagesByCall, callKey) {
 
 function contextualQuestionProfile() {
   return {
-    worktexts:{'Math Mammoth Grade 1-B':{edition:2026,completedThroughPage:curriculumSession?.completedThroughPage??113}},
+    worktexts:{'Math Mammoth Grade 1-B':{edition:2026,completedThroughPage:curriculumSession?.completedThroughPage??MATH_CURRICULUM.BASELINE.completedThroughPage}},
     completedThroughPage: FOOTBALL_LEARNING.PROFILE.completedThroughPage,
     includedThroughPage: FOOTBALL_LEARNING.PROFILE.includedThroughPage,
     computationMax: FOOTBALL_LEARNING.PROFILE.computationMax,

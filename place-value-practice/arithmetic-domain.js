@@ -16,7 +16,7 @@ const PLACE_ARITHMETIC = (() => {
     'missing-addend': { source: source(129,139), valid: ([a,b]) => a >= 0 && a <= 99 && b >= 0 && b <= 99 && a+b <= 100 && (a+b <= 20 || a%10+b%10 < 10 || ((a+b)%10 === 0 && b <= 9)), answer: ([a,b]) => b, text: ([a,b]) => `${a} + ? = ${a+b}` },
     'subtract-no-borrow': { source: source(110,137), valid: ([a,b]) => a >= 10 && a <= 99 && b >= 0 && b <= a && a%10 >= b%10, answer: ([a,b]) => a-b, text: ([a,b]) => `${a} − ${b}` },
     'tens-minus-digit': { source: source(142,143), valid: ([a,b]) => a >= 20 && a <= 100 && a%10 === 0 && b >= 1 && b <= 9, answer: ([a,b]) => a-b, text: ([a,b]) => `${a} − ${b}` },
-    'three-addends': { source: source(103,124), size: 3, valid: ([a,b,c]) => a >= 0 && b >= 0 && c >= 0 && a+b+c <= 20, answer: ([a,b,c]) => a+b+c, text: ([a,b,c]) => `${a} + ${b} + ${c}` },
+    'three-addends': { source: source(101,124), size: 3, valid: ([a,b,c]) => a >= 0 && b >= 0 && c >= 0 && a+b+c <= 20, answer: ([a,b,c]) => a+b+c, text: ([a,b,c]) => `${a} + ${b} + ${c}` },
     'repeated-subtraction': { source: source(39,39), size: 3, valid: ([a,b,c]) => a >= 0 && a <= 10 && b >= 0 && c >= 0 && b+c <= a, answer: ([a,b,c]) => a-b-c, text: ([a,b,c]) => `${a} − ${b} − ${c}` },
   });
   Object.values(FAMILIES).forEach(Object.freeze);

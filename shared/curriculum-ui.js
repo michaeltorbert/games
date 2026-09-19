@@ -15,7 +15,7 @@
       const finish=value=>{if(!live)return;live=false;snapshot=value||snapshot;dialog.close();dialog.remove();pending=null;resolve(value);};
       const parsed=()=>/^\d+$/.test(input.value.trim())?Number(input.value.trim()):NaN;
       const check=()=>{const page=parsed();if(!api.validPage(page)){error.textContent='Enter a whole printed page from 0 to 187.';input.setAttribute('aria-invalid','true');return null;}return page;};
-      const approve=page=>{const before=prior.value?.completedThroughPage??snapshot?.completedThroughPage??113;if(api.needsConfirmation(before,page)&&confirmed!==page){confirmed=page;error.textContent=`Change from page ${before} to page ${page}? Check the printed page, then confirm.`;submit.textContent='Confirm page';return false;}return true;};
+      const approve=page=>{const before=prior.value?.completedThroughPage??snapshot?.completedThroughPage??api.BASELINE.completedThroughPage;if(api.needsConfirmation(before,page)&&confirmed!==page){confirmed=page;error.textContent=`Change from page ${before} to page ${page}? Check the printed page, then confirm.`;submit.textContent='Confirm page';return false;}return true;};
       const local=page=>Object.freeze({worktext:api.BOOK,edition:api.EDITION,completedThroughPage:page,saved:false});
       if(prior.blocked){error.textContent='Saved progress is unavailable or from another version. You can continue without changing it.';memory.hidden=false;}
       input.addEventListener('input',()=>{confirmed=null;submit.textContent='Continue';input.removeAttribute('aria-invalid');error.textContent='';});

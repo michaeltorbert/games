@@ -51,3 +51,19 @@ test('book practice reward and evidence survive restart/correction without shari
  const {PLACE_BOOK:b}=load();const s=b.create(187,6);for(let i=0;i<20;i++){const q=b.current(s);b.answer(s,q.answer);assert.ok(b.normalize(s));b.next(s);}
  assert.equal(s.yards,100);assert.equal(s.completed,20);const history=JSON.stringify(s.history);s.page=50;s.done=false;s.misses=[];s.serial=s.completed;assert.ok(b.normalize(s));assert.equal(JSON.stringify(s.history),history);assert.equal(b.current(s).page,50);assert.equal(b.normalize({...s,schemaVersion:2}),null);
 });
+test('three addends unlock at the pair-making-ten lesson or the broader page-124 lesson, never at doubles',()=>{
+ const {MATH_CURRICULUM:c,PLACE_ARITHMETIC:a}=load();
+ assert.equal(c.arithmeticPage('three-addends',[3,7,5]),101);assert.equal(c.arithmeticPage('three-addends',[3,4,5]),124);assert.equal(c.arithmeticPage('three-addends',[2,2,3]),124);
+ assert.equal(c.arithmeticPage('facts-subtract',[12,7]),131);assert.equal(c.arithmeticPage('facts-subtract',[15,7]),131);assert.equal(c.arithmeticPage('facts-subtract',[17,3]),110);
+ assert.equal(c.operationPage('subtract',12,7),131);assert.equal(c.operationPage('add',7,8),103);assert.equal(c.operationPage('add',9,5),104);assert.equal(c.operationPage('add',23,45),114);
+ a.configure(113);const state=a.repair(a.create(null,()=>.5));
+ for(let n=0;n<120;n++){const q=state.question;if(q.family==='three-addends'){const [x,y,z]=q.operands;assert.ok([x+y,x+z,y+z].includes(10),`page 113 drew ${q.operands}`);}a.answer(state,a.view(state).answer);a.next(state,()=>(n%7)/7);}
+});
+test('page 187 makes every mixed arithmetic family eligible and no family maps to Infinity',()=>{
+ const {MATH_CURRICULUM:c,PLACE_ARITHMETIC:a}=load();
+ for(const family of a.MIX){assert.notEqual(a.FAMILIES[family],undefined);}
+ a.configure(187);const seen=new Set();const state=a.repair(a.create(null,()=>.5));
+ for(let n=0;n<400&&seen.size<Object.keys(a.FAMILIES).length;n++){seen.add(state.question.family);assert.ok(Number.isFinite(c.arithmeticPage(state.question.family,state.question.operands)));a.answer(state,a.view(state).answer);a.next(state,()=>(n%11)/11);}
+ assert.deepEqual([...seen].sort(),Object.keys(a.FAMILIES).sort());
+ assert.equal(c.arithmeticPage('no-such-family',[1,2]),Infinity);
+});

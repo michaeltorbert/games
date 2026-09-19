@@ -32,7 +32,7 @@ const MATH_CURRICULUM = (() => {
       case 'subtract-no-borrow':return b<=9?110:137;
       case 'complete-ten':return 117;
       case 'missing-addend':return a+b<=10?21:[8,9].includes(a)&&b<=9?107:a>=10&&b<=9&&a%10+b<=9?112:129;
-      case 'three-addends':return [a+b,a+c,b+c].includes(10)?101:[a,b,c].every(n=>n<=9)?103:124;
+      case 'three-addends':return [a+b,a+c,b+c].includes(10)?101:124;
       case 'repeated-subtraction':return 39;
       case 'tens-minus-digit':return 142;
       default:return Infinity;

@@ -772,7 +772,7 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
       derive(snap,profile) {
         const relation = spec.relation(snap);
         const plus = spec.operation === 'add';
-        if(relation&&typeof MATH_CURRICULUM!=='undefined'&&MATH_CURRICULUM.operationPage(plus?'add':'subtract',relation.a,relation.b)>(profile?.worktexts?.['Math Mammoth Grade 1-B']?.completedThroughPage??113))return {decline:decline('curriculum-not-completed','This operand domain belongs to a later printed page.')};
+        if(relation&&typeof MATH_CURRICULUM!=='undefined'&&MATH_CURRICULUM.operationPage(plus?'add':'subtract',relation.a,relation.b)>(profile?.worktexts?.['Math Mammoth Grade 1-B']?.completedThroughPage??MATH_CURRICULUM.BASELINE.completedThroughPage))return {decline:decline('curriculum-not-completed','This operand domain belongs to a later printed page.')};
         if (!relation || !arithmeticAllowed(plus ? 'add' : 'subtract', relation.a, relation.b)
           || (relation.a <= 10 && relation.b <= 10 && (!plus || relation.a + relation.b <= 10))) {
           return { decline: decline('outside-chapter-8-relation', 'No supported wider arithmetic relation in these public facts.') };
