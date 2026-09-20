@@ -71,7 +71,7 @@ const phoneLabels = [
   '31-season-pending-future',
 ];
 
-const matrixDir = path.join(process.cwd(), 'tests', 'artifacts', 'release-matrix');
+const matrixDir = path.join(process.cwd(), 'tests', 'artifacts.nosync', 'release-matrix');
 const scopeArguments = process.argv.slice(2);
 const artifactScope = scopeArguments.length === 0
   ? 'full'
@@ -88,7 +88,11 @@ const actualProjects = (await fs.readdir(matrixDir, { withFileTypes: true }))
   .sort();
 
 if (JSON.stringify(actualProjects) !== JSON.stringify(expectedProjects)) {
-  throw new Error(`Release artifact projects differ. Expected ${expectedProjects.join(', ')}; got ${actualProjects.join(', ') || 'none'}.`);
+  const conflictCopies = actualProjects.filter(name => /^.+ \d+$/.test(name) && !expectedProjects.includes(name));
+  const hint = conflictCopies.length > 0
+    ? ` Directories ending in a space and a number (${conflictCopies.join(', ')}) look like conflict copies from a host file-sync daemon rather than Playwright output; keep the artifact root outside sync scope (issue #109).`
+    : '';
+  throw new Error(`Release artifact projects differ. Expected ${expectedProjects.join(', ')}; got ${actualProjects.join(', ') || 'none'}.${hint}`);
 }
 
 for (const project of projects) {

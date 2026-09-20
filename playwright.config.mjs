@@ -9,7 +9,7 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   retries: 0,
   reporter: [['list']],
-  outputDir: 'tests/artifacts/playwright',
+  outputDir: 'tests/artifacts.nosync/playwright',
   use: {
     baseURL: BASE_URL,
     trace: 'off',

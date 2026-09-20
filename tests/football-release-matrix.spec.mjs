@@ -31,7 +31,7 @@ test.afterEach(async ({ page }) => {
 });
 
 async function shot(page, testInfo, label) {
-  const dir = path.join(process.cwd(), 'tests', 'artifacts', 'release-matrix', testInfo.project.name);
+  const dir = path.join(process.cwd(), 'tests', 'artifacts.nosync', 'release-matrix', testInfo.project.name);
   const artifactPath = path.join(dir, `${label}.png`);
   await fs.mkdir(dir, { recursive: true });
   await page.screenshot({ path: artifactPath });
