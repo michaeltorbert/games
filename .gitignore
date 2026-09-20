@@ -2,5 +2,6 @@
 output/
 node_modules/
 tests/artifacts.nosync/
+tests/artifacts/
 playwright-report/
 test-results/

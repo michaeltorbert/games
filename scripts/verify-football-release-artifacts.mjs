@@ -90,7 +90,7 @@ const actualProjects = (await fs.readdir(matrixDir, { withFileTypes: true }))
 if (JSON.stringify(actualProjects) !== JSON.stringify(expectedProjects)) {
   const conflictCopies = actualProjects.filter(name => /^.+ \d+$/.test(name) && !expectedProjects.includes(name));
   const hint = conflictCopies.length > 0
-    ? ` Directories ending in a space and a number (${conflictCopies.join(', ')}) are conflict copies made by a host file-sync daemon, not by Playwright; keep the artifact root outside sync scope (issue #109).`
+    ? ` Directories ending in a space and a number (${conflictCopies.join(', ')}) look like conflict copies from a host file-sync daemon rather than Playwright output; keep the artifact root outside sync scope (issue #109).`
     : '';
   throw new Error(`Release artifact projects differ. Expected ${expectedProjects.join(', ')}; got ${actualProjects.join(', ') || 'none'}.${hint}`);
 }

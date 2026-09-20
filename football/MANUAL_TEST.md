@@ -280,10 +280,10 @@ Playwright-owned temporary output is isolated under `tests/artifacts.nosync/play
 
 The artifact root is named `tests/artifacts.nosync/` on purpose. iCloud Drive
 excludes any item whose name ends in `.nosync`, and this repository lives under
-the synced `~/Documents` folder. With a synced root, the sync daemon could
-resurrect the previous run's project directories after the pre-test step had
-removed them, leaving empty ` 2`/` 3` conflict copies beside the fresh ones and
-failing the strict verifier (issue #109). Keep the root outside sync scope; do
+the synced `~/Documents` folder. With a synced root, the previous run's project
+directories reappeared beside the fresh ones as empty ` 2`/` 3` conflict copies
+after the pre-test step had removed them, most likely restored by the sync
+daemon, and failed the strict verifier (issue #109). Keep the root outside sync scope; do
 not delete unrecognized directories to make the verifier pass.
 
 The final overlay also has a focused compatibility check at `1180x740`, just
