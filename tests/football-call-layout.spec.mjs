@@ -34,8 +34,13 @@ async function assertCallGridAboveFold(page, label) {
     const lastBottom = Math.max(...cards.map(c => c.getBoundingClientRect().bottom));
     return {
       scrollY: window.scrollY,
+      innerWidth: window.innerWidth,
       innerHeight: window.innerHeight,
       lastBottom: Math.ceil(lastBottom),
+      cards: cards.map((card) => {
+        const rect = card.getBoundingClientRect();
+        return { left: rect.left, right: rect.right, width: rect.width, height: rect.height };
+      }),
     };
   });
 
@@ -44,6 +49,12 @@ async function assertCallGridAboveFold(page, label) {
     metrics.lastBottom,
     `${label}: last call card bottom ${metrics.lastBottom}px exceeds viewport ${metrics.innerHeight}px`,
   ).toBeLessThanOrEqual(metrics.innerHeight + EPSILON);
+  for (const card of metrics.cards) {
+    expect(card.left, `${label}: call target left bound`).toBeGreaterThanOrEqual(-EPSILON);
+    expect(card.right, `${label}: call target right bound`).toBeLessThanOrEqual(metrics.innerWidth + EPSILON);
+    expect(card.width, `${label}: call target width`).toBeGreaterThanOrEqual(44);
+    expect(card.height, `${label}: call target height`).toBeGreaterThanOrEqual(44);
+  }
 }
 
 async function showNextDownQuestion(page, beforeCallLabel = null) {
@@ -404,10 +415,14 @@ test.describe('football call-layout above-the-fold', () => {
       showPlayerFourthDownDecision();
     });
     await expect(page.locator('#ui-desk')).toHaveAttribute('data-phase', 'fourth-down-decision');
+    await expect(page.locator('#question')).toBeVisible();
+    await expect(page.locator('#question')).toContainText('Make the fourth-down decision.');
     await assertChoiceGridAboveFold(page, '1024px fourth-down decision', '#decision-grid .decision-btn', 3);
 
     await page.evaluate(() => showConversionDecision());
     await expect(page.locator('#ui-desk')).toHaveAttribute('data-phase', 'conversion-decision');
+    await expect(page.locator('#question')).toBeVisible();
+    await expect(page.locator('#question')).toContainText('Choose one point or two points.');
     await assertChoiceGridAboveFold(page, '1024px conversion decision', '#decision-grid .decision-btn', 2);
 
     await showNextDownQuestion(page);

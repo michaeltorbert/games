@@ -3402,9 +3402,7 @@ body::after {
   #ui-desk:is(
     [data-phase="call"],
     [data-phase="question"],
-    [data-phase="feedback"],
-    [data-phase="fourth-down-decision"],
-    [data-phase="conversion-decision"]
+    [data-phase="feedback"]
   ) {
     margin: -42px 16px 0;
     padding: 14px 18px 16px;
@@ -3414,9 +3412,7 @@ body::after {
   #ui-desk:is(
     [data-phase="call"],
     [data-phase="question"],
-    [data-phase="feedback"],
-    [data-phase="fourth-down-decision"],
-    [data-phase="conversion-decision"]
+    [data-phase="feedback"]
   ) #desk-head {
     display: none;
   }
@@ -3424,9 +3420,7 @@ body::after {
   #ui-desk:is(
     [data-phase="call"],
     [data-phase="question"],
-    [data-phase="feedback"],
-    [data-phase="fourth-down-decision"],
-    [data-phase="conversion-decision"]
+    [data-phase="feedback"]
   ) #prompt-panel {
     padding: 0;
   }
@@ -3434,9 +3428,7 @@ body::after {
   #ui-desk:is(
     [data-phase="call"],
     [data-phase="question"],
-    [data-phase="feedback"],
-    [data-phase="fourth-down-decision"],
-    [data-phase="conversion-decision"]
+    [data-phase="feedback"]
   ) #action-panel {
     padding-left: 16px;
   }
@@ -3466,11 +3458,6 @@ body::after {
   #ui-desk[data-phase="question"],
   #ui-desk[data-phase="feedback"] {
     grid-template-columns: minmax(320px, 0.82fr) minmax(0, 1.18fr);
-  }
-
-  #ui-desk[data-phase="fourth-down-decision"],
-  #ui-desk[data-phase="conversion-decision"] {
-    grid-template-columns: minmax(260px, 0.7fr) minmax(0, 1.3fr);
   }
 
   #ui-desk[data-phase="question"] #play-label,
@@ -3624,6 +3611,25 @@ body::after {
 
   #wrap:is([data-phase="question"], [data-phase="feedback"]) #field-wrap {
     height: 152px;
+  }
+
+  #ui-desk:is([data-phase="fourth-down-decision"], [data-phase="conversion-decision"]) {
+    grid-template-columns: minmax(260px, 0.7fr) minmax(0, 1.3fr);
+    margin: -42px 16px 0;
+    padding: 14px 18px 16px;
+    gap: 0 18px;
+  }
+
+  #ui-desk:is([data-phase="fourth-down-decision"], [data-phase="conversion-decision"]) #desk-head {
+    display: none;
+  }
+
+  #ui-desk:is([data-phase="fourth-down-decision"], [data-phase="conversion-decision"]) #prompt-panel {
+    padding: 0;
+  }
+
+  #ui-desk:is([data-phase="fourth-down-decision"], [data-phase="conversion-decision"]) #action-panel {
+    padding-left: 16px;
   }
 }
 
