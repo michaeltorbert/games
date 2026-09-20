@@ -25,7 +25,7 @@ for (const possession of ['offense', 'defense']) test(`completed arithmetic keep
   expect(initial.question.visuals.initial.result).toBeNull();
   await expect(page.locator('#math-overlay')).toHaveAttribute('aria-label', '7 + 6 equals an unknown number.');
   await expect(page.locator('#math-overlay')).not.toContainText('= 13');
-  await page.screenshot({ path: `tests/artifacts/page113-${possession}-initial-${test.info().project.name}.png` });
+  await page.screenshot({ path: `tests/artifacts.nosync/page113-${possession}-initial-${test.info().project.name}.png` });
   const wrong = initial.question.choices.map((choice, index) => choice.id !== initial.question.correctChoiceId ? index : null).filter(index => index !== null);
   await page.locator(`#b${wrong[0]}`).click();
   await expect(page.locator('#math-overlay')).not.toContainText('= 13');
@@ -33,7 +33,7 @@ for (const possession of ['offense', 'defense']) test(`completed arithmetic keep
   expect(await page.evaluate(() => JSON.parse(render_game_to_text()).mode)).toBe('question');
   await page.locator(`#b${wrong[1]}`).click();
   await expect(page.locator('#math-overlay')).toContainText('= 13');
-  await page.screenshot({ path: `tests/artifacts/page113-${possession}-worked-${test.info().project.name}.png` });
+  await page.screenshot({ path: `tests/artifacts.nosync/page113-${possession}-worked-${test.info().project.name}.png` });
   await page.locator('#question-learn-why').click();
   await page.locator('#question-continue').click();
   expect(await page.evaluate(() => JSON.parse(render_game_to_text()).outcomeCommitted)).toBe(true);
@@ -79,7 +79,7 @@ test('Chapter 8 families are ordinarily selected with hidden results and working
     await page.locator(`#b${wrong}`).click();
     await page.locator(`#b${q.choices.findIndex((c, i) => c.id !== q.correctChoiceId && i !== wrong)}`).click();
     await expect(page.locator('#math-overlay')).toContainText(`= ${q.answer.value}`);
-    await page.screenshot({ path: `tests/artifacts/arithmetic-${test.info().project.name}-${familyId}.png` });
+    await page.screenshot({ path: `tests/artifacts.nosync/arithmetic-${test.info().project.name}-${familyId}.png` });
     await page.locator('#question-learn-why').click();
     await page.locator('#question-continue').click();
     expect((await page.evaluate(() => JSON.parse(render_game_to_text()))).outcomeCommitted).toBe(true);

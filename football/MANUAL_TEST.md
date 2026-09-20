@@ -273,10 +273,18 @@ contracts, or missing artifacts make the command exit nonzero.
 Canonical screenshots are retained at:
 
 ```text
-tests/artifacts/release-matrix/<project>/<NN-state>.png
+tests/artifacts.nosync/release-matrix/<project>/<NN-state>.png
 ```
 
-Playwright-owned temporary output is isolated under `tests/artifacts/playwright/`, so a later focused Playwright invocation cannot erase the canonical matrix. The pre-test step intentionally replaces the previous canonical matrix before a complete release run.
+Playwright-owned temporary output is isolated under `tests/artifacts.nosync/playwright/`, so a later focused Playwright invocation cannot erase the canonical matrix. The pre-test step intentionally replaces the previous canonical matrix before a complete release run.
+
+The artifact root is named `tests/artifacts.nosync/` on purpose. iCloud Drive
+excludes any item whose name ends in `.nosync`, and this repository lives under
+the synced `~/Documents` folder. With a synced root, the sync daemon could
+resurrect the previous run's project directories after the pre-test step had
+removed them, leaving empty ` 2`/` 3` conflict copies beside the fresh ones and
+failing the strict verifier (issue #109). Keep the root outside sync scope; do
+not delete unrecognized directories to make the verifier pass.
 
 The final overlay also has a focused compatibility check at `1180x740`, just
 inside the existing `max-height: 760px` compact rule and outside the six-device

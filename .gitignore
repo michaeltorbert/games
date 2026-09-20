@@ -1,6 +1,6 @@
 .DS_Store
 output/
 node_modules/
-tests/artifacts/
+tests/artifacts.nosync/
 playwright-report/
 test-results/
