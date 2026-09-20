@@ -34,8 +34,13 @@ async function assertCallGridAboveFold(page, label) {
     const lastBottom = Math.max(...cards.map(c => c.getBoundingClientRect().bottom));
     return {
       scrollY: window.scrollY,
+      innerWidth: window.innerWidth,
       innerHeight: window.innerHeight,
       lastBottom: Math.ceil(lastBottom),
+      cards: cards.map((card) => {
+        const rect = card.getBoundingClientRect();
+        return { left: rect.left, right: rect.right, width: rect.width, height: rect.height };
+      }),
     };
   });
 
@@ -44,9 +49,15 @@ async function assertCallGridAboveFold(page, label) {
     metrics.lastBottom,
     `${label}: last call card bottom ${metrics.lastBottom}px exceeds viewport ${metrics.innerHeight}px`,
   ).toBeLessThanOrEqual(metrics.innerHeight + EPSILON);
+  for (const card of metrics.cards) {
+    expect(card.left, `${label}: call target left bound`).toBeGreaterThanOrEqual(-EPSILON);
+    expect(card.right, `${label}: call target right bound`).toBeLessThanOrEqual(metrics.innerWidth + EPSILON);
+    expect(card.width, `${label}: call target width`).toBeGreaterThanOrEqual(44);
+    expect(card.height, `${label}: call target height`).toBeGreaterThanOrEqual(44);
+  }
 }
 
-async function showNextDownQuestion(page) {
+async function showNextDownQuestion(page, beforeCallLabel = null) {
   await page.addInitScript(() => {
     try { window.localStorage.removeItem('footballMathStats:v1'); } catch (error) {}
   });
@@ -113,6 +124,7 @@ async function showNextDownQuestion(page) {
   });
   const call = page.locator('#call-grid .call-btn').filter({ hasText: 'Short Run' }).first();
   await expect(call).toBeVisible();
+  if (beforeCallLabel) await assertCallGridAboveFold(page, beforeCallLabel);
   await call.click();
   await expect(page.locator('#ui-desk')).toHaveAttribute('data-phase', 'question');
   const familyId = await page.evaluate(() => window.__footballTest.activeContracts().questionInstance?.familyId);
@@ -185,6 +197,82 @@ async function assertAnswerPanelClearance(page, label, minimumClearance = 16) {
     .toBeGreaterThanOrEqual(minimumClearance);
   for (const height of metrics.answerHeights) {
     expect(height, `${label}: answer target height`).toBeGreaterThanOrEqual(44);
+  }
+}
+
+async function assertQuestionFeedbackGeometry(page, label, minimumClearance = 16) {
+  const phase = await page.locator('#ui-desk').getAttribute('data-phase');
+  expect(['question', 'feedback'], `${label}: instructional phase`).toContain(phase);
+  const selectors = ['#status', '#field-wrap', '#question', '#ui-desk', '#btn-row'];
+  if (phase === 'feedback') selectors.push('#feedback');
+  const metrics = await page.evaluate((regionSelectors) => {
+    const rect = (element) => {
+      const box = element.getBoundingClientRect();
+      return {
+        selector: element.id ? `#${element.id}` : element.tagName,
+        top: box.top,
+        right: box.right,
+        bottom: box.bottom,
+        left: box.left,
+        width: box.width,
+        height: box.height,
+      };
+    };
+    const buttons = Array.from(document.querySelectorAll('#btn-row .ans-btn:not(.hidden)'));
+    return {
+      scrollY: window.scrollY,
+      innerWidth: window.innerWidth,
+      innerHeight: window.innerHeight,
+      scrollWidth: document.documentElement.scrollWidth,
+      regions: regionSelectors.map(selector => rect(document.querySelector(selector))),
+      buttons: buttons.map(rect),
+    };
+  }, selectors);
+
+  expect(metrics.scrollY, `${label}: view should not auto-scroll`).toBe(0);
+  expect(metrics.scrollWidth, `${label}: view should not overflow horizontally`)
+    .toBeLessThanOrEqual(metrics.innerWidth + EPSILON);
+  for (const region of metrics.regions) {
+    expect(region.width, `${label}: ${region.selector} should have width`).toBeGreaterThan(0);
+    expect(region.height, `${label}: ${region.selector} should have height`).toBeGreaterThan(0);
+    expect(region.left, `${label}: ${region.selector} starts left of viewport`).toBeGreaterThanOrEqual(-EPSILON);
+    expect(region.right, `${label}: ${region.selector} ends right of viewport`).toBeLessThanOrEqual(metrics.innerWidth + EPSILON);
+    expect(region.top, `${label}: ${region.selector} starts above viewport`).toBeGreaterThanOrEqual(-EPSILON);
+    expect(region.bottom, `${label}: ${region.selector} ends below viewport`).toBeLessThanOrEqual(metrics.innerHeight + EPSILON);
+  }
+  for (const button of metrics.buttons) {
+    expect(button.width, `${label}: answer target width`).toBeGreaterThanOrEqual(44);
+    expect(button.height, `${label}: answer target height`).toBeGreaterThanOrEqual(44);
+    expect(metrics.innerHeight - button.bottom, `${label}: answer target bottom clearance`)
+      .toBeGreaterThanOrEqual(minimumClearance);
+  }
+}
+
+async function assertChoiceGridAboveFold(page, label, selector, expectedCount) {
+  const choices = page.locator(selector);
+  await expect(choices).toHaveCount(expectedCount);
+  const metrics = await page.evaluate((choiceSelector) => {
+    const targets = Array.from(document.querySelectorAll(choiceSelector));
+    return {
+      scrollY: window.scrollY,
+      innerWidth: window.innerWidth,
+      innerHeight: window.innerHeight,
+      scrollWidth: document.documentElement.scrollWidth,
+      targets: targets.map((target) => {
+        const box = target.getBoundingClientRect();
+        return { left: box.left, right: box.right, top: box.top, bottom: box.bottom, width: box.width, height: box.height };
+      }),
+    };
+  }, selector);
+  expect(metrics.scrollY, `${label}: no automatic scroll`).toBe(0);
+  expect(metrics.scrollWidth, `${label}: no horizontal overflow`).toBeLessThanOrEqual(metrics.innerWidth + EPSILON);
+  for (const target of metrics.targets) {
+    expect(target.left, `${label}: target left`).toBeGreaterThanOrEqual(-EPSILON);
+    expect(target.right, `${label}: target right`).toBeLessThanOrEqual(metrics.innerWidth + EPSILON);
+    expect(target.top, `${label}: target top`).toBeGreaterThanOrEqual(-EPSILON);
+    expect(target.bottom, `${label}: target bottom`).toBeLessThanOrEqual(metrics.innerHeight + EPSILON);
+    expect(target.width, `${label}: target width`).toBeGreaterThanOrEqual(44);
+    expect(target.height, `${label}: target height`).toBeGreaterThanOrEqual(44);
   }
 }
 
@@ -265,6 +353,89 @@ test.describe('football call-layout above-the-fold', () => {
     await expect(page.locator('#ui-desk')).toHaveAttribute('data-phase', 'feedback');
     await page.evaluate(() => clearTimeout(advTimer));
     await assertAnswerPanelClearance(page, 'short iPad feedback');
+
+    expect(pageErrors, 'page errors').toEqual([]);
+    expect(consoleErrors, 'console errors').toEqual([]);
+  });
+
+  test('1024px iPad landscape keeps question and feedback clear of bottom browser chrome', async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name !== 'ipad-11-landscape', 'Older iPad landscape compatibility check');
+    const { pageErrors, consoleErrors } = attachErrorListeners(page);
+    await page.setViewportSize({ width: 1024, height: 688 });
+
+    await showNextDownQuestion(page, '1024px offense call');
+    await assertNextDownQuestionAboveFold(page, '1024px iPad question');
+    await assertQuestionFeedbackGeometry(page, '1024px iPad question');
+    await assertAnswerPanelClearance(page, '1024px iPad question');
+
+    await testInfo.attach('next-down-ipad-1024-question.png', {
+      body: await page.screenshot({ fullPage: false }),
+      contentType: 'image/png',
+    });
+
+    const correctChoiceId = await page.evaluate(
+      () => window.__footballTest.activeContracts().questionInstance.correctChoiceId,
+    );
+    await page.evaluate(
+      (choiceId) => window.__footballTest.answerChoice(choiceId),
+      correctChoiceId,
+    );
+    await expect(page.locator('#ui-desk')).toHaveAttribute('data-phase', 'feedback');
+    await page.evaluate(() => clearTimeout(advTimer));
+    await assertQuestionFeedbackGeometry(page, '1024px iPad feedback');
+    await assertAnswerPanelClearance(page, '1024px iPad feedback');
+
+    await testInfo.attach('next-down-ipad-1024-feedback.png', {
+      body: await page.screenshot({ fullPage: false }),
+      contentType: 'image/png',
+    });
+
+    expect(pageErrors, 'page errors').toEqual([]);
+    expect(consoleErrors, 'console errors').toEqual([]);
+  });
+
+  test('1024px iPad landscape keeps call, decision, and explanation controls above the fold', async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name !== 'ipad-11-landscape', 'Older iPad landscape compatibility check');
+    const { pageErrors, consoleErrors } = attachErrorListeners(page);
+    await page.setViewportSize({ width: 1024, height: 688 });
+
+    await page.goto('/football/?boot=defense-call');
+    await expect(page.locator('#ui-desk')).toHaveAttribute('data-phase', 'call');
+    await expect(page.locator('#call-grid')).toHaveAttribute('data-count', '4');
+    await assertChoiceGridAboveFold(page, '1024px defense call', '#call-grid .call-btn', 4);
+
+    await page.goto('/football/?boot=offense-call');
+    await page.evaluate(() => {
+      window.__footballTest.seedDriveState({
+        possession: 'offense', direction: 1, quarter: 2, down: 4, yardsToGo: 2,
+        yardLine: 70, firstDownLine: 72, driveStart: 45,
+        scores: { player: 7, opponent: 7 }, totalYards: { player: 83, opponent: 71 },
+        plays: 4, drivePlays: 3,
+      });
+      showPlayerFourthDownDecision();
+    });
+    await expect(page.locator('#ui-desk')).toHaveAttribute('data-phase', 'fourth-down-decision');
+    await expect(page.locator('#question')).toBeVisible();
+    await expect(page.locator('#question')).toContainText('Make the fourth-down decision.');
+    await assertChoiceGridAboveFold(page, '1024px fourth-down decision', '#decision-grid .decision-btn', 3);
+
+    await page.evaluate(() => showConversionDecision());
+    await expect(page.locator('#ui-desk')).toHaveAttribute('data-phase', 'conversion-decision');
+    await expect(page.locator('#question')).toBeVisible();
+    await expect(page.locator('#question')).toContainText('Choose one point or two points.');
+    await assertChoiceGridAboveFold(page, '1024px conversion decision', '#decision-grid .decision-btn', 2);
+
+    await showNextDownQuestion(page);
+    const wrongChoiceIds = await page.evaluate(() => {
+      const question = window.__footballTest.activeContracts().questionInstance;
+      return question.choices.filter(choice => choice.id !== question.correctChoiceId).slice(0, 2).map(choice => choice.id);
+    });
+    expect(wrongChoiceIds).toHaveLength(2);
+    await page.evaluate((choiceId) => window.__footballTest.answerChoice(choiceId), wrongChoiceIds[0]);
+    await page.evaluate((choiceId) => window.__footballTest.answerChoice(choiceId), wrongChoiceIds[1]);
+    await expect(page.locator('#ui-desk')).toHaveAttribute('data-phase', 'explanation');
+    await assertChoiceGridAboveFold(page, '1024px explanation', '#question-learn-why:not(.hidden)', 1);
+    await expect(page.locator('#ui-desk')).toHaveCSS('grid-template-columns', /.+px .+px/);
 
     expect(pageErrors, 'page errors').toEqual([]);
     expect(consoleErrors, 'console errors').toEqual([]);

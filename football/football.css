@@ -3378,7 +3378,7 @@ body::after {
   }
 }
 
-@media (hover: none) and (pointer: coarse) and (min-width: 1080px) and (orientation: landscape) {
+@media (hover: none) and (pointer: coarse) and (min-width: 1024px) and (orientation: landscape) {
   body {
     padding-bottom: 0;
   }
@@ -3399,21 +3399,37 @@ body::after {
     display: none;
   }
 
-  #ui-desk:is([data-phase="call"], [data-phase="question"], [data-phase="feedback"]) {
+  #ui-desk:is(
+    [data-phase="call"],
+    [data-phase="question"],
+    [data-phase="feedback"]
+  ) {
     margin: -42px 16px 0;
     padding: 14px 18px 16px;
     gap: 0 18px;
   }
 
-  #ui-desk:is([data-phase="call"], [data-phase="question"], [data-phase="feedback"]) #desk-head {
+  #ui-desk:is(
+    [data-phase="call"],
+    [data-phase="question"],
+    [data-phase="feedback"]
+  ) #desk-head {
     display: none;
   }
 
-  #ui-desk:is([data-phase="call"], [data-phase="question"], [data-phase="feedback"]) #prompt-panel {
+  #ui-desk:is(
+    [data-phase="call"],
+    [data-phase="question"],
+    [data-phase="feedback"]
+  ) #prompt-panel {
     padding: 0;
   }
 
-  #ui-desk:is([data-phase="call"], [data-phase="question"], [data-phase="feedback"]) #action-panel {
+  #ui-desk:is(
+    [data-phase="call"],
+    [data-phase="question"],
+    [data-phase="feedback"]
+  ) #action-panel {
     padding-left: 16px;
   }
 
@@ -3571,7 +3587,7 @@ body::after {
 
 /* Keep the complete question and feedback controls clear of iPad Safari's
    bottom chrome at the primary 1180 x 820 landscape target. */
-@media (hover: none) and (pointer: coarse) and (min-width: 1080px) and (max-height: 850px) and (orientation: landscape) {
+@media (hover: none) and (pointer: coarse) and (min-width: 1024px) and (max-height: 850px) and (orientation: landscape) {
   #wrap:is([data-phase="question"], [data-phase="feedback"]) #field-stage {
     padding-bottom: 48px;
   }
@@ -3582,6 +3598,38 @@ body::after {
 
   #ui-desk:is([data-phase="question"], [data-phase="feedback"]) {
     margin-top: -38px;
+  }
+}
+
+/* Older 1024px-wide iPads need one additional field reduction so call,
+   decision, question, and feedback controls stay above Safari's bottom chrome
+   without changing portrait tablet rules. */
+@media (hover: none) and (pointer: coarse) and (min-width: 1024px) and (max-width: 1079px) and (orientation: landscape) {
+  #field-wrap {
+    height: 166px;
+  }
+
+  #wrap:is([data-phase="question"], [data-phase="feedback"]) #field-wrap {
+    height: 152px;
+  }
+
+  #ui-desk:is([data-phase="fourth-down-decision"], [data-phase="conversion-decision"]) {
+    grid-template-columns: minmax(260px, 0.7fr) minmax(0, 1.3fr);
+    margin: -42px 16px 0;
+    padding: 14px 18px 16px;
+    gap: 0 18px;
+  }
+
+  #ui-desk:is([data-phase="fourth-down-decision"], [data-phase="conversion-decision"]) #desk-head {
+    display: none;
+  }
+
+  #ui-desk:is([data-phase="fourth-down-decision"], [data-phase="conversion-decision"]) #prompt-panel {
+    padding: 0;
+  }
+
+  #ui-desk:is([data-phase="fourth-down-decision"], [data-phase="conversion-decision"]) #action-panel {
+    padding-left: 16px;
   }
 }
 
@@ -4642,8 +4690,9 @@ body::after {
   grid-column: 1 / -1;
 }
 
-@media (hover: none) and (pointer: coarse) and (min-width: 1080px) and (orientation: landscape) {
+@media (hover: none) and (pointer: coarse) and (min-width: 1024px) and (orientation: landscape) {
   #ui-desk[data-phase="explanation"] {
+    grid-template-columns: minmax(320px, 0.82fr) minmax(0, 1.18fr);
     margin: -42px 16px 0;
     padding: 14px 18px 16px;
     gap: 0 18px;
