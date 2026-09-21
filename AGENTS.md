@@ -104,6 +104,44 @@ player and opponent conversion questions/results, and player/opponent punt or
 field-goal questions/results. Choosing “go” must still render exactly five
 offensive calls; ordinary defense must still render exactly four calls.
 
+For iPad, iPhone, or Safari-specific UI work, the automated PR gate must include
+WebKit in addition to the normal Chromium matrix. Recheck the current host for
+Xcode, `simctl`, and installed iOS Simulator runtimes so the evidence can use a
+higher-fidelity tier when the behavior actually requires one. The fidelity
+tiers are:
+
+1. physical target device;
+2. Apple iOS Simulator running Safari;
+3. Playwright WebKit with the exact usable viewport, device pixel ratio,
+   Safari user agent, `isMobile: true`, and `hasTouch: true`;
+4. Chromium device emulation only as supplemental evidence.
+
+Playwright WebKit is the required minimum and is sufficient for the ordinary
+automated layout gate when it exercises real tap transitions and verifies the
+resulting usable viewport. It does not become insufficient merely because Xcode
+is installed, and it is not Apple Simulator or physical-Safari proof. Require an
+Apple Simulator or physical device when the behavior under test is Safari chrome
+itself, safe-area handling, the software keyboard, native viewport resizing, or
+another platform-integration behavior that WebKit engine emulation does not
+reproduce; also require it when the user or issue explicitly demands that tier.
+
+For every engine-emulated mobile run, record the engine/version, viewport,
+screen size, device pixel ratio, user agent, mobile/touch flags, and limitations.
+Drive the relevant state transitions by tap rather than inferring touch support
+from `navigator.maxTouchPoints` alone. Save rendered before/after screenshots
+and geometry evidence for the affected states. Assert no scroll in any state
+that the issue or verification matrix requires above the fold, no horizontal
+overflow, controls at least 44 CSS pixels in both dimensions, and the
+issue-specific clearance requirement. Never describe engine emulation as a
+simulator or a physical-device result.
+
+For Apple Simulator evidence, record the Xcode version, iOS runtime, simulated
+device model, orientation, screen and usable viewport, and limitations. For
+physical-device evidence, record the device model, OS and browser versions,
+orientation, and limitations. When CI cannot supply Apple Simulator or physical
+evidence, run the required higher tier locally and attach its evidence to the PR;
+do not relabel a WebKit CI result as that tier.
+
 ## Local Development
 
 There is no build step. From the repository root, run:
