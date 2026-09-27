@@ -487,7 +487,7 @@ body::after {
 
 .ylabel {
   position: absolute;
-  z-index: 7;
+  z-index: 5;
   bottom: 12px;
   transform: translateX(-50%);
   font-family: 'Bebas Neue', 'Barlow Condensed', sans-serif;
@@ -1031,10 +1031,6 @@ body::after {
 
 #fd-chain.near-left-sideline {
   transform: translateX(calc(-50% + 15px));
-}
-
-.fd-chain-link {
-  display: none;
 }
 
 .fd-chain-badge {

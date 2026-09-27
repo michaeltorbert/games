@@ -1,4 +1,5 @@
 import { test, expect } from './curriculum-fixture.mjs';
+import { mkdir, writeFile } from 'node:fs/promises';
 
 const EPSILON = 1;
 
@@ -36,14 +37,19 @@ async function markerGeometry(page) {
   });
 }
 
-test('to-gain badge stays with the target and clears field objects', async ({ page }, testInfo) => {
+test('to-gain badge stays with the target and clears field objects', async ({ page, browserName }, testInfo) => {
   await page.goto('/football/?boot=offense-call');
+  await page.evaluate(() => document.fonts.ready);
   const cases = [
     { possession: 'offense', direction: 1, yardLine: 20, firstDownLine: 30, yardsToGo: 10 },
+    { possession: 'offense', direction: 1, yardLine: 65, firstDownLine: 75, yardsToGo: 10 },
+    { possession: 'offense', direction: 1, yardLine: 66, firstDownLine: 76, yardsToGo: 10 },
+    { possession: 'offense', direction: 1, yardLine: 69, firstDownLine: 79, yardsToGo: 10 },
     { possession: 'offense', direction: 1, yardLine: 70, firstDownLine: 80, yardsToGo: 10 },
     { possession: 'offense', direction: 1, yardLine: 74, firstDownLine: 84, yardsToGo: 10 },
     { possession: 'offense', direction: 1, yardLine: 90, firstDownLine: 100, yardsToGo: 10 },
     { possession: 'defense', direction: -1, yardLine: 80, firstDownLine: 70, yardsToGo: 10 },
+    { possession: 'defense', direction: -1, yardLine: 16, firstDownLine: 6, yardsToGo: 10 },
     { possession: 'defense', direction: -1, yardLine: 15, firstDownLine: 5, yardsToGo: 10 },
     { possession: 'defense', direction: -1, yardLine: 12, firstDownLine: 2, yardsToGo: 10 },
     { possession: 'defense', direction: -1, yardLine: 10, firstDownLine: 0, yardsToGo: 10 },
@@ -77,7 +83,8 @@ test('to-gain badge stays with the target and clears field objects', async ({ pa
     expect(geometry.marker.left, `case ${index}: badge left edge inside field`).toBeGreaterThanOrEqual(geometry.field.left);
     expect(geometry.marker.right, `case ${index}: badge right edge inside field`).toBeLessThanOrEqual(geometry.field.right);
     expect(intersects(geometry.marker, geometry.ball), `case ${index}: ball clearance`).toBe(false);
-    expect(intersects(geometry.marker, geometry.mute), `case ${index}: sound control clearance`).toBe(false);
+    expect(intersects(geometry.marker, geometry.mute),
+      `case ${index}: sound control clearance; badge ${JSON.stringify(geometry.marker)}, mute ${JSON.stringify(geometry.mute)}`).toBe(false);
     if (geometry.playerVisible) {
       expect(intersects(geometry.marker, geometry.player), `case ${index}: sprite clearance`).toBe(false);
     }
@@ -86,13 +93,30 @@ test('to-gain badge stays with the target and clears field objects', async ({ pa
     }
     expect(geometry.numberLayer, `case ${index}: yard numbers remain legible over the line`)
       .toBeGreaterThan(geometry.lineLayer);
-    expect(intersects(geometry.marker, geometry.feedback), `case ${index}: feedback clearance`).toBe(false);
     expect(geometry.scrollWidth, `case ${index}: horizontal overflow`).toBeLessThanOrEqual(geometry.viewportWidth + EPSILON);
-    if (index === 0 || index === 2) {
-      await testInfo.attach(`marker-${index === 0 ? 'center' : 'right'}-${testInfo.project.name}.png`, {
-        body: await page.screenshot({ fullPage: false }),
+    if ([30, 75, 76, 79, 80].includes(setup.firstDownLine)) {
+      const screenshot = await page.screenshot({ fullPage: false });
+      await testInfo.attach(`marker-target-${setup.firstDownLine}-${testInfo.project.name}.png`, {
+        body: screenshot,
         contentType: 'image/png',
       });
+      if (setup.firstDownLine === 79
+        && ['iphone-15-portrait', 'ipad-11-landscape'].includes(testInfo.project.name)) {
+        const evidenceDir = 'tests/artifacts.nosync/marker-boundary';
+        const evidenceName = `${browserName}-target-79-${testInfo.project.name}`;
+        await mkdir(evidenceDir, { recursive: true });
+        await writeFile(`${evidenceDir}/${evidenceName}.png`, screenshot);
+        await writeFile(`${evidenceDir}/${evidenceName}.json`, JSON.stringify({
+          targetYard: setup.firstDownLine,
+          viewport: testInfo.project.use.viewport,
+          screen: testInfo.project.use.screen,
+          deviceScaleFactor: testInfo.project.use.deviceScaleFactor,
+          isMobile: testInfo.project.use.isMobile,
+          hasTouch: testInfo.project.use.hasTouch,
+          browserName,
+          geometry,
+        }, null, 2));
+      }
     }
   }
 

@@ -118,6 +118,8 @@ async function assertPhaseAndShot(page, testInfo, phase, label) {
 
 async function assertCoachReplayAndShot(page, testInfo, label) {
   await page.locator('#question-learn-why').click();
+  // This playthrough pauses the clock; let the browser run the queued focus frame.
+  await page.clock.runFor(32);
   await expect(page.locator('#worked-review')).toBeVisible();
   await expect(page.locator('#worked-review-heading')).toBeFocused();
   const metrics = await page.evaluate(() => {

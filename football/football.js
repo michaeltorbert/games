@@ -1492,7 +1492,7 @@ function updateField(animated) {
   fdl.style.left = fdLeft;
   if (fdChain) {
     fdChain.style.left = fdLeft;
-    fdChain.classList.toggle('near-right-sideline', state.fdYd >= 80);
+    fdChain.classList.toggle('near-right-sideline', state.fdYd >= 76);
     fdChain.classList.toggle('near-left-sideline', state.fdYd <= 5);
   }
   if (animated) {
@@ -1883,6 +1883,18 @@ function expandWorkedReview() {
     state.questionUi.reviewGateState = 'opened';
     showContinueButton({ focus: false });
     heading.focus({ preventScroll: true });
+    requestAnimationFrame(() => {
+      if (state.phase === 'explanation'
+        && state.questionInstance === question
+        && state.questionUi?.reviewExpanded
+        && !region.hidden && !region.inert
+        && !region.classList.contains('hidden')
+        && !region.contains(document.activeElement)
+        && document.activeElement !== back
+        && document.activeElement !== continueButton) {
+        heading.focus({ preventScroll: true });
+      }
+    });
     return true;
   } catch (error) {
     state.questionUi.reviewExpanded = false;
