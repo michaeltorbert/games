@@ -441,3 +441,69 @@ test.describe('football call-layout above-the-fold', () => {
     expect(consoleErrors, 'console errors').toEqual([]);
   });
 });
+
+// Issue #140: each limb pivots at its joint, so no animation frame detaches it.
+async function freezePlayerPose(page, poseClass, fraction) {
+  await page.evaluate(({ poseClass, fraction }) => {
+    const player = document.getElementById('player');
+    player.classList.remove('player-running', 'player-celebrating');
+    if (poseClass) player.classList.add(poseClass);
+    for (const animation of document.getAnimations()) {
+      const target = animation.effect?.target;
+      if (!target || !(target === player || player.contains(target))) continue;
+      const timing = animation.effect.getComputedTiming();
+      animation.pause();
+      animation.currentTime = timing.delay + timing.duration * fraction;
+    }
+  }, { poseClass, fraction });
+}
+
+function playerGeometry(page) {
+  return page.evaluate(() => {
+    const rect = (selector) => {
+      const box = document.querySelector(`#player ${selector}`).getBoundingClientRect();
+      return { left: box.left, right: box.right, top: box.top, bottom: box.bottom };
+    };
+    return {
+      hips: rect('.pl-hips'),
+      pads: rect('.pl-pads'),
+      legs: [rect('.pl-leg-l'), rect('.pl-leg-r')],
+      arms: [rect('.pl-arm-l'), rect('.pl-arm-r')],
+      gloves: [rect('.pl-arm-l .pl-glove'), rect('.pl-arm-r .pl-glove')],
+    };
+  });
+}
+
+function gapBetween(a, b) {
+  const dx = Math.max(0, a.left - b.right, b.left - a.right);
+  const dy = Math.max(0, a.top - b.bottom, b.top - a.bottom);
+  return Math.hypot(dx, dy);
+}
+
+test.describe('football player sprite', () => {
+  test('arms and legs stay attached while running and celebrating', async ({ page }) => {
+    const { pageErrors, consoleErrors } = attachErrorListeners(page);
+    await page.goto('/football/?boot=offense-call');
+    await expect(page.locator('#player')).toBeVisible();
+
+    const poses = [
+      ['standing', null, 0],
+      ...[0, 0.25, 0.5, 0.75].map(f => [`running ${f}`, 'player-running', f]),
+      ...[0.15, 0.3, 0.45, 0.6, 0.8].map(f => [`celebrating ${f}`, 'player-celebrating', f]),
+    ];
+    for (const [label, poseClass, fraction] of poses) {
+      await freezePlayerPose(page, poseClass, fraction);
+      const geometry = await playerGeometry(page);
+      for (const leg of geometry.legs) expect(gapBetween(leg, geometry.hips), `${label}: leg meets hips`).toBeLessThanOrEqual(0.5);
+      for (const arm of geometry.arms) expect(gapBetween(arm, geometry.pads), `${label}: arm meets shoulders`).toBeLessThanOrEqual(0.5);
+    }
+
+    // Mid-celebration both gloves are raised above the shoulder pads.
+    await freezePlayerPose(page, 'player-celebrating', 0.45);
+    const raised = await playerGeometry(page);
+    for (const glove of raised.gloves) expect(glove.bottom).toBeLessThan(raised.pads.top);
+
+    expect(pageErrors, 'page errors').toEqual([]);
+    expect(consoleErrors, 'console errors').toEqual([]);
+  });
+});
