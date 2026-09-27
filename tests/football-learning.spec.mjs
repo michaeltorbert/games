@@ -977,6 +977,45 @@ test('second defensive miss records learning only after Continue commits one fro
   expect(afterDoubleContinue.learning.resolved).toBe(1);
 });
 
+test('Coach Replay queued focus respects Back and a closed review', async ({ page }, testInfo) => {
+  primaryOnly(testInfo);
+  await page.clock.install();
+  await page.goto('/football/?boot=defense-call');
+  await page.evaluate(() => window.__footballTest.setRootSeed(0xdefe115e));
+
+  const question = (await beginSnap(page, 'defense')).questionInstance;
+  const wrongIds = wrongChoiceIds(question);
+  await answerChoice(page, wrongIds[0]);
+  await answerChoice(page, wrongIds[1]);
+  await expect(page.locator('#question-learn-why')).toBeVisible();
+
+  await page.clock.pauseAt(new Date((await page.evaluate(() => Date.now())) + 1000));
+  await page.locator('#question-learn-why').click();
+  await expect(page.locator('#worked-review')).toBeVisible();
+  // Arrange focus on a review control before the queued frame runs.
+  await page.locator('#worked-review-back').focus();
+  await expect(page.locator('#worked-review-back')).toBeFocused();
+  await page.evaluate(() => {
+    window.__reviewFocusFrameRan = false;
+    requestAnimationFrame(() => { window.__reviewFocusFrameRan = true; });
+  });
+  await page.clock.runFor(32);
+  expect(await page.evaluate(() => window.__reviewFocusFrameRan)).toBe(true);
+  await expect(page.locator('#worked-review-back')).toBeFocused();
+
+  await page.locator('#worked-review-back').click();
+  await expect(page.locator('#worked-review')).toBeHidden();
+  await expect(page.locator('#question-learn-why')).toBeFocused();
+
+  await page.locator('#question-learn-why').click();
+  await expect(page.locator('#worked-review')).toBeVisible();
+  await page.locator('#worked-review-back').click();
+  await expect(page.locator('#worked-review')).toBeHidden();
+  await page.clock.runFor(32);
+  await expect(page.locator('#worked-review-heading')).not.toBeFocused();
+  await expect(page.locator('#question-learn-why')).toBeFocused();
+});
+
 test('Coach Replay rendering failure rolls back to the concise frozen Continue path without prose leakage', async ({ page }, testInfo) => {
   primaryOnly(testInfo);
   await page.goto('/football/?boot=offense-call');

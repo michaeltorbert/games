@@ -487,6 +487,7 @@ body::after {
 
 .ylabel {
   position: absolute;
+  z-index: 5;
   bottom: 12px;
   transform: translateX(-50%);
   font-family: 'Bebas Neue', 'Barlow Condensed', sans-serif;
@@ -1003,21 +1004,33 @@ body::after {
 
 #fd-chain {
   position: absolute;
-  bottom: 12px;
+  top: 8px;
   z-index: 5;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 2px;
+  width: max-content;
   transform: translateX(-50%);
   pointer-events: none;
 }
 
-.fd-chain-link {
-  width: 4px;
-  height: 42px;
-  background: repeating-linear-gradient(180deg, rgba(255, 211, 55, 0.96) 0 8px, transparent 8px 15px);
-  filter: drop-shadow(0 0 8px rgba(255, 211, 55, 0.58));
+#fd-chain.near-right-sideline {
+  transform: translateX(calc(-50% - 90px));
+}
+
+#fd-chain.near-right-sideline::after {
+  content: "";
+  position: absolute;
+  left: 100%;
+  top: 50%;
+  width: calc(90px - 50%);
+  height: 3px;
+  background: var(--gold);
+}
+
+#fd-chain.near-left-sideline {
+  transform: translateX(calc(-50% + 15px));
 }
 
 .fd-chain-badge {
@@ -1031,6 +1044,7 @@ body::after {
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: #2f1400;
+  white-space: nowrap;
 }
 
 #ball {
