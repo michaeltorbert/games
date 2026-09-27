@@ -1067,30 +1067,43 @@ body::after {
   overflow: visible;
 }
 
-#ball ellipse {
-  fill: #8d3f1d;
-  stroke: #e8a36f;
-  stroke-width: 2;
+.ball-body {
+  fill: #8a3b17;
+  stroke: #3d1606;
+  stroke-width: 1.6;
+  stroke-linejoin: round;
 }
 
-.ball-seam,
-.ball-lace-main,
-.ball-lace {
+.ball-shine,
+.ball-stripe,
+.ball-lace-seam,
+.ball-stitch {
   fill: none;
-  stroke: #f8dfc9;
+}
+
+.ball-shine {
+  stroke: rgba(255, 214, 176, 0.35);
+  stroke-width: 2.4;
   stroke-linecap: round;
 }
 
-.ball-seam {
-  stroke-width: 2;
+.ball-stripe {
+  stroke: #f7efe6;
+  stroke-width: 3.2;
 }
 
-.ball-lace-main {
-  stroke-width: 3;
+.ball-lace-seam,
+.ball-stitch {
+  stroke: #fbf5ee;
+  stroke-linecap: round;
 }
 
-.ball-lace {
-  stroke-width: 1.6;
+.ball-lace-seam {
+  stroke-width: 2.2;
+}
+
+.ball-stitch {
+  stroke-width: 1.9;
 }
 
 #ball.ball-moving {
@@ -1124,27 +1137,121 @@ body::after {
   display: none;
 }
 
+.pl-pants,
+.pl-sock,
+.pl-sleeve,
+.pl-forearm,
+.pl-stripe,
+.pl-helmet-stripe,
+.pl-mask {
+  fill: none;
+  stroke-linecap: round;
+}
+
+.pl-pants {
+  stroke: #f4f6fa;
+  stroke-width: 2.7;
+}
+
+.pl-sock {
+  stroke: #003087;
+  stroke-width: 2.2;
+}
+
+.pl-cleat {
+  fill: #14161b;
+}
+
+.pl-hips {
+  fill: #f4f6fa;
+  stroke: #c9d2de;
+  stroke-width: 0.35;
+}
+
+.pl-belt {
+  stroke: #003087;
+  stroke-width: 0.7;
+}
+
+.pl-jersey {
+  fill: #003087;
+}
+
+.pl-pads {
+  fill: #0a3fa6;
+  stroke: #001f5c;
+  stroke-width: 0.35;
+}
+
+.pl-stripe {
+  stroke: #fff;
+  stroke-width: 0.7;
+}
+
+.pl-number {
+  fill: #fff;
+  font: 800 6.4px 'Barlow Condensed', 'Nunito', sans-serif;
+  text-anchor: middle;
+}
+
+.pl-sleeve {
+  stroke: #003087;
+  stroke-width: 2.8;
+}
+
+.pl-forearm {
+  stroke: #f4f6fa;
+  stroke-width: 2.1;
+}
+
+.pl-glove {
+  fill: #fff;
+  stroke: #c9d2de;
+  stroke-width: 0.35;
+}
+
+.pl-helmet {
+  fill: #003087;
+  stroke: #001f5c;
+  stroke-width: 0.4;
+}
+
+.pl-helmet-stripe {
+  stroke: #fff;
+  stroke-width: 1.1;
+}
+
+.pl-ear {
+  fill: #001f5c;
+}
+
+.pl-mask {
+  stroke: #b9c2cc;
+  stroke-width: 0.75;
+}
+
+/* Limbs pivot at their joints, in the sprite's viewBox coordinates. */
 .pl-leg-l,
 .pl-leg-r,
 .pl-arm-l,
 .pl-arm-r {
-  transform-box: fill-box;
+  transform-box: view-box;
 }
 
 .pl-leg-l {
-  transform-origin: 8.5px 22px;
+  transform-origin: 8.4px 21.5px;
 }
 
 .pl-leg-r {
-  transform-origin: 11.5px 22px;
+  transform-origin: 11.6px 21.5px;
 }
 
 .pl-arm-l {
-  transform-origin: 5px 11px;
+  transform-origin: 5.2px 11.6px;
 }
 
 .pl-arm-r {
-  transform-origin: 15px 11px;
+  transform-origin: 14.8px 11.6px;
 }
 
 #player.player-running {
@@ -1187,14 +1294,15 @@ body::after {
   animation: arm-up-r 500ms ease forwards;
 }
 
+/* Raising the left arm turns it clockwise about the shoulder; the right arm mirrors it. */
 @keyframes arm-up-l {
   0%, 100% { transform: rotate(0); }
-  30%, 60% { transform: rotate(-60deg); }
+  30%, 60% { transform: rotate(125deg); }
 }
 
 @keyframes arm-up-r {
   0%, 100% { transform: rotate(0); }
-  30%, 60% { transform: rotate(60deg); }
+  30%, 60% { transform: rotate(-125deg); }
 }
 
 /* Grass & dust specks kicked up as the ball-carrier advances. */
