@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-34 -22 68 44" width="340" height="220">
+  <!-- Proposed replacement for the #ball ellipse (issue #11). Same viewBox as football/index.html. -->
+  <path d="M-32 0 C-18 -21 18 -21 32 0 C18 21 -18 21 -32 0 Z" fill="#8a3b17" stroke="#3d1606" stroke-width="1.6" stroke-linejoin="round"/>
+  <path d="M-13 -11.5 C-5 -13.5 5 -13.5 13 -11.5" fill="none" stroke="rgba(255,214,176,.35)" stroke-width="2.4" stroke-linecap="round"/>
+  <path d="M-18 -11.2 C-15.5 -4 -15.5 4 -18 11.2" fill="none" stroke="#f7efe6" stroke-width="3.2"/>
+  <path d="M18 -11.2 C15.5 -4 15.5 4 18 11.2" fill="none" stroke="#f7efe6" stroke-width="3.2"/>
+  <path d="M-10 -1 L10 -1" fill="none" stroke="#fbf5ee" stroke-width="2.2" stroke-linecap="round"/>
+  <path d="M-7.5 -4.5 L-7.5 2.5 M-3.75 -4.5 L-3.75 2.5 M0 -4.5 L0 2.5 M3.75 -4.5 L3.75 2.5 M7.5 -4.5 L7.5 2.5" fill="none" stroke="#fbf5ee" stroke-width="1.9" stroke-linecap="round"/>
+</svg>
