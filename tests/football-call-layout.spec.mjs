@@ -506,4 +506,18 @@ test.describe('football player sprite', () => {
     expect(pageErrors, 'page errors').toEqual([]);
     expect(consoleErrors, 'console errors').toEqual([]);
   });
+
+  test('player stands just behind the ball without being hidden by it', async ({ page }) => {
+    await page.goto('/football/?boot=offense-call');
+    await expect(page.locator('#player')).toBeVisible();
+    const boxes = await page.evaluate(() => {
+      const rect = (selector) => document.querySelector(selector).getBoundingClientRect().toJSON();
+      return { ball: rect('#ball'), jersey: rect('#player .pl-jersey'), helmet: rect('#player .pl-helmet'), field: rect('#field-wrap') };
+    });
+    // The jersey and helmet stay left of the rotated ball's box (within its empty corner), so the ball never covers the body.
+    expect(boxes.jersey.right).toBeLessThanOrEqual(boxes.ball.left + 3);
+    expect(boxes.helmet.right).toBeLessThanOrEqual(boxes.ball.left + 3);
+    expect(boxes.ball.left - boxes.jersey.right).toBeLessThan(12);
+    expect(boxes.jersey.left).toBeGreaterThanOrEqual(boxes.field.left);
+  });
 });

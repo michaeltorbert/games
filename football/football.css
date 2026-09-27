@@ -1120,6 +1120,8 @@ body::after {
   top: 54%;
   width: 30px;
   height: 42px;
+  /* Stand just behind the ball; a yard is only a few pixels on phones. */
+  margin-left: -34px;
   z-index: 5;
   transform: translate(-50%, -50%) scaleX(var(--player-dir));
   transform-origin: center;
@@ -3863,6 +3865,7 @@ body::after {
   #player {
     width: 24px;
     height: 34px;
+    margin-left: -28px;
   }
 
   .fd-chain-link {
