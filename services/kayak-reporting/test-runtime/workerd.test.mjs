@@ -46,16 +46,21 @@ async function runtime(limit='100',{migrate=true}={}){
    const row=JSON.parse(raw).values[0];state.sheetIPs.add(row[0]);return jsonStream({updates:{updatedRows:1}});
   }
   const mail=Buffer.from(JSON.parse(raw).raw,'base64url').toString('utf8');
-  const ip=mail.match(/Subject: kayak played by IP ([^\r]+)/)?.[1];assert.ok(state.sheetIPs.has(ip),'email occurred before Sheet append for its IP');
+  const ip=mail.match(/\r\n\r\nkayak played by IP ([^ ]+) check out the google sheet$/)?.[1];assert.ok(state.sheetIPs.has(ip),'email occurred before Sheet append for its IP');
   if(state.scenario==='email-failure')return new MFResponse('synthetic failure',{status:503});return jsonStream({id:'synthetic-message'});
   } catch(error) { state.assertionFailures.push(String(error)); throw error; }
  }}));
  const item={mf,state,bindings,name};runtimes.push(item);await mf.ready;
  const bound=await mf.getBindings();item.db=bound.EMAIL_QUOTA;
  if(migrate)await item.db.exec(migration.replace(/\n/g,' '));
- item.send=async(body=fixture,ip='192.0.2.10')=>{
+ item.send=async(body=fixture,ip='192.0.2.10',cf)=>{
   const text=typeof body==='string'?body:JSON.stringify(body),stream=new ReadableStream({start(c){c.enqueue(new TextEncoder().encode(text.slice(0,17)));c.enqueue(new TextEncoder().encode(text.slice(17)));c.close();}});
-  const res=await mf.dispatchFetch('https://kayak-reporting.test/events',{method:'POST',headers:{Origin:bindings.ALLOWED_ORIGIN,'CF-Connecting-IP':ip,'Content-Type':'text/plain'},body:stream,duplex:'half'});return{status:res.status,text:await res.text()};
+  // Use Miniflare's internal cf-blob transport header with ASCII JSON escapes.
+  // dispatchFetch's cf option merges a default Austin location and sends raw
+  // non-ASCII JSON through an HTTP header, corrupting international fixtures.
+  // This is local test plumbing only; production trusts request.cf, not headers.
+  const cfBlob=JSON.stringify({city:null,region:null,regionCode:null,country:null,...cf}).replace(/[^\x20-\x7e]/g,char=>'\\u'+char.charCodeAt(0).toString(16).padStart(4,'0'));
+  const res=await mf.dispatchFetch('https://kayak-reporting.test/events',{method:'POST',headers:{Origin:bindings.ALLOWED_ORIGIN,'CF-Connecting-IP':ip,'Content-Type':'text/plain','MF-CF-Blob':cfBlob},body:stream,duplex:'half'});return{status:res.status,text:await res.text()};
  };
  return item;
 }
@@ -68,6 +73,32 @@ try{
   const encoded=JSON.parse(state.calls[2].body).raw;assert.match(encoded,/^[A-Za-z0-9_-]+$/);assert.match(Buffer.from(encoded,'base64url').toString('utf8'),/^To: owner@example.com\r\nSubject: kayak played by IP 192\.0\.2\.10\r\n/);
  });
  await check('all three events and IPv6 pass real node:net validation',async()=>{for(const event of ['game_start','level_start','level_complete']){state.calls=[];assert.equal((await main.send({...fixture,event,collected:3},'2001:db8::10')).status,200);assert.equal(JSON.parse(state.calls[1].body).values[0][0],'2001:db8::10');}});
+ const geo=await runtime();
+ for(const [name,cf,location] of [
+  ['absent',undefined,''],['empty',{},''],['null fields',{city:null,region:null,country:null},''],
+  ['unsafe city',{city:'City\r\nBcc: attacker@example.com',country:'US'},''],
+  ['wrong city type',{city:123,country:'US'},''],['oversized city',{city:'x'.repeat(81),country:'US'},''],
+  ['unsafe region',{city:'City',regionCode:'NC\nBad',country:'US'},''],
+  ['unknown country',{city:'City',country:'XX'},''],['Tor country',{country:'T1'},''],
+  ['complete',{city:'Raleigh',regionCode:'NC',country:'US'},'Raleigh, NC, US'],
+  ['valid code ignores unsafe unused region',{city:'Raleigh',regionCode:'NC',region:'bad\r\nBcc: attacker@example.com',country:'US'},'Raleigh, NC, US'],
+  ['country only',{country:'US'},'US'],['international',{city:'São Paulo',regionCode:'SP',country:'BR'},'São Paulo, SP, BR'],
+  ['long international',{city:'é'.repeat(80),region:'界'.repeat(80),country:'JP'},`${'é'.repeat(80)}, ${'界'.repeat(80)}, JP`]
+ ])await check(`location ${name}: all three events append A:N and send one safe Gmail message in workerd`,async()=>{
+  const geoIP=`2001:db8::${100+checks.length}`;
+  for(const event of ['game_start','level_start','level_complete']){
+   geo.state.calls=[];assert.deepEqual(await geo.send({...fixture,event},geoIP,cf),{status:200,text:'Recorded'});
+   assert.deepEqual(geo.state.calls.map(c=>c.stage),['oauth','sheet','email']);
+   assert.deepEqual(JSON.parse(geo.state.calls[1].body).values,[[geoIP,fixture.ts,event,0,fixture.levelName,42,'test','tablet','1180x820','en','America/New_York','synthetic-platform','synthetic-browser','']]);
+   const mail=Buffer.from(JSON.parse(geo.state.calls[2].body).raw,'base64url').toString('utf8');
+   for(const line of mail.split('\r\n\r\n')[0].split('\r\n'))if(line.includes('=?UTF-8?B?'))assert.ok(line.length<=76,'RFC 2047 header line limit');
+   const subject=mail.match(/Subject: ([\s\S]*?)(?=\r\n[^ ])/)[1];
+   const decoded=subject.startsWith('=?')?subject.split('\r\n ').map(word=>{assert.ok(word.length<=75);assert.match(word,/^=\?UTF-8\?B\?[A-Za-z0-9+/]+=*\?=$/);return Buffer.from(word.slice(10,-2),'base64').toString('utf8');}).join(''):subject;
+   assert.equal(decoded,`kayak played by IP ${geoIP}${location?' - '+location:''}`);
+   assert.deepEqual(mail.split('\r\n\r\n')[0].split('\r\n').filter(line=>!line.startsWith(' ')).map(line=>line.split(':')[0]),['To','Subject','MIME-Version','Content-Type']);
+   assert.equal(mail.split('\r\n\r\n')[1],`kayak played by IP ${geoIP} check out the google sheet`);
+  }
+ });
  await check('malformed IP and streamed oversized body reject before Google',async()=>{state.calls=[];assert.equal((await main.send(fixture,'not-an-ip')).status,400);assert.equal((await main.send('x'.repeat(8193))).status,413);assert.equal(state.calls.length,0);});
  for(const [mode,stages]of[['oauth-failure',['oauth']],['sheet-failure',['oauth','sheet']],['email-failure',['oauth','sheet','email']],['redirect',['oauth']]])await check(mode+' stops at stage without following redirect',async()=>{state.scenario=mode;state.calls=[];assert.equal((await main.send(fixture,'192.0.2.20')).status,502);assert.deepEqual(state.calls.map(c=>c.stage),stages);});
  state.scenario='success';

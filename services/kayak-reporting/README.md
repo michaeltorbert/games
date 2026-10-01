@@ -68,6 +68,17 @@ server-side and is never accepted from a game payload.
 - Sheets uses `RAW`, so client strings cannot execute as spreadsheet formulas.
 - Email subject: `kayak played by IP <ip>`. Plain-text body:
   `kayak played by IP <ip> check out the google sheet`.
+  Cloudflare reports optionally append ` - <city>, <region>, <country>` to the
+  subject using the incoming request's `cf` metadata. Missing fields are omitted;
+  any invalid value read by the formatter discards the entire suffix. A valid
+  region code takes precedence over the region name, which is then ignored.
+  The estimate may reflect a VPN
+  or mobile network's location. No
+  external lookup, API key, location permission or paid service is used. Missing,
+  malformed, unsafe or erroring metadata and formatting errors fall back to the
+  original subject without preventing the spreadsheet append or Gmail send.
+  International subjects use bounded UTF-8 MIME encoded-words. Location is not
+  added to the spreadsheet, email body, quota counter or application logs.
   Gmail changes the sender from Pipedream to the authorized Gmail account.
 - Email starts only after Sheets confirms one appended row. HTTP 200 means both
   Google APIs confirmed success; inbox receipt still needs a separate check.
@@ -125,6 +136,7 @@ and credentials. Do not reset its quota counter.
 
 - [Pipedream retirement and export](https://pipedream.com/docs/workflows)
 - [Workers limits](https://developers.cloudflare.com/workers/platform/limits/)
+- [Incoming request location metadata](https://developers.cloudflare.com/workers/runtime-apis/request/#incomingrequestcfproperties)
 - [Rate limiting and per-location semantics](https://developers.cloudflare.com/workers/runtime-apis/bindings/rate-limit/)
 - [Google native OAuth](https://developers.google.com/identity/protocols/oauth2/native-app)
 - [Refresh token expiration](https://developers.google.com/identity/protocols/oauth2)
