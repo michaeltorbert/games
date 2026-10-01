@@ -90,6 +90,7 @@ try{
    assert.deepEqual(geo.state.calls.map(c=>c.stage),['oauth','sheet','email']);
    assert.deepEqual(JSON.parse(geo.state.calls[1].body).values,[[geoIP,fixture.ts,event,0,fixture.levelName,42,'test','tablet','1180x820','en','America/New_York','synthetic-platform','synthetic-browser','']]);
    const mail=Buffer.from(JSON.parse(geo.state.calls[2].body).raw,'base64url').toString('utf8');
+   for(const line of mail.split('\r\n\r\n')[0].split('\r\n'))if(line.includes('=?UTF-8?B?'))assert.ok(line.length<=76,'RFC 2047 header line limit');
    const subject=mail.match(/Subject: ([\s\S]*?)(?=\r\n[^ ])/)[1];
    const decoded=subject.startsWith('=?')?subject.split('\r\n ').map(word=>{assert.ok(word.length<=75);assert.match(word,/^=\?UTF-8\?B\?[A-Za-z0-9+/]+=*\?=$/);return Buffer.from(word.slice(10,-2),'base64').toString('utf8');}).join(''):subject;
    assert.equal(decoded,`kayak played by IP ${geoIP}${location?' - '+location:''}`);

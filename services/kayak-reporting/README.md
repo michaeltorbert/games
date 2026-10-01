@@ -69,8 +69,9 @@ server-side and is never accepted from a game payload.
 - Email subject: `kayak played by IP <ip>`. Plain-text body:
   `kayak played by IP <ip> check out the google sheet`.
   Cloudflare reports optionally append ` - <city>, <region>, <country>` to the
-  subject using the incoming request's `cf` metadata. Only available fields are
-  included; the estimate may reflect a VPN or mobile network's location. No
+  subject using the incoming request's `cf` metadata. Missing fields are omitted;
+  any invalid field discards the entire suffix. The estimate may reflect a VPN
+  or mobile network's location. No
   external lookup, API key, location permission or paid service is used. Missing,
   malformed, unsafe or erroring metadata and formatting errors fall back to the
   original subject without preventing the spreadsheet append or Gmail send.

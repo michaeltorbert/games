@@ -76,10 +76,11 @@ export function emailSubject(request, ip) {
     if (!location) return fallback;
     const subject = `${fallback} - ${location}`;
     // Encode every enriched subject, including ASCII: metadata cannot masquerade
-    // as an encoded-word or inject headers. Bound each word below RFC 2047's 75 bytes.
+    // as an encoded-word or inject headers. 39 UTF-8 bytes keep words below 75
+    // characters and the first line (including "Subject: ") below 76 (RFC 2047).
     const words = []; let chunk = '';
     for (const char of subject) {
-      if (Buffer.byteLength(chunk + char, 'utf8') > 42) {
+      if (Buffer.byteLength(chunk + char, 'utf8') > 39) {
         words.push(`=?UTF-8?B?${Buffer.from(chunk).toString('base64')}?=`);
         chunk = '';
       }

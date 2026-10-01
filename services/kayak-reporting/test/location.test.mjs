@@ -39,6 +39,9 @@ const locations = [
 ];
 function decodeSubject(mail) {
   const header = mail.split('\r\n\r\n')[0];
+  for (const line of header.split('\r\n')) {
+    if (line.includes('=?UTF-8?B?')) assert.ok(line.length<=76,`RFC 2047 header line limit: ${line.length}`);
+  }
   const subject = header.match(/(?:^|\r\n)Subject: ([\s\S]*?)(?=\r\n[^ ]|$)/)?.[1];
   assert.ok(subject);
   if (!subject.startsWith('=?')) return subject;
