@@ -34,5 +34,8 @@ No additional code or filter step was observed.
 | ua | body.ua | body.ua |
 | referrer | body.referrer | body.referrer |
 
-Workflows retirement is March 31, 2027. Native export and private credential
-migration remain deployment prerequisites; existing rows are preserved.
+Workflows retirement is March 31, 2027. A native project export was downloaded
+privately on October 1, 2026; its manifest is not truncated and reports this
+workflow exported. The native step order confirms Sheets before email. Configured
+prop values are redacted by Pipedream, so this inspection record remains useful
+for reconstruction. Credentials are migrated separately; existing rows are preserved.

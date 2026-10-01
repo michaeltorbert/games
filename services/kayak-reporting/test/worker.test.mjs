@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {handleRequest} from '../src/worker.js';
 
 const payload = {event:'game_start', ts:1775300000000, level:0, levelName:'Lake', score:0, v:'1.1.37', deviceType:'desktop', screen:'1180x820', lang:'en-US', tz:'America/New_York', platform:'MacIntel', ua:'Test', referrer:''};
-const env = {ALLOWED_ORIGIN:'https://michaeltorbert.github.io', REPORTING_ENABLED:'true', GOOGLE_CLIENT_ID:'test-client', GOOGLE_CLIENT_SECRET:'test-secret', GOOGLE_REFRESH_TOKEN:'test-refresh', SPREADSHEET_ID:'test-sheet', NOTIFICATION_EMAIL:'owner@example.com', EVENT_LIMITER:{limit:async()=>({success:true})}};
+const env = {ALLOWED_ORIGIN:'https://michaeltorbert.github.io', REPORTING_ENABLED:'true', GOOGLE_CLIENT_ID:'test-client', GOOGLE_CLIENT_SECRET:'test-secret', GOOGLE_REFRESH_TOKEN:'test-refresh', SPREADSHEET_ID:'test-sheet', NOTIFICATION_EMAIL:'owner@example.com', EMAIL_DAILY_LIMIT:'100', EMAIL_QUOTA:{prepare:()=>({bind:()=>({run:async()=>({success:true,meta:{changes:1}})})})}, EVENT_LIMITER:{limit:async()=>({success:true})}};
 function request(body=payload, options={}) {
   return new Request('https://worker.example/events', {method:'POST', headers:{Origin:env.ALLOWED_ORIGIN,'CF-Connecting-IP':'2001:db8::1','Content-Type':'text/plain', ...options.headers}, body:typeof body==='string'?body:JSON.stringify(body)});
 }
@@ -145,4 +145,52 @@ test('origin, method, disabled and throttled rejections log only safe stage/stat
   await run(request(),{...env,REPORTING_ENABLED:'false'});
   await run(request(),{...env,EVENT_LIMITER:{limit:async()=>({success:false})}});
   assert.deepEqual(logs,[['origin',403],['method',405],['disabled',503],['throttled',429]].map(([stage,status])=>({service:'kayak-reporting',outcome:'rejected',stage,status})));
+});
+
+function quotaConfig(run, limit='100') {
+  return {...env,EMAIL_DAILY_LIMIT:limit,EMAIL_QUOTA:{prepare:sql=>({bind:value=>({run:()=>run(sql,value)})})}};
+}
+test('daily limit preserves the spreadsheet row and suppresses email',async(t)=>{
+  const logs=[];t.mock.method(console,'warn',line=>logs.push(JSON.parse(line)));
+  const {response,calls}=await run(request(),quotaConfig(async(sql,limit)=>{
+    assert.match(sql,/date\('now'\)/);assert.equal(limit,100);return {success:true,meta:{changes:0}};
+  }));
+  assert.equal(response.status,202);assert.equal(calls.length,2);
+  assert.equal(await response.text(),'Recorded; notification limit reached');
+  assert.deepEqual(logs,[{service:'kayak-reporting',outcome:'recorded-without-email',stage:'email-quota',event:'game_start'}]);
+});
+test('zero email cap records the row without reading quota storage or sending mail',async()=>{
+  const {response,calls}=await run(request(),quotaConfig(()=>{throw Error('must not query');},'0'));
+  assert.equal(response.status,202);assert.equal(calls.length,2);
+});
+test('invalid, missing and unavailable quota configurations never send mail',async()=>{
+  for(const config of [
+    ...['','-1','1.5','101','NaN','1e2'].map(limit=>quotaConfig(()=>{throw Error('invalid config must not query');},limit)),
+    {...env,EMAIL_QUOTA:undefined},
+    quotaConfig(async()=>{throw Error('private database detail');}),
+    ...[{success:'false',meta:{changes:1}},{success:1,meta:{changes:1}},{success:{},meta:{changes:1}},{success:false,meta:{changes:1}},{success:true,meta:{}},{success:true,meta:{changes:2}},{success:true,meta:{changes:'1'}}].map(result=>quotaConfig(async()=>result))
+  ]) {
+    const {response,calls}=await run(request(),config);assert.equal(response.status,502);assert.equal(calls.length,2);
+  }
+});
+test('Sheets failure reserves no email and Gmail failure does not refund a reservation',async()=>{
+  let reservations=0;
+  const config=quotaConfig(async()=>{reservations++;return {success:true,meta:{changes:1}};});
+  await run(request(),config,mockGoogle(2));assert.equal(reservations,0);
+  const result=await run(request(),config,mockGoogle(3));assert.equal(reservations,1);assert.equal(result.response.status,502);
+});
+test('an email reservation delayed past the deadline never starts Gmail',async(t)=>{
+  const controller=new AbortController();t.mock.method(AbortSignal,'timeout',()=>controller.signal);
+  const config=quotaConfig(async()=>{controller.abort();return {success:true,meta:{changes:1}};});
+  const {response,calls}=await run(request(),config);assert.equal(response.status,502);assert.equal(calls.length,2);
+});
+
+for (const stage of [1,2,3]) test(`Google redirect at stage ${stage} is rejected without following it`,async()=>{
+  const mock=mockGoogle();const base=mock.fetcher;
+  mock.fetcher=async(url,init)=>{
+    assert.equal(init.redirect,'manual');
+    if(mock.calls.length===stage-1) {mock.calls.push({url,init});return new Response(null,{status:302,headers:{Location:'https://untrusted.example'}});}
+    return base(url,init);
+  };
+  const {response,calls}=await run(request(),env,mock);assert.equal(response.status,502);assert.equal(calls.length,stage);
 });

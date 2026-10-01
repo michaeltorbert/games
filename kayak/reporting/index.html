@@ -17,7 +17,8 @@
   <h2>Google access</h2>
   <p>The connection requests Google Sheets access to append rows to the existing Kayak usage spreadsheet, and Gmail send access to send notifications to the owner's fixed email address. It does not request Gmail inbox-reading permission.</p>
   <p>Google's Sheets permission covers all spreadsheets in the authorized account. The reporting service uses one configured spreadsheet and does not offer players a way to choose a destination or recipient.</p>
-  <p class="notice">The Cloudflare replacement is being prepared. The game continues to use the existing Pipedream workflow until the replacement has been verified and the game endpoint is switched.</p>
+  <p>The Cloudflare service limits notification attempts to at most 100 per UTC day. Spreadsheet logging continues if that email limit is reached.</p>
+  <p class="notice">Kayak v1.1.38 and later report through Cloudflare Workers. Older copies continue to use Pipedream while players update; the old workflow remains active during that transition.</p>
   <nav aria-label="Reporting information">
     <a href="privacy.html">Privacy policy</a>
     <a href="../">Play Kayak</a>
