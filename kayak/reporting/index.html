@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="How Kayak Reporting records game activity and notifies the game's owner.">
+  <title>Kayak Reporting</title>
+  <link rel="stylesheet" href="reporting.css">
+</head>
+<body><main>
+  <p class="eyebrow">Kayak Adventures · Owner reporting</p>
+  <h1>Kayak Reporting</h1>
+  <p>Kayak Reporting records game activity in the game owner's Google spreadsheet and emails the owner when activity is recorded. It helps the owner check that the game is being used and that reporting is working.</p>
+  <p>Players do not sign into Google or authorize this connection. Google authorization is for the owner's reporting account only.</p>
+  <h2>What is recorded</h2>
+  <p>Reports include game starts, level starts and level completions, together with the score, level, game version, timestamp, IP address and basic browser/device details.</p>
+  <h2>Google access</h2>
+  <p>The connection requests Google Sheets access to append rows to the existing Kayak usage spreadsheet, and Gmail send access to send notifications to the owner's fixed email address. It does not request Gmail inbox-reading permission.</p>
+  <p>Google's Sheets permission covers all spreadsheets in the authorized account. The reporting service uses one configured spreadsheet and does not offer players a way to choose a destination or recipient.</p>
+  <p class="notice">The Cloudflare replacement is being prepared. The game continues to use the existing Pipedream workflow until the replacement has been verified and the game endpoint is switched.</p>
+  <nav aria-label="Reporting information">
+    <a href="privacy.html">Privacy policy</a>
+    <a href="../">Play Kayak</a>
+    <a href="https://github.com/michaeltorbert/games/issues">Contact the maintainer</a>
+  </nav>
+</main></body>
+</html>

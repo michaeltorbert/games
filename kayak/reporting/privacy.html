@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="Privacy information for Kayak Reporting and its Google Sheets and Gmail connection.">
+  <title>Privacy policy · Kayak Reporting</title>
+  <link rel="stylesheet" href="reporting.css">
+</head>
+<body><main>
+  <p class="eyebrow">Kayak Reporting</p>
+  <h1>Privacy policy</h1>
+  <p class="updated">Last updated: October 1, 2026</p>
+  <p>This policy describes the Kayak activity-reporting feature and the game owner's Google connection. Players are not asked to connect a Google account.</p>
+  <h2>Information reported by the game</h2>
+  <p>The game sends an event when a game starts, a level starts or a level is completed. Its reports include the event, timestamp, level number and name, score, game version, device type, screen dimensions, browser language, timezone, platform, browser user-agent and referring page when available. Level-completion requests also include the collectible count, which is not stored in the existing spreadsheet columns. The reporting service obtains the request's IP address.</p>
+  <p>The game also stores progress and high scores locally in the player's browser. The game does not ask players for a name, email address or Google account credentials. Referring-page URLs may contain information supplied by the referring site.</p>
+  <h2>Why the information is used</h2>
+  <p>The game owner uses these reports to monitor game activity and diagnose reporting problems. Activity is appended to a Google spreadsheet, followed by a notification to the owner's fixed email address. Reporting data is not used for advertising or sold.</p>
+  <h2>Google account access</h2>
+  <p>Only the owner authorizes the reporting connection. Google Sheets permission allows access to spreadsheets in that account; the service uses that permission to append reports to one configured Kayak usage spreadsheet. Gmail send permission is used to send the fixed notification to the owner. The service does not request permission to read the owner's Gmail inbox.</p>
+  <p>The replacement service stores authorization credentials as private server-side secrets. They are not included in the game code or sent to players. Credentials are used to obtain the access needed for these reporting actions. Use of information received from Google APIs follows the <a href="https://developers.google.com/terms/api-services-user-data-policy">Google API Services User Data Policy</a>, including its Limited Use requirements.</p>
+  <h2>Service providers and storage</h2>
+  <p>The existing reporting workflow runs on Pipedream and writes to Google Sheets before emailing the owner. A replacement is being prepared on Cloudflare Workers, using Google Sheets and Gmail. Pipedream remains the active receiver until the game is switched to the verified replacement. These providers process the information needed to deliver the reports and operate their services.</p>
+  <p>The replacement's application logs record event types, outcomes, failure stages and status codes. They omit report bodies, IP addresses and credentials. Provider infrastructure may process request information under its own policies.</p>
+  <h2>Retention and controls</h2>
+  <p>While Pipedream handles reporting, it also retains workflow execution history, which can include incoming report payloads and request information. That history is subject to Pipedream's retention settings and policies. Deleting spreadsheet rows or emails does not delete Pipedream execution history.</p>
+  <p>There is no automatic deletion schedule for spreadsheet rows or notification emails. They remain in the owner's account until the owner deletes them. The owner can revoke the Google connection through Google Account permissions, which stops authorized API access. Revocation does not remove existing rows or emails. Browser-local progress can be removed by clearing this site's browser data.</p>
+  <h2>Questions and deletion requests</h2>
+  <p>Contact the maintainer through the <a href="https://github.com/michaeltorbert/games/issues">project's issue tracker</a>. Issues are public: do not post credentials, your IP address, email contents or other private information there. Ask for a private way to provide details if needed.</p>
+  <nav aria-label="Reporting information">
+    <a href="./">About Kayak Reporting</a>
+    <a href="../">Play Kayak</a>
+  </nav>
+</main></body>
+</html>

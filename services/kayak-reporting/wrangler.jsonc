@@ -1,0 +1,13 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "kayak-reporting",
+  "main": "src/worker.js",
+  "account_id": "092f7a0a1516725ba2217cfb3760b38f",
+  "compatibility_date": "2026-09-30",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "preview_urls": false,
+  "observability": {"enabled": true, "logs": {"invocation_logs": false}},
+  "vars": {"ALLOWED_ORIGIN": "https://michaeltorbert.github.io", "REPORTING_ENABLED": "false"},
+  "ratelimits": [{"name": "EVENT_LIMITER", "namespace_id": "14220260930", "simple": {"limit": 30, "period": 60}}]
+}

@@ -1,0 +1,6 @@
+.dev.vars*
+.env*
+.wrangler/
+dist/
+worker-configuration.d.ts
+*client_secret*.json
