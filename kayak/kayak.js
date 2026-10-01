@@ -1,6 +1,6 @@
 
-const GAME_VERSION = '1.1.37';
-const PHONE_HOME_URL = 'https://eoqil5wgr24002.m.pipedream.net';
+const GAME_VERSION = '1.1.38';
+const PHONE_HOME_URL = 'https://kayak-reporting.scythe-wildflower.workers.dev/events';
 const CANVAS_BORDER = 4;
 const BOTTOM_BAR_RATIO = 0.03;
 

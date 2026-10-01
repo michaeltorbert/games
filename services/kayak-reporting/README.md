@@ -6,9 +6,11 @@ sends a Gmail notification. No custom domain or paid Worker plan is required for
 normal low-volume usage. The free allowance is shared with the account's other
 Workers; deployment and actual usage must be checked before cutover.
 
-**Prepared, not cut over.** The game still uses Pipedream. This Worker defaults to
-`REPORTING_ENABLED=false`; it cannot deliver until Google credentials are supplied
-and reporting is explicitly enabled. Existing game versions remain unchanged.
+**Live replacement for Kayak v1.1.38.** The Worker is deployed with reporting
+enabled and Google credentials stored as Cloudflare secrets. Three labeled live
+events each produced one verified spreadsheet row and one received email. Older
+game copies still use Pipedream; keep that workflow active until Sydney has
+updated and her reporting through Cloudflare is confirmed.
 
 ## Local verification
 
@@ -94,7 +96,7 @@ server-side and is never accepted from a game payload.
 2. Confirm the configured Cloudflare account, Workers Free plan and actual
    `workers.dev` subdomain. Check that the rate-limit namespace is unused by
    existing Workers. Verify the production game origin matches `ALLOWED_ORIGIN`.
-3. Create a dedicated D1 database named `kayak-reporting-quota`, replace the all-zero local placeholder `database_id` in `wrangler.jsonc` with its returned ID, and run `npx wrangler d1 migrations apply kayak-reporting-quota --remote` to apply the migration with tracking. Keep the shared database and its counters when redeploying or rolling back; deleting/resetting it would reset the protection. Then deploy this independent Worker with reporting disabled. Import credentials,
+3. Create a dedicated D1 database named `kayak-reporting-quota`, set `database_id` in `wrangler.jsonc` to its returned ID, and run `npx wrangler d1 migrations apply kayak-reporting-quota --remote` to apply the migration with tracking. Keep the shared database and its counters when redeploying or rolling back; deleting/resetting it would reset the protection. Then deploy this independent Worker with reporting disabled. Import credentials,
    then enable reporting for an explicitly authorized delivery test. Do not
    enable local dev against real credentials unless real writes are intended.
 4. Submit one labeled test for each of the three event types. Confirm the live tab is named `Sheet1` with the expected A:N headers and compare historical numeric/text cell types for timestamp, level and score. Verify exactly one
@@ -107,7 +109,7 @@ server-side and is never accepted from a game payload.
    Kayak's `games.js` version, and `version.json` together. Preserve other games.
    Run the registry test with an exact base SHA and `REGISTRY_RELEASE_TARGET=kayak`.
 6. Release with approval; verify production game events, spreadsheet and inbox.
-   Disable old Pipedream workflow only after that check. Review Pipedream execution-history retention separately: disabling the workflow does not delete its saved history. Retain/export history or request owner-approved deletion as appropriate, and update the public pages to describe the final provider and retention state. Keep rollback details.
+   Keep the old Pipedream workflow active for older copies. Disable it only after Sydney has updated and her Cloudflare reports are confirmed, with owner approval. Review Pipedream execution-history retention separately: disabling the workflow does not delete its saved history. Retain/export history or request owner-approved deletion as appropriate, and update the public pages to describe the final provider and retention state. Keep rollback details.
    To roll back, restore the old endpoint while its workflow is still available;
    do not replay already-submitted events blindly.
 
@@ -122,4 +124,4 @@ server-side and is never accepted from a game payload.
 - [Sheets scopes](https://developers.google.com/workspace/sheets/api/scopes)
 - [Gmail scopes](https://developers.google.com/workspace/gmail/api/auth/scopes)
 
-D1 configuration currently contains an all-zero placeholder for local testing. This branch is not deployment-ready until a real, verified database is provisioned. Do not enable reporting with the placeholder.
+The committed D1 ID identifies the verified dedicated quota database. Preserve it and its counters on redeployments; no credential values are committed. The first disabled Worker version remains available for a reporting-only rollback, and the Pipedream endpoint remains available for older clients during the transition.
