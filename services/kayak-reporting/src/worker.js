@@ -53,6 +53,43 @@ export function sheetRow(data, ip) {
     data.deviceType, data.screen, data.lang, data.tz, data.platform, data.ua, data.referrer];
 }
 
+/** Optional edge metadata only: never fetch, stringify unknown values, or log location.
+ * Returns a safe MIME header value, falling back to the original subject on any error.
+ * @param {Request} request @param {string} ip */
+export function emailSubject(request, ip) {
+  const fallback = `kayak played by IP ${ip}`;
+  try {
+    const cf = request.cf;
+    if (!cf || typeof cf !== 'object' || Array.isArray(cf)) return fallback;
+    /** @param {unknown} value */
+    const place = value => {
+      if (value === undefined || value === null || value === '') return '';
+      if (typeof value !== 'string' || value.length > 80 || /[\p{Cc}\p{Cf}\p{Cs}\p{Zl}\p{Zp}]/u.test(value)) throw new Error('Invalid location');
+      return value.trim();
+    };
+    const city = place(cf.city);
+    const region = place(cf.regionCode) || place(cf.region);
+    const country = place(cf.country);
+    // Cloudflare's special unknown/Tor country codes are not locations.
+    if (country && (!/^[A-Z]{2}$/.test(country) || country === 'XX' || country === 'T1')) return fallback;
+    const location = [city, region, country].filter(Boolean).join(', ');
+    if (!location) return fallback;
+    const subject = `${fallback} - ${location}`;
+    // Encode every enriched subject, including ASCII: metadata cannot masquerade
+    // as an encoded-word or inject headers. Bound each word below RFC 2047's 75 bytes.
+    const words = []; let chunk = '';
+    for (const char of subject) {
+      if (Buffer.byteLength(chunk + char, 'utf8') > 42) {
+        words.push(`=?UTF-8?B?${Buffer.from(chunk).toString('base64')}?=`);
+        chunk = '';
+      }
+      chunk += char;
+    }
+    if (chunk) words.push(`=?UTF-8?B?${Buffer.from(chunk).toString('base64')}?=`);
+    return words.join('\r\n ');
+  } catch { return fallback; }
+}
+
 /** @param {Env} env */
 function validateConfig(env) {
   for (const key of ['GOOGLE_CLIENT_ID','GOOGLE_CLIENT_SECRET','GOOGLE_REFRESH_TOKEN','SPREADSHEET_ID','NOTIFICATION_EMAIL']) {
@@ -88,8 +125,8 @@ export async function reserveEmail(env) {
   return result.meta.changes === 1;
 }
 
-/** @param {GameEvent} event @param {string} ip @param {Env} env @param {typeof fetch} fetcher */
-async function deliver(event, ip, env, fetcher) {
+/** @param {GameEvent} event @param {string} ip @param {Request} request @param {Env} env @param {typeof fetch} fetcher */
+async function deliver(event, ip, request, env, fetcher) {
   let stage = 'oauth';
   const signal = AbortSignal.timeout(25000);
   try {
@@ -111,7 +148,7 @@ async function deliver(event, ip, env, fetcher) {
     // D1 does not take an AbortSignal. A delayed reservation must not send past the deadline.
     signal.throwIfAborted();
     stage = 'email';
-    const message = `To: ${env.NOTIFICATION_EMAIL}\r\nSubject: kayak played by IP ${ip}\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\nkayak played by IP ${ip} check out the google sheet`;
+    const message = `To: ${env.NOTIFICATION_EMAIL}\r\nSubject: ${emailSubject(request, ip)}\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\nkayak played by IP ${ip} check out the google sheet`;
     const sent = await google('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
       method:'POST', headers, body:JSON.stringify({raw:Buffer.from(message).toString('base64url')})
     }, stage, signal, fetcher);
@@ -153,7 +190,7 @@ export async function handleRequest(request, env, ctx, fetcher = fetch) {
     const event = validateEvent(input);
     // This public game has no identity; shared-IP throttling is only an abuse brake.
     if (!(await env.EVENT_LIMITER.limit({key:`kayak:${ip}`})).success) return rejectRequest(429, 'throttled', 'Rate limited', headers);
-    const delivery = deliver(event, ip, env, fetcher);
+    const delivery = deliver(event, ip, request, env, fetcher);
     ctx.waitUntil(delivery); // Preserve delivery if a beacon client disconnects.
     const outcome = await delivery;
     if (outcome === 'email-limited') return new Response('Recorded; notification limit reached', {status:202, headers});
