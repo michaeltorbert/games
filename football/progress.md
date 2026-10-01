@@ -1202,3 +1202,12 @@ Original prompt: Show what Football issue #101 looks like before and after a pro
 - Rebased onto #139 (`eb16129`) and preserved all of its marker, Coach Replay focus, test, and progress changes; only version strings conflicted. Synchronized `GAME_VERSION`, all 18 Football asset query strings, the Football registry descriptor, and `version.json` to `1.33.3`; unrelated games are unchanged.
 - Verification on tested code commit `737bf62aa7cd32a96a573bf91d584193d94331da` (clean tree): the canonical Chromium release gate passed 161 DOM-free checks and 388 browser checks, with 644 intentional device skips and all 304 required screenshots verified. The WebKit release matrix, call-layout, marker, and particle suites passed 89 checks, with 19 intentional device skips and all 304 required screenshots verified. The registry gate passed 4/4 against exact base `eb16129bed50abe08f89e93021ddb028f4672445`, target `football`.
 - Engines were Chromium 141.0.7390.37 and Playwright WebKit 26.0 (Playwright 1.56.1). WebKit ran with the six configured viewports, DPR 3 on phones and 2 on tablets, iOS 18.6 Safari user agents, and mobile/touch flags. Phone and iPad screenshots were inspected in both engines. This is engine emulation; Apple Simulator and physical Safari remain unverified. Only this entry was written after the runs.
+
+### Rebase onto Kayak 1.1.38 and final verification
+
+- Rebased onto `main` at `e2e341d12b5bf07f42333a0dd2976f509e3b8673` (Kayak 1.1.38 reporting, #142–#144). Only `version.json` conflicted, on the adjacent Kayak line. The resolution keeps Kayak `1.1.38` and Football `1.33.3`. A range-diff against the previous head `16facbe` shows that context line as the only difference, and `services/` and `kayak/` are identical to `main`.
+- Superseding verification on tested commit `237f66df0acddb9c1bfad4a6e473736d29beea16` (clean tree before and after each run; only this subsection was written afterwards):
+  - Canonical Chromium release gate: 161 DOM-free checks and 388 browser checks passed, with 644 intentional device skips and all 304 required screenshots verified.
+  - WebKit release matrix, call-layout, marker and particle suites: 89 checks passed, with 19 intentional device skips and all 304 required screenshots verified.
+  - Registry gate: 4/4 against exact base `e2e341d12b5bf07f42333a0dd2976f509e3b8673`, target `football`.
+- Engines and settings are unchanged from the entry above. This is engine emulation; Apple Simulator and physical Safari remain unverified.
