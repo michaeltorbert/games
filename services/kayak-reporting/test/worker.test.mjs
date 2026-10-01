@@ -92,3 +92,43 @@ test('device-info failure in existing game still records blanks',async()=>{
   assert.equal(response.status,200);
   assert.deepEqual(JSON.parse(calls[1].init.body).values[0].slice(7),['','','','','','','']);
 });
+
+test('receiver logs payload rejection without including private values',async(t)=>{
+  const logs=[]; t.mock.method(console,'warn',line=>logs.push(JSON.parse(line)));
+  const {response}=await run(request({...payload,tz:{private:'do not log'}}));
+  assert.equal(response.status,400);
+  assert.deepEqual(logs,[{service:'kayak-reporting',outcome:'rejected',stage:'payload',status:400}]);
+});
+
+test('25-second deadline abort reaches upstream and becomes failure without replay',async(t)=>{
+  t.mock.method(AbortSignal,'timeout',ms=>{assert.equal(ms,25000);return AbortSignal.abort(new DOMException('Timed out','TimeoutError'));});
+  let count=0;
+  const {response}=await run(request(),env,{calls:[],fetcher:async(url,init)=>{count++;init.signal.throwIfAborted();throw Error('expected abort');}});
+  assert.equal(response.status,502);assert.equal(count,1);
+});
+
+test('actual Kayak phoneHome producer is compatible on beacon and fetch paths',async()=>{
+  const {readFile}=await import('node:fs/promises');
+  const {runInNewContext}=await import('node:vm');
+  const source=await readFile(new URL('../../../kayak/kayak.js',import.meta.url),'utf8');
+  const start=source.indexOf('function getDeviceInfo()');
+  const end=source.indexOf('const kayak =',start);
+  assert.ok(start>0 && end>start);
+  for(const beacon of [true,false]) {
+    const bodies=[];
+    const sandbox={PHONE_HOME_URL:'https://worker.example/events',GAME_VERSION:'1.1.37',currentLevel:0,totalScore:0,
+      getLevelDef:()=>({name:'Lake'}),screen:{width:1180,height:820},document:{referrer:''},
+      navigator:{userAgent:'Test',maxTouchPoints:5,language:'en-US',platform:'MacIntel',...(beacon?{sendBeacon:(url,body)=>{bodies.push(body);return true;}}:{})},
+      fetch:async(url,init)=>{bodies.push(init.body);return new Response(null,{status:502});}};
+    runInNewContext(source.slice(start,end),sandbox);
+    for(const event of ['game_start','level_start','level_complete']) {
+      assert.doesNotThrow(()=>sandbox.phoneHome(event,event==='level_complete'?{collected:5}:undefined));
+      const {response}=await run(request(JSON.parse(bodies.at(-1))));
+      assert.equal(response.status,200);
+    }
+    if(beacon) sandbox.navigator.sendBeacon=()=>{throw Error('offline');};
+    else sandbox.fetch=()=>Promise.reject(Error('offline'));
+    assert.doesNotThrow(()=>sandbox.phoneHome('game_start'));
+    await new Promise(resolve=>setImmediate(resolve));
+  }
+});

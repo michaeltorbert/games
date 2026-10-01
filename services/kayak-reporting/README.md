@@ -74,7 +74,7 @@ server-side and is never accepted from a game payload.
   limiting reduce casual abuse; the public game cannot keep an API secret, and
   forged non-browser requests remain possible. This is not a global quota cap.
 - Logs contain only service, event type, outcome, stage and numeric upstream
-  status. No tokens, message bodies, IPs or device details are logged.
+  status (and receiver rejection status). No tokens, message bodies, IPs or device details are logged.
 - GET `/health` has no side effects; its enabled flag is not a Google connectivity
   test. Never probe POST endpoints casually: enabled ones create rows and email.
 
@@ -89,7 +89,7 @@ server-side and is never accepted from a game payload.
 3. Deploy this independent Worker with reporting disabled. Import credentials,
    then enable reporting for an explicitly authorized delivery test. Do not
    enable local dev against real credentials unless real writes are intended.
-4. Submit one labeled test for each of the three event types. Verify exactly one
+4. Submit one labeled test for each of the three event types. Confirm the live tab is named `Sheet1` with the expected A:N headers. Verify exactly one
    A:N row and one received email per event, correct timezone/IP, and order.
    Check Workers CPU usage under the Free plan; network wait is not CPU time.
    Revoke or break a test credential to verify failure visibility without

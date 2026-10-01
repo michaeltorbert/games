@@ -29,7 +29,7 @@ async function temporaryDirectory(t) {
 test('validates Desktop credentials and CLI input without echoing secrets', () => {
   assert.deepEqual(parseClient({ installed: client }), client);
   assert.throws(() => parseClient({ web: client }), /Desktop/);
-  assert.throws(() => parseArguments(['--email', 'bad\r\nBcc:other@example.com']), /Provide/);
+  assert.throws(() => parseArguments(['--client', '/private/client.json', '--email', 'bad\r\nBcc:other@example.com', '--spreadsheet', 'syntheticSheetId', '--output', '/private/credentials/output.json']), /Provide/);
   assert.throws(() => parseArguments(['--client', 'a', '--client', 'b']), /Usage/);
   const options = parseArguments(['--client', '/private/client.json', '--email', 'owner@example.com', '--spreadsheet', 'syntheticSheetId', '--output', '/private/credentials/output.json']);
   assert.equal(options.email, 'owner@example.com');

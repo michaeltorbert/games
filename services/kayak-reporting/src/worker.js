@@ -127,7 +127,7 @@ export async function handleRequest(request, env, ctx, fetcher = fetch) {
     return new Response(success ? 'Recorded' : 'Delivery failed', {status:success ? 200 : 502, headers});
   } catch (error) {
     const status = error instanceof ReportingError ? error.status : 503;
-    if (status >= 500) console.error(JSON.stringify({service:'kayak-reporting', outcome:'rejected', stage:error instanceof ReportingError ? error.stage : 'receiver'}));
+    console.warn(JSON.stringify({service:'kayak-reporting', outcome:'rejected', stage:error instanceof ReportingError ? error.stage : 'receiver', status}));
     return new Response(status < 500 ? 'Invalid event' : 'Unavailable', {status, headers});
   }
 }
