@@ -9,8 +9,8 @@ Workers; deployment and actual usage must be checked before cutover.
 **Live replacement for Kayak v1.1.38.** The Worker is deployed with reporting
 enabled and Google credentials stored as Cloudflare secrets. Three labeled live
 events each produced one verified spreadsheet row and one received email. Older
-game copies still use Pipedream; keep that workflow active until Sydney has
-updated and her reporting through Cloudflare is confirmed.
+game copies still use Pipedream; keep that workflow active until the known older copies have
+updated and their reporting through Cloudflare is confirmed.
 
 ## Local verification
 
@@ -88,7 +88,14 @@ server-side and is never accepted from a game payload.
 - GET `/health` has no side effects; its enabled flag is not a Google connectivity
   test. Never probe POST endpoints casually: enabled ones create rows and email.
 
-## Authorized deployment and cutover checklist
+## First installation, recovery, and cutover checklist
+
+The initial installation and delivery checks below have been completed. Use them
+as a recovery checklist; the committed configuration deploys reporting enabled.
+For a disabled recovery deployment, explicitly set `REPORTING_ENABLED=false` in
+`wrangler.jsonc` before deploying, then restore `true` only after credentials and
+the database are ready. Ordinary redeployments use the existing verified database
+and credentials. Do not reset its quota counter.
 
 1. Retain the Pipedream workflow export privately before retirement. The
    [sanitized inspection record](pipedream-v48.md) is a reconstruction, not a
@@ -102,9 +109,10 @@ server-side and is never accepted from a game payload.
 4. Submit one labeled test for each of the three event types. Confirm the live tab is named `Sheet1` with the expected A:N headers and compare historical numeric/text cell types for timestamp, level and score. Verify exactly one
    A:N row and one received email per event, correct timezone/IP, and order.
    Check Workers CPU usage under the Free plan; network wait is not CPU time.
-   Revoke or break a test credential to verify failure visibility without
-   interfering with production reporting. Restore it before proceeding.
-5. Verify a small test email cap with concurrent synthetic events against isolated local D1 storage: spreadsheet rows continue, Gmail attempts stop at the cap, failures consume reservations, and a database error never permits mail. Only after delivery verification, change `PHONE_HOME_URL` to the deployed
+   The local unit and workerd suites inject Google failures and verify safe failure
+   handling. The live checks use valid credentials; they do not revoke or break
+   the production connection. Actual remote credential failure was not induced.
+5. Verify a small test email cap with concurrent synthetic events against isolated local D1 storage: spreadsheet rows continue, Gmail attempts stop at the cap, failures consume reservations, and a database error never permits mail. For the initial cutover, only after delivery verification, change `PHONE_HOME_URL` to the deployed
    `/events` endpoint. Bump Kayak `GAME_VERSION`, every Kayak HTML cache key,
    Kayak's `games.js` version, and `version.json` together. Preserve other games.
    Run the registry test with an exact base SHA and `REGISTRY_RELEASE_TARGET=kayak`.
