@@ -2,7 +2,7 @@
 import { Buffer } from 'node:buffer';
 import { isIP } from 'node:net';
 
-/** @typedef {{ALLOWED_ORIGIN:string, REPORTING_ENABLED:string, GOOGLE_CLIENT_ID:string, GOOGLE_CLIENT_SECRET:string, GOOGLE_REFRESH_TOKEN:string, SPREADSHEET_ID:string, NOTIFICATION_EMAIL:string, EVENT_LIMITER:RateLimit}} Env */
+/** @typedef {{ALLOWED_ORIGIN:string, REPORTING_ENABLED:string, GOOGLE_CLIENT_ID:string, GOOGLE_CLIENT_SECRET:string, GOOGLE_REFRESH_TOKEN:string, SPREADSHEET_ID:string, NOTIFICATION_EMAIL:string, EVENT_LIMITER:RateLimit, EMAIL_QUOTA:D1Database, EMAIL_DAILY_LIMIT:string}} Env */
 /** @typedef {{event:string, ts:number, level:number, levelName:string, score:number, v:string, deviceType:string, screen:string, lang:string, tz:string, platform:string, ua:string, referrer:string}} GameEvent */
 const MAX_BODY = 8192;
 const EVENTS = new Set(['game_start', 'level_start', 'level_complete']);
@@ -63,10 +63,28 @@ function validateConfig(env) {
 
 /** @param {string} url @param {RequestInit} init @param {string} stage @param {AbortSignal} signal @param {typeof fetch} fetcher */
 async function google(url, init, stage, signal, fetcher) {
-  const response = await fetcher(url, {...init, signal, redirect:'error'});
+  const response = await fetcher(url, {...init, signal, redirect:'manual'});
   if (!response.ok) { await response.body?.cancel(); throw new ReportingError(stage, response.status); }
   try { return JSON.parse(await readBounded(response.body, 65536)); }
   catch { throw new ReportingError(stage, 502); }
+}
+
+/** Reserve before sending; uncertain Gmail results still consume the slot.
+ * D1 serializes this one write globally, using its UTC date instead of event data.
+ * @param {Env} env */
+export async function reserveEmail(env) {
+  if (!/^(0|[1-9][0-9]*)$/.test(env.EMAIL_DAILY_LIMIT)) throw new ReportingError('email-quota', 503);
+  const limit = Number(env.EMAIL_DAILY_LIMIT);
+  if (!Number.isSafeInteger(limit) || limit > 100) throw new ReportingError('email-quota', 503);
+  if (limit === 0) return false;
+  const result = await env.EMAIL_QUOTA.prepare(`
+    INSERT INTO email_daily (day, attempts)
+    SELECT date('now'), 1 WHERE ?1 > 0
+    ON CONFLICT(day) DO UPDATE SET attempts = email_daily.attempts + 1
+    WHERE email_daily.attempts < ?1
+  `).bind(limit).run();
+  if (result.success !== true || ![0, 1].includes(result.meta?.changes)) throw new ReportingError('email-quota', 503);
+  return result.meta.changes === 1;
 }
 
 /** @param {GameEvent} event @param {string} ip @param {Env} env @param {typeof fetch} fetcher */
@@ -84,6 +102,13 @@ async function deliver(event, ip, env, fetcher) {
       method:'POST', headers, body:JSON.stringify({majorDimension:'ROWS', values:[sheetRow(event, ip)]})
     }, stage, signal, fetcher);
     if (appended.updates?.updatedRows !== 1) throw new ReportingError(stage, 502);
+    stage = 'email-quota';
+    if (!await reserveEmail(env)) {
+      console.warn(JSON.stringify({service:'kayak-reporting', outcome:'recorded-without-email', stage, event:event.event}));
+      return 'email-limited';
+    }
+    // D1 does not take an AbortSignal. A delayed reservation must not send past the deadline.
+    signal.throwIfAborted();
     stage = 'email';
     const message = `To: ${env.NOTIFICATION_EMAIL}\r\nSubject: kayak played by IP ${ip}\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\nkayak played by IP ${ip} check out the google sheet`;
     const sent = await google('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
@@ -91,11 +116,11 @@ async function deliver(event, ip, env, fetcher) {
     }, stage, signal, fetcher);
     if (typeof sent.id !== 'string' || !sent.id) throw new ReportingError(stage, 502);
     console.info(JSON.stringify({service:'kayak-reporting', outcome:'delivered', event:event.event}));
-    return true;
+    return 'delivered';
   } catch (error) {
     // Never log Google bodies, credentials, IP addresses, or event payloads.
     console.error(JSON.stringify({service:'kayak-reporting', outcome:'failed', stage, upstreamStatus:error instanceof ReportingError ? error.status : undefined}));
-    return false;
+    return 'failed';
   }
 }
 
@@ -129,8 +154,9 @@ export async function handleRequest(request, env, ctx, fetcher = fetch) {
     if (!(await env.EVENT_LIMITER.limit({key:`kayak:${ip}`})).success) return rejectRequest(429, 'throttled', 'Rate limited', headers);
     const delivery = deliver(event, ip, env, fetcher);
     ctx.waitUntil(delivery); // Preserve delivery if a beacon client disconnects.
-    const success = await delivery;
-    return new Response(success ? 'Recorded' : 'Delivery failed', {status:success ? 200 : 502, headers});
+    const outcome = await delivery;
+    if (outcome === 'email-limited') return new Response('Recorded; notification limit reached', {status:202, headers});
+    return new Response(outcome === 'delivered' ? 'Recorded' : 'Delivery failed', {status:outcome === 'delivered' ? 200 : 502, headers});
   } catch (error) {
     const status = error instanceof ReportingError ? error.status : 503;
     return rejectRequest(status, error instanceof ReportingError ? error.stage : 'receiver', status < 500 ? 'Invalid event' : 'Unavailable', headers);

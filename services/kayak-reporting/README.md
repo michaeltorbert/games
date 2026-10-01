@@ -19,11 +19,16 @@ npm ci
 npm run types
 npm run check
 npm test
+npm run test:runtime
 npm run build
 ```
 
-The tests use synthetic requests and mocked Google responses. They do not send
-email or modify the real spreadsheet. The build is a Wrangler dry run.
+The tests use synthetic requests and mocked Google responses. `test:runtime`
+executes the enabled handler in local workerd with real local D1 and rate-limit
+bindings, including concurrent quota reservations and the 25-second timeout. All
+Worker outbound requests are intercepted locally. These checks do not send email
+or modify the real spreadsheet; live delivery and Free-plan CPU usage still need
+verification. The build is a Wrangler dry run.
 
 ## Google setup
 
@@ -63,10 +68,12 @@ server-side and is never accepted from a game payload.
   Gmail changes the sender from Pipedream to the authorized Gmail account.
 - Email starts only after Sheets confirms one appended row. HTTP 200 means both
   Google APIs confirmed success; inbox receipt still needs a separate check.
+- HTTP 202 means the row was recorded but the configured daily email cap was reached (or email notifications were disabled). No delayed notification is queued.
 - HTTP 502 means delivery failed or is uncertain. A row may exist without email;
   a timed-out request may have succeeded upstream. There is deliberately no
   automatic retry that could duplicate rows or mail. This retains the existing
   best-effort reporting model, not durable or exactly-once delivery.
+- D1 reserves each Gmail attempt atomically across all Worker instances. The hard maximum is 100 attempts per UTC day; `EMAIL_DAILY_LIMIT` may lower that to 0–100 (0 disables email). This uses the database date, never the event timestamp. Failed or uncertain Gmail sends consume their slot. Quota errors fail closed for email after retaining the spreadsheet row. The counter stores only a date and count, not player details. A UTC-day cap can allow twice that number across a midnight boundary and does not cap the owner's other email use or Sheets requests.
 - A 25-second deadline bounds all Google calls together. `waitUntil` keeps the
   same delivery promise alive after a beacon disconnect, within Workers limits.
 - Bodies are capped at 8 KiB. Per-IP limit: 30 valid events/minute per Cloudflare
@@ -86,7 +93,7 @@ server-side and is never accepted from a game payload.
 2. Confirm the configured Cloudflare account, Workers Free plan and actual
    `workers.dev` subdomain. Check that the rate-limit namespace is unused by
    existing Workers. Verify the production game origin matches `ALLOWED_ORIGIN`.
-3. Deploy this independent Worker with reporting disabled. Import credentials,
+3. Create a dedicated D1 database named `kayak-reporting-quota`, replace the all-zero local placeholder `database_id` in `wrangler.jsonc` with its returned ID, and apply `migrations/0001_email_daily.sql` to that database. Keep the shared database and its counters when redeploying or rolling back; deleting/resetting it would reset the protection. Then deploy this independent Worker with reporting disabled. Import credentials,
    then enable reporting for an explicitly authorized delivery test. Do not
    enable local dev against real credentials unless real writes are intended.
 4. Submit one labeled test for each of the three event types. Confirm the live tab is named `Sheet1` with the expected A:N headers and compare historical numeric/text cell types for timestamp, level and score. Verify exactly one
@@ -94,12 +101,12 @@ server-side and is never accepted from a game payload.
    Check Workers CPU usage under the Free plan; network wait is not CPU time.
    Revoke or break a test credential to verify failure visibility without
    interfering with production reporting. Restore it before proceeding.
-5. Only after delivery verification, change `PHONE_HOME_URL` to the deployed
+5. Verify a small test email cap with concurrent synthetic events against isolated local D1 storage: spreadsheet rows continue, Gmail attempts stop at the cap, failures consume reservations, and a database error never permits mail. Only after delivery verification, change `PHONE_HOME_URL` to the deployed
    `/events` endpoint. Bump Kayak `GAME_VERSION`, every Kayak HTML cache key,
    Kayak's `games.js` version, and `version.json` together. Preserve other games.
    Run the registry test with an exact base SHA and `REGISTRY_RELEASE_TARGET=kayak`.
 6. Release with approval; verify production game events, spreadsheet and inbox.
-   Disable old Pipedream workflow only after that check. Keep rollback details.
+   Disable old Pipedream workflow only after that check. Review Pipedream execution-history retention separately: disabling the workflow does not delete its saved history. Retain/export history or request owner-approved deletion as appropriate, and update the public pages to describe the final provider and retention state. Keep rollback details.
    To roll back, restore the old endpoint while its workflow is still available;
    do not replay already-submitted events blindly.
 
@@ -113,3 +120,5 @@ server-side and is never accepted from a game payload.
 - [Personal-use verification exception](https://developers.google.com/identity/protocols/oauth2/production-readiness/sensitive-scope-verification)
 - [Sheets scopes](https://developers.google.com/workspace/sheets/api/scopes)
 - [Gmail scopes](https://developers.google.com/workspace/gmail/api/auth/scopes)
+
+D1 configuration currently contains an all-zero placeholder for local testing. This branch is not deployment-ready until a real, verified database is provisioned. Do not enable reporting with the placeholder.

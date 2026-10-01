@@ -8,6 +8,7 @@
   "workers_dev": true,
   "preview_urls": false,
   "observability": {"enabled": true, "logs": {"invocation_logs": false}},
-  "vars": {"ALLOWED_ORIGIN": "https://michaeltorbert.github.io", "REPORTING_ENABLED": "false"},
-  "ratelimits": [{"name": "EVENT_LIMITER", "namespace_id": "14220260930", "simple": {"limit": 30, "period": 60}}]
+  "vars": {"ALLOWED_ORIGIN": "https://michaeltorbert.github.io", "REPORTING_ENABLED": "false", "EMAIL_DAILY_LIMIT": "100"},
+  "ratelimits": [{"name": "EVENT_LIMITER", "namespace_id": "14220260930", "simple": {"limit": 30, "period": 60}}],
+  "d1_databases": [{"binding": "EMAIL_QUOTA", "database_name": "kayak-reporting-quota", "database_id": "00000000-0000-0000-0000-000000000000", "migrations_dir": "migrations"}]
 }
