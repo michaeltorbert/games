@@ -31,6 +31,8 @@ const locations = [
   ['missing city',{regionCode:'NC',country:'US'},'NC, US'],
   ['missing region',{city:'Raleigh',country:'US'},'Raleigh, US'],
   ['region name fallback',{city:'Raleigh',regionCode:null,region:'North Carolina',country:'US'},'Raleigh, North Carolina, US'],
+  ['valid region code ignores invalid unused region',{city:'Raleigh',regionCode:'NC',region:'bad\r\nBcc: attacker@example.com',country:'US'},'Raleigh, NC, US'],
+  ['valid region code ignores erroring unused region',getter('region',{city:'Raleigh',regionCode:'NC',country:'US'}),'Raleigh, NC, US'],
   ['trimmed fields',{city:' Raleigh ',regionCode:' NC ',country:' US '},'Raleigh, NC, US'],
   ['accented city',{city:'São Paulo',regionCode:'SP',country:'BR'},'São Paulo, SP, BR'],
   ['CJK city',{city:'東京',country:'JP'},'東京, JP'],

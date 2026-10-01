@@ -70,7 +70,9 @@ server-side and is never accepted from a game payload.
   `kayak played by IP <ip> check out the google sheet`.
   Cloudflare reports optionally append ` - <city>, <region>, <country>` to the
   subject using the incoming request's `cf` metadata. Missing fields are omitted;
-  any invalid field discards the entire suffix. The estimate may reflect a VPN
+  any invalid value read by the formatter discards the entire suffix. A valid
+  region code takes precedence over the region name, which is then ignored.
+  The estimate may reflect a VPN
   or mobile network's location. No
   external lookup, API key, location permission or paid service is used. Missing,
   malformed, unsafe or erroring metadata and formatting errors fall back to the

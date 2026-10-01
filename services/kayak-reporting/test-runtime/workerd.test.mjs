@@ -81,6 +81,7 @@ try{
   ['unsafe region',{city:'City',regionCode:'NC\nBad',country:'US'},''],
   ['unknown country',{city:'City',country:'XX'},''],['Tor country',{country:'T1'},''],
   ['complete',{city:'Raleigh',regionCode:'NC',country:'US'},'Raleigh, NC, US'],
+  ['valid code ignores unsafe unused region',{city:'Raleigh',regionCode:'NC',region:'bad\r\nBcc: attacker@example.com',country:'US'},'Raleigh, NC, US'],
   ['country only',{country:'US'},'US'],['international',{city:'São Paulo',regionCode:'SP',country:'BR'},'São Paulo, SP, BR'],
   ['long international',{city:'é'.repeat(80),region:'界'.repeat(80),country:'JP'},`${'é'.repeat(80)}, ${'界'.repeat(80)}, JP`]
  ])await check(`location ${name}: all three events append A:N and send one safe Gmail message in workerd`,async()=>{
