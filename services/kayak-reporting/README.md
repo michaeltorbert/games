@@ -29,7 +29,7 @@ email or modify the real spreadsheet. The build is a Wrangler dry run.
 
 1. In Google Cloud, create a dedicated project and enable Gmail API and Google
    Sheets API. Configure Google Auth Platform for External personal use.
-2. Set publishing status to **In production** before final authorization. Testing
+2. Publish the app-information and privacy pages under `kayak/reporting/` on the existing game host with approval. Set the Google branding homepage and privacy-policy URLs to those live pages and add the host as an authorized domain. Google currently blocks leaving Testing when those links are absent. Then set publishing status to **In production** before final authorization. Testing
    refresh tokens with these scopes expire after seven days. Personal-use apps
    have a verification exception; an unverified-app warning can remain.
 3. Create a Desktop OAuth client and download its credentials outside the repo.
