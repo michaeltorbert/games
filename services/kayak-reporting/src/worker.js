@@ -77,6 +77,7 @@ export async function reserveEmail(env) {
   const limit = Number(env.EMAIL_DAILY_LIMIT);
   if (!Number.isSafeInteger(limit) || limit > 100) throw new ReportingError('email-quota', 503);
   if (limit === 0) return false;
+  // Keep WHERE in INSERT ... SELECT: SQLite needs it to disambiguate ON CONFLICT.
   const result = await env.EMAIL_QUOTA.prepare(`
     INSERT INTO email_daily (day, attempts)
     SELECT date('now'), 1 WHERE ?1 > 0

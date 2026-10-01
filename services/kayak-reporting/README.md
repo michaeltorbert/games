@@ -28,7 +28,8 @@ executes the enabled handler in local workerd with real local D1 and rate-limit
 bindings, including concurrent quota reservations and the 25-second timeout. All
 Worker outbound requests are intercepted locally. These checks do not send email
 or modify the real spreadsheet; live delivery and Free-plan CPU usage still need
-verification. The build is a Wrangler dry run.
+verification. The build is a Wrangler dry run. Keep the direct Miniflare pin aligned
+with the version used by Wrangler and rerun this suite when updating either.
 
 ## Google setup
 
@@ -93,7 +94,7 @@ server-side and is never accepted from a game payload.
 2. Confirm the configured Cloudflare account, Workers Free plan and actual
    `workers.dev` subdomain. Check that the rate-limit namespace is unused by
    existing Workers. Verify the production game origin matches `ALLOWED_ORIGIN`.
-3. Create a dedicated D1 database named `kayak-reporting-quota`, replace the all-zero local placeholder `database_id` in `wrangler.jsonc` with its returned ID, and apply `migrations/0001_email_daily.sql` to that database. Keep the shared database and its counters when redeploying or rolling back; deleting/resetting it would reset the protection. Then deploy this independent Worker with reporting disabled. Import credentials,
+3. Create a dedicated D1 database named `kayak-reporting-quota`, replace the all-zero local placeholder `database_id` in `wrangler.jsonc` with its returned ID, and run `npx wrangler d1 migrations apply kayak-reporting-quota --remote` to apply the migration with tracking. Keep the shared database and its counters when redeploying or rolling back; deleting/resetting it would reset the protection. Then deploy this independent Worker with reporting disabled. Import credentials,
    then enable reporting for an explicitly authorized delivery test. Do not
    enable local dev against real credentials unless real writes are intended.
 4. Submit one labeled test for each of the three event types. Confirm the live tab is named `Sheet1` with the expected A:N headers and compare historical numeric/text cell types for timestamp, level and score. Verify exactly one

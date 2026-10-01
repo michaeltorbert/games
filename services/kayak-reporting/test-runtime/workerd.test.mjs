@@ -24,9 +24,10 @@ class CaptureLog extends Log{logWithLevel(level,message){logs.push({level,messag
 function jsonStream(value){const bytes=new TextEncoder().encode(JSON.stringify(value));return new MFResponse(new ReadableStream({start(c){c.enqueue(bytes.slice(0,5));c.enqueue(bytes.slice(5));c.close();}}),{headers:{'Content-Type':'application/json'}});}
 async function runtime(limit='100',{migrate=true}={}){
  const name=`cap-${runtimes.length}-${Date.now()}`,path=`${dir}/${name}`;await mkdir(path,{recursive:true});
- const state={scenario:'success',calls:[],unexpected:[],timer:null,sheetIPs:new Set()};
+ const state={scenario:'success',calls:[],unexpected:[],assertionFailures:[],timer:null,sheetIPs:new Set()};
  const bindings={...config.vars,REPORTING_ENABLED:'true',EMAIL_DAILY_LIMIT:limit,GOOGLE_CLIENT_ID:'synthetic-client',GOOGLE_CLIENT_SECRET:'synthetic-secret',GOOGLE_REFRESH_TOKEN:'synthetic-refresh',SPREADSHEET_ID:'synthetic-sheet',NOTIFICATION_EMAIL:'owner@example.com'};
  const mf=new Miniflare(convertV4MiniflareOptions({name,modules:true,scriptPath:sourcePath,compatibilityDate:config.compatibility_date,compatibilityFlags:config.compatibility_flags,rootPath:dir,resourcePersistencePath:path,cf:false,log:new CaptureLog(LogLevel.DEBUG),stripCfConnectingIp:false,bindings,d1Databases:{EMAIL_QUOTA:name},ratelimits:{EVENT_LIMITER:{namespace_id:config.ratelimits[0].namespace_id,simple:config.ratelimits[0].simple}},outboundService:async request=>{
+  try {
   const url=new URL(request.url);
   const stage=url.hostname==='oauth2.googleapis.com'&&url.pathname==='/token'?'oauth':url.hostname==='sheets.googleapis.com'&&url.pathname==='/v4/spreadsheets/synthetic-sheet/values/Sheet1!A:N:append'?'sheet':url.hostname==='gmail.googleapis.com'&&url.pathname==='/gmail/v1/users/me/messages/send'?'email':null;
   if(!stage){state.unexpected.push(request.url);return new MFResponse('Unexpected outbound denied',{status:403});}
@@ -47,6 +48,7 @@ async function runtime(limit='100',{migrate=true}={}){
   const mail=Buffer.from(JSON.parse(raw).raw,'base64url').toString('utf8');
   const ip=mail.match(/Subject: kayak played by IP ([^\r]+)/)?.[1];assert.ok(state.sheetIPs.has(ip),'email occurred before Sheet append for its IP');
   if(state.scenario==='email-failure')return new MFResponse('synthetic failure',{status:503});return jsonStream({id:'synthetic-message'});
+  } catch(error) { state.assertionFailures.push(String(error)); throw error; }
  }}));
  const item={mf,state,bindings,name};runtimes.push(item);await mf.ready;
  const bound=await mf.getBindings();item.db=bound.EMAIL_QUOTA;
@@ -82,7 +84,7 @@ try{
   const failed=await runtime('2');failed.state.scenario='email-failure';assert.equal((await failed.send(fixture,'192.0.2.200')).status,502);failed.state.scenario='success';assert.equal((await failed.send(fixture,'192.0.2.201')).status,200);assert.equal((await failed.send(fixture,'192.0.2.202')).status,202);assert.equal(failed.state.calls.filter(c=>c.stage==='email').length,2);assert.equal((await failed.db.prepare('SELECT attempts FROM email_daily').first()).attempts,2);
  });
  await check('unaltered 25-second AbortSignal.timeout aborts Google fetch in workerd',async()=>{state.scenario='timeout';state.calls=[];const start=performance.now();assert.equal((await main.send(fixture,'192.0.2.30')).status,502);const duration=performance.now()-start;assert.ok(duration>=24000&&duration<28500,`duration ${duration}`);assert.deepEqual(state.calls.map(c=>c.stage),['oauth']);});
- for(const r of runtimes)assert.deepEqual(r.state.unexpected,[]);
+ for(const r of runtimes){assert.deepEqual(r.state.unexpected,[]);assert.deepEqual(r.state.assertionFailures,[],'outbound fixture assertions must not hide behind expected 502 responses');}
  assert.equal(createHash('sha256').update(await readFile(`${root}/src/worker.js`)).digest('hex'),hash,'Worker source changed during runtime validation');
  const report={status:'PASS',checked_at_utc:new Date().toISOString(),source_sha256:hash,source_path:'src/worker.js',migration_sha256:createHash('sha256').update(migration).digest('hex'),compatibility_date:config.compatibility_date,compatibility_flags:config.compatibility_flags,node:process.version,miniflare:require('miniflare/package.json').version,workerd:require('workerd/package.json').version,rate_limit:config.ratelimits[0],checks,network:'All Worker outbound fetches intercepted locally; unknown targets denied; cf metadata download disabled; synthetic credentials only.',limitations:['Source hash binds frozen cap implementation; later changes require rerun.','Local workerd/D1 prove runtime and SQLite behavior, not distributed edge operation or Free-plan CPU usage.','Synthetic Google replies; no real authorization, spreadsheet writes, or received emails.']};
  console.log(JSON.stringify(report,null,2));
