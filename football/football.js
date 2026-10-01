@@ -1,4 +1,4 @@
-const GAME_VERSION = '1.33.2';
+const GAME_VERSION = '1.33.3';
 let prevPlayerScore = -1, prevOpponentScore = -1;
 let playerRunTimer = 0, playerCelebrateTimer = 0, playerCelebrateDelayTimer = 0;
 const EZ = 5;
@@ -1503,8 +1503,8 @@ function updateField(animated) {
   if (player) {
     if (state.possession === 'offense') {
       player.classList.remove('player-hidden');
-      const playerYd = Math.max(0, Math.min(100, state.animYd - 3));
-      player.style.left = yardToPct(playerYd) + '%';
+      // Anchor at the ball; CSS margin keeps a fixed gap behind it on every field width.
+      player.style.left = yardToPct(clamp(state.animYd, 0, 100)) + '%';
       player.style.setProperty('--player-dir', '1');
       if (!animated) {
         player.style.transition = 'none';
