@@ -89,7 +89,7 @@ server-side and is never accepted from a game payload.
 3. Deploy this independent Worker with reporting disabled. Import credentials,
    then enable reporting for an explicitly authorized delivery test. Do not
    enable local dev against real credentials unless real writes are intended.
-4. Submit one labeled test for each of the three event types. Confirm the live tab is named `Sheet1` with the expected A:N headers. Verify exactly one
+4. Submit one labeled test for each of the three event types. Confirm the live tab is named `Sheet1` with the expected A:N headers and compare historical numeric/text cell types for timestamp, level and score. Verify exactly one
    A:N row and one received email per event, correct timezone/IP, and order.
    Check Workers CPU usage under the Free plan; network wait is not CPU time.
    Revoke or break a test credential to verify failure visibility without

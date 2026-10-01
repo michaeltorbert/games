@@ -99,17 +99,23 @@ async function deliver(event, ip, env, fetcher) {
   }
 }
 
+/** @param {number} status @param {string} stage @param {string} message @param {HeadersInit} [headers] */
+function rejectRequest(status, stage, message, headers) {
+  console.warn(JSON.stringify({service:'kayak-reporting', outcome:'rejected', stage, status}));
+  return new Response(message, {status, headers});
+}
+
 /** @param {Request} request @param {Env} env @param {ExecutionContext} ctx @param {typeof fetch} [fetcher] */
 export async function handleRequest(request, env, ctx, fetcher = fetch) {
   const path = new URL(request.url).pathname;
   if (path === '/health' && request.method === 'GET') return Response.json({service:'kayak-reporting', enabled:env.REPORTING_ENABLED === 'true'});
   if (path !== '/events') return new Response('Not found', {status:404});
   const origin = request.headers.get('Origin');
-  if (!env.ALLOWED_ORIGIN || origin !== env.ALLOWED_ORIGIN) return new Response('Forbidden', {status:403});
+  if (!env.ALLOWED_ORIGIN || origin !== env.ALLOWED_ORIGIN) return rejectRequest(403, 'origin', 'Forbidden');
   const headers = {'Access-Control-Allow-Origin':origin, 'Vary':'Origin', 'Cache-Control':'no-store'};
   if (request.method === 'OPTIONS') return new Response(null, {status:204, headers:{...headers, 'Access-Control-Allow-Methods':'POST', 'Access-Control-Allow-Headers':'Content-Type'}});
-  if (request.method !== 'POST') return new Response('Method not allowed', {status:405, headers:{...headers, Allow:'POST, OPTIONS'}});
-  if (env.REPORTING_ENABLED !== 'true') return new Response('Reporting disabled', {status:503, headers});
+  if (request.method !== 'POST') return rejectRequest(405, 'method', 'Method not allowed', {...headers, Allow:'POST, OPTIONS'});
+  if (env.REPORTING_ENABLED !== 'true') return rejectRequest(503, 'disabled', 'Reporting disabled', headers);
   try {
     validateConfig(env);
     const ip = request.headers.get('CF-Connecting-IP') || '';
@@ -120,15 +126,14 @@ export async function handleRequest(request, env, ctx, fetcher = fetch) {
     catch (error) { if (error instanceof ReportingError) throw error; throw new ReportingError('payload', 400); }
     const event = validateEvent(input);
     // This public game has no identity; shared-IP throttling is only an abuse brake.
-    if (!(await env.EVENT_LIMITER.limit({key:`kayak:${ip}`})).success) return new Response('Rate limited', {status:429, headers});
+    if (!(await env.EVENT_LIMITER.limit({key:`kayak:${ip}`})).success) return rejectRequest(429, 'throttled', 'Rate limited', headers);
     const delivery = deliver(event, ip, env, fetcher);
     ctx.waitUntil(delivery); // Preserve delivery if a beacon client disconnects.
     const success = await delivery;
     return new Response(success ? 'Recorded' : 'Delivery failed', {status:success ? 200 : 502, headers});
   } catch (error) {
     const status = error instanceof ReportingError ? error.status : 503;
-    console.warn(JSON.stringify({service:'kayak-reporting', outcome:'rejected', stage:error instanceof ReportingError ? error.stage : 'receiver', status}));
-    return new Response(status < 500 ? 'Invalid event' : 'Unavailable', {status, headers});
+    return rejectRequest(status, error instanceof ReportingError ? error.stage : 'receiver', status < 500 ? 'Invalid event' : 'Unavailable', headers);
   }
 }
 

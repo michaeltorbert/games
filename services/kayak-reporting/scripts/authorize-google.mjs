@@ -34,7 +34,7 @@ export function parseArguments(args) {
     result[key] = args[i + 1];
   }
   if (allowed.size !== Object.keys(result).length || !isAbsolute(result['--client']) || !isAbsolute(result['--output']) ||
-      !/^[^\s<>"@\r\n]+@[^\s<>"@\r\n]+\.[^\s<>"@\r\n]+$/.test(result['--email']) ||
+      !/^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/.test(result['--email']) ||
       !/^[A-Za-z0-9_-]{10,200}$/.test(result['--spreadsheet'])) {
     throw new Error('Provide absolute client/output JSON paths outside the checkout, a valid notification email, and spreadsheet ID.');
   }
@@ -149,14 +149,17 @@ async function privateExternalPath(path) {
   if (inside === '' || (!inside.startsWith('..' + '/') && inside !== '..' && !isAbsolute(inside))) {
     throw new Error('Credential files must remain outside the game checkout.');
   }
-  let inGitCheckout = false;
-  try {
-    await execFileAsync('git', ['rev-parse', '--show-toplevel'], { cwd: directory });
-    inGitCheckout = true;
-  } catch (error) {
-    if (error.code !== 128) throw new Error('Unable to verify that credentials are outside Git checkouts.');
+  for (let ancestor = directory; ; ancestor = dirname(ancestor)) {
+    let markerExists = false;
+    try {
+      await lstat(join(ancestor, '.git'));
+      markerExists = true;
+    } catch (error) {
+      if (error.code !== 'ENOENT') throw new Error('Unable to verify that credentials are outside Git checkouts.');
+    }
+    if (markerExists) throw new Error('Credential files must remain outside Git checkouts.');
+    if (dirname(ancestor) === ancestor) break;
   }
-  if (inGitCheckout) throw new Error('Credential files must remain outside Git checkouts.');
   return { path: join(directory, path.slice(path.lastIndexOf('/') + 1)), directory };
 }
 

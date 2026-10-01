@@ -33,6 +33,7 @@ test('validates Desktop credentials and CLI input without echoing secrets', () =
   assert.throws(() => parseArguments(['--client', 'a', '--client', 'b']), /Usage/);
   const options = parseArguments(['--client', '/private/client.json', '--email', 'owner@example.com', '--spreadsheet', 'syntheticSheetId', '--output', '/private/credentials/output.json']);
   assert.equal(options.email, 'owner@example.com');
+  assert.throws(() => parseArguments(['--client', '/private/client.json', '--email', 'owner@[x].com', '--spreadsheet', 'syntheticSheetId', '--output', '/private/credentials/output.json']), /Provide/);
 });
 
 test('loopback callback exchanges one code with matching S256 verifier and both scopes', async () => {
@@ -205,4 +206,18 @@ test('authorization deadline aborts a stalled token exchange', async () => {
       return new Promise((_resolve, reject) => options.signal.addEventListener('abort', () => reject(new Error('aborted')), { once: true }));
     } }), /timed out/);
   assert.ok(receivedSignal.aborted);
+});
+
+
+test('external path guard rejects malformed .git files and dangling symlinks in ancestors', async t => {
+  for (const kind of ['file', 'symlink', 'directory']) {
+    const directory = await temporaryDirectory(t);
+    const nested = join(directory, 'private-output');
+    await mkdir(nested, { mode: 0o700 });
+    const marker = join(directory, '.git');
+    if (kind === 'file') await writeFile(marker, 'malformed gitdir marker');
+    else if (kind === 'symlink') await symlink(join(directory, 'missing-target'), marker);
+    else await mkdir(marker);
+    await assert.rejects(checkDestination(join(nested, 'credentials.json')), /outside Git checkouts/);
+  }
 });

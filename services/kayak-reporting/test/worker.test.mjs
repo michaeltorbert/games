@@ -40,9 +40,11 @@ test('formula-looking spreadsheet values remain RAW strings', async()=>{
   assert.match(JSON.parse(calls[1].init.body).values[0][4],/^=IMPORTXML/);
   assert.match(calls[1].url,/valueInputOption=RAW/);
 });
-for(const stage of [1,2,3]) test(`Google stage ${stage} failure stops downstream work without automatic replay`, async()=>{
+for(const stage of [1,2,3]) test(`Google stage ${stage} failure stops downstream work without automatic replay`, async(t)=>{
+  const logs=[];t.mock.method(console,'error',line=>logs.push(JSON.parse(line)));
   const {response,calls}=await run(request(),env,mockGoogle(stage));
   assert.equal(response.status,502); assert.equal(calls.length,stage);
+  assert.deepEqual(logs,[{service:'kayak-reporting',outcome:'failed',stage:['oauth','sheet','email'][stage-1],upstreamStatus:401}]);
   assert.equal(await response.text(),'Delivery failed');
 });
 for(const [name,body,status] of [['invalid JSON','{',400],['wrong event',{...payload,event:'other'},400],['array',[],400],['invalid tz',{...payload,tz:123},400],['negative score',{...payload,score:-1},400],['oversized body','x'.repeat(8193),413]]) test(name,async()=>{
@@ -80,10 +82,12 @@ test('malformed successful Google replies are not reported as delivered',async()
     assert.equal(response.status,502); assert.equal(calls.length,stage);
   }
 });
-test('upstream network exception is generic and does not retry',async()=>{
+test('upstream network exception is generic and does not retry',async(t)=>{
+  const logs=[];t.mock.method(console,'error',line=>logs.push(JSON.parse(line)));
   let calls=0;
   const {response}=await run(request(),env,{fetcher:async()=>{calls++;throw Error('secret network details');},calls:[]});
   assert.equal(response.status,502); assert.equal(calls,1); assert.equal(await response.text(),'Delivery failed');
+  assert.deepEqual(logs,[{service:'kayak-reporting',outcome:'failed',stage:'oauth'}]);
 });
 
 test('device-info failure in existing game still records blanks',async()=>{
@@ -116,7 +120,7 @@ test('actual Kayak phoneHome producer is compatible on beacon and fetch paths',a
   assert.ok(start>0 && end>start);
   for(const beacon of [true,false]) {
     const bodies=[];
-    const sandbox={PHONE_HOME_URL:'https://worker.example/events',GAME_VERSION:'1.1.37',currentLevel:0,totalScore:0,
+    const sandbox={PHONE_HOME_URL:'https://worker.example/events',GAME_VERSION:'1.1.37',currentLevel:3,totalScore:27,
       getLevelDef:()=>({name:'Lake'}),screen:{width:1180,height:820},document:{referrer:''},
       navigator:{userAgent:'Test',maxTouchPoints:5,language:'en-US',platform:'MacIntel',...(beacon?{sendBeacon:(url,body)=>{bodies.push(body);return true;}}:{})},
       fetch:async(url,init)=>{bodies.push(init.body);return new Response(null,{status:502});}};
@@ -131,4 +135,14 @@ test('actual Kayak phoneHome producer is compatible on beacon and fetch paths',a
     assert.doesNotThrow(()=>sandbox.phoneHome('game_start'));
     await new Promise(resolve=>setImmediate(resolve));
   }
+});
+
+
+test('origin, method, disabled and throttled rejections log only safe stage/status',async(t)=>{
+  const logs=[]; t.mock.method(console,'warn',line=>logs.push(JSON.parse(line)));
+  await run(request(payload,{headers:{Origin:'https://untrusted.example'}}));
+  await run(new Request('https://worker.example/events',{headers:{Origin:env.ALLOWED_ORIGIN}}));
+  await run(request(),{...env,REPORTING_ENABLED:'false'});
+  await run(request(),{...env,EVENT_LIMITER:{limit:async()=>({success:false})}});
+  assert.deepEqual(logs,[['origin',403],['method',405],['disabled',503],['throttled',429]].map(([stage,status])=>({service:'kayak-reporting',outcome:'rejected',stage,status})));
 });
