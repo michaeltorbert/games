@@ -326,3 +326,121 @@ test('legacy revealed save migrates without losing its attempt and writes schema
  await page.locator('#arithmetic-next').click();expect((await snapshot(page)).learning.position).toBe(0);
  expect(await raw(page)).toBe(before);
 });
+
+// Issue #146: completed Mixed questions show a display-only place-value alignment.
+// Each family is scheduled at a fixed slot of the twenty-question plan.
+const SLOT={'facts-add':0,'add-no-carry':1,'facts-subtract':3,'add-carry':4,'complete-ten':6,'missing-addend':9,'subtract-no-borrow':11,'tens-minus-digit':14,'three-addends':16,'repeated-subtraction':19};
+async function seed(page,family,operands,presentation) {
+ await page.goto('/place-value-practice/');
+ await page.evaluate(({AKEY,family,operands,position,presentation})=>{
+   const state=PLACE_ARITHMETIC.create(10,()=>.3),answer=PLACE_ARITHMETIC.view({question:{family,operands}}).answer;
+   const choices=[answer+1,answer,answer-1,answer+2,answer-2,answer+3,answer-3].filter(n=>n>=0&&n<=100).slice(0,4);
+   state.learning.position=position;state.question={id:0,family,operands,choices,misses:[],complete:false,serial:1};
+   localStorage.setItem(AKEY,JSON.stringify(state));localStorage.setItem('place-value-practice:mode:v1','arithmetic');
+   localStorage.setItem('place-value-practice:presentation:v1',presentation);
+ },{AKEY,family,operands,position:SLOT[family],presentation});
+ await page.reload();
+ expect((await snapshot(page)).question.operands).toEqual(operands);
+}
+async function miss(page,count) {
+ const q=(await snapshot(page)).question,answer=await page.evaluate(()=>PLACE_ARITHMETIC.view(__arithmeticTest.snapshot()).answer);
+ for(const wrong of q.choices.filter(n=>n!==answer).slice(0,count)){await page.locator('.arithmetic-answer').filter({hasText:new RegExp(`^${wrong}$`)}).click();await settled(page);}
+}
+async function expectNoExplanation(page) {
+ await expect(page.locator('#arithmetic-explanation')).toBeHidden();
+ await expect(page.locator('#arithmetic-explanation')).toHaveText('');
+ expect((await page.evaluate(()=>JSON.parse(render_game_to_text()))).explanation).toBeNull();
+}
+const lines=page=>page.locator('.arithmetic-explanation-lines li').allTextContents();
+
+test('31 + 68 explanation appears only after completion in both presentations, keeps outcome wording, restores, and clears on Next',async({page})=>{
+ const errors=[];page.on('pageerror',e=>errors.push(e.message));
+ for(const presentation of ['plain','football'])for(const misses of [0,1,3]) {
+   await seed(page,'add-no-carry',[31,68],presentation);const placeBefore=await raw(page);
+   await expect(page.locator('.arithmetic-drive')).toBeVisible({visible:presentation==='football'});
+   await expectNoExplanation(page);
+   await miss(page,misses);
+   await expectNoExplanation(page);
+   if(misses===3){await expect(page.locator('#arithmetic-equation')).toHaveText('31 + 68 = 99');await expect(page.locator('#arithmetic-feedback')).toHaveText('Here is the answer. Select it to finish this question.');}
+   else if(misses)await expect(page.locator('#arithmetic-feedback')).toHaveText('Try another number.');
+   await correct(page);
+   const completed=await snapshot(page);
+   expect([completed.firstTry,completed.afterHelp]).toEqual(misses?[0,1]:[1,0]);
+   expect(completed.learning.history['add-no-carry']).toEqual([{serial:1,outcome:['firstTry','retryCorrect1','retryCorrect2','revealed'][misses],misses}]);
+   await expect(page.locator('#arithmetic-feedback')).toHaveText(['Correct.','You worked it out after trying again.','','You selected the answer.'][misses]);
+   if(presentation==='football')await expect(page.locator('.arithmetic-drive p')).toHaveText(`${misses?1:5} / 100 yards · 0 points`);
+   const box=page.locator('#arithmetic-explanation');
+   await expect(box).toBeVisible();await expect(box.locator('h4')).toHaveText('Line up tens and ones');
+   expect(await lines(page)).toEqual(['1 + 8 = 9 ones','3 + 6 = 9 tens']);
+   await expect(box.locator('.place-columns')).toHaveAttribute('aria-hidden','true');
+   expect(await box.locator('.place-columns > span').allTextContents()).toEqual(['','Tens','Ones','','3','1','+','6','8','','9','9']);
+   await expect(page.locator('#arithmetic-next')).toBeVisible();
+   const semantic=await page.evaluate(()=>JSON.parse(render_game_to_text()));
+   expect(semantic.explanation.lines).toEqual(['1 + 8 = 9 ones','3 + 6 = 9 tens']);expect(semantic.presentation).toBe(presentation);
+   // Display-only: the saved model is exactly the model the domain produced.
+   const stored=await raw(page,AKEY);expect(JSON.parse(stored)).toEqual(completed);expect(stored).not.toContain('Line up');expect(stored).not.toContain('explanation');
+   await page.reload();expect(await snapshot(page)).toEqual(completed);
+   expect(await lines(page)).toEqual(['1 + 8 = 9 ones','3 + 6 = 9 tens']);
+   await page.locator('#arithmetic-next').click();await settled(page);
+   expect((await snapshot(page)).sequence).toBe(1);
+   await expectNoExplanation(page);
+   expect(await raw(page)).toBe(placeBefore);
+ }
+ expect(errors).toEqual([]);
+});
+
+test('explanations clear on restart and focus changes, and a completed saved question restores after mode changes',async({page})=>{
+ await seed(page,'tens-minus-digit',[40,7],'plain');
+ await correct(page);
+ const expected=['Trade 1 ten for 10 ones','10 − 7 = 3 ones','Keep 3 tens'];
+ expect(await lines(page)).toEqual(expected);
+ await page.getByRole('button',{name:'Place value',exact:true}).click();
+ await expect(page.locator('#arithmetic-explanation')).toBeHidden();
+ await page.getByRole('button',{name:'Arithmetic',exact:true}).click();await settled(page);
+ expect(await lines(page)).toEqual(expected);
+ await page.getByRole('button',{name:'Fact focus',exact:true}).click();
+ await expect(page.locator('#arithmetic-explanation')).toBeHidden();
+ await page.getByRole('button',{name:'Mixed practice',exact:true}).click();await settled(page);
+ expect(await lines(page)).toEqual(expected);
+ await page.getByRole('button',{name:'Football practice',exact:true}).click();await settled(page);
+ expect(await lines(page)).toEqual(expected);
+ await page.getByRole('button',{name:'Start new arithmetic session'}).click();await settled(page);
+ expect((await snapshot(page)).completed).toBe(0);
+ await expectNoExplanation(page);
+});
+
+test('every Mixed family shows a correct explanation without overflow and with touch-sized controls',async({page})=>{
+ const cases=[
+   ['facts-add',[3,4],['Ones'],['3 + 4 = 7 ones']],
+   ['facts-add',[7,6],['Tens','Ones'],['7 + 6 = 13 ones = 1 ten 3 ones']],
+   ['facts-subtract',[14,7],['Tens','Ones'],['Trade 1 ten for 10 ones','14 − 7 = 7 ones']],
+   ['add-carry',[95,5],['Hundreds','Tens','Ones'],['5 + 5 = 10 ones = 1 ten 0 ones','1 + 9 = 10 tens = 1 hundred 0 tens']],
+   ['complete-ten',[47,3],['Tens','Ones'],['7 + 3 = 10 ones = 1 ten 0 ones','1 + 4 = 5 tens']],
+   ['missing-addend',[23,45],['Tens','Ones'],['3 + 5 = 8 ones','2 + 4 = 6 tens']],
+   ['subtract-no-borrow',[87,5],['Tens','Ones'],['7 − 5 = 2 ones','Keep 8 tens']],
+   ['tens-minus-digit',[100,7],['Hundreds','Tens','Ones'],['Trade 1 hundred for 10 tens','Trade 1 ten for 10 ones','10 − 7 = 3 ones','Keep 9 tens']],
+   ['three-addends',[9,9,2],['Tens','Ones'],['9 + 9 + 2 = 20 ones = 2 tens 0 ones']],
+   ['repeated-subtraction',[10,3,2],null,['10 − 3 = 7','7 − 2 = 5']],
+ ];
+ for(const [family,operands,places,expected] of cases) {
+   await seed(page,family,operands,'football');await correct(page);
+   const box=page.locator('#arithmetic-explanation');await expect(box).toBeVisible();
+   expect(await lines(page)).toEqual(expected);
+   if(places)expect(await box.locator('.place-name:not(.place-sign)').allTextContents()).toEqual(places);
+   else await expect(box.locator('.place-columns')).toHaveCount(0);
+   const geometry=await page.evaluate(()=>{
+     const rect=e=>e.getBoundingClientRect(),panel=rect(document.getElementById('arithmetic-practice')),box=document.getElementById('arithmetic-explanation');
+     const grid=box.querySelector('.place-columns'),list=box.querySelector('.arithmetic-explanation-lines');
+     let aligned=true;
+     if(grid){const width=Number(grid.style.getPropertyValue('--places'))+1,cells=[...grid.children];
+       if(cells.length%width)aligned=false;
+       for(let i=width;i<cells.length;i++)if(Math.abs(rect(cells[i]).left-rect(cells[i%width]).left)>.5)aligned=false;}
+     const controls=[...document.querySelectorAll('#arithmetic-practice button:not([hidden]), #arithmetic-practice select')].filter(e=>e.offsetParent).map(rect);
+     return {overflow:document.documentElement.scrollWidth>innerWidth,inside:rect(box).left>=panel.left-.5&&rect(box).right<=panel.right+.5,
+       contained:[grid,list].filter(Boolean).every(e=>rect(e).left>=rect(box).left-.5&&rect(e).right<=rect(box).right+.5),
+       listFits:list.scrollWidth<=list.clientWidth+1,aligned,small:controls.filter(r=>r.width<44||r.height<44).length};
+   });
+   expect(geometry,`${family} ${operands}`).toEqual({overflow:false,inside:true,contained:true,listFits:true,aligned:true,small:0});
+   await page.screenshot({path:test.info().outputPath(`explanation-${family}-${operands.join('-')}.png`)});
+ }
+});
