@@ -187,6 +187,68 @@ const PLACE_ARITHMETIC = (() => {
     return {family:q.family,prompt:family.text(q.operands)+(q.family==='complete-ten'||q.family==='missing-addend'?'':' = ?'),
       worked:q.family==='complete-ten'||q.family==='missing-addend'?`${q.operands[0]} + ${result} = ${q.operands[0]+result}`:`${family.text(q.operands)} = ${result}`,
       answer:result,source:family.source}; }
-  return Object.freeze({ SCHEMA_VERSION,FAMILIES,MIX,HISTORY_LIMIT,familyWeight,selectFamily,valid,question,create,restart,normalize,answer,next,view,configure,repair });
+  // Display-only place-value reasoning, projected from a completed question's
+  // operands. Returns null before completion (including a three-miss reveal)
+  // and never reads or writes anything else in the state.
+  const PLACES=['Ones','Tens','Hundreds'], UNITS=['one','ten','hundred'];
+  const HEADINGS=['Line up the ones','Line up tens and ones','Line up hundreds, tens and ones'];
+  const unit=(n,p)=>`${n} ${UNITS[p]}${n===1?'':'s'}`;
+  const digit=(n,p)=>Math.floor(n/10**p)%10;
+  const present=(n,p)=>p===0||n>=10**p;
+  const regroup=(total,p)=>total>=10?` = ${unit(Math.floor(total/10),p+1)} ${unit(total%10,p)}`:'';
+  // Cells are listed from the highest place to the ones; '' is an empty cell.
+  const cells=(width,fn)=>Array.from({length:width},(_,i)=>fn(width-1-i));
+  function addColumns(operands,answerRow) {
+    const sum=operands.reduce((a,b)=>a+b,0), width=String(Math.max(sum,...operands)).length;
+    const carry=Array(width).fill(0), lines=[];
+    for(let p=0;p<width;p++) {
+      const digits=operands.filter(n=>present(n,p)).map(n=>digit(n,p)), terms=(carry[p]?[carry[p]]:[]).concat(digits);
+      const total=terms.reduce((a,b)=>a+b,0);
+      if(p+1<width)carry[p+1]=Math.floor(total/10);
+      // A carry into an empty column was already named by the previous line.
+      if(!digits.length)continue;
+      lines.push(terms.length===1?`Keep ${unit(total,p)}`:`${terms.join(' + ')} = ${unit(total,p)}${regroup(total,p)}`);
+    }
+    const marks=cells(width,p=>carry[p]&&p>0&&operands.some(n=>present(n,p))?String(carry[p]):'');
+    return {kind:'columns',heading:HEADINGS[width-1],places:cells(width,p=>PLACES[p]),carries:marks.some(Boolean)?marks:null,trades:null,
+      rows:operands.map((n,i)=>({sign:i?'+':'',digits:cells(width,p=>present(n,p)?String(digit(n,p)):''),crossed:cells(width,()=>false),answer:i===answerRow}))
+        .concat({sign:'',digits:cells(width,p=>present(sum,p)?String(digit(sum,p)):''),crossed:cells(width,()=>false),answer:answerRow===null,result:true}),
+      lines};
+  }
+  function subtractColumns(a,b) {
+    const width=String(a).length, work=Array.from({length:width},(_,p)=>digit(a,p)), lines=[];
+    for(let p=0;p<width;p++) {
+      if(!present(b,p) || work[p]>=digit(b,p))continue;
+      let q=p+1;while(work[q]===0)q++;
+      for(;q>p;q--){work[q]--;work[q-1]+=10;lines.push(`Trade 1 ${UNITS[q]} for 10 ${UNITS[q-1]}s`);}
+    }
+    const changed=p=>work[p]!==digit(a,p), result=a-b;
+    for(let p=0;p<width;p++) {
+      if(present(b,p))lines.push(`${work[p]} − ${digit(b,p)} = ${unit(work[p]-digit(b,p),p)}`);
+      else if(work[p])lines.push(`Keep ${unit(work[p],p)}`);
+    }
+    const traded=work.some((_,p)=>changed(p));
+    return {kind:'columns',heading:HEADINGS[width-1],places:cells(width,p=>PLACES[p]),carries:null,
+      trades:traded?cells(width,p=>changed(p)?String(work[p]):''):null,
+      rows:[{sign:'',digits:cells(width,p=>String(digit(a,p))),crossed:cells(width,changed),answer:false},
+        {sign:'−',digits:cells(width,p=>present(b,p)?String(digit(b,p)):''),crossed:cells(width,()=>false),answer:false},
+        {sign:'',digits:cells(width,p=>present(result,p)?String(digit(result,p)):''),crossed:cells(width,()=>false),answer:true,result:true}],
+      lines};
+  }
+  function explain(state) {
+    const q=state&&state.question;
+    if(!q || q.complete!==true || !valid(q.family,q.operands))return null;
+    const [a,b,c]=q.operands;
+    switch(q.family) {
+      case 'complete-ten': case 'missing-addend': return addColumns([a,b],1);
+      case 'facts-add': case 'add-no-carry': case 'add-carry': return addColumns([a,b],null);
+      case 'three-addends': return addColumns([a,b,c],null);
+      case 'facts-subtract': case 'subtract-no-borrow': case 'tens-minus-digit': return subtractColumns(a,b);
+      // Two takeaways read left to right; columns would hide the order.
+      case 'repeated-subtraction': return {kind:'steps',heading:'Take away one part at a time',lines:[`${a} − ${b} = ${a-b}`,`${a-b} − ${c} = ${a-b-c}`]};
+    }
+    return null;
+  }
+  return Object.freeze({ SCHEMA_VERSION,FAMILIES,MIX,HISTORY_LIMIT,familyWeight,selectFamily,valid,question,create,restart,normalize,answer,next,view,explain,configure,repair });
 })();
 globalThis.PLACE_ARITHMETIC = PLACE_ARITHMETIC;

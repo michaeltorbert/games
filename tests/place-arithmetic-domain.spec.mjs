@@ -131,3 +131,130 @@ test('long practice retains only twenty privacy-safe observations per family',()
   const old=plain(state),fresh=api.restart(state,5,rng);
   assert.deepEqual(plain(state),old);assert.deepEqual(plain(fresh.learning),old.learning);
 });
+// Issue #146: display-only place-value explanations.
+const VALUE={one:1,ones:1,ten:10,tens:10,hundred:100,hundreds:100};
+const evaluate=text=>text.split(' ').reduce((acc,token,i,all)=>i===0?Number(token):/\d/.test(token)?(all[i-1]==='−'?acc-Number(token):acc+Number(token)):acc,0);
+const columnTotal=(numbers,place)=>Math.floor(numbers.reduce((s,n)=>s+n%10**(place+1),0)/10**place);
+const carryInto=(numbers,place)=>place?Math.floor(numbers.reduce((s,n)=>s+n%10**place,0)/10**place):0;
+const rowValue=digits=>{const text=digits.join('');return text===''?null:Number(text);};
+function enumerate(family) {
+  const size=api.FAMILIES[family].size||2,max=['facts-add','facts-subtract','three-addends'].includes(family)?20:family==='repeated-subtraction'?10:100,rows=[];
+  for(let a=0;a<=max;a++)for(let b=0;b<=max;b++){if(size===3){for(let c=0;c<=max;c++)if(api.valid(family,[a,b,c]))rows.push([a,b,c]);}else if(api.valid(family,[a,b]))rows.push([a,b]);}
+  return rows;
+}
+function checkLine(line) {
+  let m=line.match(/^(\d+(?: [+−] \d+)+) = (\d+) (\w+)(?: = (\d+) (\w+) (\d+) (\w+))?$/);
+  if(m) {
+    const [,lhs,n,u,x,xu,y,yu]=m;assert.equal(evaluate(lhs),Number(n),line);
+    assert.equal(u.endsWith('s'),Number(n)!==1,line);
+    if(x!==undefined){assert.equal(VALUE[xu],VALUE[u]*10,line);assert.equal(VALUE[yu],VALUE[u],line);assert.equal(Number(x)*10+Number(y),Number(n),line);assert.ok(Number(n)>=10&&Number(y)<10,line);}
+    else assert.ok(Number(n)<10,`unregrouped total must be one digit: ${line}`);
+    return {kind:'op',place:Math.log10(VALUE[u]),lhs:lhs.split(/ [+−] /).map(Number),total:Number(n)};
+  }
+  if((m=line.match(/^Keep (\d+) (\w+)$/)))return {kind:'keep',place:Math.log10(VALUE[m[2]]),total:Number(m[1])};
+  if((m=line.match(/^Trade 1 (\w+) for 10 (\w+)$/))){assert.equal(VALUE[m[1]],VALUE[m[2]]*10,line);return {kind:'trade',place:Math.log10(VALUE[m[1]])};}
+  assert.fail(`unexpected explanation line: ${line}`);
+}
+test('every valid operand tuple in every family projects mathematically true columns or steps',()=>{
+  const counts={};
+  for(const family of families)for(const operands of enumerate(family)) {
+    counts[family]=(counts[family]||0)+1;
+    const state={question:{family,operands,complete:true,choices:[],misses:[]}},before=plain(state),answer=api.view(state).answer;
+    const shown=plain(api.explain(state));assert.deepEqual(plain(state),before);
+    const [a,b,c]=operands,label=`${family} ${operands}`;
+    if(family==='repeated-subtraction') {
+      assert.equal(shown.kind,'steps');assert.equal(shown.lines.length,2);
+      shown.lines.forEach(line=>assert.equal(evaluate(line.split(' = ')[0]),Number(line.split(' = ')[1]),line));
+      assert.equal(shown.lines[0].split(' = ')[0],`${a} − ${b}`);assert.equal(shown.lines[1].split(' = ')[0],`${a-b} − ${c}`);
+      assert.equal(Number(shown.lines[1].split(' = ')[1]),answer);continue;
+    }
+    assert.equal(shown.kind,'columns',label);
+    const subtract=family.includes('subtract')||family==='tens-minus-digit';
+    const total=subtract?a-b:operands.reduce((s,n)=>s+n,0), numbers=[...operands,total], width=String(Math.max(...numbers)).length;
+    assert.deepEqual(shown.places,['Hundreds','Tens','Ones'].slice(3-width),label);
+    assert.equal(width===1,numbers.every(n=>n<10),label);assert.equal(width===3,numbers.includes(100),label);
+    for(const row of shown.rows) {
+      assert.equal(row.digits.length,width);assert.ok(row.digits.every(d=>/^\d?$/.test(d)),label);
+      const first=row.digits.findIndex(d=>d!=='');assert.ok(row.digits.slice(first).every(d=>d!==''),`right-aligned ${label}`);
+    }
+    assert.deepEqual(shown.rows.map(r=>rowValue(r.digits)),numbers,label);
+    assert.deepEqual(shown.rows.map(r=>r.sign),subtract?['','−','']:operands.map((_,i)=>i?'+':'').concat(''),label);
+    assert.equal(shown.rows.at(-1).result,true);
+    const answerRow=shown.rows.findIndex(r=>r.answer);assert.equal(rowValue(shown.rows[answerRow].digits),answer,label);
+    assert.equal(answerRow,family==='complete-ten'||family==='missing-addend'?1:shown.rows.length-1,label);
+    const parsed=shown.lines.map(checkLine);
+    if(!subtract) {
+      assert.equal(shown.trades,null);
+      for(let p=0;p<width;p++) {
+        const digits=operands.filter(n=>p===0||n>=10**p).map(n=>Math.floor(n/10**p)%10),carry=carryInto(operands,p),line=parsed.find(x=>x.place===p);
+        if(shown.carries)assert.equal(shown.carries[width-1-p],carry&&p>0&&digits.length?String(carry):'',label);
+        if(!digits.length){assert.equal(line,undefined,`carry-only column is named by the line below it: ${label}`);continue;}
+        assert.equal(line.total,columnTotal(operands,p),label);assert.equal(line.total%10,Math.floor(total/10**p)%10,label);
+        if(line.kind==='op')assert.deepEqual(line.lhs,(carry?[carry]:[]).concat(digits),label);else assert.equal(digits.length+(carry?1:0),1,label);
+      }
+      if(shown.carries===null)assert.ok([...Array(width).keys()].every(p=>p===0||!carryInto(operands,p)||!operands.some(n=>n>=10**p)),label);
+      assert.equal(parsed.some(x=>x.total>=10),[...Array(width).keys()].some(p=>columnTotal(operands,p)>=10),`regrouping is named exactly when a column carries: ${label}`);
+      if(family==='add-no-carry')assert.ok(parsed.every(x=>x.total<10),label);
+    } else {
+      assert.equal(shown.carries,null);
+      const borrow=a%10<b%10,top=shown.rows[0];
+      assert.equal(shown.trades!==null,borrow,label);assert.equal(parsed.some(x=>x.kind==='trade'),borrow,label);
+      const work=top.digits.map((d,i)=>shown.trades&&shown.trades[i]!==''?Number(shown.trades[i]):Number(d));
+      assert.equal(work.reduce((s,v,i)=>s+v*10**(width-1-i),0),a,`regrouping preserves the value: ${label}`);
+      assert.deepEqual(top.crossed,top.digits.map((d,i)=>!!shown.trades&&shown.trades[i]!==''),label);
+      for(let p=0;p<width;p++) {
+        const i=width-1-p,bd=p===0||b>=10**p?Math.floor(b/10**p)%10:null,rd=Math.floor(total/10**p)%10,line=parsed.find(x=>x.place===p&&x.kind!=='trade');
+        assert.equal(work[i]-(bd??0),rd,`column ${p} is true arithmetic: ${label}`);assert.ok(work[i]<20,label);
+        if(bd!==null)assert.deepEqual([line.kind,line.lhs,line.total],['op',[work[i],bd],rd],label);
+        else if(work[i])assert.deepEqual([line.kind,line.total],['keep',work[i]],label);else assert.equal(line,undefined,label);
+      }
+    }
+  }
+  assert.deepEqual(Object.keys(counts).sort(),families.slice().sort());
+});
+test('reference explanations match the approved Tens/Ones alignment and regrouping boundaries',()=>{
+  const ex=(family,operands)=>plain(api.explain({question:{family,operands,complete:true}}));
+  assert.deepEqual(ex('add-no-carry',[31,68]),{kind:'columns',heading:'Line up tens and ones',places:['Tens','Ones'],carries:null,trades:null,
+    rows:[{sign:'',digits:['3','1'],crossed:[false,false],answer:false},{sign:'+',digits:['6','8'],crossed:[false,false],answer:false},{sign:'',digits:['9','9'],crossed:[false,false],answer:true,result:true}],
+    lines:['1 + 8 = 9 ones','3 + 6 = 9 tens']});
+  assert.deepEqual(ex('add-no-carry',[31,6]).lines,['1 + 6 = 7 ones','Keep 3 tens']);
+  assert.deepEqual(ex('add-no-carry',[31,6]).rows[1].digits,['','6']);
+  assert.deepEqual(ex('facts-add',[3,4]).places,['Ones']);assert.deepEqual(ex('facts-add',[3,4]).lines,['3 + 4 = 7 ones']);
+  assert.deepEqual(ex('facts-add',[7,6]).lines,['7 + 6 = 13 ones = 1 ten 3 ones']);assert.equal(ex('facts-add',[7,6]).carries,null);
+  assert.deepEqual(ex('add-carry',[48,36]).lines,['8 + 6 = 14 ones = 1 ten 4 ones','1 + 4 + 3 = 8 tens']);
+  assert.deepEqual(ex('add-carry',[48,36]).carries,['1','']);
+  assert.deepEqual(ex('add-carry',[95,5]).places,['Hundreds','Tens','Ones']);
+  assert.deepEqual(ex('add-carry',[95,5]).lines,['5 + 5 = 10 ones = 1 ten 0 ones','1 + 9 = 10 tens = 1 hundred 0 tens']);
+  assert.deepEqual(ex('add-carry',[95,5]).rows.at(-1).digits,['1','0','0']);
+  assert.deepEqual(ex('complete-ten',[7,3]).lines,['7 + 3 = 10 ones = 1 ten 0 ones']);
+  assert.deepEqual(ex('missing-addend',[98,2]).rows.map(r=>r.answer),[false,true,false]);
+  assert.deepEqual(ex('facts-subtract',[14,7]),{kind:'columns',heading:'Line up tens and ones',places:['Tens','Ones'],carries:null,trades:['0','14'],
+    rows:[{sign:'',digits:['1','4'],crossed:[true,true],answer:false},{sign:'−',digits:['','7'],crossed:[false,false],answer:false},{sign:'',digits:['','7'],crossed:[false,false],answer:true,result:true}],
+    lines:['Trade 1 ten for 10 ones','14 − 7 = 7 ones']});
+  assert.deepEqual(ex('facts-subtract',[8,3]).lines,['8 − 3 = 5 ones']);
+  assert.deepEqual(ex('subtract-no-borrow',[45,42]).lines,['5 − 2 = 3 ones','4 − 4 = 0 tens']);
+  assert.deepEqual(ex('tens-minus-digit',[40,7]).lines,['Trade 1 ten for 10 ones','10 − 7 = 3 ones','Keep 3 tens']);
+  assert.deepEqual(ex('tens-minus-digit',[100,7]).lines,['Trade 1 hundred for 10 tens','Trade 1 ten for 10 ones','10 − 7 = 3 ones','Keep 9 tens']);
+  assert.deepEqual(ex('tens-minus-digit',[100,7]).trades,['0','9','10']);
+  assert.deepEqual(ex('three-addends',[9,9,2]).lines,['9 + 9 + 2 = 20 ones = 2 tens 0 ones']);
+  assert.deepEqual(ex('three-addends',[12,5,3]).lines,['2 + 5 + 3 = 10 ones = 1 ten 0 ones','1 + 1 = 2 tens']);
+  assert.deepEqual(ex('repeated-subtraction',[10,3,2]),{kind:'steps',heading:'Take away one part at a time',lines:['10 − 3 = 7','7 − 2 = 5']});
+});
+test('explanations stay hidden until completion, ignore outcome, and never mutate or enter saved state',()=>{
+  for(let misses=0;misses<4;misses++) {
+    const state=api.create(5,rng),answer=api.view(state).answer;
+    assert.equal(api.explain(state),null);
+    for(const value of state.question.choices.filter(n=>n!==answer).slice(0,misses)){assert.equal(api.answer(state,value),true);assert.equal(api.explain(state),null);}
+    const before=JSON.stringify(state);api.explain(state);assert.equal(JSON.stringify(state),before);
+    assert.equal(api.answer(state,answer),true);
+    const saved=JSON.stringify(state),shown=plain(api.explain(state));assert.ok(shown);assert.equal(JSON.stringify(state),saved);
+    assert.equal(saved.includes('lines'),false);assert.equal(saved.includes('Line up'),false);
+    // The reasoning depends only on the equation, never on misses or reward counters.
+    assert.deepEqual(plain(api.explain({question:{family:state.question.family,operands:state.question.operands,complete:true}})),shown);
+    assert.deepEqual(plain(api.explain(api.normalize(JSON.parse(saved)))),shown);
+    const frozen=JSON.parse(saved);Object.freeze(frozen.question.operands);Object.freeze(frozen.question);Object.freeze(frozen);
+    assert.deepEqual(plain(api.explain(frozen)),shown);
+    assert.equal(api.next(state,rng),true);assert.equal(api.explain(state),null);
+  }
+  for(const bad of [null,{},{question:null},{question:{family:'facts-add',operands:[31,68],complete:true}},{question:{family:'nope',operands:[1,2],complete:true}},{question:{family:'facts-add',operands:[1,2],complete:'yes'}}])assert.equal(api.explain(bad),null);
+});

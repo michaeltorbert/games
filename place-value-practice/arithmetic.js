@@ -54,10 +54,31 @@
   const instruction=node('p','Choose the number that makes the equation true.');
   const choices=node('div',null,'arithmetic-choices'); choices.setAttribute('role','group'); choices.setAttribute('aria-labelledby',equation.id);
   const feedback=node('p'); feedback.id='arithmetic-feedback'; feedback.setAttribute('role','status');
+  const explanation=node('section',null,'arithmetic-explanation'); explanation.id='arithmetic-explanation'; explanation.hidden=true;
+  explanation.setAttribute('aria-labelledby','arithmetic-explanation-title');
   const next=node('button','Next','button button--primary'); next.id='arithmetic-next'; next.type='button';
   const recap=node('p'); recap.id='arithmetic-recap';
   const storage=node('p'); storage.className='arithmetic-storage';
-  panel.append(title,scope,setup,drive,count,equation,instruction,choices,feedback,next,recap,storage);
+  panel.append(title,scope,setup,drive,count,equation,instruction,choices,feedback,explanation,next,recap,storage);
+  // Rebuilt from the model on every render, so Next, restart and reload need no extra state.
+  function renderExplanation(shown) {
+    explanation.replaceChildren();explanation.hidden=!shown;
+    if(!shown)return;
+    const heading=node('h4',shown.heading);heading.id='arithmetic-explanation-title';
+    const body=node('div',null,'arithmetic-explanation-body'), lines=node('ul',null,'arithmetic-explanation-lines');
+    for(const line of shown.lines)lines.append(node('li',line));
+    if(shown.kind==='columns') {
+      // The lines carry the meaning for assistive technology; the grid is its visual alignment.
+      const grid=node('div',null,'place-columns');grid.setAttribute('aria-hidden','true');grid.style.setProperty('--places',shown.places.length);
+      const row=(sign,values,className,crossed)=>{grid.append(node('span',sign,`place-sign ${className}`));values.forEach((v,i)=>grid.append(node('span',v,`${className}${crossed&&crossed[i]?' place-crossed':''}`)));};
+      row('',shown.places,'place-name');
+      if(shown.carries)row('',shown.carries,'place-carry');
+      if(shown.trades)row('',shown.trades,'place-trade');
+      for(const r of shown.rows)row(r.sign,r.digits,`place-digit${r.result?' place-result':''}${r.answer?' place-answer':''}`,r.crossed);
+      body.append(grid);
+    }
+    body.append(lines);explanation.append(heading,body);
+  }
   function refreshBeforeWrite() {
     if(!writable)return true;
     const current=localStorage.getItem(KEY);
@@ -105,6 +126,7 @@
       b.addEventListener('click',()=>change(()=>model.question===q && api.answer(model,value))); choices.append(b); });
     feedback.textContent=q.complete?(revealed?'You selected the answer.':q.misses.length?'You worked it out after trying again.':'Correct.')
       :revealed?'Here is the answer. Select it to finish this question.':q.misses.length?'Try another number.':'';
+    renderExplanation(api.explain(model));
     next.hidden=!q.complete; next.textContent=finished?'Practice again':'Next';
     recap.textContent=finished?`${model.completed} completed · ${model.firstTry} first try · ${model.afterHelp} after trying again` : '';
     storage.textContent=saveMessage;
@@ -138,7 +160,7 @@
     football.setAttribute('aria-pressed',String(presentation==='football'));plain.setAttribute('aria-pressed',String(presentation==='plain'));
     place.setAttribute('aria-pressed',String(!active)); arithmetic.setAttribute('aria-pressed',String(active));
     // Keep invalid JSON bytes until a locked user action can check for conflicts.
-    if(empty){panel.hidden=false;choices.replaceChildren();equation.textContent='No arithmetic lessons completed yet.';feedback.textContent='Choose Whole book after completing its first lesson on page 17.';next.hidden=true;panel.setAttribute('aria-busy','false');PLACE_FACT_UI.panel.setAttribute('aria-busy','false');return true;}
+    if(empty){panel.hidden=false;choices.replaceChildren();equation.textContent='No arithmetic lessons completed yet.';feedback.textContent='Choose Whole book after completing its first lesson on page 17.';renderExplanation(null);next.hidden=true;panel.setAttribute('aria-busy','false');PLACE_FACT_UI.panel.setAttribute('aria-busy','false');return true;}
     if(active){if(submode==='mixed'){api.configure(sessionPages.mixed);if(!model){model=api.repair(api.create());if(!malformedJSON)save();}else api.repair(model);render();}}else window.__placeValueActivate();
     panel.setAttribute('aria-busy','false');PLACE_FACT_UI.panel.setAttribute('aria-busy','false');
     return true;
@@ -152,7 +174,7 @@
   window.render_game_to_text=()=>CURRICULUM_UI.text().open?JSON.stringify({curriculum:CURRICULUM_UI.text()}):window.__placePracticeMode==='arithmetic'&&submode!=='book'&&sessionPages[submode]<17?JSON.stringify({mode:'arithmetic-unavailable',page:sessionPages[submode]}):window.__placePracticeMode==='arithmetic'&&submode==='book'?JSON.stringify({...PLACE_BOOK_UI.text(),presentation}):window.__placePracticeMode==='arithmetic'&&submode==='facts'?JSON.stringify({...PLACE_FACT_UI.text(),presentation}):window.__placePracticeMode==='arithmetic'?JSON.stringify({mode:'arithmetic',submode:'mixed',presentation,question:model?api.view(model).prompt:null,
     choices:model.question.choices,misses:model.question.misses,complete:model.question.complete,completed:model.completed,target:model.target,
     revealed:model.question.misses.length>=3,
-    worked:model.question.complete||model.question.misses.length>=3?api.view(model).worked:null}):placeText();
+    worked:model.question.complete||model.question.misses.length>=3?api.view(model).worked:null,explanation:api.explain(model)}):placeText();
   window.__arithmeticTest=Object.freeze({snapshot:()=>JSON.parse(JSON.stringify(model)),storageKey:KEY});
   panel.setAttribute('aria-busy','true');PLACE_FACT_UI.panel.setAttribute('aria-busy','true');
   CURRICULUM_UI.ask().then(progress=>{if(progress){if(window.__placePracticeMode==='arithmetic')sessionPages[submode]=progress.completedThroughPage;mode(window.__placePracticeMode,false);}else mode('place-value',false);});

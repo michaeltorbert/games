@@ -1526,12 +1526,26 @@
     #arithmetic-practice h2 { font-size: 1.7rem; margin: 0 0 20px; }
     .arithmetic-setup { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-bottom: 24px; }
     .arithmetic-setup select { min-height: 44px; padding: 8px; font: inherit; border-radius: 8px; }
+    /* WebKit sizes a menulist select to its text and ignores min-height; dropping only the
+       drawn appearance keeps the native picker and label while honoring the 44px target. */
+    #arithmetic-practice .arithmetic-setup select { -webkit-appearance: none; appearance: none; padding: 8px 40px 8px 12px; border: 1px solid #8c9a93; color: inherit; line-height: 1.5;
+      background: #fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' fill='none' stroke='%2324342d' stroke-width='2'/%3E%3C/svg%3E") no-repeat right 14px center / 12px 8px; }
     #arithmetic-equation { font-size: clamp(2rem, 7vw, 3.8rem); text-align: center; margin: 28px 0 20px; }
     .arithmetic-choices { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 22px 0 12px; }
     .arithmetic-answer { min-height: 64px; font-size: 1.65rem; background: white; border: 2px solid #d3ded6; }
     .arithmetic-answer:disabled { opacity: .48; }
     #arithmetic-feedback { min-height: 28px; }
     .arithmetic-storage { font-size: .9rem; }
+    .arithmetic-explanation { margin: 4px 0 16px; padding: 14px 18px 16px; border-radius: 14px; background: #eef2f5; color: #24342d; }
+    .arithmetic-explanation h4 { margin: 0 0 8px; font-size: .75rem; letter-spacing: .1em; text-transform: uppercase; color: #3d5566; }
+    .arithmetic-explanation-body { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 10px 32px; }
+    .place-columns { display: grid; grid-template-columns: 1.1em repeat(var(--places), minmax(1.5em, auto)); column-gap: .45em; font-size: 1.7rem; line-height: 1.25; text-align: center; font-variant-numeric: tabular-nums; }
+    .place-columns .place-name { align-self: end; font-size: .75rem; font-weight: 700; color: #3d5566; }
+    .place-columns .place-carry, .place-columns .place-trade { font-size: 1rem; line-height: 1.2; color: #8a5a1f; }
+    .place-columns .place-crossed { text-decoration: line-through; text-decoration-thickness: 2px; color: #6f7f88; }
+    .place-columns .place-result { border-top: 3px solid #4f6d84; font-weight: 700; color: #34556f; }
+    .place-columns .place-answer:not(.place-sign):not(:empty) { color: #2f6b45; font-weight: 700; }
+    .arithmetic-explanation-lines { min-width: 0; margin: 0; padding: 0; list-style: none; font-size: 1.1rem; line-height: 1.5; overflow-wrap: anywhere; }
     /* Facts is a stadium-first workspace; other practice modes keep their shell. */
     .facts-active .app-shell { width: 100%; margin: 0; border: 0; border-radius: 0; box-shadow: none; display: grid; grid-template-columns: auto auto auto; overflow: visible; }
     .facts-active .app-header { grid-column: 1 / -1; display: block; min-height: 78px; padding: 8px 20px 0; text-align: center; border: 0; }
@@ -1935,14 +1949,14 @@
     </form>
   </dialog>
 
-  <link rel="stylesheet" href="../shared/curriculum.css?v=1.8.0">
-  <script src="../shared/curriculum.js?v=1.8.0"></script>
-  <script src="../shared/curriculum-ui.js?v=1.8.0"></script>
-  <script src="arithmetic-domain.js?v=1.8.0"></script>
+  <link rel="stylesheet" href="../shared/curriculum.css?v=1.8.1">
+  <script src="../shared/curriculum.js?v=1.8.1"></script>
+  <script src="../shared/curriculum-ui.js?v=1.8.1"></script>
+  <script src="arithmetic-domain.js?v=1.8.1"></script>
   <script>
     "use strict";
 
-    const GAME_VERSION = "1.8.0";
+    const GAME_VERSION = "1.8.1";
     (() => {
       document.getElementById('game-version').textContent = `Version ${GAME_VERSION}`;
       const SCHEMA_VERSION = 1;
@@ -6692,12 +6706,12 @@
       if (window.__placePracticeMode === 'place-value') window.__placeValueActivate();
     })();
   </script>
-  <script src="fact-practice-domain.js?v=1.8.0"></script>
-  <script src="fact-practice.js?v=1.8.0"></script>
-  <link rel="stylesheet" href="book-practice.css?v=1.8.0">
-  <script src="book-practice-domain.js?v=1.8.0"></script>
-  <script src="book-practice.js?v=1.8.0"></script>
-  <script src="arithmetic.js?v=1.8.0"></script>
-  <script src="../shared/updater.js?v=1.8.0"></script>
+  <script src="fact-practice-domain.js?v=1.8.1"></script>
+  <script src="fact-practice.js?v=1.8.1"></script>
+  <link rel="stylesheet" href="book-practice.css?v=1.8.1">
+  <script src="book-practice-domain.js?v=1.8.1"></script>
+  <script src="book-practice.js?v=1.8.1"></script>
+  <script src="arithmetic.js?v=1.8.1"></script>
+  <script src="../shared/updater.js?v=1.8.1"></script>
 </body>
 </html>
