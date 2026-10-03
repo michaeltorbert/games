@@ -1475,6 +1475,20 @@ function buildField() {
   });
 }
 
+// Anchor the player at the ball; a CSS margin keeps a fixed gap behind it on
+// every field width. Near its own goal line that gap would carry the sprite past
+// the field's clipped left edge, so the rendered position stops there instead.
+// The ball's yard position is unaffected. The result stays a percentage for the
+// particle spawner.
+const PLAYER_EDGE_CLEARANCE = 3;
+function playerLeftPct(player, field) {
+  const ballPct = yardToPct(clamp(state.animYd, 0, 100));
+  const fieldWidth = field.clientWidth;
+  if (!fieldWidth) return ballPct;
+  const behind = player.offsetWidth / 2 - (parseFloat(getComputedStyle(player).marginLeft) || 0);
+  return Math.max(ballPct, (behind + PLAYER_EDGE_CLEARANCE) / fieldWidth * 100);
+}
+
 function updateField(animated) {
   const ball = document.getElementById('ball');
   const fdl = document.getElementById('fd-line');
@@ -1503,8 +1517,7 @@ function updateField(animated) {
   if (player) {
     if (state.possession === 'offense') {
       player.classList.remove('player-hidden');
-      // Anchor at the ball; CSS margin keeps a fixed gap behind it on every field width.
-      player.style.left = yardToPct(clamp(state.animYd, 0, 100)) + '%';
+      player.style.left = playerLeftPct(player, fw) + '%';
       player.style.setProperty('--player-dir', '1');
       if (!animated) {
         player.style.transition = 'none';
@@ -1515,6 +1528,15 @@ function updateField(animated) {
     }
   }
 }
+
+// The edge clamp depends on the field width, so reapply it after rotation or resize.
+window.addEventListener('resize', () => {
+  const player = document.getElementById('player');
+  const field = document.getElementById('field-wrap');
+  if (player && field && !player.classList.contains('player-hidden')) {
+    player.style.left = playerLeftPct(player, field) + '%';
+  }
+});
 
 function updateStatus() {
   applyMatchPresentation(state.match);
