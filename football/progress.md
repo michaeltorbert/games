@@ -1211,3 +1211,13 @@ Original prompt: Show what Football issue #101 looks like before and after a pro
   - WebKit release matrix, call-layout, marker and particle suites: 89 checks passed, with 19 intentional device skips and all 304 required screenshots verified.
   - Registry gate: 4/4 against exact base `e2e341d12b5bf07f42333a0dd2976f509e3b8673`, target `football`.
 - Engines and settings are unchanged from the entry above. This is engine emulation; Apple Simulator and physical Safari remain unverified.
+
+### Codex review correction: own-goal-line clipping
+
+- Codex (`codex-bot-mt[bot]`) reviewed `b073110` and requested changes. The fixed gap behind the ball pushed the player past the clipped left edge of the field at its own 1 and 2 on both phones. The rendered position is now clamped to the field's inner edge with 3 px clearance for the celebration scale, the ball's yard position is unchanged, and the clamp is reapplied on resize because it depends on the field width. At own 1–2 on phones the ball still covers much of the player, as it does on `main`: there is no room behind the ball there.
+- Added a regression on every device project that keeps every part of the sprite inside the field at own 1 and 2 across standing, running and celebrating frames, and after a rotation. Without the clamp it fails on both iPhones, on iPad 11 portrait, and on iPad 11 landscape after rotating; without the resize handler it fails on the rotation case.
+- Superseding verification on tested commit `7d7b599e9afbe97a5525137992bec04938592ab1` (clean tree before and after each run; only this subsection was written afterwards):
+  - Canonical Chromium release gate: 161 DOM-free checks and 394 browser checks passed, with 644 intentional device skips and all 304 required screenshots verified.
+  - WebKit release matrix, call-layout, marker and particle suites: 95 checks passed, with 19 intentional device skips and all 304 required screenshots verified.
+  - Registry gate: 4/4 against exact base `e2e341d12b5bf07f42333a0dd2976f509e3b8673`, target `football`.
+- The own-1 position was rendered in WebKit on both iPhones and compared with Codex's base screenshot. This is engine emulation; Apple Simulator and physical Safari remain unverified.
