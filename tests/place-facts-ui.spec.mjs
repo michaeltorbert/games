@@ -1,4 +1,5 @@
 import { test, expect } from './curriculum-fixture.mjs';
+import { checkedOptions, chooseOptions, mathPractice, optionsButton, optionsDialog } from './place-practice-nav.mjs';
 const KEY='place-value-practice:facts:v1', MIXED='place-value-practice:arithmetic:v1', PLACE='place-value-practice:progress:v1', SUB='place-value-practice:arithmetic-mode:v1';
 async function freeze(page){const now=new Date('2026-09-09T12:00:00Z');await page.clock.install({time:now});await page.clock.pauseAt(now);}
 test.beforeEach(async({page})=>{await freeze(page);});
@@ -134,7 +135,7 @@ test('correct completion saves once, stays readable well past 650ms and advances
 test('a completed fact waits through mode change and hidden-page state; restart replaces it',async({page})=>{
  await boot(page);await correct(page);let finished=await snapshot(page);const lines=await workedLines(page);
  await page.getByRole('button',{name:'Place value',exact:true}).click();await page.clock.runFor(2000);expect(await page.evaluate(()=>__factsTest.snapshot())).toEqual(finished);
- await page.getByRole('button',{name:'Arithmetic',exact:true}).click();await settled(page);await expect(page.locator('#facts-award')).toBeHidden();
+ await mathPractice(page).click();await settled(page);await expect(page.locator('#facts-award')).toBeHidden();
  expect(await workedLines(page)).toEqual(lines);
  await manualNext(page);expect((await snapshot(page)).attempt.id).toBe(finished.attempt.id+1);await expect(page.locator('#facts-worked')).toBeHidden();
  await correct(page);await page.getByRole('spinbutton',{name:'Fact practice question count'}).fill('7');await page.getByRole('button',{name:'Start new fact session'}).click();await settled(page);
@@ -150,7 +151,7 @@ test('a Next queued behind a lock cannot cross a mode lifecycle or overwrite a n
  await boot(page);await correct(page);const completed=await snapshot(page);
  await holdLock(page,'releaseAutoLock');
  await page.locator('#facts-next').tap();await expectHeld(page);
- await page.getByRole('button',{name:'Place value',exact:true}).tap();await page.getByRole('button',{name:'Arithmetic',exact:true}).tap();await settled(page);
+ await page.getByRole('button',{name:'Place value',exact:true}).tap();await mathPractice(page).tap();await settled(page);
  await page.evaluate(()=>window.releaseAutoLock());await settled(page);expect(await snapshot(page)).toEqual(completed);
  await manualNext(page);expect((await snapshot(page)).attempt.id).toBe(completed.attempt.id+1);
  await correct(page);const newer=await page.evaluate(KEY=>{const s=__factsTest.snapshot();PLACE_FACTS.next(s,s.attempt.id);const bytes=JSON.stringify(s);localStorage.setItem(KEY,bytes);return bytes;},KEY);
@@ -274,7 +275,13 @@ for(const startingYards of [95,96,98])test(`touchdown from ${startingYards} yard
  // The touchdown waits for an explicit Next, which must stay reachable with the celebrating drive.
  await expect(page.locator('#facts-next')).toHaveText('Next: extra-point kick');expect((await snapshot(page)).attempt.kind).toBe('drive');
  // Soft: the .facts-drive clearance is a known WebKit iPhone baseline failure (#147); the Next result must still be reported.
- for(const selector of ['.facts-drive','#facts-next'])expect.soft(await page.locator(selector).evaluate(el=>{const r=el.getBoundingClientRect();return r.top>=0&&r.bottom<=innerHeight;}),selector).toBe(true);
+ // The message records the scroll position and the header/nav/drive geometry so a failure can be compared with the base layout.
+ const layout=await page.evaluate(()=>JSON.stringify({scrollY,innerHeight,doc:document.documentElement.scrollHeight,rects:Object.fromEntries(['.app-header','.practice-modes','.practice-route','.facts-drive','.facts-dock','.facts-meta','#facts-check','#facts-next'].map(s=>{const r=document.querySelector(s)?.getBoundingClientRect();return [s,r&&[Math.round(r.top),Math.round(r.bottom)]];}))}));
+ // Whenever the full stadium and Next fit in the viewport together (iPad), both must be fully visible right after the live touchdown;
+ // this is the 1.9.0 iPad 11 landscape 96/98 regression (stadium top 20px above the viewport). Taller spans keep only the soft checks.
+ const span=await page.evaluate(()=>{const d=document.querySelector('.facts-drive').getBoundingClientRect(),n=document.querySelector('#facts-next').getBoundingClientRect();return {fits:n.bottom-d.top<=innerHeight,visible:d.top>=0&&n.bottom<=innerHeight};});
+ if(span.fits)expect(span.visible,`touchdown stadium through Next ${layout}`).toBe(true);
+ for(const selector of ['.facts-drive','#facts-next'])expect.soft(await page.locator(selector).evaluate(el=>{const r=el.getBoundingClientRect();return r.top>=0&&r.bottom<=innerHeight;}),`${selector} ${layout}`).toBe(true);
  await page.emulateMedia({reducedMotion:'reduce'});
  expect(await page.locator('#facts-award').evaluate(el=>getComputedStyle(el).animationName)).toBe('none');
  expect(await page.locator('.facts-ball').evaluate(el=>getComputedStyle(el).transitionProperty)).toBe('none');
@@ -360,34 +367,34 @@ test('toggle-only report exposure also marks a warm prompt as supported for driv
 
 test('mixed practice is the default and presentation changes do not change its arithmetic',async({page})=>{
  await page.goto('/place-value-practice/');
- await expect(page.locator('#game-version')).toHaveText('Version 1.8.3');
- await page.getByRole('button',{name:'Arithmetic',exact:true}).click();await settled(page);
+ await expect(page.locator('#game-version')).toHaveText('Version 1.9.0');
+ await mathPractice(page).click();await settled(page);
  await expect(page.locator('#arithmetic-practice')).toBeVisible();
- await expect(page.getByRole('button',{name:'Mixed practice',exact:true})).toHaveAttribute('aria-pressed','true');
- await expect(page.getByRole('button',{name:'Football practice',exact:true})).toHaveAttribute('aria-pressed','true');
+ await expect(page.locator('#practice-route-label')).toHaveText('Addition & subtraction');await expect(optionsButton(page)).toHaveAccessibleName('Practice options, now Addition & subtraction');
+ expect(await checkedOptions(page)).toEqual({focus:'mixed',presentation:'football'});
  await expect(page.locator('.arithmetic-drive')).toBeVisible();
  const before=await page.evaluate(()=>__arithmeticTest.snapshot()),saved=await page.evaluate(k=>localStorage.getItem(k),MIXED);
- await page.getByRole('button',{name:'Just arithmetic',exact:true}).click();
- await expect(page.getByRole('button',{name:'Just arithmetic',exact:true})).toHaveAttribute('aria-pressed','true');
- await expect(page.getByRole('button',{name:'Football practice',exact:true})).toHaveAttribute('aria-pressed','false');
+ await chooseOptions(page,{presentation:'plain'});
+ expect(await checkedOptions(page)).toEqual({focus:'mixed',presentation:'plain'});
+ await expect(page.locator('body')).toHaveClass(/plain-practice/);await expect(page.locator('body')).not.toHaveClass(/football-practice/);
  await expect(page.locator('.arithmetic-drive')).toBeHidden();
  expect(await page.evaluate(()=>__arithmeticTest.snapshot())).toEqual(before);expect(await page.evaluate(k=>localStorage.getItem(k),MIXED)).toBe(saved);
  await page.screenshot({path:test.info().outputPath('mixed-plain.png')});
- await page.getByRole('button',{name:'Football practice',exact:true}).click();await expect(page.locator('.arithmetic-drive')).toBeVisible();
+ await chooseOptions(page,{presentation:'football'});await expect(page.locator('.arithmetic-drive')).toBeVisible();
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
  await page.screenshot({path:test.info().outputPath('mixed-football-default.png')});
 });
 
 test('mixed and fact focus preserve separate evidence while sharing presentation',async({page})=>{
- await page.goto('/place-value-practice/');await page.getByRole('button',{name:'Arithmetic',exact:true}).click();await settled(page);
+ await page.goto('/place-value-practice/');await mathPractice(page).click();await settled(page);
  const mixedAnswer=await page.evaluate(()=>PLACE_ARITHMETIC.view(__arithmeticTest.snapshot()).answer);await page.getByRole('button',{name:String(mixedAnswer),exact:true}).click();
  await expect.poll(()=>page.evaluate(()=>__arithmeticTest.snapshot().completed)).toBe(1);
  const mixed=await page.evaluate(k=>localStorage.getItem(k),MIXED);
- await page.getByRole('button',{name:'Fact focus',exact:true}).click();await correct(page);const fact=await page.evaluate(k=>localStorage.getItem(k),KEY);
- await page.getByRole('button',{name:'Just arithmetic',exact:true}).click();expect(await page.evaluate(k=>localStorage.getItem(k),MIXED)).toBe(mixed);expect(await page.evaluate(k=>localStorage.getItem(k),KEY)).toBe(fact);
- await page.getByRole('button',{name:'Mixed practice',exact:true}).click();await page.reload();await expect(page.locator('#arithmetic-practice')).toBeVisible();
+ await chooseOptions(page,{focus:'facts'});await correct(page);const fact=await page.evaluate(k=>localStorage.getItem(k),KEY);
+ await chooseOptions(page,{presentation:'plain'});expect(await page.evaluate(k=>localStorage.getItem(k),MIXED)).toBe(mixed);expect(await page.evaluate(k=>localStorage.getItem(k),KEY)).toBe(fact);
+ await chooseOptions(page,{focus:'mixed'});await page.reload();await expect(page.locator('#arithmetic-practice')).toBeVisible();
  expect((await page.evaluate(()=>__arithmeticTest.snapshot())).completed).toBe(1);
- await page.getByRole('button',{name:'Fact focus',exact:true}).click();await expect(page.locator('#fact-practice')).toBeVisible();await page.reload();await expect(page.locator('#fact-practice')).toBeVisible();expect((await snapshot(page)).session.completed).toBe(1);
+ await chooseOptions(page,{focus:'facts'});await expect(page.locator('#fact-practice')).toBeVisible();await page.reload();await expect(page.locator('#fact-practice')).toBeVisible();expect((await snapshot(page)).session.completed).toBe(1);
 });
 
 test('opening report removes independent credit durably and hides numeric family triples',async({page})=>{
@@ -501,8 +508,13 @@ test('Enter preserves button actions and answer controls describe the current eq
  await page.locator('.facts-keypad').getByRole('button',{name:'2',exact:true}).focus();await page.keyboard.press('Enter');
  await expect(page.locator('#facts-answer')).toHaveText('2');expect((await snapshot(page)).attempt.complete).toBe(false);
  await page.locator('#facts-show').focus();await page.keyboard.press('Enter');expect((await snapshot(page)).attempt.helped).toBe(true);
- await page.getByRole('button',{name:'Mixed practice',exact:true}).focus();await page.keyboard.press('Enter');await expect(page.locator('#fact-practice')).toBeHidden();
- await page.getByRole('button',{name:'Fact focus',exact:true}).click();await correct(page);await manualNext(page);
+ // Keyboard route change: Enter opens Options, arrows choose a radio, Enter on Apply.
+ await optionsButton(page).focus();await page.keyboard.press('Enter');await expect(optionsDialog(page)).toBeVisible();
+ await expect(optionsDialog(page).getByRole('radio',{name:'Number facts',exact:true})).toBeFocused();await page.keyboard.press('ArrowUp');
+ await expect(optionsDialog(page).getByRole('radio',{name:'Addition & subtraction',exact:true})).toBeChecked();
+ await optionsDialog(page).getByRole('button',{name:'Apply',exact:true}).focus();await page.keyboard.press('Enter');await expect(page.locator('#fact-practice')).toBeHidden();
+ await expect(optionsButton(page)).toBeFocused();expect((await snapshot(page)).attempt.helped).toBe(true);
+ await chooseOptions(page,{focus:'facts'});await correct(page);await manualNext(page);
  await expect(page.locator('#facts-check')).toBeFocused();expect(await page.locator('#facts-equation').textContent()).not.toBe(oldEquation);
  await expect(page.locator('#facts-check')).toHaveAccessibleDescription(await page.locator('#facts-equation').textContent());
 });
@@ -534,11 +546,11 @@ test('report groups cover practiced facts once, including warm retries and check
 
 test('optional help and leaving/returning preserve exact active attempt and isolated bytes',async({page})=>{
  await boot(page);await page.locator('#facts-show').click();const shown=await snapshot(page);
- await page.getByRole('button',{name:'Mixed practice',exact:true}).click();await expect(page.locator('#arithmetic-practice')).toBeVisible();const mixed=await page.evaluate(k=>localStorage.getItem(k),MIXED);
- await page.getByRole('button',{name:'Fact focus',exact:true}).click();expect(await snapshot(page)).toEqual(shown);
+ await chooseOptions(page,{focus:'mixed'});await expect(page.locator('#arithmetic-practice')).toBeVisible();const mixed=await page.evaluate(k=>localStorage.getItem(k),MIXED);
+ await chooseOptions(page,{focus:'facts'});expect(await snapshot(page)).toEqual(shown);
  await correct(page);await page.reload();expect((await snapshot(page)).attempt.complete).toBe(true);
  expect(await page.evaluate(k=>localStorage.getItem(k),MIXED)).toBe(mixed);
- await page.getByRole('button',{name:'Place value',exact:true}).click();await page.getByRole('button',{name:'Arithmetic',exact:true}).click();await settled(page);
+ await page.getByRole('button',{name:'Place value',exact:true}).click();await mathPractice(page).click();await settled(page);
  expect((await snapshot(page)).attempt.complete).toBe(true);
 });
 
@@ -563,7 +575,7 @@ test('blur, visibility, report, submode change and reload discard timing; a fres
   if(event==='blur')await page.evaluate(()=>window.dispatchEvent(new Event('blur')));
   if(event==='visibilitychange')await page.evaluate(()=>document.dispatchEvent(new Event('visibilitychange')));
   if(event==='report')await page.locator('#facts-report > summary').click();
-  if(event==='mode'){await page.getByRole('button',{name:'Mixed practice',exact:true}).click();await page.getByRole('button',{name:'Fact focus',exact:true}).click();}
+  if(event==='mode'){await chooseOptions(page,{focus:'mixed'});await chooseOptions(page,{focus:'facts'});}
   if(event==='reload')await page.reload();
   await correct(page);const s=await snapshot(page),ms=s.facts[s.attempt.factId].history.at(-1).ms;
   if(event==='none'){expect(ms).toBeGreaterThanOrEqual(300);expect(ms%100).toBe(0);}else expect(ms).toBeNull();
@@ -587,7 +599,7 @@ test('stale simultaneous tabs resynchronize; newer schema introduced after boot 
  expect(await other.evaluate(k=>localStorage.getItem(k),KEY)).toBe(saved);await expect(other.locator('.facts-storage')).toContainText('another tab');
  await other.getByRole('button',{name:'Place value',exact:true}).click();
  await manualNext(page);await settled(page);const newSaved=await page.evaluate(k=>localStorage.getItem(k),KEY);
- await other.getByRole('button',{name:'Arithmetic',exact:true}).click();await settled(page);
+ await mathPractice(other).click();await settled(page);
  await other.getByRole('button',{name:'Start new fact session'}).click();await settled(other);expect(await other.evaluate(k=>localStorage.getItem(k),KEY)).toBe(newSaved);
  const future=' {"schemaVersion":99} ';await page.evaluate(({KEY,future})=>localStorage.setItem(KEY,future),{KEY,future});
  await correct(page);await correct(page);expect(await page.evaluate(k=>localStorage.getItem(k),KEY)).toBe(future);await other.close();
@@ -696,8 +708,8 @@ test('an unseeded first fact explains its place value only after correct keyboar
  const answer=String(await page.evaluate(()=>PLACE_FACTS.byId[__factsTest.snapshot().attempt.factId].answer));
  await page.keyboard.type(answer);await page.keyboard.press('Enter');await settled(page);
  expect((await snapshot(page)).attempt.complete).toBe(true);await expect(page.locator('#facts-next')).toBeFocused();expect(await workedLines(page)).toEqual(await expectedLines(page));
- // Just arithmetic shows the same explanation without the drive.
- await page.getByRole('button',{name:'Just arithmetic',exact:true}).click();await settled(page);await expect(page.locator('.facts-drive')).toBeHidden();
+ // Plain shows the same explanation without the drive.
+ await chooseOptions(page,{presentation:'plain'});await settled(page);await expect(page.locator('.facts-drive')).toBeHidden();
  await expect(page.locator('#facts-worked')).toBeVisible();expect(await workedLines(page)).toEqual(await expectedLines(page));
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
  await page.screenshot({path:test.info().outputPath('facts-answered-plain.png')});expect(errors).toEqual([]);

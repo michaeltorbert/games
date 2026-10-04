@@ -7,9 +7,12 @@
   // nextEpoch lets restart, stale-tab refresh and mode changes cancel a Next still queued for the lock.
   let lastAward=null,driveNotice='',nextEpoch=0,lifecycle=0,restartIntent=0,whenIdle=Promise.resolve();
   let sessionPage=null;
+  const EMPTY_MESSAGE='No fact lessons completed yet. Return after printed page 17.';
+  // The Math practice shell shows its route-aware unavailable screen when a restart confirms a page below 17.
+  let unavailable=null;
   const node=(tag,text,cls)=>{const n=document.createElement(tag);if(text)n.textContent=text;if(cls)n.className=cls;return n;};
   const panel=node('main');panel.id='fact-practice';panel.hidden=true;panel.setAttribute('aria-busy','false');
-  const title=node('h2','Fact focus','sr-only');title.id='facts-title';panel.setAttribute('aria-labelledby',title.id);
+  const title=node('h2','Number facts','sr-only');title.id='facts-title';panel.setAttribute('aria-labelledby',title.id);
   const scope=node('p','Focused, spaced retrieval of single-digit addition and matching subtraction facts.');
   const setup=node('div',null,'arithmetic-setup'),label=node('label','Questions this session'),length=node('input');length.setAttribute('aria-label','Fact practice question count');
   length.type='number';length.min='1';length.max='100';length.step='1';length.inputMode='numeric';length.value='10';length.id='facts-length';
@@ -86,7 +89,7 @@
     const target=length.valueAsNumber;
     if(!Number.isInteger(target)||target<1||target>100){length.setAttribute('aria-invalid','true');lengthError.textContent='Enter a whole number from 1 to 100.';lengthError.hidden=false;length.focus();return;}
     length.removeAttribute('aria-invalid');lengthError.hidden=true;
-    cancelNext();panel.setAttribute('aria-busy','true');const progress=await CURRICULUM_UI.ask();panel.setAttribute('aria-busy','false');if(!progress)return;sessionPage=progress.completedThroughPage;api.configure(sessionPage);if(sessionPage<17){message='No fact lessons completed yet. Return after printed page 17.';render();return;}
+    cancelNext();panel.setAttribute('aria-busy','true');const progress=await CURRICULUM_UI.ask();panel.setAttribute('aria-busy','false');if(!progress)return;sessionPage=progress.completedThroughPage;api.configure(sessionPage);if(sessionPage<17){message=EMPTY_MESSAGE;render();if(active)unavailable?.();return;}
     cancelNext();const intent=++restartIntent,life=lifecycle;
     await whenIdle;if(active&&life===lifecycle&&intent===restartIntent)await change(()=>api.restart(model,target));
   }
@@ -112,6 +115,17 @@
     driveNotice=restored&&api.driveNeedsRepair(parsed)?'The saved drive could not be read, so it starts at zero. Your learning progress is preserved.':'';
     savedRaw=raw;message='Fact progress changed in another tab. Please try again.';return false;
   }
+  // After a live touchdown answer only: when the whole stadium and Next fit in the viewport together, move the
+  // current scroll the least amount into the range that shows both (WebKit iPad landscape left the stadium top
+  // 20px above the viewport). Never shrinks art; skips Plain, idle, reload, and spans taller than the viewport.
+  function keepTouchdownInView(){
+    if(!active||drive.hidden||continueBox.hidden||!lastAward?.touchdown||!model.attempt.complete)return;
+    const d=drive.getBoundingClientRect(),n=nextButton.getBoundingClientRect(),y=scrollY;
+    if(d.top>=0&&n.bottom<=innerHeight)return;
+    const low=Math.max(0,n.bottom+y-innerHeight),high=Math.min(d.top+y,document.documentElement.scrollHeight-innerHeight);
+    // 'instant' overrides the page's smooth scroll-behavior so the corrected position applies at once.
+    if(low<=high)scrollTo({left:scrollX,top:Math.min(Math.max(y,low),high),behavior:'instant'});
+  }
   async function change(action,epoch=null){
     if(busy||!active||sessionPage!==null&&sessionPage<17)return;
     busy=true;panel.setAttribute('aria-busy','true');const attemptId=model.attempt.id,life=lifecycle;
@@ -130,6 +144,7 @@
       if(newPrompt){cancelNext();input='';report.open=false;lastAward=null;}
       render(newPrompt);
       if(active){if(api.sessionDone(model))recap.focus({preventScroll:true});else if(newPrompt)check.focus({preventScroll:true});else if(!wasComplete&&model.attempt.complete)nextButton.focus({preventScroll:true});}
+      if(!newPrompt&&lastAward?.touchdown){const id=model.attempt.id;keepTouchdownInView();requestAnimationFrame(()=>{if(life===lifecycle&&model.attempt.id===id)keepTouchdownInView();});}
     };
     try {
       if(writable&&navigator.locks)try{await navigator.locks.request(KEY,run);}catch{memory();run();}
@@ -215,13 +230,28 @@
   window.addEventListener('blur',invalidate);document.addEventListener('visibilitychange',invalidate);
   window.addEventListener('scroll',()=>{if(active&&!equationVisible())invalidate();},{passive:true});
   document.addEventListener('keydown',event=>{
+    // Keys typed in any dialog (Practice options, page prompt) never reach the answer. As before this guard,
+    // Backspace/Delete outside an editable field keep their default prevented, so the browser cannot act on them.
+    if(event.target.closest?.('dialog')||document.querySelector('dialog[open]')){
+      if(active&&['Backspace','Delete'].includes(event.key)&&!event.target.closest?.('input:not([type="radio"]):not([type="checkbox"]),textarea,select,[contenteditable="true"]'))event.preventDefault();
+      return;
+    }
     if(!active||event.ctrlKey||event.metaKey||event.altKey||['INPUT','TEXTAREA','SELECT','SUMMARY'].includes(event.target.tagName)||report.contains(event.target)||event.target===reset)return;
     if(event.key==='Enter'&&event.target.closest('button,a,input,textarea,[role="button"],[contenteditable="true"]')&&event.target!==check)return;
     if(/^\d$/.test(event.key)||['Backspace','Delete','Enter'].includes(event.key)){event.preventDefault();if(event.key==='Enter')submit();else type(event.key);}
   });
   window.PLACE_FACT_UI=Object.freeze({panel,
     page:()=>sessionPage,
-    activate(value,page,football=true){const first=model===null;cancelNext();lifecycle++;active=value;panel.hidden=!value;document.body.classList.toggle('facts-active',value&&football);lastAward=null;invalidate();if(value){drive.hidden=!football;if(page!==null&&page!==undefined)sessionPage=page;if(sessionPage!==null)api.configure(sessionPage);if(first)readInitial();render(first&&savedRaw===null);}},
+    activate(value,page,football=true){const first=model===null;cancelNext();lifecycle++;active=value;panel.hidden=!value;document.body.classList.toggle('facts-active',value&&football);lastAward=null;invalidate();if(value){drive.hidden=!football;if(page!==null&&page!==undefined)sessionPage=page;if(sessionPage!==null)api.configure(sessionPage);
+      if(sessionPage>=17&&message===EMPTY_MESSAGE)message='';
+      // Re-check an existing prompt against the confirmed page on every activation; the next locked action saves a repair.
+      if(first)readInitial();else{const id=model.attempt.id;api.repair(model);if(model.attempt.id!==id){input='';report.open=false;}}
+      render(first&&savedRaw===null);}},
+    // Opening Practice options only discards this question's timing sample; help and report state are untouched.
+    interrupt(){invalidate();},
+    onUnavailable(listener){unavailable=listener;},
+    // Display only: no lifecycle change, so a queued Submit or Next, the typed answer and awards survive.
+    setPresentation(football){drive.hidden=!football;document.body.classList.toggle('facts-active',active&&football);},
     // Fact focus has no timed transitions; Next is always an explicit action.
     advanceTime(){},
     text(){if(sessionPage!==null&&sessionPage<17)return {mode:'arithmetic-unavailable',page:sessionPage};const q=model.attempt,f=api.byId[q.factId];return {mode:'arithmetic',submode:'facts',question:`${api.equation(f)} = ?`,answerEntry:q.complete?String(f.answer):input,

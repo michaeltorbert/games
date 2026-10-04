@@ -1,4 +1,5 @@
 import { test, expect } from './curriculum-fixture.mjs';
+import { chooseOptions } from './place-practice-nav.mjs';
 // Issue #146: Whole book shows a worked answer only after a correct completion.
 // Buttons are operated with touch taps (every project has hasTouch). The native chapter
 // select is changed with selectOption, which sets its value and fires change, not a tap.
@@ -18,7 +19,7 @@ const lines=page=>page.locator('#book-worked .arithmetic-explanation-lines li').
 // Chooses a chapter the way a learner does: select it, then confirm the page in the curriculum dialog
 // (answered by the shared fixture). The choice must survive that dialog and govern the next lesson.
 async function chapter(page,value){
- const select=page.getByLabel('Book chapter'),before=await snapshot(page);
+ const select=page.locator('#book-practice').getByLabel('Topic'),before=await snapshot(page);
  await select.selectOption(String(value));
  await expect.poll(async()=>(await snapshot(page)).chapter).toBe(value);
  await expect(select).toHaveValue(String(value));
@@ -116,9 +117,9 @@ test('shapes, fractions, measurement, graphs and coins keep concept-specific wor
 test('a fresh unseeded whole-book session restores a completed worked answer and clears it on restart',async({page})=>{
  await boot(page,'plain');const first=await snapshot(page);expect(first.completed).toBe(0);
  const {expected}=await complete(page);expect(await geometry(page)).toEqual(fits);
- await page.getByRole('button',{name:'Mixed practice',exact:true}).tap();await expect(page.locator('#book-worked')).toBeHidden();
- await page.getByRole('button',{name:'Whole book',exact:true}).tap();await expect(page.locator('#book-worked')).toBeVisible();expect(await lines(page)).toEqual(expected.lines);
- await page.getByRole('button',{name:'Football practice',exact:true}).tap();await expect(page.locator('#book-practice .book-drive')).toBeVisible();expect(await lines(page)).toEqual(expected.lines);
+ await chooseOptions(page,{focus:'mixed'},{tap:true});await expect(page.locator('#book-worked')).toBeHidden();
+ await chooseOptions(page,{focus:'book'},{tap:true});await expect(page.locator('#book-worked')).toBeVisible();expect(await lines(page)).toEqual(expected.lines);
+ await chooseOptions(page,{presentation:'football'},{tap:true});await expect(page.locator('#book-practice .book-drive')).toBeVisible();expect(await lines(page)).toEqual(expected.lines);
  await page.reload();expect(await lines(page)).toEqual(expected.lines);
  await page.getByRole('button',{name:'Start new book session'}).tap();await expect.poll(async()=>(await snapshot(page)).done).toBe(false);
  await expectNoWorked(page);expect((await snapshot(page)).completed).toBe(1);
