@@ -8,7 +8,8 @@ const PLACE_WORKED_UI = (() => {
   function render(section,shown,headingId) {
     section.replaceChildren();section.hidden=!shown;
     if(!shown)return;
-    const heading=node('h4',shown.heading);heading.id=headingId;section.setAttribute('aria-labelledby',headingId);
+    // A column grid's labels already show the alignment, so its heading only names the section for assistive technology.
+    const heading=node('h4',shown.heading,shown.kind==='columns'?'sr-only':null);heading.id=headingId;section.setAttribute('aria-labelledby',headingId);
     const body=node('div',null,'arithmetic-explanation-body'), lines=node('ul',null,'arithmetic-explanation-lines');
     for(const line of shown.lines)lines.append(node('li',line));
     if(shown.kind==='columns') {
