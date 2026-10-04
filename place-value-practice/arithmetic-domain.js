@@ -235,20 +235,31 @@ const PLACE_ARITHMETIC = (() => {
         {sign:'',digits:cells(width,p=>present(result,p)?String(digit(result,p)):''),crossed:cells(width,()=>false),answer:true,result:true}],
       lines};
   }
+  // Shared by Mixed, Fact focus and Whole book: 'add' takes two or three addends
+  // (answerRow 1 marks a found missing addend), 'sub' takes a minuend and one or
+  // two takeaways. Anything outside 0–100 whole-number arithmetic returns null.
+  function explainOperation(op,operands,answerRow=null) {
+    if(!Array.isArray(operands) || operands.length<2 || operands.length>3 || !operands.every(n=>integer(n)&&n<=100))return null;
+    const [a,b,c]=operands;
+    if(op==='add') {
+      if(operands.reduce((x,y)=>x+y,0)>100 || (answerRow!==null&&(answerRow!==1||operands.length!==2)))return null;
+      return addColumns(operands,answerRow);
+    }
+    if(op!=='sub' || answerRow!==null || b+(c||0)>a)return null;
+    // Two takeaways read left to right; columns would hide the order.
+    if(operands.length===3)return {kind:'steps',heading:'Take away one part at a time',lines:[`${a} − ${b} = ${a-b}`,`${a-b} − ${c} = ${a-b-c}`]};
+    return subtractColumns(a,b);
+  }
   function explain(state) {
     const q=state&&state.question;
     if(!q || q.complete!==true || !valid(q.family,q.operands))return null;
-    const [a,b,c]=q.operands;
     switch(q.family) {
-      case 'complete-ten': case 'missing-addend': return addColumns([a,b],1);
-      case 'facts-add': case 'add-no-carry': case 'add-carry': return addColumns([a,b],null);
-      case 'three-addends': return addColumns([a,b,c],null);
-      case 'facts-subtract': case 'subtract-no-borrow': case 'tens-minus-digit': return subtractColumns(a,b);
-      // Two takeaways read left to right; columns would hide the order.
-      case 'repeated-subtraction': return {kind:'steps',heading:'Take away one part at a time',lines:[`${a} − ${b} = ${a-b}`,`${a-b} − ${c} = ${a-b-c}`]};
+      case 'complete-ten': case 'missing-addend': return explainOperation('add',q.operands,1);
+      case 'facts-add': case 'add-no-carry': case 'add-carry': case 'three-addends': return explainOperation('add',q.operands);
+      case 'facts-subtract': case 'subtract-no-borrow': case 'tens-minus-digit': case 'repeated-subtraction': return explainOperation('sub',q.operands);
     }
     return null;
   }
-  return Object.freeze({ SCHEMA_VERSION,FAMILIES,MIX,HISTORY_LIMIT,familyWeight,selectFamily,valid,question,create,restart,normalize,answer,next,view,explain,configure,repair });
+  return Object.freeze({ SCHEMA_VERSION,FAMILIES,MIX,HISTORY_LIMIT,familyWeight,selectFamily,valid,question,create,restart,normalize,answer,next,view,explain,explainOperation,configure,repair });
 })();
 globalThis.PLACE_ARITHMETIC = PLACE_ARITHMETIC;

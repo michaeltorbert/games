@@ -6,7 +6,9 @@ const PLACE_BOOK = (()=>{
   const sides={triangle:3,rectangle:4,square:4,circle:0,hexagon:6,rhombus:4};
   function question(skill,serial=0){
     const n=serial%4+2,m=serial%3+1;
-    let prompt='',answer='',options=[],visual=null,help='';
+    // `math` is the structured operation behind an arithmetic prompt, so the
+    // completed explanation never parses prompt or help text.
+    let prompt='',answer='',options=[],visual=null,help='',math=null;
     const numeric=(text,value,model,explanation)=>{prompt=text;answer=String(value);visual=model;help=explanation;options=[value,value+1,Math.max(0,value-1),value+2].map(String);};
     const choice=(text,value,values,model,explanation)=>{prompt=text;answer=value;options=values;visual=model;help=explanation;};
     switch(skill.id){
@@ -47,10 +49,10 @@ const PLACE_BOOK = (()=>{
         let a=n,b=m,op='+',missing=false;
         const id=skill.id;
         if(id.startsWith('facts-')){const total=Number(id.slice(6).split('-').at(-1));a=Math.min(n,total);b=total-a;op=serial%2?'-':'+';if(op==='-'){a=total;b=m;}}
-        else if(id==='repeated-subtraction'){numeric(`9 − ${m} − 2 = ?`,7-m,null,`First subtract ${m} from 9, then subtract 2.`);break;}
+        else if(id==='repeated-subtraction'){numeric(`9 − ${m} − 2 = ?`,7-m,null,`First subtract ${m} from 9, then subtract 2.`);math={op:'sub',operands:[9,m,2],answerRow:null};break;}
         else if(id==='compare-facts'){choice(`Which is greater: ${n} + 1 or ${n} + 2?`,`${n} + 2`,[`${n} + 1`,`${n} + 2`,'equal'],null,'Adding two gives one more than adding one.');break;}
-        else if(['word-equations','word-problems'].includes(id)){numeric(`There are ${n} red balls and ${m} blue balls. How many balls altogether?`,n+m,null,`Add the two groups: ${n} + ${m} = ${n+m}.`);break;}
-        else if(id==='make-ten-three'){numeric(`${n} + ${10-n} + ${m} = ?`,10+m,null,`First make ten: ${n} + ${10-n} = 10. Then add ${m}.`);break;}
+        else if(['word-equations','word-problems'].includes(id)){numeric(`There are ${n} red balls and ${m} blue balls. How many balls altogether?`,n+m,null,`Add the two groups: ${n} + ${m} = ${n+m}.`);math={op:'add',operands:[n,m],answerRow:null};break;}
+        else if(id==='make-ten-three'){numeric(`${n} + ${10-n} + ${m} = ?`,10+m,null,`First make ten: ${n} + ${10-n} = 10. Then add ${m}.`);math={op:'add',operands:[n,10-n,m],answerRow:null};break;}
         else if(id==='just-one-more'){a=n;b=11-n;}
         else if(id==='doubles'){a=n+4;b=n+4;}
         else if(id==='make-ten-nine'){a=9;b=n;}
@@ -64,7 +66,7 @@ const PLACE_BOOK = (()=>{
         else if(id==='cross-next-ten'){a=28;b=n+1;}
         else if(['addition-20','addition-20-more'].includes(id)){a=8;b=n;}
         else if(['two-digit-carry','two-digit-carry-columns'].includes(id)){a=28;b=12+n;}
-        else if(id==='three-addends'){numeric(`8 + ${n} + ${m} = ?`,8+n+m,null,`Add 8 and ${n}, then add ${m}. The sum is ${8+n+m}.`);break;}
+        else if(id==='three-addends'){numeric(`8 + ${n} + ${m} = ?`,8+n+m,null,`Add 8 and ${n}, then add ${m}. The sum is ${8+n+m}.`);math={op:'add',operands:[8,n,m],answerRow:null};break;}
         else if(id==='missing-addend'){a=8;b=n;missing=true;}
         else if(id==='subtract-to-ten'){a=10+n;b=n;op='−';}
         else if(['addition-to-subtract','subtract-20'].includes(id)){a=12;b=5+n;op='−';}
@@ -72,11 +74,25 @@ const PLACE_BOOK = (()=>{
         else if(id==='tens-minus-digit'){a=40;b=n;op='−';}
         const result=op==='+'?a+b:a-b;
         numeric(missing?`${a} + ? = ${a+b}`:`${a} ${op} ${b} = ?`,missing?b:result,null,`${a} ${op} ${b} = ${result}.`);
+        math={op:op==='+'?'add':'sub',operands:[a,b],answerRow:missing?1:null};
       }
     }
     options=[...new Set([String(answer),...options.map(String)])];
     const rotate=serial%options.length;options=[...options.slice(rotate),...options.slice(0,rotate)];
-    return {skillId:skill.id,page:skill.page,chapter:skill.chapter,prompt,answer:String(answer),choices:options,visual,help};
+    return {skillId:skill.id,page:skill.page,chapter:skill.chapter,prompt,answer:String(answer),choices:options,visual,help,math};
+  }
+  // Display-only worked answer for a completed question. Arithmetic uses the
+  // shared place-value projection; shapes, fractions, measurement, graphs and
+  // coins keep their concept-specific worked text instead of columns.
+  function explain(s) {
+    const q=s&&s.done===true?current(s):null;
+    if(!q)return null;
+    const shown=q.math&&typeof PLACE_ARITHMETIC!=='undefined'?PLACE_ARITHMETIC.explainOperation(q.math.op,q.math.operands,q.math.answerRow):null;
+    if(shown) {
+      const [first,...rest]=q.math.operands,total=q.math.op==='add'?rest.reduce((x,y)=>x+y,first):rest.reduce((x,y)=>x-y,first);
+      return {...shown,equation:`${q.math.operands.join(q.math.op==='add'?' + ':' − ')} = ${total}`};
+    }
+    return {kind:'text',heading:'Worked answer',lines:[q.help,`Answer: ${q.answer}.`]};
   }
   const create=(page,chapter=0)=>({schemaVersion:1,page,chapter,serial:0,completed:0,firstTry:0,yards:0,misses:[],done:false,history:[]});
   const skills=s=>MATH_CURRICULUM.available(s.page).filter(k=>!s.chapter||k.chapter===s.chapter);
@@ -84,6 +100,6 @@ const PLACE_BOOK = (()=>{
   function normalize(s){if(!s||s.schemaVersion!==1||!MATH_CURRICULUM.validPage(s.page)||![0,5,6,7,8,9,10].includes(s.chapter)||!['serial','completed','firstTry','yards'].every(k=>Number.isSafeInteger(s[k])&&s[k]>=0&&s[k]<1e9)||s.firstTry>s.completed||s.completed!==s.serial+Number(s.done)||s.yards>s.completed*5||!Array.isArray(s.misses)||s.misses.length>3||!s.misses.every(v=>typeof v==='string')||typeof s.done!=='boolean'||!Array.isArray(s.history)||s.history.length>100||s.history.some(r=>!MATH_CURRICULUM.CATALOG.some(k=>k.id===r.skillId&&k.page===r.page)||!Number.isInteger(r.serial)||r.serial<1||r.serial>s.completed||!Number.isInteger(r.misses)||r.misses<0||r.misses>3))return null;const q=current(s);if(q&&s.misses.some(v=>v===q.answer||!q.choices.includes(v)))return null;return {schemaVersion:1,page:s.page,chapter:s.chapter,serial:s.serial,completed:s.completed,firstTry:s.firstTry,yards:s.yards,misses:[...s.misses],done:s.done,history:s.history.map(r=>({skillId:r.skillId,page:r.page,serial:r.serial,misses:r.misses}))};}
   function answer(s,value){const q=current(s);if(!q||s.done||!q.choices.includes(value)||s.misses.includes(value)||s.completed>=1e8)return false;if(value===q.answer){s.done=true;s.completed++;if(!s.misses.length)s.firstTry++;s.yards+=s.misses.length?1:5;s.history.push({skillId:q.skillId,page:q.page,serial:s.completed,misses:s.misses.length});s.history=s.history.slice(-100);}else{s.misses.push(value);s.yards-=Math.min(5,s.yards%100);}return true;}
   function next(s){if(!s.done)return false;s.serial++;s.done=false;s.misses=[];return true;}
-  return Object.freeze({question,create,normalize,current,answer,next,skills});
+  return Object.freeze({question,create,normalize,current,answer,next,skills,explain});
 })();
 globalThis.PLACE_BOOK=PLACE_BOOK;

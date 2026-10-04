@@ -2,16 +2,30 @@ import { test, expect } from './curriculum-fixture.mjs';
 const KEY='place-value-practice:facts:v1', MIXED='place-value-practice:arithmetic:v1', PLACE='place-value-practice:progress:v1', SUB='place-value-practice:arithmetic-mode:v1';
 async function freeze(page){const now=new Date('2026-09-09T12:00:00Z');await page.clock.install({time:now});await page.clock.pauseAt(now);}
 test.beforeEach(async({page})=>{await freeze(page);});
-async function autoNext(page){await page.clock.runFor(1000);await settled(page);}
+// A completed question now waits for an explicit Next. Each continuation first
+// proves that time alone (well past the former 650ms hold) changes nothing.
+async function manualNext(page){const before=await snapshot(page);await page.clock.runFor(1000);expect(await snapshot(page)).toEqual(before);await expect(page.locator('#facts-next')).toBeVisible();await page.locator('#facts-next').tap();await settled(page);}
 async function settled(page){await expect(page.locator('#fact-practice')).toHaveAttribute('aria-busy','false');}
 async function snapshot(page){await settled(page);return page.evaluate(()=>__factsTest.snapshot());}
+async function workedLines(page){return page.locator('#facts-worked .arithmetic-explanation-lines li').allTextContents();}
+async function expectedLines(page){return page.evaluate(()=>PLACE_FACTS.explain(__factsTest.snapshot())?.lines??null);}
+// Holds the next Fact store lock request until window[release]() runs. The stub lives on
+// LockManager.prototype and records interception. In WebKit round-1 runs, an override assigned to
+// the navigator.locks instance did not intercept later click-driven requests (the app advanced
+// through the real lock), so these manual-Next lock tests do not rely on that instance form.
+async function holdLock(page,release,except=null){
+ await page.evaluate(({release,except})=>{const proto=Object.getPrototypeOf(navigator.locks),original=proto.request;window.lockHeld=false;
+  proto.request=function(key,fn){if(key===except)return original.call(this,key,fn);window.lockHeld=true;
+   return new Promise(resolve=>{window[release]=()=>{proto.request=original;return original.call(navigator.locks,key,fn).then(resolve);};});};},{release,except});
+}
+async function expectHeld(page){await expect.poll(()=>page.evaluate(()=>window.lockHeld)).toBe(true);await expect(page.locator('#fact-practice')).toHaveAttribute('aria-busy','true');}
 async function boot(page){await page.addInitScript(()=>{localStorage.setItem('place-value-practice:mode:v1','arithmetic');localStorage.setItem('place-value-practice:arithmetic-mode:v1','facts');});await page.goto('/place-value-practice/');await expect(page.locator('#fact-practice')).toBeVisible();}
 async function enter(page,value,touch=false){await settled(page);await page.locator('.facts-keypad').getByRole('button',{name:'Clear',exact:true}).click();if(touch){for(const digit of String(value))await page.locator('.facts-keypad').getByRole('button',{name:digit,exact:true}).click();await page.locator('#facts-check').click();}else{await page.locator('#facts-check').focus();await page.keyboard.type(String(value));await page.keyboard.press('Enter');}await settled(page);}
 async function correct(page,touch=false){await settled(page);const value=await page.evaluate(()=>PLACE_FACTS.byId[__factsTest.snapshot().attempt.factId].answer);await enter(page,value,touch);}
 
 test('stadium-first composition retains large art, a bounded runner and accessible Submit controls',async({page})=>{
  await boot(page);await page.locator('.facts-stadium').evaluate(img=>img.decode());await page.locator('.facts-ball').evaluate(img=>img.decode());
- await expect(page.getByRole('button',{name:'Submit',exact:true})).toBeVisible();await expect(page.locator('#facts-next')).toHaveCount(0);
+ await expect(page.getByRole('button',{name:'Submit',exact:true})).toBeVisible();await expect(page.locator('#facts-next')).toBeHidden();await expect(page.locator('#facts-worked')).toBeHidden();
  const geometry=await page.evaluate(()=>{const rect=s=>document.querySelector(s).getBoundingClientRect(),field=rect('.facts-drive'),runner=rect('.facts-ball'),dock=rect('.facts-dock');return {fieldWidth:field.width,width:innerWidth,fieldHeight:field.height,runnerLeft:runner.left,runnerRight:runner.right,dockTop:dock.top,fieldBottom:field.bottom};});
  expect(geometry.fieldWidth).toBe(geometry.width);expect(geometry.fieldHeight).toBeGreaterThanOrEqual(230);
  expect(geometry.runnerLeft).toBeGreaterThanOrEqual(0);expect(geometry.runnerRight).toBeLessThanOrEqual(geometry.width);
@@ -35,7 +49,9 @@ test('numeric question count accepts exact counts, rejects invalid input, and st
  }
  await count.fill('1');await page.getByRole('button',{name:'Start new fact session'}).click();await correct(page,true);
  const final=await snapshot(page);await expect(page.locator('#facts-recap')).toContainText('1 completed.');await expect(page.locator('#facts-recap')).toBeFocused();
- await page.clock.runFor(5000);expect(await snapshot(page)).toEqual(final);expect(JSON.parse(await page.evaluate(()=>render_game_to_text())).autoAdvancePending).toBe(false);
+ // The session-final answer keeps its explanation beside the recap, with no Next.
+ await expect(page.locator('#facts-worked')).toBeVisible();expect(await workedLines(page)).toEqual(await expectedLines(page));await expect(page.locator('#facts-next')).toBeHidden();
+ await page.clock.runFor(5000);expect(await snapshot(page)).toEqual(final);expect(JSON.parse(await page.evaluate(()=>render_game_to_text())).nextAvailable).toBe(false);
  await page.reload();await page.clock.runFor(5000);expect((await snapshot(page)).session.completed).toBe(1);
 });
 
@@ -46,8 +62,9 @@ test('desktop and ultrawide art preserves aspect ratio with a small decoded WebP
   await page.setViewportSize(viewport);await page.locator('.facts-stadium').evaluate(img=>img.decode());await page.locator('.facts-ball').evaluate(img=>img.decode());
   expect(await page.locator('.facts-stadium').evaluate(img=>({fit:getComputedStyle(img).objectFit,position:getComputedStyle(img).objectPosition,width:img.naturalWidth,height:img.naturalHeight}))).toEqual({fit:'cover',position:'50% 55%',width:2048,height:768});
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
-  await correct(page);await autoNext(page);await expect(page.locator('#facts-answer')).toHaveText('…');await expect(page.locator('#facts-check')).toBeEnabled();
-  await page.screenshot({path:test.info().outputPath(`${viewport.width}-auto-next.png`)});
+  await correct(page);await page.screenshot({path:test.info().outputPath(`${viewport.width}-answered.png`)});
+  await manualNext(page);await expect(page.locator('#facts-answer')).toHaveText('…');await expect(page.locator('#facts-check')).toBeEnabled();
+  await page.screenshot({path:test.info().outputPath(`${viewport.width}-manual-next.png`)});
  }
  expect(loaded).toHaveLength(2);let bytes=0;
  for(const response of loaded){expect(response.url()).toMatch(/\.webp\?v=1\.7\.0$/);bytes+=(await response.body()).length;}
@@ -64,7 +81,7 @@ test('Enter starts an exact-count session and final recap offers an adjacent vis
  await page.clock.runFor(5000);expect(await snapshot(page)).toEqual(done);
  await again.click();await settled(page);const restarted=await snapshot(page);
  expect(restarted.session.completed).toBe(0);expect(restarted.session.target).toBe(1);expect(restarted.drive).toEqual(done.drive);expect(restarted.attempt.id).toBe(done.attempt.id+1);
- await expect(again).toBeHidden();await expect(page.locator('#facts-check')).toBeEnabled();await expect(page.locator('#facts-next')).toHaveCount(0);
+ await expect(again).toBeHidden();await expect(page.locator('#facts-check')).toBeEnabled();await expect(page.locator('#facts-next')).toBeHidden();await expect(page.locator('#facts-worked')).toBeHidden();
 });
 
 test('automatic refresh does not repeat an unchanged stale-tab live announcement',async({page})=>{
@@ -76,70 +93,82 @@ test('automatic refresh does not repeat an unchanged stale-tab live announcement
  },KEY);
  await correct(page);await expect(page.locator('.facts-storage')).toContainText('another tab');
  const remote=await page.evaluate(KEY=>{const s=JSON.parse(localStorage.getItem(KEY));PLACE_FACTS.next(s,s.attempt.id);localStorage.setItem(KEY,JSON.stringify(s));return s;},KEY);
- await autoNext(page);expect(await snapshot(page)).toEqual(remote);
+ await manualNext(page);expect(await snapshot(page)).toEqual(remote);
  expect(await page.evaluate(()=>window.staleAnnouncements.filter(message=>message.includes('another tab')))).toEqual(['Fact progress changed in another tab. Please try again.']);
  await correct(page);await expect(page.locator('.facts-storage')).toHaveText('');expect((await snapshot(page)).drive.totalYards).toBe(10);
 });
 
-test('a success timer that fires during a busy report lock reschedules one automatic next',async({page})=>{
+test('Next during a busy report lock is inert; the released lock never advances on its own',async({page})=>{
  await boot(page);await correct(page);const completed=await snapshot(page);
- await page.evaluate(()=>{const request=navigator.locks.request.bind(navigator.locks);navigator.locks.request=(key,fn)=>new Promise(resolve=>{window.releaseBusyReport=()=>{navigator.locks.request=request;return request(key,fn).then(resolve);};});});
- await page.locator('#facts-report > summary').click();await expect(page.locator('#fact-practice')).toHaveAttribute('aria-busy','true');
- await page.clock.runFor(650);expect(await page.evaluate(()=>__factsTest.snapshot())).toEqual(completed);
- expect(JSON.parse(await page.evaluate(()=>render_game_to_text())).autoAdvancePending).toBe(false);
+ await holdLock(page,'releaseBusyReport');
+ await page.locator('#facts-report > summary').tap();await expectHeld(page);
+ // A tap while the report holds the lock is ignored rather than queued.
+ await page.locator('#facts-next').tap();
+ await page.clock.runFor(2000);expect(await page.evaluate(()=>__factsTest.snapshot())).toEqual(completed);
  await page.evaluate(()=>window.releaseBusyReport());await settled(page);
- expect(JSON.parse(await page.evaluate(()=>render_game_to_text())).autoAdvancePending).toBe(true);
- await page.clock.runFor(649);expect(await snapshot(page)).toEqual(completed);
- await page.clock.runFor(1);await settled(page);const next=await snapshot(page);
+ expect(JSON.parse(await page.evaluate(()=>render_game_to_text())).nextAvailable).toBe(true);
+ await page.clock.runFor(5000);expect(await snapshot(page)).toEqual(completed);await expect(page.locator('#facts-worked')).toBeVisible();
+ await page.locator('#facts-next').tap();await settled(page);const next=await snapshot(page);
  expect(next.attempt.id).toBe(completed.attempt.id+1);expect(next.drive).toEqual(completed.drive);expect(next.serial).toBe(completed.serial);
  await page.clock.runFor(2000);expect(await snapshot(page)).toEqual(next);await expect(page.locator('#facts-check')).toBeFocused();
 });
 
-test('correct completion saves once, holds success for 650ms and advances without another tap',async({page})=>{
+test('correct completion saves once, stays readable well past 650ms and advances only on Next',async({page})=>{
  await boot(page);await enter(page,3);const missed=await snapshot(page);await page.clock.runFor(2000);expect(await snapshot(page)).toEqual(missed);
+ await expect(page.locator('#facts-worked')).toBeHidden();await expect(page.locator('#facts-next')).toBeHidden();
  await page.getByRole('button',{name:'Start new fact session'}).click();await settled(page);
  const before=await snapshot(page);await correct(page,true);const completed=await snapshot(page);expect(completed.serial).toBe(before.serial+1);expect(completed.drive.totalYards).toBe(5);
  await expect(page.locator('#facts-feedback')).toContainText('+5 yards');await expect(page.locator('#facts-check')).toBeDisabled();
- await page.evaluate(()=>{document.querySelector('#facts-check').click();document.querySelector('#facts-show').click();});await page.keyboard.type('123');await page.keyboard.press('Enter');
- await page.clock.runFor(649);expect((await snapshot(page)).attempt.id).toBe(completed.attempt.id);
- await page.clock.runFor(1);await settled(page);const next=await snapshot(page);expect(next.attempt.id).toBe(completed.attempt.id+1);expect(next.attempt.complete).toBe(false);expect(next.serial).toBe(completed.serial);expect(next.drive.totalYards).toBe(5);
- await expect(page.locator('#facts-check')).toBeFocused();await expect(page.locator('#facts-answer')).toHaveText('…');
+ await expect(page.locator('#facts-next')).toBeFocused();
+ await page.evaluate(()=>{document.querySelector('#facts-check').click();document.querySelector('#facts-show').click();});
+ // Outside the Next button, typed digits and Enter cannot change a completed answer or advance it.
+ await page.evaluate(()=>document.activeElement.blur());await page.keyboard.type('123');await page.keyboard.press('Enter');
+ for(const wait of [649,1,5000]){await page.clock.runFor(wait);expect(await snapshot(page)).toEqual(completed);}
+ await expect(page.locator('#facts-worked')).toBeVisible();expect(await workedLines(page)).toEqual(await expectedLines(page));
+ expect(JSON.parse(await page.evaluate(k=>localStorage.getItem(k),KEY))).toEqual(completed);
+ await page.locator('#facts-next').tap();await settled(page);const next=await snapshot(page);expect(next.attempt.id).toBe(completed.attempt.id+1);expect(next.attempt.complete).toBe(false);expect(next.serial).toBe(completed.serial);expect(next.drive.totalYards).toBe(5);
+ await expect(page.locator('#facts-check')).toBeFocused();await expect(page.locator('#facts-answer')).toHaveText('…');await expect(page.locator('#facts-worked')).toBeHidden();
  expect(JSON.parse(await page.evaluate(k=>localStorage.getItem(k),KEY))).toEqual(next);
 });
 
-test('pending automatic next is cancelled by mode change, restart and hidden-page state',async({page})=>{
- await boot(page);await correct(page);let finished=await snapshot(page);
+test('a completed fact waits through mode change and hidden-page state; restart replaces it',async({page})=>{
+ await boot(page);await correct(page);let finished=await snapshot(page);const lines=await workedLines(page);
  await page.getByRole('button',{name:'Place value',exact:true}).click();await page.clock.runFor(2000);expect(await page.evaluate(()=>__factsTest.snapshot())).toEqual(finished);
- await page.getByRole('button',{name:'Arithmetic',exact:true}).click();await settled(page);await expect(page.locator('#facts-award')).toBeHidden();await autoNext(page);expect((await snapshot(page)).attempt.id).toBe(finished.attempt.id+1);
+ await page.getByRole('button',{name:'Arithmetic',exact:true}).click();await settled(page);await expect(page.locator('#facts-award')).toBeHidden();
+ expect(await workedLines(page)).toEqual(lines);
+ await manualNext(page);expect((await snapshot(page)).attempt.id).toBe(finished.attempt.id+1);await expect(page.locator('#facts-worked')).toBeHidden();
  await correct(page);await page.getByRole('spinbutton',{name:'Fact practice question count'}).fill('7');await page.getByRole('button',{name:'Start new fact session'}).click();await settled(page);
  const restarted=await snapshot(page);await page.clock.runFor(2000);expect(await snapshot(page)).toEqual(restarted);expect(restarted.session.target).toBe(7);expect(restarted.session.completed).toBe(0);expect(restarted.drive.totalYards).toBe(10);
+ await expect(page.locator('#facts-worked')).toBeHidden();await expect(page.locator('#facts-next')).toBeHidden();
  await correct(page);finished=await snapshot(page);
  await page.evaluate(()=>{Object.defineProperty(document,'visibilityState',{configurable:true,value:'hidden'});document.dispatchEvent(new Event('visibilitychange'));});
  await page.clock.runFor(2000);expect(await snapshot(page)).toEqual(finished);
- await page.evaluate(()=>{delete document.visibilityState;document.dispatchEvent(new Event('visibilitychange'));});await autoNext(page);expect((await snapshot(page)).attempt.id).toBe(finished.attempt.id+1);
+ await page.evaluate(()=>{delete document.visibilityState;document.dispatchEvent(new Event('visibilitychange'));});await manualNext(page);expect((await snapshot(page)).attempt.id).toBe(finished.attempt.id+1);
 });
 
-test('delayed auto-advance lock cannot cross a mode lifecycle or overwrite a newer saved attempt',async({page})=>{
+test('a Next queued behind a lock cannot cross a mode lifecycle or overwrite a newer saved attempt',async({page})=>{
  await boot(page);await correct(page);const completed=await snapshot(page);
- await page.evaluate(()=>{const original=navigator.locks.request.bind(navigator.locks);navigator.locks.request=(key,fn)=>new Promise(resolve=>{window.releaseAutoLock=()=>{navigator.locks.request=original;return original(key,fn).then(resolve);};});});
- await page.clock.runFor(650);await expect(page.locator('#fact-practice')).toHaveAttribute('aria-busy','true');
- await page.getByRole('button',{name:'Place value',exact:true}).click();await page.getByRole('button',{name:'Arithmetic',exact:true}).click();await settled(page);
+ await holdLock(page,'releaseAutoLock');
+ await page.locator('#facts-next').tap();await expectHeld(page);
+ await page.getByRole('button',{name:'Place value',exact:true}).tap();await page.getByRole('button',{name:'Arithmetic',exact:true}).tap();await settled(page);
  await page.evaluate(()=>window.releaseAutoLock());await settled(page);expect(await snapshot(page)).toEqual(completed);
- await autoNext(page);expect((await snapshot(page)).attempt.id).toBe(completed.attempt.id+1);
+ await manualNext(page);expect((await snapshot(page)).attempt.id).toBe(completed.attempt.id+1);
  await correct(page);const newer=await page.evaluate(KEY=>{const s=__factsTest.snapshot();PLACE_FACTS.next(s,s.attempt.id);const bytes=JSON.stringify(s);localStorage.setItem(KEY,bytes);return bytes;},KEY);
- await autoNext(page);expect(await page.evaluate(k=>localStorage.getItem(k),KEY)).toBe(newer);expect(await snapshot(page)).toEqual(JSON.parse(newer));await expect(page.locator('.facts-storage')).toContainText('another tab');
+ await manualNext(page);expect(await page.evaluate(k=>localStorage.getItem(k),KEY)).toBe(newer);expect(await snapshot(page)).toEqual(JSON.parse(newer));await expect(page.locator('.facts-storage')).toContainText('another tab');
+ await expect(page.locator('#facts-worked')).toBeHidden();
 });
 
-test('restart cancels an already waiting automatic write and a hidden completion cannot award',async({page})=>{
+test('restart cancels an already queued Next write and a hidden completion cannot award',async({page})=>{
  await boot(page);await correct(page);const complete=await snapshot(page);
- const hold=()=>page.evaluate(()=>{const original=navigator.locks.request.bind(navigator.locks);navigator.locks.request=(key,fn)=>key==='math-curriculum:progress:v1'?original(key,fn):new Promise(resolve=>{window.releaseQueuedLock=()=>{navigator.locks.request=original;return original(key,fn).then(resolve);};});});
- await hold();await page.clock.runFor(650);await expect(page.locator('#fact-practice')).toHaveAttribute('aria-busy','true');
- await page.getByRole('spinbutton',{name:'Fact practice question count'}).fill('3');await page.getByRole('button',{name:'Start new fact session'}).click();
+ // The shared curriculum confirmation lock passes through so the restart can reach its own write.
+ const hold=()=>holdLock(page,'releaseQueuedLock','math-curriculum:progress:v1');
+ await hold();await page.locator('#facts-next').tap();await expectHeld(page);
+ await page.getByRole('spinbutton',{name:'Fact practice question count'}).fill('3');await page.getByRole('button',{name:'Start new fact session'}).tap();
  await page.evaluate(()=>window.releaseQueuedLock());await expect.poll(async()=>(await snapshot(page)).session.target).toBe(3);
  const restarted=await snapshot(page);expect(restarted.attempt.id).toBe(complete.attempt.id+1);expect(restarted.serial).toBe(1);expect(restarted.drive.totalYards).toBe(5);await page.clock.runFor(2000);expect(await snapshot(page)).toEqual(restarted);
  const answer=await page.evaluate(()=>PLACE_FACTS.byId[__factsTest.snapshot().attempt.factId].answer);
- await hold();for(const digit of String(answer))await page.locator('.facts-keypad').getByRole('button',{name:digit,exact:true}).click();await page.locator('#facts-check').click();
- await expect(page.locator('#fact-practice')).toHaveAttribute('aria-busy','true');await page.getByRole('button',{name:'Place value',exact:true}).click();
+ await hold();for(const digit of String(answer))await page.locator('.facts-keypad').getByRole('button',{name:digit,exact:true}).tap();await page.locator('#facts-check').tap();
+ await expectHeld(page);await page.getByRole('button',{name:'Place value',exact:true}).tap();
  await page.evaluate(()=>window.releaseQueuedLock());await settled(page);expect(await page.evaluate(()=>__factsTest.snapshot())).toEqual(restarted);
  await page.clock.runFor(2000);expect(JSON.parse(await page.evaluate(k=>localStorage.getItem(k),KEY))).toEqual(restarted);
 });
@@ -190,7 +219,7 @@ test('miss, voluntary help, automatic help and report completion all earn one ya
 
 test('wrong answers and requested help visibly move the runner backwards and persist across reload',async({page})=>{
  await boot(page);
- for(let i=0;i<4;i++){await correct(page);await autoNext(page);}
+ for(let i=0;i<4;i++){await correct(page);await manualNext(page);}
  const field=page.getByRole('progressbar',{name:'Touchdown drive'});
  await expect(field).toHaveAttribute('aria-valuenow','20');
  const start=await page.locator('.facts-ball').evaluate(el=>parseFloat(el.style.left));
@@ -215,7 +244,7 @@ test('wrong answers and requested help visibly move the runner backwards and per
 });
 
 test('one-yard setback uses singular copy and zero-yard help stays observable',async({page})=>{
- await boot(page);await page.getByRole('button',{name:'Help me',exact:true}).click();await correct(page);await autoNext(page);
+ await boot(page);await page.getByRole('button',{name:'Help me',exact:true}).click();await correct(page);await manualNext(page);
  await expect(page.locator('#facts-yards')).toHaveText('1 / 100 yards');
  const answer=await page.evaluate(()=>PLACE_FACTS.byId[__factsTest.snapshot().attempt.factId].answer);
  await enter(page,(answer+1)%19);await expect(page.locator('#facts-award')).toHaveText('−1 yard');
@@ -242,7 +271,10 @@ for(const startingYards of [95,96,98])test(`touchdown from ${startingYards} yard
  await expect(page.locator('#facts-award')).toHaveText('Touchdown! +6 points');await expect(page.locator('#facts-check')).toBeDisabled();
  await expect(page.locator('#facts-feedback')).toContainText(remaining?`Touchdown! ${remaining} yard${remaining===1?'':'s'} saved for your next drive. Extra-point kick next.`:'Touchdown! Extra-point kick next.');
  await expect(page.locator('#facts-feedback')).not.toContainText('0 yards into');
- for(const selector of ['.facts-drive','#facts-check'])expect(await page.locator(selector).evaluate(el=>{const r=el.getBoundingClientRect();return r.top>=0&&r.bottom<=innerHeight;}),selector).toBe(true);
+ // The touchdown waits for an explicit Next, which must stay reachable with the celebrating drive.
+ await expect(page.locator('#facts-next')).toHaveText('Next: extra-point kick');expect((await snapshot(page)).attempt.kind).toBe('drive');
+ // Soft: the .facts-drive clearance is a known WebKit iPhone baseline failure (#147); the Next result must still be reported.
+ for(const selector of ['.facts-drive','#facts-next'])expect.soft(await page.locator(selector).evaluate(el=>{const r=el.getBoundingClientRect();return r.top>=0&&r.bottom<=innerHeight;}),selector).toBe(true);
  await page.emulateMedia({reducedMotion:'reduce'});
  expect(await page.locator('#facts-award').evaluate(el=>getComputedStyle(el).animationName)).toBe('none');
  expect(await page.locator('.facts-ball').evaluate(el=>getComputedStyle(el).transitionProperty)).toBe('none');
@@ -256,7 +288,7 @@ for(const startingYards of [95,96,98])test(`touchdown from ${startingYards} yard
 });
 
 test('legacy facts migrate on a locked action; damaged drive metadata preserves instructional records',async({page})=>{
- await boot(page);await correct(page);await autoNext(page);await settled(page);
+ await boot(page);await correct(page);await manualNext(page);await settled(page);
  const legacy=await page.evaluate(KEY=>{const s=__factsTest.snapshot();s.schemaVersion=1;delete s.drive;delete s.attempt.rewardSupported;const bytes=JSON.stringify(s);localStorage.setItem(KEY,bytes);return bytes;},KEY);
  await page.reload();expect(await page.evaluate(k=>localStorage.getItem(k),KEY)).toBe(legacy);
  expect((await snapshot(page)).drive.totalYards).toBe(0);await correct(page);
@@ -265,7 +297,7 @@ test('legacy facts migrate on a locked action; damaged drive metadata preserves 
  await page.reload();expect(await page.evaluate(k=>localStorage.getItem(k),KEY)).toBe(corrupt);
  expect((await snapshot(page)).facts).toEqual(migrated.facts);expect((await snapshot(page)).drive.totalYards).toBe(0);
  await expect(page.locator('.facts-storage')).toContainText('Your learning progress is preserved');
- await autoNext(page);await settled(page);await expect(page.locator('.facts-storage')).not.toContainText('saved drive could not be read');
+ await manualNext(page);await settled(page);await expect(page.locator('.facts-storage')).not.toContainText('saved drive could not be read');
  await correct(page);expect((await snapshot(page)).drive.totalYards).toBe(5);
 });
 
@@ -274,7 +306,7 @@ test('repair notice remains when a repaired drive cannot be saved',async({page})
  await page.evaluate(KEY=>{const s=__factsTest.snapshot();s.drive.totalYards=-1;localStorage.setItem(KEY,JSON.stringify(s));},KEY);
  await page.reload();await expect(page.locator('.facts-storage')).toContainText('saved drive could not be read');
  await page.evaluate(()=>{Storage.prototype.setItem=function(){throw Error('quota');};});
- await autoNext(page);await settled(page);
+ await manualNext(page);await settled(page);
  await expect(page.locator('.facts-storage')).toContainText('saved drive could not be read');
  await expect(page.locator('.facts-drive-info')).toContainText('unsaved');
 });
@@ -282,7 +314,11 @@ test('repair notice remains when a repaired drive cannot be saved',async({page})
 test('miss and shown-answer states keep the drive and practice controls reachable without obstruction',async({page})=>{
  await boot(page);
  async function reachable(complete,shown){
-  const selectors=['.facts-drive','#facts-equation','.facts-keypad','.facts-controls','#facts-feedback',...(shown?['#facts-support']:[]),...(complete?['#facts-check']:[])];
+  // Before completion the entry controls and any shown help stay reachable; afterwards
+  // the worked explanation and Next replace the keypad and answer controls.
+  const selectors=complete?['.facts-drive','#facts-equation','#facts-feedback','#facts-worked','#facts-next']:
+   ['.facts-drive','#facts-equation','.facts-keypad','.facts-controls','#facts-feedback',...(shown?['#facts-support']:[])];
+  for(const selector of complete?['.facts-keypad','.facts-controls','#facts-support']:['#facts-worked','#facts-next'])await expect(page.locator(selector)).toBeHidden();
   // A normal vertical scroll can reveal the whole working area together, even
   // when the extra worked example moves the header above a short viewport.
   await page.locator('.facts-drive').evaluate(el=>el.scrollIntoView({block:'start',behavior:'instant'}));
@@ -305,6 +341,8 @@ test('miss and shown-answer states keep the drive and practice controls reachabl
   await correct(page,true);await reachable(true,kind!=='miss');
   await expect(page.locator('#facts-feedback')).toContainText('+1 yard');
   await expect(page.locator('#facts-check')).toBeDisabled();
+  expect(await workedLines(page)).toEqual(['7 + 6 = 13 ones = 1 ten 3 ones']);
+  expect(await page.locator('#fact-practice button:visible').evaluateAll(bs=>bs.every(b=>{const r=b.getBoundingClientRect();return r.height>=44&&r.width>=44;}))).toBe(true);
   await page.screenshot({path:test.info().outputPath(`drive-${kind}-completed.png`)});
  }
 });
@@ -322,7 +360,7 @@ test('toggle-only report exposure also marks a warm prompt as supported for driv
 
 test('mixed practice is the default and presentation changes do not change its arithmetic',async({page})=>{
  await page.goto('/place-value-practice/');
- await expect(page.locator('#game-version')).toHaveText('Version 1.8.1');
+ await expect(page.locator('#game-version')).toHaveText('Version 1.8.2');
  await page.getByRole('button',{name:'Arithmetic',exact:true}).click();await settled(page);
  await expect(page.locator('#arithmetic-practice')).toBeVisible();
  await expect(page.getByRole('button',{name:'Mixed practice',exact:true})).toHaveAttribute('aria-pressed','true');
@@ -403,7 +441,7 @@ test('report stays closed during another locked action on eligible and warm prom
 
 test('stale-tab refresh closes an open report before showing a newer eligible attempt',async({page,context})=>{
  await boot(page);await page.locator('#facts-report > summary').click();await expect(page.locator('#facts-report')).toHaveAttribute('open','');
- const other=await context.newPage();await freeze(other);await other.goto('/place-value-practice/');await correct(other);await autoNext(other);await settled(other);
+ const other=await context.newPage();await freeze(other);await other.goto('/place-value-practice/');await correct(other);await manualNext(other);await settled(other);
  const fresh=await snapshot(other);expect(fresh.attempt.eligible).toBe(true);
  await correct(page);await expect(page.locator('#facts-report')).not.toHaveAttribute('open','');expect((await snapshot(page)).attempt.id).toBe(fresh.attempt.id);
  expect((await snapshot(page)).attempt.eligible).toBe(true);
@@ -417,7 +455,8 @@ test('five and ten question sessions with touch and keyboard; report, focus, rec
  for(const target of [5,10]){
   await page.getByLabel('Fact practice question count').fill(String(target));await page.getByRole('button',{name:'Start new fact session'}).click();
   for(let i=0;i<target;i++){const before=await snapshot(page);await correct(page,i%2===0);expect((await snapshot(page)).session.completed).toBe(i+1);
-   await expect(page.locator('#facts-check')).toBeDisabled();if(i<target-1){await autoNext(page);expect((await snapshot(page)).attempt.id).not.toBe(before.attempt.id);}}
+   await expect(page.locator('#facts-check')).toBeDisabled();expect(await workedLines(page)).toEqual(await expectedLines(page));
+   if(i<target-1){await manualNext(page);expect((await snapshot(page)).attempt.id).not.toBe(before.attempt.id);}}
   await expect(page.locator('#facts-recap')).toContainText(`${target} completed`);await expect(page.locator('#facts-report')).not.toHaveAttribute('open','');
   await page.locator('#facts-report > summary').click();await expect(page.locator('#facts-report')).toContainText('reading and tapping');
   expect((await page.evaluate(()=>JSON.parse(render_game_to_text()))).submode).toBe('facts');
@@ -428,15 +467,18 @@ test('five and ten question sessions with touch and keyboard; report, focus, rec
  await page.screenshot({path:test.info().outputPath('facts-recap.png')});
 });
 
-test('empty, bounded, leading-zero and backspace entry; same-tick duplicate Submit and automatic advances are inert',async({page})=>{
+test('empty, bounded, leading-zero and backspace entry; same-tick duplicate Submit and Next taps are inert',async({page})=>{
  await boot(page);await page.locator('#facts-check').click();expect((await snapshot(page)).attempt.firstCorrect).toBeNull();
  await page.locator('#facts-check').focus();await page.keyboard.type('02');await expect(page.locator('#facts-answer')).toHaveText('2');
  await page.keyboard.type('999');await expect(page.locator('#facts-answer')).toHaveText('2');
  await page.keyboard.press('Backspace');await expect(page.locator('#facts-answer')).toHaveText('…');
  await page.keyboard.type('2');await page.evaluate(()=>{document.querySelector('#facts-check').click();document.querySelector('#facts-check').click();});
  expect((await snapshot(page)).serial).toBe(1);const id=(await snapshot(page)).attempt.id;
- await autoNext(page);await autoNext(page);
- expect((await snapshot(page)).attempt.id).toBe(id+1);
+ await page.clock.runFor(2000);expect((await snapshot(page)).attempt.id).toBe(id);
+ // Two synthetic DOM clicks in one task model a same-tick double activation that taps cannot produce.
+ await page.evaluate(()=>{document.querySelector('#facts-next').click();document.querySelector('#facts-next').click();});await settled(page);
+ await page.evaluate(()=>document.querySelector('#facts-next').click());await settled(page);
+ expect((await snapshot(page)).attempt.id).toBe(id+1);expect((await snapshot(page)).attempt.complete).toBe(false);
 });
 
 test('wrong attempt survives reload with retry intent, help acknowledges without check credit',async({page})=>{
@@ -446,7 +488,7 @@ test('wrong attempt survives reload with retry intent, help acknowledges without
  await enter(page,4);await expect(page.locator('#facts-support')).toContainText('5 + 2 = 7');expect((await snapshot(page)).attempt.helped).toBe(true);
  await correct(page);const s=await snapshot(page);expect(s.facts['sub:7:5'].checks).toBe(0);expect(s.facts['sub:7:5'].history[0].outcome).toBe('shown');
  await page.screenshot({path:test.info().outputPath('facts-shown.png')});
- await autoNext(page);expect((await snapshot(page)).attempt.factId).not.toBe('sub:7:5');
+ await manualNext(page);expect((await snapshot(page)).attempt.factId).not.toBe('sub:7:5');
 });
 
 test('Enter preserves button actions and answer controls describe the current equation',async({page})=>{
@@ -460,7 +502,7 @@ test('Enter preserves button actions and answer controls describe the current eq
  await expect(page.locator('#facts-answer')).toHaveText('2');expect((await snapshot(page)).attempt.complete).toBe(false);
  await page.locator('#facts-show').focus();await page.keyboard.press('Enter');expect((await snapshot(page)).attempt.helped).toBe(true);
  await page.getByRole('button',{name:'Mixed practice',exact:true}).focus();await page.keyboard.press('Enter');await expect(page.locator('#fact-practice')).toBeHidden();
- await page.getByRole('button',{name:'Fact focus',exact:true}).click();await correct(page);await autoNext(page);
+ await page.getByRole('button',{name:'Fact focus',exact:true}).click();await correct(page);await manualNext(page);
  await expect(page.locator('#facts-check')).toBeFocused();expect(await page.locator('#facts-equation').textContent()).not.toBe(oldEquation);
  await expect(page.locator('#facts-check')).toHaveAccessibleDescription(await page.locator('#facts-equation').textContent());
 });
@@ -506,7 +548,7 @@ test('direct Facts boot preserves absent, malformed and future Mixed and Place V
   await page.evaluate(({bytes,MIXED,PLACE,SUB,KEY})=>{for(const k of [MIXED,PLACE])if(bytes===null)localStorage.removeItem(k);else localStorage.setItem(k,bytes);
    localStorage.removeItem(KEY);localStorage.setItem('place-value-practice:mode:v1','arithmetic');localStorage.setItem(SUB,'facts');},{bytes,MIXED,PLACE,SUB,KEY});
   await page.reload();await expect(page.locator('#fact-practice')).toBeVisible();expect(await page.evaluate(()=>__arithmeticTest.snapshot())).toBeNull();
-  await correct(page);await autoNext(page);await settled(page);await page.reload();await correct(page);
+  await correct(page);await manualNext(page);await settled(page);await page.reload();await correct(page);
   for(const k of [MIXED,PLACE])expect(await page.evaluate(k=>localStorage.getItem(k),k)).toBe(bytes);
   expect(await page.evaluate(k=>localStorage.getItem(k),SUB)).toBe('facts');
  }
@@ -544,7 +586,7 @@ test('stale simultaneous tabs resynchronize; newer schema introduced after boot 
  expect((await snapshot(page)).drive.totalYards).toBe(1);expect((await snapshot(other)).drive.totalYards).toBe(1);
  expect(await other.evaluate(k=>localStorage.getItem(k),KEY)).toBe(saved);await expect(other.locator('.facts-storage')).toContainText('another tab');
  await other.getByRole('button',{name:'Place value',exact:true}).click();
- await autoNext(page);await settled(page);const newSaved=await page.evaluate(k=>localStorage.getItem(k),KEY);
+ await manualNext(page);await settled(page);const newSaved=await page.evaluate(k=>localStorage.getItem(k),KEY);
  await other.getByRole('button',{name:'Arithmetic',exact:true}).click();await settled(page);
  await other.getByRole('button',{name:'Start new fact session'}).click();await settled(other);expect(await other.evaluate(k=>localStorage.getItem(k),KEY)).toBe(newSaved);
  const future=' {"schemaVersion":99} ';await page.evaluate(({KEY,future})=>localStorage.setItem(KEY,future),{KEY,future});
@@ -582,8 +624,11 @@ test('session-final touchdown requires its persisted bonus kick before recap and
  await finalTouchdownSetup(page);
  await expect(page.locator('#facts-recap')).toBeHidden();
  expect((await snapshot(page)).session.completed).toBe(20);
- await page.reload();await autoNext(page);
- await expect(page.getByRole('button',{name:'Kick for +1',exact:true})).toBeVisible();
+ // The touchdown's explanation survives reload; the kick is not presented until Next.
+ await page.reload();expect(await workedLines(page)).toEqual(await expectedLines(page));expect((await snapshot(page)).attempt.kind).toBe('drive');
+ await expect(page.getByRole('button',{name:'Kick for +1',exact:true})).toBeHidden();
+ await manualNext(page);
+ await expect(page.getByRole('button',{name:'Kick for +1',exact:true})).toBeVisible();await expect(page.locator('#facts-worked')).toBeHidden();
  await expect(page.locator('#fact-practice')).toContainText('Extra-point kick');
  await expect(page.locator('#facts-recap')).toBeHidden();
  const kick=await snapshot(page);expect(kick.attempt.kind).toBe('extraPoint');
@@ -595,6 +640,8 @@ test('session-final touchdown requires its persisted bonus kick before recap and
  await correct(page);const completed=await snapshot(page);
  expect(completed.attempt.kickResult).toBe('good');expect(completed.drive.totalYards).toBe(100);expect(completed.drive.extraPoints).toBe(1);expect(completed.session.completed).toBe(20);expect(completed.session.bonusCompleted).toBe(1);
  await expect(page.locator('#facts-score')).toHaveText('Score: 7');await expect(page.locator('#facts-recap')).toBeVisible();
+ // The final kick question still explains its fact beside the recap; there is nothing to continue to.
+ await expect(page.locator('#facts-worked')).toBeVisible();expect(await workedLines(page)).toEqual(await expectedLines(page));await expect(page.locator('#facts-next')).toBeHidden();
  await page.screenshot({path:test.info().outputPath('extra-point-good.png')});
  const bytes=await page.evaluate(k=>localStorage.getItem(k),KEY);
  await correct(other);expect((await snapshot(other)).drive.extraPoints).toBe(1);expect(await other.evaluate(k=>localStorage.getItem(k),KEY)).toBe(bytes);
@@ -605,7 +652,7 @@ test('session-final touchdown requires its persisted bonus kick before recap and
 });
 
 for(const support of ['wrong','help','report'])test(`bonus ${support} forfeits the point while allowing the question to finish`,async({page})=>{
- await finalTouchdownSetup(page);await autoNext(page);expect((await snapshot(page)).attempt.kind).toBe('extraPoint');
+ await finalTouchdownSetup(page);await manualNext(page);expect((await snapshot(page)).attempt.kind).toBe('extraPoint');
  const before=await snapshot(page);
  if(support==='wrong'){
   const answer=await page.evaluate(()=>PLACE_FACTS.byId[__factsTest.snapshot().attempt.factId].answer);await enter(page,(answer+1)%19);
@@ -619,4 +666,63 @@ for(const support of ['wrong','help','report'])test(`bonus ${support} forfeits t
  await expect(page.locator('#facts-score')).toHaveText('Score: 6');await expect(page.locator('#facts-recap')).toBeVisible();
  await page.screenshot({path:test.info().outputPath(`extra-point-${support}-missed.png`)});
  await page.reload();await expect(page.locator('#facts-score')).toHaveText('Score: 6');expect((await snapshot(page)).attempt.complete).toBe(true);
+ await expect(page.locator('#facts-worked')).toBeVisible();expect(await workedLines(page)).toEqual(await expectedLines(page));
 });
+
+// Issue #146: completed facts show the Mixed place-value alignment and wait for Next.
+async function expectNoExplanation(page){
+ await expect(page.locator('#facts-worked')).toBeHidden();await expect(page.locator('#facts-worked')).toHaveText('');
+ const text=JSON.parse(await page.evaluate(()=>render_game_to_text()));expect(text.explanation).toBeNull();expect(text.nextAvailable).toBe(false);
+}
+
+test('an unseeded first fact explains its place value only after correct keyboard entry and Next continues by keyboard',async({page})=>{
+ const errors=[];page.on('pageerror',e=>errors.push(e.message));await boot(page);
+ const first=await snapshot(page);expect(first.attempt.factId).toBe('sub:7:5');await expectNoExplanation(page);
+ await page.locator('#facts-check').focus();await page.keyboard.type('3');await page.keyboard.press('Enter');await settled(page);
+ await expectNoExplanation(page);await page.keyboard.type('2');await page.keyboard.press('Enter');await settled(page);
+ const done=await snapshot(page);expect(done.attempt.complete).toBe(true);expect(done.facts['sub:7:5'].history.at(-1).outcome).toBe('retry');
+ const box=page.locator('#facts-worked');await expect(box).toBeVisible();await expect(box.locator('h4')).toHaveText('Line up the ones');
+ expect(await box.locator('.place-name:not(.place-sign)').allTextContents()).toEqual(['Ones']);expect(await workedLines(page)).toEqual(['7 − 5 = 2 ones']);
+ await expect(box.locator('.place-columns')).toHaveAttribute('aria-hidden','true');await expect(box).toHaveAccessibleName('Line up the ones');
+ await expect(page.locator('#facts-feedback')).toContainText('You worked it out after another try.');await expect(page.locator('#facts-next')).toBeFocused();
+ await expect(page.locator('.facts-keypad')).toBeHidden();
+ await page.clock.runFor(5000);expect(await snapshot(page)).toEqual(done);
+ const text=JSON.parse(await page.evaluate(()=>render_game_to_text()));expect(text.explanation.lines).toEqual(['7 − 5 = 2 ones']);expect(text.nextAvailable).toBe(true);
+ expect(JSON.parse(await page.evaluate(k=>localStorage.getItem(k),KEY))).toEqual(done);expect(await page.evaluate(k=>localStorage.getItem(k),KEY)).not.toContain('Line up');
+ await page.screenshot({path:test.info().outputPath('facts-answered.png')});
+ await page.reload();expect(await snapshot(page)).toEqual(done);expect(await workedLines(page)).toEqual(['7 − 5 = 2 ones']);
+ await page.locator('#facts-next').focus();await page.keyboard.press('Enter');await settled(page);
+ const next=await snapshot(page);expect(next.attempt.id).toBe(done.attempt.id+1);await expect(page.locator('#facts-check')).toBeFocused();await expectNoExplanation(page);
+ const answer=String(await page.evaluate(()=>PLACE_FACTS.byId[__factsTest.snapshot().attempt.factId].answer));
+ await page.keyboard.type(answer);await page.keyboard.press('Enter');await settled(page);
+ expect((await snapshot(page)).attempt.complete).toBe(true);await expect(page.locator('#facts-next')).toBeFocused();expect(await workedLines(page)).toEqual(await expectedLines(page));
+ // Just arithmetic shows the same explanation without the drive.
+ await page.getByRole('button',{name:'Just arithmetic',exact:true}).click();await settled(page);await expect(page.locator('.facts-drive')).toBeHidden();
+ await expect(page.locator('#facts-worked')).toBeVisible();expect(await workedLines(page)).toEqual(await expectedLines(page));
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+ await page.screenshot({path:test.info().outputPath('facts-answered-plain.png')});expect(errors).toEqual([]);
+});
+
+test('retry and shown-answer completions keep their outcomes; the explanation never appears before correct entry',async({page})=>{
+ await boot(page);
+ for(const kind of ['first','retry','shown']){
+  await page.getByRole('button',{name:'Start new fact session'}).click();await settled(page);
+  const start=await snapshot(page),id=start.attempt.factId,answer=PLACE_FACTS_ANSWER(id);
+  if(kind!=='first')await enter(page,(answer+1)%19,true);
+  if(kind==='shown'){await page.locator('#facts-show').click();await settled(page);await expect(page.locator('#facts-support')).toBeVisible();}
+  await expectNoExplanation(page);
+  await correct(page,true);const done=await snapshot(page),row=done.facts[id];
+  expect(row.history.at(-1).outcome).toBe({first:'first-correct',retry:'retry',shown:'shown'}[kind]);
+  expect(row.checks).toBe(start.facts[id].checks+(kind==='first'&&start.attempt.eligible?1:0));
+  expect(done.session.firstTry).toBe(kind==='first'?1:0);expect(done.session.helped).toBe(kind==='first'?0:1);
+  // Existing reward rules: each wrong answer and Help me moves back up to 5 yards; a supported finish earns 1.
+  const setback=yards=>yards-Math.min(5,yards%100);let expected=start.drive.totalYards;
+  if(kind!=='first')expected=setback(expected);if(kind==='shown')expected=setback(expected);
+  expect(done.drive.totalYards).toBe(expected+(kind==='first'?5:1));
+  await expect(page.locator('#facts-support')).toBeHidden();
+  expect(await workedLines(page)).toEqual(await expectedLines(page));
+  await page.reload();expect(await snapshot(page)).toEqual(done);expect(await workedLines(page)).toEqual(await expectedLines(page));
+  await manualNext(page);await expectNoExplanation(page);
+ }
+});
+function PLACE_FACTS_ANSWER(id){const [op,a,b]=id.split(':');return op==='add'?Number(a)+Number(b):Number(a)-Number(b);}

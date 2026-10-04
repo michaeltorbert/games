@@ -236,6 +236,13 @@
         typicalMs:timed.length?timed[Math.floor(timed.length/2)]:null};});
     return {rows,additionChecked:rows.filter(r=>r.id.startsWith('add:')&&r.checks>0).length,subtractionChecked:rows.filter(r=>r.id.startsWith('sub:')&&r.checks>0).length};
   }
+  // Display-only place-value working for the completed catalog fact. A shown
+  // answer is not completion, and nothing here reads or writes evidence.
+  function explain(s) {
+    const q=s&&s.attempt,f=q&&byId[q.factId];
+    if(!f||q.complete!==true||typeof PLACE_ARITHMETIC==='undefined')return null;
+    return PLACE_ARITHMETIC.explainOperation(f.op,[f.a,f.b]);
+  }
   globalThis.PLACE_FACTS=Object.freeze({SCHEMA_VERSION:3,LIMIT,HISTORY,INTERVALS,catalog:Object.freeze(catalog),families:Object.freeze(families),byId:Object.freeze(byId),
-    create,normalize,select,answer,show,reportOpened,next,restart,report,equation,help,threshold,other,drive,driveNeedsRepair,pendingKick,score,sessionDone,configure,repair});
+    create,normalize,select,answer,show,reportOpened,next,restart,report,equation,help,explain,threshold,other,drive,driveNeedsRepair,pendingKick,score,sessionDone,configure,repair});
 })();

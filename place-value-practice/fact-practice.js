@@ -3,9 +3,10 @@
   'use strict';
   const api=PLACE_FACTS,KEY='place-value-practice:facts:v1';
   let model=null,savedRaw=null,writable=true,message='',active=false,busy=false,input='',origin=null,timingInvalid=true,renderToken=0;
-  let lastAward=null,driveNotice='',pendingAdvance=null,advanceEpoch=0,lifecycle=0,restartIntent=0,restarting=false,whenIdle=Promise.resolve();
+  // A completed question waits for an explicit Next so its worked explanation can be read.
+  // nextEpoch lets restart, stale-tab refresh and mode changes cancel a Next still queued for the lock.
+  let lastAward=null,driveNotice='',nextEpoch=0,lifecycle=0,restartIntent=0,whenIdle=Promise.resolve();
   let sessionPage=null;
-  const ADVANCE_MS=650,TOUCHDOWN_MS=900;
   const node=(tag,text,cls)=>{const n=document.createElement(tag);if(text)n.textContent=text;if(cls)n.className=cls;return n;};
   const panel=node('main');panel.id='fact-practice';panel.hidden=true;panel.setAttribute('aria-busy','false');
   const title=node('h2','Fact focus','sr-only');title.id='facts-title';panel.setAttribute('aria-labelledby',title.id);
@@ -48,7 +49,11 @@
   const recap=node('div');recap.id='facts-recap';recap.tabIndex=-1;
   const recapText=node('p'),again=button('Practice again',restartSession,'button button--primary');again.id='facts-again';recap.append(recapText,again);
   const question=node('div',null,'facts-question');question.append(count,entry,support,feedback,recap);
-  const dock=node('div',null,'facts-dock');dock.append(question,keypad,controls);
+  // After completion these take the keypad and answer-control places, keeping the dock's footprint.
+  const worked=node('section',null,'arithmetic-explanation facts-worked');worked.id='facts-worked';worked.hidden=true;
+  const nextButton=button('Next',goNext,'button button--primary');nextButton.id='facts-next';
+  const continueBox=node('div',null,'facts-continue');continueBox.hidden=true;continueBox.append(nextButton);
+  const dock=node('div',null,'facts-dock');dock.append(question,keypad,controls,worked,continueBox);
   const report=node('details');report.id='facts-report';const summary=node('summary','Grown-up report');
   let openingReport=false;
   async function openReport(){
@@ -71,27 +76,19 @@
   const scoring=node('p','Drive rules: 5 yards on the first try without help; 1 yard for finishing after a retry, Help me, or opening this report. Each wrong answer or Help me moves back 5 yards, stopping at the start of the current drive. Automatic help after two misses adds no extra loss. A touchdown scores 6 points, followed by a bonus extra-point question. A first-try answer without help or report exposure earns 1 more point. A miss or help forfeits that point; finish the question for practice. Kicks never change yards and do not count toward your chosen session length. Earned points stay safe. These are practice rewards, not learning checks.');reportContent.after(scoring,scope);
   const meta=node('div',null,'facts-meta');meta.append(setup,report,driveInfo,storage);
   panel.append(title,drive,dock,meta);
-  function cancelAdvance(){advanceEpoch++;if(pendingAdvance)clearTimeout(pendingAdvance.timer);pendingAdvance=null;}
-  async function advance(pending){
-    if(pendingAdvance!==pending)return;pendingAdvance=null;
-    if(!active||document.visibilityState==='hidden'||pending.epoch!==advanceEpoch||model.attempt.id!==pending.id)return;
-    await change(()=>api.next(model,pending.id),pending.epoch);
-  }
-  function scheduleAdvance(){
-    if(pendingAdvance||!active||busy||restarting||sessionPage!==null&&sessionPage<17||document.visibilityState==='hidden'||!model?.attempt.complete||api.sessionDone(model))return;
-    const delay=lastAward?.touchdown?TOUCHDOWN_MS:ADVANCE_MS;
-    const pending={id:model.attempt.id,epoch:advanceEpoch,due:performance.now()+delay,timer:null};
-    pendingAdvance=pending;pending.timer=setTimeout(()=>advance(pending),delay);
+  function cancelNext(){nextEpoch++;}
+  function goNext(){
+    if(!active||busy||!model?.attempt.complete||api.sessionDone(model))return;
+    const id=model.attempt.id;change(()=>api.next(model,id),nextEpoch);
   }
   async function restartSession(){
     if(model&&(api.pendingKick(model)||model.attempt.kind==='extraPoint'&&!model.attempt.complete))return;
     const target=length.valueAsNumber;
     if(!Number.isInteger(target)||target<1||target>100){length.setAttribute('aria-invalid','true');lengthError.textContent='Enter a whole number from 1 to 100.';lengthError.hidden=false;length.focus();return;}
     length.removeAttribute('aria-invalid');lengthError.hidden=true;
-    cancelAdvance();restarting=true;panel.setAttribute('aria-busy','true');const progress=await CURRICULUM_UI.ask();panel.setAttribute('aria-busy','false');restarting=false;if(!progress){scheduleAdvance();return;}sessionPage=progress.completedThroughPage;api.configure(sessionPage);if(sessionPage<17){message='No fact lessons completed yet. Return after printed page 17.';render();return;}
-    cancelAdvance();const intent=++restartIntent,life=lifecycle;restarting=true;
-    try{await whenIdle;if(active&&life===lifecycle&&intent===restartIntent)await change(()=>api.restart(model,target));}
-    finally{if(intent===restartIntent){restarting=false;scheduleAdvance();}}
+    cancelNext();panel.setAttribute('aria-busy','true');const progress=await CURRICULUM_UI.ask();panel.setAttribute('aria-busy','false');if(!progress)return;sessionPage=progress.completedThroughPage;api.configure(sessionPage);if(sessionPage<17){message='No fact lessons completed yet. Return after printed page 17.';render();return;}
+    cancelNext();const intent=++restartIntent,life=lifecycle;
+    await whenIdle;if(active&&life===lifecycle&&intent===restartIntent)await change(()=>api.restart(model,target));
   }
   function invalidate(){origin=null;timingInvalid=true;renderToken++;}
   function equationVisible(){const r=equation.getBoundingClientRect();return document.visibilityState==='visible'&&r.top>=0&&r.bottom<=innerHeight&&r.left>=0&&r.right<=innerWidth;}
@@ -109,18 +106,18 @@
   function refresh(){
     if(!writable)return true;
     const raw=localStorage.getItem(KEY);if(raw===savedRaw)return true;
-    const parsed=parse(raw);cancelAdvance();invalidate();input='';lastAward=null;
+    const parsed=parse(raw);cancelNext();invalidate();input='';lastAward=null;
     if(parsed&&typeof parsed.schemaVersion==='number'&&parsed.schemaVersion>api.SCHEMA_VERSION){memory('This fact save comes from a newer version. This session and its drive yards stay in memory.');return false;}
     report.open=false;const restored=api.normalize(parsed);model=api.repair(restored||api.create());
     driveNotice=restored&&api.driveNeedsRepair(parsed)?'The saved drive could not be read, so it starts at zero. Your learning progress is preserved.':'';
     savedRaw=raw;message='Fact progress changed in another tab. Please try again.';return false;
   }
-  async function change(action,automaticEpoch=null){
+  async function change(action,epoch=null){
     if(busy||!active||sessionPage!==null&&sessionPage<17)return;
     busy=true;panel.setAttribute('aria-busy','true');const attemptId=model.attempt.id,life=lifecycle;
     let finish;whenIdle=new Promise(resolve=>{finish=resolve;});
     const run=()=>{
-      if(!active||life!==lifecycle||automaticEpoch!==null&&automaticEpoch!==advanceEpoch)return;
+      if(!active||life!==lifecycle||epoch!==null&&epoch!==nextEpoch)return;
       try{if(!refresh()){render(false);return;}}catch{memory();}
       if(!active||model.attempt.id!==attemptId)return;
       const prior=model.attempt,wasComplete=prior.complete,priorDrive=api.drive(model),priorMisses=prior.misses,wasHelped=prior.helped;
@@ -130,14 +127,14 @@
       }
       if(writable)try{savedRaw=JSON.stringify(model);localStorage.setItem(KEY,savedRaw);message='';if(!api.driveNeedsRepair(model))driveNotice='';}catch{memory();}
       const newPrompt=prior!==model.attempt;
-      if(newPrompt){cancelAdvance();input='';report.open=false;lastAward=null;}
+      if(newPrompt){cancelNext();input='';report.open=false;lastAward=null;}
       render(newPrompt);
-      if(active){if(api.sessionDone(model))recap.focus({preventScroll:true});else if(newPrompt)check.focus({preventScroll:true});}
+      if(active){if(api.sessionDone(model))recap.focus({preventScroll:true});else if(newPrompt)check.focus({preventScroll:true});else if(!wasComplete&&model.attempt.complete)nextButton.focus({preventScroll:true});}
     };
     try {
       if(writable&&navigator.locks)try{await navigator.locks.request(KEY,run);}catch{memory();run();}
       else {if(writable)memory();run();}
-    }finally{busy=false;panel.setAttribute('aria-busy','false');finish();scheduleAdvance();}
+    }finally{busy=false;panel.setAttribute('aria-busy','false');finish();}
   }
   function type(value){
     if(!active||busy||model.attempt.complete)return;
@@ -178,8 +175,11 @@
     count.textContent=done?'Session complete':kick?'Bonus kick':`Question ${Math.min(model.session.completed+(q.complete?0:1),model.session.target)} of ${model.session.target}`;
     equation.textContent=`${api.equation(f)} =`;display.textContent=q.complete?String(f.answer):input||'…';
     for(const b of keypad.querySelectorAll('button'))b.disabled=q.complete;
-    check.disabled=q.complete;show.disabled=q.complete||q.helped;support.hidden=!q.helped||done;support.textContent=q.helped?api.help(f):'';
-    keypad.hidden=done;controls.hidden=done;dock.classList.toggle('facts-dock--complete',done);
+    check.disabled=q.complete;show.disabled=q.complete||q.helped;support.hidden=!q.helped||q.complete;support.textContent=q.helped?api.help(f):'';
+    // Entry controls give way to the worked explanation and Next once the answer is complete.
+    keypad.hidden=q.complete;controls.hidden=q.complete;dock.classList.toggle('facts-dock--complete',done);dock.classList.toggle('facts-dock--answered',q.complete&&!done);
+    PLACE_WORKED_UI.render(worked,api.explain(model),'facts-worked-title');
+    continueBox.hidden=!q.complete||done;nextButton.textContent=pendingKick?'Next: extra-point kick':'Next';
     feedback.textContent=q.complete?(q.helped?'You entered the shown answer.':q.misses?'You worked it out after another try.':'Correct.'):
       q.helped?'The answer is shown above. Enter it, then Submit.':q.misses?'Try again, or choose Help me.':'Enter your answer, then Submit.';
     const goal=api.drive(model);
@@ -212,7 +212,7 @@
       if(active&&token===renderToken&&model.attempt.id===id&&!q.complete&&!q.helped&&q.firstCorrect===null&&equationVisible()&&!report.open){origin=performance.now();timingInvalid=false;}
     }));}
   }
-  window.addEventListener('blur',invalidate);document.addEventListener('visibilitychange',()=>{invalidate();if(document.visibilityState==='hidden')cancelAdvance();else scheduleAdvance();});
+  window.addEventListener('blur',invalidate);document.addEventListener('visibilitychange',invalidate);
   window.addEventListener('scroll',()=>{if(active&&!equationVisible())invalidate();},{passive:true});
   document.addEventListener('keydown',event=>{
     if(!active||event.ctrlKey||event.metaKey||event.altKey||['INPUT','TEXTAREA','SELECT','SUMMARY'].includes(event.target.tagName)||report.contains(event.target)||event.target===reset)return;
@@ -221,10 +221,11 @@
   });
   window.PLACE_FACT_UI=Object.freeze({panel,
     page:()=>sessionPage,
-    activate(value,page,football=true){const first=model===null;cancelAdvance();lifecycle++;active=value;panel.hidden=!value;document.body.classList.toggle('facts-active',value&&football);lastAward=null;invalidate();if(value){drive.hidden=!football;if(page!==null&&page!==undefined)sessionPage=page;if(sessionPage!==null)api.configure(sessionPage);if(first)readInitial();render(first&&savedRaw===null);scheduleAdvance();}},
-    advanceTime(ms){if(!active||!pendingAdvance||!Number.isFinite(ms)||ms<0)return;const pending=pendingAdvance;clearTimeout(pending.timer);const remaining=Math.max(0,pending.due-performance.now()-ms);pending.due=performance.now()+remaining;if(remaining===0)return advance(pending);pending.timer=setTimeout(()=>advance(pending),remaining);},
+    activate(value,page,football=true){const first=model===null;cancelNext();lifecycle++;active=value;panel.hidden=!value;document.body.classList.toggle('facts-active',value&&football);lastAward=null;invalidate();if(value){drive.hidden=!football;if(page!==null&&page!==undefined)sessionPage=page;if(sessionPage!==null)api.configure(sessionPage);if(first)readInitial();render(first&&savedRaw===null);}},
+    // Fact focus has no timed transitions; Next is always an explicit action.
+    advanceTime(){},
     text(){if(sessionPage!==null&&sessionPage<17)return {mode:'arithmetic-unavailable',page:sessionPage};const q=model.attempt,f=api.byId[q.factId];return {mode:'arithmetic',submode:'facts',question:`${api.equation(f)} = ?`,answerEntry:q.complete?String(f.answer):input,
-      play: q.kind,kickResult:q.kickResult,extraPointPending:api.pendingKick(model),bonusCompleted:model.session.bonusCompleted,complete:q.complete,shown:q.helped,misses:q.misses,completed:model.session.completed,target:model.session.target,worked:q.helped?api.help(f):null,autoAdvancePending:!!pendingAdvance,
+      play: q.kind,kickResult:q.kickResult,extraPointPending:api.pendingKick(model),bonusCompleted:model.session.bonusCompleted,complete:q.complete,shown:q.helped,misses:q.misses,completed:model.session.completed,target:model.session.target,worked:q.helped?api.help(f):null,explanation:api.explain(model),nextAvailable:q.complete&&!api.sessionDone(model),
       drive:{...api.drive(model),score:api.score(model),lastAward:lastAward?.yards??null,celebrating:!!lastAward?.touchdown,saved:writable}};}
   });
   window.__factsTest=Object.freeze({storageKey:KEY,snapshot:()=>model&&JSON.parse(JSON.stringify(model)),timing:()=>({valid:!timingInvalid,started:origin!==null}),
