@@ -441,3 +441,135 @@ test.describe('football call-layout above-the-fold', () => {
     expect(consoleErrors, 'console errors').toEqual([]);
   });
 });
+
+// Issue #140: each limb pivots at its joint, so no animation frame detaches it.
+async function freezePlayerPose(page, poseClass, fraction) {
+  await page.evaluate(({ poseClass, fraction }) => {
+    const player = document.getElementById('player');
+    player.classList.remove('player-running', 'player-celebrating');
+    if (poseClass) player.classList.add(poseClass);
+    for (const animation of document.getAnimations()) {
+      const target = animation.effect?.target;
+      if (!target || !(target === player || player.contains(target))) continue;
+      const timing = animation.effect.getComputedTiming();
+      animation.pause();
+      animation.currentTime = timing.delay + timing.duration * fraction;
+    }
+  }, { poseClass, fraction });
+}
+
+function playerGeometry(page) {
+  return page.evaluate(() => {
+    const rect = (selector) => {
+      const box = document.querySelector(`#player ${selector}`).getBoundingClientRect();
+      return { left: box.left, right: box.right, top: box.top, bottom: box.bottom };
+    };
+    return {
+      hips: rect('.pl-hips'),
+      pads: rect('.pl-pads'),
+      legs: [rect('.pl-leg-l'), rect('.pl-leg-r')],
+      arms: [rect('.pl-arm-l'), rect('.pl-arm-r')],
+      gloves: [rect('.pl-arm-l .pl-glove'), rect('.pl-arm-r .pl-glove')],
+    };
+  });
+}
+
+function gapBetween(a, b) {
+  const dx = Math.max(0, a.left - b.right, b.left - a.right);
+  const dy = Math.max(0, a.top - b.bottom, b.top - a.bottom);
+  return Math.hypot(dx, dy);
+}
+
+test.describe('football player sprite', () => {
+  test('arms and legs stay attached while running and celebrating', async ({ page }) => {
+    const { pageErrors, consoleErrors } = attachErrorListeners(page);
+    await page.goto('/football/?boot=offense-call');
+    await expect(page.locator('#player')).toBeVisible();
+
+    const poses = [
+      ['standing', null, 0],
+      ...[0, 0.25, 0.5, 0.75].map(f => [`running ${f}`, 'player-running', f]),
+      ...[0.15, 0.3, 0.45, 0.6, 0.8].map(f => [`celebrating ${f}`, 'player-celebrating', f]),
+    ];
+    for (const [label, poseClass, fraction] of poses) {
+      await freezePlayerPose(page, poseClass, fraction);
+      const geometry = await playerGeometry(page);
+      for (const leg of geometry.legs) expect(gapBetween(leg, geometry.hips), `${label}: leg meets hips`).toBeLessThanOrEqual(0.5);
+      for (const arm of geometry.arms) expect(gapBetween(arm, geometry.pads), `${label}: arm meets shoulders`).toBeLessThanOrEqual(0.5);
+    }
+
+    // Mid-celebration both gloves are raised above the shoulder pads.
+    await freezePlayerPose(page, 'player-celebrating', 0.45);
+    const raised = await playerGeometry(page);
+    for (const glove of raised.gloves) expect(glove.bottom).toBeLessThan(raised.pads.top);
+
+    expect(pageErrors, 'page errors').toEqual([]);
+    expect(consoleErrors, 'console errors').toEqual([]);
+  });
+
+  test('player stands just behind the ball without being hidden by it', async ({ page }) => {
+    await page.goto('/football/?boot=offense-call');
+    await expect(page.locator('#player')).toBeVisible();
+    const boxes = await page.evaluate(() => {
+      const rect = (selector) => document.querySelector(selector).getBoundingClientRect().toJSON();
+      return { ball: rect('#ball'), jersey: rect('#player .pl-jersey'), helmet: rect('#player .pl-helmet'), field: rect('#field-wrap') };
+    });
+    // The jersey and helmet stay left of the rotated ball's box (within its empty corner), so the ball never covers the body.
+    expect(boxes.jersey.right).toBeLessThanOrEqual(boxes.ball.left + 3);
+    expect(boxes.helmet.right).toBeLessThanOrEqual(boxes.ball.left + 3);
+    expect(boxes.ball.left - boxes.jersey.right).toBeLessThan(12);
+    expect(boxes.jersey.left).toBeGreaterThanOrEqual(boxes.field.left);
+  });
+
+  // Codex review of #141: the fixed gap pushed the sprite past the clipped field edge near its own goal line.
+  test('player stays inside the field near its own goal line', async ({ page }, testInfo) => {
+    const { pageErrors, consoleErrors } = attachErrorListeners(page);
+    await page.goto('/football/?boot=offense-call');
+    await expect(page.locator('#player')).toBeVisible();
+
+    const seedAt = (yardLine) => page.evaluate((yardLine) => {
+      window.__footballTest.seedDriveState({ possession: 'offense', direction: 1, quarter: 1, down: 1,
+        yardLine, firstDownLine: yardLine + 10, yardsToGo: 10 });
+      updateField(false);
+    }, yardLine);
+    const assertInsideField = async (label) => {
+      const result = await page.evaluate(() => {
+        const field = document.getElementById('field-wrap');
+        const box = field.getBoundingClientRect();
+        const inner = { left: box.left + field.clientLeft, right: box.left + field.clientLeft + field.clientWidth };
+        const parts = [...document.querySelectorAll('#player svg *')].map(node => node.getBoundingClientRect())
+          .filter(rect => rect.width > 0 || rect.height > 0);
+        return { inner, left: Math.min(...parts.map(r => r.left)), right: Math.max(...parts.map(r => r.right)) };
+      });
+      expect(result.left, `${label}: player left edge inside the field`).toBeGreaterThanOrEqual(result.inner.left);
+      expect(result.right, `${label}: player right edge inside the field`).toBeLessThanOrEqual(result.inner.right);
+    };
+    const poses = [
+      ['standing', null, 0],
+      ...[0, 0.25, 0.5, 0.75].map(f => [`running ${f}`, 'player-running', f]),
+      ...[0.15, 0.3, 0.45, 0.6, 0.8].map(f => [`celebrating ${f}`, 'player-celebrating', f]),
+    ];
+
+    for (const yardLine of [1, 2]) {
+      await seedAt(yardLine);
+      await expect(page.locator('#player')).toBeVisible();
+      for (const [label, poseClass, fraction] of poses) {
+        await freezePlayerPose(page, poseClass, fraction);
+        await assertInsideField(`own ${yardLine}, ${label}`);
+      }
+      await freezePlayerPose(page, null, 0);
+      expect(await page.evaluate(() => parseFloat(document.getElementById('ball').style.left)), `own ${yardLine}: ball keeps its yard position`)
+        .toBeCloseTo(await page.evaluate((y) => yardToPct(y), yardLine), 5);
+    }
+
+    // The clamp is recomputed when the field width changes, as on rotation.
+    await seedAt(1);
+    const { width, height } = page.viewportSize();
+    await page.setViewportSize({ width: height, height: width });
+    await page.waitForTimeout(100);
+    await assertInsideField(`own 1 after rotating ${testInfo.project.name}`);
+
+    expect(pageErrors, 'page errors').toEqual([]);
+    expect(consoleErrors, 'console errors').toEqual([]);
+  });
+});
