@@ -1543,7 +1543,7 @@
     .place-columns .place-name { align-self: end; font-size: .75rem; font-weight: 700; color: #3d5566; }
     .place-columns .place-carry, .place-columns .place-trade { font-size: 1rem; line-height: 1.2; color: #8a5a1f; }
     .place-columns .place-crossed { text-decoration: line-through; text-decoration-thickness: 2px; color: #6f7f88; }
-    .place-columns .place-result { border-top: 3px solid #4f6d84; font-weight: 700; color: #34556f; }
+    .place-columns .place-result:not(.place-sign) { border-top: 3px solid #4f6d84; font-weight: 700; color: #34556f; }
     .place-columns .place-answer:not(.place-sign):not(:empty) { color: #2f6b45; font-weight: 700; }
     .arithmetic-explanation-equation { margin: 0 0 6px; text-align: center; font-size: 1.5rem; font-weight: 700; }
     .arithmetic-explanation-lines { min-width: 0; margin: 0; padding: 0; list-style: none; font-size: 1.1rem; line-height: 1.5; overflow-wrap: anywhere; }
@@ -1961,15 +1961,15 @@
     </form>
   </dialog>
 
-  <link rel="stylesheet" href="../shared/curriculum.css?v=1.8.2">
-  <script src="../shared/curriculum.js?v=1.8.2"></script>
-  <script src="../shared/curriculum-ui.js?v=1.8.2"></script>
-  <script src="arithmetic-domain.js?v=1.8.2"></script>
-  <script src="worked-explanation.js?v=1.8.2"></script>
+  <link rel="stylesheet" href="../shared/curriculum.css?v=1.8.3">
+  <script src="../shared/curriculum.js?v=1.8.3"></script>
+  <script src="../shared/curriculum-ui.js?v=1.8.3"></script>
+  <script src="arithmetic-domain.js?v=1.8.3"></script>
+  <script src="worked-explanation.js?v=1.8.3"></script>
   <script>
     "use strict";
 
-    const GAME_VERSION = "1.8.2";
+    const GAME_VERSION = "1.8.3";
     (() => {
       document.getElementById('game-version').textContent = `Version ${GAME_VERSION}`;
       const SCHEMA_VERSION = 1;
@@ -6719,12 +6719,12 @@
       if (window.__placePracticeMode === 'place-value') window.__placeValueActivate();
     })();
   </script>
-  <script src="fact-practice-domain.js?v=1.8.2"></script>
-  <script src="fact-practice.js?v=1.8.2"></script>
-  <link rel="stylesheet" href="book-practice.css?v=1.8.2">
-  <script src="book-practice-domain.js?v=1.8.2"></script>
-  <script src="book-practice.js?v=1.8.2"></script>
-  <script src="arithmetic.js?v=1.8.2"></script>
-  <script src="../shared/updater.js?v=1.8.2"></script>
+  <script src="fact-practice-domain.js?v=1.8.3"></script>
+  <script src="fact-practice.js?v=1.8.3"></script>
+  <link rel="stylesheet" href="book-practice.css?v=1.8.3">
+  <script src="book-practice-domain.js?v=1.8.3"></script>
+  <script src="book-practice.js?v=1.8.3"></script>
+  <script src="arithmetic.js?v=1.8.3"></script>
+  <script src="../shared/updater.js?v=1.8.3"></script>
 </body>
 </html>

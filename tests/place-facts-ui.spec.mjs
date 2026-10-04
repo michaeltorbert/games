@@ -360,7 +360,7 @@ test('toggle-only report exposure also marks a warm prompt as supported for driv
 
 test('mixed practice is the default and presentation changes do not change its arithmetic',async({page})=>{
  await page.goto('/place-value-practice/');
- await expect(page.locator('#game-version')).toHaveText('Version 1.8.2');
+ await expect(page.locator('#game-version')).toHaveText('Version 1.8.3');
  await page.getByRole('button',{name:'Arithmetic',exact:true}).click();await settled(page);
  await expect(page.locator('#arithmetic-practice')).toBeVisible();
  await expect(page.getByRole('button',{name:'Mixed practice',exact:true})).toHaveAttribute('aria-pressed','true');
