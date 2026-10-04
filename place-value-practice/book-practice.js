@@ -9,7 +9,8 @@
   const drive=node('section',null,'book-drive'),score=node('p'),field=node('div',null,'book-field'),ball=node('span','🏈');field.append(ball);drive.append(score,field);
   const question=node('h3'),visual=node('div',null,'book-visual'),choices=node('div',null,'arithmetic-choices'),feedback=node('p'),help=node('p'),next=node('button','Next','button button--primary'),message=node('p');
   question.id='book-question';choices.setAttribute('aria-labelledby',question.id);feedback.setAttribute('role','status');message.setAttribute('role','status');
-  panel.append(title,scope,setup,drive,question,visual,choices,feedback,help,next,message);
+  const worked=node('section',null,'arithmetic-explanation book-worked');worked.id='book-worked';worked.hidden=true;
+  panel.append(title,scope,setup,drive,question,visual,choices,feedback,help,worked,next,message);
   document.getElementById('practice').after(panel);
   function svg(v){
     if(!v)return '';
@@ -53,7 +54,9 @@
     question.textContent=q?.prompt||'No completed lessons in this chapter yet.';if(q?.skillId==='graph-build'&&state.done)q.visual.values[0]=Number(q.answer);visual.innerHTML=svg(q?.visual);choices.replaceChildren();
     if(q)for(const value of q.choices){const button=node('button',value,'button arithmetic-answer');button.disabled=state.done||state.misses.includes(value);button.onclick=()=>change(()=>api.answer(state,value));choices.append(button);}
     feedback.textContent=state.done?'Correct! Keep moving toward a touchdown.':state.misses.length?'Try again. Use the explanation to help.':'';
-    help.textContent=q&&(state.done||state.misses.length)?q.help:'';next.hidden=!q||!state.done;
+    // Remedial help stays available after a miss; once complete, the worked-answer panel replaces it.
+    help.textContent=q&&!state.done&&state.misses.length?q.help:'';next.hidden=!q||!state.done;
+    PLACE_WORKED_UI.render(worked,api.explain(state),'book-worked-title');
     score.textContent=`${state.yards%100} / 100 yards · ${Math.floor(state.yards/100)*6} points · ${state.completed} completed`;
     ball.style.left=`${state.yards%100}%`;message.textContent=notice;
   }
@@ -64,5 +67,5 @@
   async function fresh(){const progress=await CURRICULUM_UI.ask();if(!progress){select.value=String(state.chapter);return;}await change(()=>{state.page=progress.completedThroughPage;state.chapter=Number(select.value);state.serial=state.completed;state.done=false;state.misses=[];return true;});}
   restart.onclick=fresh;select.onchange=fresh;next.onclick=()=>change(()=>api.next(state));
   globalThis.__bookTest=Object.freeze({snapshot:()=>state&&JSON.parse(JSON.stringify(state)),storageKey:KEY});
-  globalThis.PLACE_BOOK_UI=Object.freeze({page:()=>state?.page??null,activate(value,page,football=true){active=value;panel.hidden=!value;document.body.classList.toggle('book-active',value);if(!value)return;drive.hidden=!football;if(!state){try{raw=localStorage.getItem(KEY);const parsed=JSON.parse(raw);state=api.normalize(parsed);if(raw!==null&&!state){writable=false;notice='Saved book practice is unavailable or from another version. This visit stays in memory.';}}catch{writable=false;}state=state||api.create(page);if(state.page!==page){state.page=page;state.serial=state.completed;state.done=false;state.misses=[];}select.value=String(state.chapter);}render();},text:()=>{const q=state?api.current(state):null;const visible=q?{skillId:q.skillId,page:q.page,prompt:q.prompt,visual:q.visual,choices:q.choices,help:state.done||state.misses.length?q.help:null}:null;return {mode:'book',page:state?.page,question:visible,completed:state?.completed,yards:state?.yards,done:state?.done};}});
+  globalThis.PLACE_BOOK_UI=Object.freeze({page:()=>state?.page??null,activate(value,page,football=true){active=value;panel.hidden=!value;document.body.classList.toggle('book-active',value);if(!value)return;drive.hidden=!football;if(!state){try{raw=localStorage.getItem(KEY);const parsed=JSON.parse(raw);state=api.normalize(parsed);if(raw!==null&&!state){writable=false;notice='Saved book practice is unavailable or from another version. This visit stays in memory.';}}catch{writable=false;}state=state||api.create(page);if(state.page!==page){state.page=page;state.serial=state.completed;state.done=false;state.misses=[];}select.value=String(state.chapter);}render();},text:()=>{const q=state?api.current(state):null;const visible=q?{skillId:q.skillId,page:q.page,prompt:q.prompt,visual:q.visual,choices:q.choices,help:state.done||state.misses.length?q.help:null}:null;return {mode:'book',page:state?.page,question:visible,completed:state?.completed,yards:state?.yards,done:state?.done,explanation:state?api.explain(state):null};}});
 })();

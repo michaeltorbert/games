@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import '../place-value-practice/arithmetic-domain.js';
 import '../place-value-practice/fact-practice-domain.js';
 const A=globalThis.PLACE_FACTS;
 const copy=s=>JSON.parse(JSON.stringify(s));
@@ -354,5 +355,54 @@ test('inconsistent completed kick rewards repair motivation while preserving lea
   assert.equal(A.driveNeedsRepair(raw),true);const fixed=A.normalize(raw);assert.ok(fixed);
   assert.deepEqual(fixed.facts,s.facts);assert.equal(fixed.attempt.kickResult,'unscored');
   assert.equal(A.score(fixed),0);assert.equal(finish(fixed),false);assert.ok(A.normalize(copy(fixed)));
+ }
+});
+
+// Issue #146: display-only worked explanation for completed facts.
+const rowValue=row=>{const text=row.digits.join('');return text===''?null:Number(text);};
+test('every catalog fact projects true place-value columns from its own operands',()=>{
+ assert.equal(A.catalog.length,200);
+ for(const f of A.catalog){
+  assert.equal(A.explain({attempt:{factId:f.id,complete:false}}),null);
+  const shown=copy(A.explain({attempt:{factId:f.id,complete:true}}));
+  assert.deepEqual(shown,copy(globalThis.PLACE_ARITHMETIC.explainOperation(f.op,[f.a,f.b])),f.id);
+  assert.equal(shown.kind,'columns');
+  assert.deepEqual(shown.rows.map(rowValue),[f.a,f.b,f.answer],f.id);
+  assert.deepEqual(shown.rows.map(r=>r.sign),['',f.op==='add'?'+':'−',''],f.id);
+  assert.equal(shown.rows.at(-1).answer,true);
+  // Ones only when every number is a single digit; teen facts name the ten explicitly.
+  assert.deepEqual(shown.places,Math.max(f.a,f.b,f.answer)<10?['Ones']:['Tens','Ones'],f.id);
+  if(f.op==='add')assert.equal(shown.lines.some(l=>l.includes('= 1 ten')),f.answer>=10,f.id);
+  else assert.equal(shown.trades!==null,f.a>=10,f.id);
+ }
+ for(const bad of [null,{},{attempt:null},{attempt:{factId:'add:31:68',complete:true}},{attempt:{factId:'add:3:4',complete:'yes'}}])assert.equal(A.explain(bad),null);
+});
+test('fact explanations wait for correct entry and never change evidence, outcomes or rewards',()=>{
+ for(const path of ['first','retry','shown','helped-after-two-misses']){
+  const run=look=>{
+   const s=A.create(10,()=>0),seen=[];
+   // Thirty first tries cross a touchdown, so the bonus kick path is included.
+   for(let step=0;step<30;step++){
+    const q=s.attempt,f=A.byId[q.factId];
+    if(look)seen.push(A.explain(s));
+    if(path!=='first')A.answer(s,q.id,(f.answer+1)%19);
+    if(look)seen.push(A.explain(s));
+    if(path==='shown')A.show(s,q.id);
+    if(path==='helped-after-two-misses')A.answer(s,q.id,(f.answer+2)%19);
+    if(look){seen.push(A.explain(s));const before=JSON.stringify(s);A.explain(s);assert.equal(JSON.stringify(s),before);}
+    assert.equal(finish(s),true);
+    if(look){const shown=A.explain(s);assert.ok(shown);seen.push(shown);assert.equal(JSON.stringify(s).includes('Line up'),false);}
+    if(A.sessionDone(s))A.restart(s,10);else A.next(s,q.id);
+   }
+   return {state:copy(s),seen};
+  };
+  const watched=run(true),plain=run(false);
+  if(path==='first'){assert.equal(watched.state.drive.kicksResolved,1);assert.equal(watched.state.drive.extraPoints,1);}
+  // Looking at explanations is display-only: the learning and reward state is identical.
+  assert.deepEqual(watched.state,plain.state,path);
+  for(let i=0;i<watched.seen.length;i+=4){
+   assert.deepEqual(watched.seen.slice(i,i+3),[null,null,null],`${path}: nothing before correct entry`);
+   assert.ok(watched.seen[i+3],path);
+  }
  }
 });

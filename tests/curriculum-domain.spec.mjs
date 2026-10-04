@@ -67,3 +67,60 @@ test('page 187 makes every mixed arithmetic family eligible and no family maps t
  assert.deepEqual([...seen].sort(),Object.keys(a.FAMILIES).sort());
  assert.equal(c.arithmeticPage('no-such-family',[1,2]),Infinity);
 });
+// Issue #146: Whole book worked answers.
+const plain=x=>JSON.parse(JSON.stringify(x));
+const evaluate=text=>text.split(' ').reduce((acc,token,i,all)=>i===0?Number(token):/\d/.test(token)?(all[i-1]==='+'?acc+Number(token):acc-Number(token)):acc,0);
+test('whole-book arithmetic lessons carry structured operations whose columns reach the lesson answer',()=>{
+ const {MATH_CURRICULUM:c,PLACE_BOOK:b,PLACE_ARITHMETIC:a}=load(),arithmetic=new Set(),kinds=new Set();
+ for(const skill of c.CATALOG)for(let n=0;n<12;n++){
+  const q=b.question(skill,n);
+  if(!q.math)continue;
+  arithmetic.add(skill.id);const {op,operands,answerRow}=q.math,label=`${skill.id} ${n}`;
+  const shown=plain(a.explainOperation(op,operands,answerRow));assert.ok(shown,label);kinds.add(shown.kind);
+  if(shown.kind==='columns'){const row=shown.rows.find(r=>r.answer);assert.equal(Number(row.digits.join('')),Number(q.answer),label);
+   assert.equal(shown.rows.indexOf(row),answerRow===1?1:shown.rows.length-1,label);}
+  else assert.equal(Number(shown.lines.at(-1).split(' = ')[1]),Number(q.answer),label);
+  // Independent consistency check: the visible numbers belong to the structured operation.
+  for(const x of answerRow===1?[operands[0],operands[0]+operands[1]]:operands)assert.match(q.prompt,new RegExp(`(^|\\D)${x}(\\D|$)`),label);
+ }
+ // Columns only for arithmetic chapters; shapes, fractions, measurement, graphs and coins never get them.
+ assert.deepEqual([...arithmetic].sort(),plain(c.CATALOG.filter(k=>[5,8].includes(k.chapter)&&k.id!=='compare-facts').map(k=>k.id)).sort());
+ assert.deepEqual([...kinds].sort(),['columns','steps']);
+});
+test('whole-book worked answers appear only after correct completion, survive normalize, and clear on Next',()=>{
+ const {PLACE_BOOK:b,PLACE_ARITHMETIC:a}=load(),seen={};
+ for(const chapter of [5,6,7,8,9,10]){
+  const s=b.create(187,chapter);
+  for(let i=0;i<30;i++){
+   const q=b.current(s);assert.equal(b.explain(s),null);
+   const wrong=q.choices.find(v=>v!==q.answer);if(i%3===0){assert.equal(b.answer(s,wrong),true);assert.equal(b.explain(s),null);}
+   const before=JSON.stringify(s);b.explain(s);assert.equal(JSON.stringify(s),before);
+   const yards=s.yards;assert.equal(b.answer(s,q.answer),true);assert.equal(s.yards-yards,i%3===0?1:5);
+   const shown=plain(b.explain(s)),saved=JSON.stringify(s);
+   if(q.math){
+    assert.deepEqual({...shown,equation:undefined},{...plain(a.explainOperation(q.math.op,q.math.operands,q.math.answerRow)),equation:undefined});
+    const [left,right]=shown.equation.split(' = ');assert.equal(evaluate(left),Number(right));
+    assert.equal(answerOf(shown,q.math.answerRow),Number(q.answer));seen[shown.kind]=(seen[shown.kind]||0)+1;
+   }else{assert.ok([5,6,7,9,10].includes(chapter));assert.deepEqual(shown,{kind:'text',heading:'Worked answer',lines:[q.help,`Answer: ${q.answer}.`]});seen.text=(seen.text||0)+1;}
+   assert.equal(saved.includes('Worked answer')||saved.includes('Line up'),false);
+   assert.deepEqual(plain(b.explain(b.normalize(JSON.parse(saved)))),shown);
+   assert.equal(b.next(s),true);assert.equal(b.explain(s),null);
+  }
+ }
+ assert.ok(seen.columns&&seen.steps&&seen.text);
+});
+function answerOf(shown,answerRow){if(shown.kind==='steps')return Number(shown.lines.at(-1).split(' = ')[1]);const row=shown.rows[answerRow===1?1:shown.rows.length-1];return Number(row.digits.join(''));}
+test('representative whole-book lessons explain carries, borrowing, missing addends and repeated subtraction',()=>{
+ const {MATH_CURRICULUM:c,PLACE_BOOK:b}=load(),skill=id=>c.CATALOG.find(k=>k.id===id);
+ // A completed state in the skill's chapter whose serial gives the generator values n=serial%4+2 and m=serial%3+1.
+ const done=(id,{n=null,m=null}={})=>{const s=b.create(187,skill(id).chapter);
+  for(let k=0;k<1000;k++){s.serial=k;s.completed=k+1;s.done=true;if(b.current(s).skillId===id&&(n===null||k%4+2===n)&&(m===null||k%3+1===m))return plain(b.explain(s));}
+  assert.fail(`no serial reaches ${id} with n=${n} m=${m}`);};
+ const carry=done('two-digit-carry',{n:2});assert.equal(carry.equation,'28 + 14 = 42');assert.deepEqual(carry.lines,['8 + 4 = 12 ones = 1 ten 2 ones','1 + 2 + 1 = 4 tens']);assert.deepEqual(carry.carries,['1','']);
+ const missing=done('missing-addend',{n:3});assert.equal(missing.equation,'8 + 3 = 11');assert.deepEqual(missing.rows.map(r=>r.answer),[false,true,false]);
+ const three=done('three-addends',{n:4,m:3});assert.equal(three.equation,'8 + 4 + 3 = 15');assert.deepEqual(three.lines,['8 + 4 + 3 = 15 ones = 1 ten 5 ones']);
+ const repeated=done('repeated-subtraction',{m:2});assert.equal(repeated.kind,'steps');assert.deepEqual(repeated.lines,['9 − 2 = 7','7 − 2 = 5']);assert.equal(repeated.equation,'9 − 2 − 2 = 5');
+ const borrow=done('tens-minus-digit',{n:5});assert.equal(borrow.equation,'40 − 5 = 35');assert.deepEqual(borrow.lines,['Trade 1 ten for 10 ones','10 − 5 = 5 ones','Keep 3 tens']);
+ const complete=done('complete-ten',{n:3});assert.equal(complete.equation,'24 + 6 = 30');assert.deepEqual(complete.lines,['4 + 6 = 10 ones = 1 ten 0 ones','1 + 2 = 3 tens']);assert.deepEqual(complete.rows.map(r=>r.answer),[false,true,false]);
+ const shape=done('basic-shapes',{n:2});assert.equal(shape.kind,'text');assert.equal(shape.heading,'Worked answer');assert.equal(shape.lines[1],'Answer: triangle.');
+});

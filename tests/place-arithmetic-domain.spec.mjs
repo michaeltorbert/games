@@ -258,3 +258,13 @@ test('explanations stay hidden until completion, ignore outcome, and never mutat
   }
   for(const bad of [null,{},{question:null},{question:{family:'facts-add',operands:[31,68],complete:true}},{question:{family:'nope',operands:[1,2],complete:true}},{question:{family:'facts-add',operands:[1,2],complete:'yes'}}])assert.equal(api.explain(bad),null);
 });
+test('the shared operation projection serves every Mixed family unchanged and rejects out-of-scope arithmetic',()=>{
+  const op=family=>family.includes('subtract')||family==='tens-minus-digit'?'sub':'add';
+  for(const family of families)for(const operands of enumerate(family)) {
+    const row=family==='complete-ten'||family==='missing-addend'?1:null;
+    assert.deepEqual(plain(api.explainOperation(op(family),operands,row)),plain(api.explain({question:{family,operands,complete:true}})),`${family} ${operands}`);
+  }
+  assert.deepEqual(plain(api.explainOperation('sub',[9,2,2])),{kind:'steps',heading:'Take away one part at a time',lines:['9 − 2 = 7','7 − 2 = 5']});
+  for(const [o,operands,row] of [['add',[60,41]],['add',[1]],['add',[1,2,3,4]],['add',[1,2,3],1],['add',[1,2],0],['sub',[3,4]],['sub',[5,3,3]],['sub',[9,2],1],['mul',[2,3]],['add',[1.5,2]],['add',[-1,2]],['add',[101,0]],['add','12']])
+    assert.equal(api.explainOperation(o,operands,row??null),null,`${o} ${operands} ${row}`);
+});

@@ -61,24 +61,7 @@
   const storage=node('p'); storage.className='arithmetic-storage';
   panel.append(title,scope,setup,drive,count,equation,instruction,choices,feedback,explanation,next,recap,storage);
   // Rebuilt from the model on every render, so Next, restart and reload need no extra state.
-  function renderExplanation(shown) {
-    explanation.replaceChildren();explanation.hidden=!shown;
-    if(!shown)return;
-    const heading=node('h4',shown.heading);heading.id='arithmetic-explanation-title';
-    const body=node('div',null,'arithmetic-explanation-body'), lines=node('ul',null,'arithmetic-explanation-lines');
-    for(const line of shown.lines)lines.append(node('li',line));
-    if(shown.kind==='columns') {
-      // The lines carry the meaning for assistive technology; the grid is its visual alignment.
-      const grid=node('div',null,'place-columns');grid.setAttribute('aria-hidden','true');grid.style.setProperty('--places',shown.places.length);
-      const row=(sign,values,className,crossed)=>{grid.append(node('span',sign,`place-sign ${className}`));values.forEach((v,i)=>grid.append(node('span',v,`${className}${crossed&&crossed[i]?' place-crossed':''}`)));};
-      row('',shown.places,'place-name');
-      if(shown.carries)row('',shown.carries,'place-carry');
-      if(shown.trades)row('',shown.trades,'place-trade');
-      for(const r of shown.rows)row(r.sign,r.digits,`place-digit${r.result?' place-result':''}${r.answer?' place-answer':''}`,r.crossed);
-      body.append(grid);
-    }
-    body.append(lines);explanation.append(heading,body);
-  }
+  const renderExplanation=shown=>PLACE_WORKED_UI.render(explanation,shown,'arithmetic-explanation-title');
   function refreshBeforeWrite() {
     if(!writable)return true;
     const current=localStorage.getItem(KEY);
