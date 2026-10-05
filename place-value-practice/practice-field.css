@@ -1,0 +1,24 @@
+/* Stadium drive for Addition & subtraction and Book topics; Number facts styles its own .facts-drive. */
+.practice-field{position:relative;isolation:isolate;box-sizing:border-box;width:100%;height:clamp(230px,30vh,320px);margin:0 0 16px;overflow:hidden;border-radius:16px;color:#fffdf0;background:#77b756}
+.practice-field[hidden]{display:none}
+.practice-field-stadium{position:absolute;inset:0;z-index:-1;width:100%;height:100%;max-width:none;object-fit:cover;object-position:center 55%}
+.practice-field-header{position:absolute;z-index:2;top:12px;left:12px;max-width:calc(100% - 24px);padding:8px 14px 10px;border:3px solid #8fa878;border-radius:10px;background:#163c3d;box-shadow:0 4px 0 #355c4b}
+.practice-field .practice-field-title{margin:0 0 2px;font-size:.8rem;line-height:1.2;letter-spacing:.03em;color:#cce9d7}
+.practice-field .practice-field-score{margin:0;font-size:1.05rem;font-weight:800;line-height:1.3;color:#fffdf0}
+.practice-field-track{position:absolute;inset:0}
+.practice-field-turf{position:absolute;left:7%;right:7%;top:50%;bottom:10%}
+.practice-field-turf::before{content:'';position:absolute;left:0;right:0;bottom:25%;border-top:4px dotted #fff9de;opacity:.95}
+.practice-field-yard{position:absolute;bottom:-6%;transform:translateX(-50%);font-size:clamp(.85rem,1.6vw,1.3rem);font-weight:900;line-height:1;text-shadow:0 2px 2px #2b6638}
+.practice-field-yard:first-of-type{transform:none}
+.practice-field-yard:nth-of-type(5){transform:translateX(-100%)}
+/* The runner's own width offsets its position, so 0 and 99 yards both stay fully on the field. */
+.practice-field-runner{position:absolute;bottom:20%;left:calc(var(--yard,0) * 1%);height:100%;width:auto;max-width:none;transform:translateX(calc(var(--yard,0) * -1%));filter:drop-shadow(0 4px 2px #284c4366);transition:left .5s ease-out,transform .5s ease-out}
+@media (max-width:699px){
+  .practice-field{height:clamp(230px,28vh,280px);margin-bottom:12px}
+  .practice-field-stadium{object-position:83% center}
+  .practice-field-header{top:8px;left:8px;max-width:calc(100% - 16px);padding:6px 10px 8px;border-width:2px}
+  .practice-field .practice-field-title{font-size:.68rem}
+  .practice-field .practice-field-score{font-size:.9rem}
+  .practice-field-turf{left:5%;right:5%;top:52%}
+}
+@media (prefers-reduced-motion:reduce){.practice-field-runner{transition:none}}

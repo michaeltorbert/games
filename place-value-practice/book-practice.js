@@ -6,7 +6,7 @@
   const panel=node('main',null,'book-practice');panel.hidden=true;panel.id='book-practice';
   const title=node('h2','Book topics'),scope=node('p'),setup=node('div',null,'arithmetic-setup'),topic=node('label','Topic ','book-topic'),select=node('select'),restart=node('button','Start new book session','button');
   const topicHelp=node('p','Changing the topic starts a new book session and asks for your page.','book-topic-help');topicHelp.id='book-topic-help';select.setAttribute('aria-describedby',topicHelp.id);topic.append(select);for(const [value,label] of [[0,'All completed lessons'],[5,'Facts and word problems'],[6,'Shapes and fractions'],[7,'Measurement'],[8,'Adding and subtracting'],[9,'Graphs'],[10,'Coins']]){const option=node('option',label);option.value=value;select.append(option);}setup.append(topic,restart,topicHelp);
-  const drive=node('section',null,'book-drive'),score=node('p'),field=node('div',null,'book-field'),ball=node('span','🏈');field.append(ball);drive.append(score,field);
+  const field=PLACE_PRACTICE_FIELD.create('book','book-drive'),drive=field.element;
   const question=node('h3'),visual=node('div',null,'book-visual'),choices=node('div',null,'arithmetic-choices'),feedback=node('p'),help=node('p'),next=node('button','Next','button button--primary'),message=node('p');
   question.id='book-question';choices.setAttribute('aria-labelledby',question.id);feedback.setAttribute('role','status');message.setAttribute('role','status');
   const worked=node('section',null,'arithmetic-explanation book-worked');worked.id='book-worked';worked.hidden=true;
@@ -57,8 +57,8 @@
     // Remedial help stays available after a miss; once complete, the worked-answer panel replaces it.
     help.textContent=q&&!state.done&&state.misses.length?q.help:'';next.hidden=!q||!state.done;
     PLACE_WORKED_UI.render(worked,api.explain(state),'book-worked-title');
-    score.textContent=`${state.yards%100} / 100 yards · ${Math.floor(state.yards/100)*6} points · ${state.completed} completed`;
-    ball.style.left=`${state.yards%100}%`;message.textContent=notice;
+    const yards=state.yards%100,points=Math.floor(state.yards/100)*6;
+    field.render(yards,points,`${yards} / 100 yards · ${points} points · ${state.completed} completed`);message.textContent=notice;
   }
   async function change(action){if(busy||!active)return;busy=true;try{
     const run=()=>{if(writable){const fresh=localStorage.getItem(KEY);if(fresh!==raw){let value;try{value=api.normalize(JSON.parse(fresh));}catch{}if(value){const page=state.page;state=value;raw=fresh;if(state.page!==page){state.page=page;state.serial=state.completed;state.done=false;state.misses=[];}notice='Book practice changed in another tab. Please try again.';}else{writable=false;notice='The saved practice cannot be updated. This visit stays in memory.';}render();return;}}if(action()){if(writable){raw=JSON.stringify(state);localStorage.setItem(KEY,raw);}render();}};

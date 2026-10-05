@@ -73,8 +73,7 @@
   // The selector holds this visit's pending target, independently of the active session.
   length.value=model ? (model.target===null?'endless':String(model.target)) : '10';
   const reset=node('button','Start new arithmetic session','button button--quiet'); reset.type='button'; label.append(length); setup.append(label,reset);
-  const drive=node('section',null,'book-drive arithmetic-drive'),driveScore=node('p'),driveField=node('div',null,'book-field'),driveBall=node('span','🏈');
-  driveField.append(driveBall);drive.append(driveScore,driveField);
+  const field=PLACE_PRACTICE_FIELD.create('arithmetic','book-drive arithmetic-drive'),drive=field.element;
   const count=node('p'), equation=node('h3'); equation.id='arithmetic-equation';
   const instruction=node('p','Choose the number that makes the equation true.');
   const choices=node('div',null,'arithmetic-choices'); choices.setAttribute('role','group'); choices.setAttribute('aria-labelledby',equation.id);
@@ -126,9 +125,8 @@
   }
   function render() {
     const view=api.view(model), q=model.question, revealed=q.misses.length>=3, finished=model.target!==null && model.completed>=model.target;
-    const yards=model.firstTry*5+model.afterHelp;
-    drive.hidden=presentation!=='football';driveScore.textContent=`${yards%100} / 100 yards · ${Math.floor(yards/100)*6} points`;
-    driveBall.style.left=`${yards%100}%`;
+    const yards=model.firstTry*5+model.afterHelp,onDrive=yards%100,points=Math.floor(yards/100)*6;
+    drive.hidden=presentation!=='football';field.render(onDrive,points,`${onDrive} / 100 yards · ${points} points`);
     count.textContent=finished?'Session complete':model.target===null?`Question ${model.sequence+1}`:`Question ${model.sequence+1} of ${model.target}`;
     equation.textContent=q.complete||revealed?view.worked:view.prompt;
     choices.replaceChildren();
