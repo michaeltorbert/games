@@ -1,14 +1,17 @@
 import {test,expect} from '@playwright/test';
+import {chooseOptions,mathPractice} from './place-practice-nav.mjs';
+// A route's first entry reuses the page confirmed earlier in this visit, so no second prompt appears.
+async function noPrompt(page){await expect(page.locator('#arithmetic-practice')).toHaveAttribute('aria-busy','false');await expect(page.locator('.curriculum-dialog')).toHaveCount(0);}
 async function confirm(page,value){await expect(page.locator('.curriculum-dialog')).toBeVisible();if(value!==undefined)await page.locator('#curriculum-page').fill(String(value));await page.locator('#curriculum-submit').click();if(await page.getByRole('button',{name:'Confirm page',exact:true}).isVisible())await page.getByRole('button',{name:'Confirm page',exact:true}).click();await expect(page.locator('.curriculum-dialog')).toHaveCount(0);}
 test('page prompt shares exact-book progress; cancellation precedes Season and full-book chapters run',async({page})=>{
  const errors=[];page.on('pageerror',e=>errors.push(e.message));
  await page.goto('/place-value-practice/');await expect(page.locator('#curriculum-page')).toHaveValue('113');
  await page.screenshot({path:test.info().outputPath('curriculum-start.png')});
  await page.locator('#curriculum-page').fill('188');await page.locator('#curriculum-submit').click();await expect(page.locator('#curriculum-error')).toContainText('0 to 187');
- await confirm(page,187);await page.getByRole('button',{name:'Arithmetic',exact:true}).click();await confirm(page);
- await page.getByRole('button',{name:'Whole book',exact:true}).click();await confirm(page);
+ await confirm(page,187);await mathPractice(page).click();await noPrompt(page);
+ await chooseOptions(page,{focus:'book'});await noPrompt(page);
  for(const chapter of [5,6,7,8,9,10]){
-  await page.getByLabel('Book chapter').selectOption(String(chapter));await confirm(page);
+  await page.locator('#book-practice').getByLabel('Topic').selectOption(String(chapter));await confirm(page);
   await expect(page.locator('#book-question')).not.toContainText('No completed');
   await page.screenshot({path:test.info().outputPath(`chapter-${chapter}.png`)});
   const q=await page.evaluate(()=>PLACE_BOOK.current(__bookTest.snapshot()));await page.locator('#book-practice .arithmetic-answer').filter({hasText:new RegExp(`^${q.answer.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}$`)}).click();
@@ -53,13 +56,13 @@ test('a fact-focus restart that lowers the page survives presentation changes an
  expect(Math.abs(dialog.x+dialog.width/2-size.width/2)).toBeLessThan(2);expect(Math.abs(dialog.y+dialog.height/2-size.height/2)).toBeLessThan(2);
  await page.locator('#curriculum-cancel').click();
  await page.goto('/place-value-practice/');await confirm(page,187);
- await page.getByRole('button',{name:'Arithmetic',exact:true}).click();await confirm(page);
- await page.getByRole('button',{name:'Fact focus',exact:true}).click();await confirm(page);
+ await mathPractice(page).click();await noPrompt(page);
+ await chooseOptions(page,{focus:'facts'});await noPrompt(page);
  await page.getByRole('button',{name:'Start new fact session',exact:true}).click();await confirm(page,113);
  expect(await page.evaluate(()=>PLACE_FACT_UI.page())).toBe(113);
- await page.getByRole('button',{name:'Just arithmetic',exact:true}).click();
+ await chooseOptions(page,{presentation:'plain'});
  expect(await page.evaluate(()=>PLACE_FACT_UI.page())).toBe(113);
- await page.getByRole('button',{name:'Mixed practice',exact:true}).click();await page.getByRole('button',{name:'Fact focus',exact:true}).click();
+ await chooseOptions(page,{focus:'mixed'});await noPrompt(page);await chooseOptions(page,{focus:'facts'});await noPrompt(page);
  expect(await page.evaluate(()=>PLACE_FACT_UI.page())).toBe(113);
  expect(await page.evaluate(()=>PLACE_FACTS.byId[__factsTest.snapshot().attempt.factId].source.page)).toBeLessThanOrEqual(113);
 });

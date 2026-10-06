@@ -23,7 +23,7 @@ const PLACE_ARITHMETIC = (() => {
   // Legacy fixed cycle, retained only for schema 1/2 validation and the content
   // generator oracle. New sessions use the fixed + adaptive schedule below.
   const MIX = Object.freeze(['facts-add','facts-subtract','add-no-carry','add-carry','facts-add','facts-subtract','complete-ten','missing-addend','subtract-no-borrow','tens-minus-digit','three-addends','repeated-subtraction']);
-  const SCHEMA_VERSION = 3;
+  const SCHEMA_VERSION = 4;
   const ORDER = Object.freeze(Object.keys(FAMILIES));
   const COVERAGE = Object.freeze(ORDER.slice(2));
   let curriculumPage=null;
@@ -33,6 +33,44 @@ const PLACE_ARITHMETIC = (() => {
   const HISTORY_LIMIT = 20;
   const advanceSeed = seed => (Math.imul(seed,1664525)+1013904223) >>> 0;
   const newLearning = seed => ({serial:0,position:0,seed,history:Object.fromEntries(ORDER.map(f=>[f,[]]))});
+  // Exact small-fact reminders (schema 4). Practice heuristics, not mastery:
+  // a missed fact is due two completions after its reminder was created, may
+  // return only two completions after its related family was last shown, and
+  // at most one returned question fits in any five consecutive completions.
+  // Only the planned addition/subtraction fact slots serve reminders, so the
+  // family schedule above is unchanged. History rows stay operand-free; only
+  // this compact practice unit names exact facts.
+  const REMINDER_DELAY=2, FAMILY_GAP=2, RETURN_SPACING=5, REMINDER_LIMIT=200;
+  const FACT_OPS=Object.freeze({'facts-add':'add','facts-subtract':'sub'});
+  // Directional IDs match Number facts' catalog equations: add:a:b is a + b,
+  // sub:a:b is a − b. Swapped and inverse facts are separate reminders.
+  const factId=(family,operands)=>Object.hasOwn(FACT_OPS,family)&&valid(family,operands)?`${FACT_OPS[family]}:${operands[0]}:${operands[1]}`:null;
+  function parseFact(id) {
+    const m=typeof id==='string'&&/^(add|sub):(\d{1,2}):(\d)$/.exec(id);
+    if(!m)return null;
+    const family=m[1]==='add'?'facts-add':'facts-subtract',operands=[Number(m[2]),Number(m[3])];
+    return factId(family,operands)===id?{family,operands}:null;
+  }
+  // Swapped and inverse facts share one related family: its two parts, smaller first.
+  const relatedFamily=(family,[a,b])=>{const x=family==='facts-add'?a:b,y=family==='facts-add'?b:a-b;return `${Math.min(x,y)}:${Math.max(x,y)}`;};
+  const RELATED=Object.freeze(Array.from({length:10},(_,x)=>Array.from({length:10-x},(_,i)=>`${x}:${x+i}`)).flat());
+  // Equal ages break ties by addition before subtraction, then each number ascending.
+  const rank=id=>{const [op,a,b]=id.split(':');return (op==='add'?0:1000)+Number(a)*10+Number(b);};
+  const sortReminders=list=>list.slice().sort((x,y)=>x.created-y.created||rank(x.id)-rank(y.id));
+  const newPractice=()=>({reminders:[],exposure:{},lastReturn:null});
+  function expose(practice,key,serial) {
+    const next={...practice.exposure,[key]:serial};
+    practice.exposure=Object.fromEntries(RELATED.filter(k=>Object.hasOwn(next,k)).map(k=>[k,next[k]]));
+  }
+  // Due and unprimed after `completed` questions; page scope is checked separately.
+  function ready(practice,completed,reminder) {
+    const fact=parseFact(reminder.id),shown=practice.exposure[relatedFamily(fact.family,fact.operands)];
+    return completed-reminder.created>=REMINDER_DELAY&&(shown===undefined||completed-shown>=FAMILY_GAP);
+  }
+  // The globally oldest ready, page-allowed reminder across both operations.
+  function headReminder(practice,learning,page=curriculumPage) {
+    return practice.reminders.find(r=>{const fact=parseFact(r.id);return ready(practice,learning.serial,r)&&allowed(fact.family,fact.operands,page);})||null;
+  }
   // Policy, not mastery: latest support gets the largest boost, then fades
   // after four independent successes. Five first tries reduce only extra slots.
   function familyWeight(learning,family) {
@@ -99,32 +137,71 @@ const PLACE_ARITHMETIC = (() => {
     if (!offsetValid(startOffset)) throw new RangeError('Invalid arithmetic start offset');
     return buildQuestion(sequence,MIX[slot(sequence,startOffset)],rng);
   }
-  function buildQuestion(sequence,family,rng) {
-    const tuples = pool(family).filter(operands=>allowed(family,operands)), operands = [...tuples[draw(rng,tuples.length)]];
+  function buildQuestion(sequence,family,rng,fixed=null) {
+    const tuples = fixed ? null : pool(family).filter(operands=>allowed(family,operands)), operands = fixed ? [...fixed] : [...tuples[draw(rng,tuples.length)]];
     const answer = FAMILIES[family].answer(operands), choices = [answer];
     for (const n of [answer-1,answer+1,answer-2,answer+2,answer-3,answer+3,0,100]) if (n >= 0 && n <= 100 && !choices.includes(n) && choices.length<4) choices.push(n);
     for(let i=choices.length-1;i>0;i--) { const j=draw(rng,i+1); [choices[i],choices[j]]=[choices[j],choices[i]]; }
     return { id: sequence, family, operands, choices, misses: [], complete: false };
   }
-  function scheduledQuestion(sequence,learning,rng) {
-    if(selectFamily(learning)===null)throw new RangeError('No completed arithmetic skills');
-    return {...buildQuestion(sequence,selectFamily(learning),rng),serial:learning.serial+1};
+  // The family schedule is unchanged. A planned fact slot serves the global
+  // head reminder only when its operation matches and the five-completion
+  // spacing allows; otherwise the head waits for its own slot.
+  function scheduledQuestion(sequence,learning,practice,rng) {
+    const family=selectFamily(learning),serial=learning.serial+1,phase=learning.position%5;
+    if(family===null)throw new RangeError('No completed arithmetic skills');
+    const slot=phase===0?'facts-add':phase===3?'facts-subtract':null;
+    if(family===slot&&(practice.lastReturn===null||serial-practice.lastReturn>=RETURN_SPACING)) {
+      const head=headReminder(practice,learning),fact=head&&parseFact(head.id);
+      if(fact&&fact.family===slot)return {...buildQuestion(sequence,family,rng,fact.operands),serial,returned:true};
+    }
+    return {...buildQuestion(sequence,family,rng),serial};
   }
   function create(target=10, rng=Math.random) {
-    const learning=newLearning(draw(rng,4294967296));
+    const learning=newLearning(draw(rng,4294967296)),practice=newPractice();
     return {schemaVersion:SCHEMA_VERSION,sequence:0,target:[5,10,20,null].includes(target)?target:10,
-      completed:0,firstTry:0,afterHelp:0,learning,question:scheduledQuestion(0,learning,rng)};
+      completed:0,firstTry:0,afterHelp:0,learning,practice,question:scheduledQuestion(0,learning,practice,rng)};
   }
   // Continue after completed slots; an abandoned question does not consume a slot.
+  // Reminders, exposure and return spacing carry over; no award is created.
   function restart(state, target=10, rng=Math.random) {
     const saved=normalize(state);
     if(!saved)throw new RangeError('Invalid arithmetic restart state');
-    const learning=saved.learning;
+    const {learning,practice}=saved;
     return {schemaVersion:SCHEMA_VERSION,sequence:0,target:[5,10,20,null].includes(target)?target:10,
-      completed:0,firstTry:0,afterHelp:0,learning,question:scheduledQuestion(0,learning,rng)};
+      completed:0,firstTry:0,afterHelp:0,learning,practice,question:scheduledQuestion(0,learning,practice,rng)};
+  }
+  // Optional reminder metadata is one advisory unit: any inconsistency resets
+  // only this unit, never the validated history, session, rewards or question.
+  function normalizePractice(raw,learning,q) {
+    const completed=learning.serial;
+    if(!raw||typeof raw!=='object'||!Array.isArray(raw.reminders)||raw.reminders.length>REMINDER_LIMIT
+      ||!raw.exposure||typeof raw.exposure!=='object'||Array.isArray(raw.exposure))return null;
+    const exposure={};
+    for(const [key,value] of Object.entries(raw.exposure))if(!RELATED.includes(key)||!integer(value)||value>completed)return null;
+    for(const key of RELATED)if(Object.hasOwn(raw.exposure,key))exposure[key]=raw.exposure[key];
+    const ids=new Set(),reminders=[];
+    for(const r of raw.reminders) {
+      const fact=r&&parseFact(r.id);
+      // A reminder's own family is shown when it is created or renewed.
+      if(!fact||ids.has(r.id)||!integer(r.created)||r.created>completed||!(exposure[relatedFamily(fact.family,fact.operands)]>=r.created))return null;
+      ids.add(r.id);reminders.push({id:r.id,created:r.created});
+    }
+    const last=raw.lastReturn;
+    if(!(last===null||(integer(last)&&last>=1&&last<=completed))||(q.complete&&q.returned&&last!==q.serial))return null;
+    return {reminders:sortReminders(reminders),exposure,lastReturn:last};
+  }
+  // A pending missed fact keeps its reminder and own-family exposure. This also
+  // carries an already-reported miss across schema 1–3 migration, idempotently.
+  function keepPendingMiss(practice,learning,q) {
+    const id=factId(q.family,q.operands);
+    if(q.complete||!q.misses.length||!id)return;
+    if(!practice.reminders.some(r=>r.id===id))practice.reminders=sortReminders([...practice.reminders,{id,created:learning.serial}]);
+    const key=relatedFamily(q.family,q.operands);
+    if(!(practice.exposure[key]>=learning.serial))expose(practice,key,learning.serial);
   }
   function normalize(raw) {
-    if (!raw || typeof raw !== 'object' || ![1,2,SCHEMA_VERSION].includes(raw.schemaVersion)) return null;
+    if (!raw || typeof raw !== 'object' || ![1,2,3,SCHEMA_VERSION].includes(raw.schemaVersion)) return null;
     if(raw.curriculumPage!==undefined&&(!Number.isInteger(raw.curriculumPage)||raw.curriculumPage<0||raw.curriculumPage>187))return null;
     const legacy=raw.schemaVersion<3;
     const startOffset = raw.schemaVersion === 1 ? 0 : raw.startOffset;
@@ -156,32 +233,60 @@ const PLACE_ARITHMETIC = (() => {
       if(!last || last.serial!==restored.serial || last.misses!==q.misses.length)return null;
     } else if(!q.complete && !Object.hasOwn(restored,'legacyOffset') && q.family!==selectFamily(learning,raw.curriculumPage??null))return null;
     if(q.complete && restored.serial===0 && !Object.hasOwn(restored,'legacyOffset'))return null;
-    return {schemaVersion:SCHEMA_VERSION,sequence:raw.sequence,target:raw.target,completed:raw.completed,firstTry:raw.firstTry,afterHelp:raw.afterHelp,learning,question:restored,...(raw.curriculumPage!==undefined?{curriculumPage:raw.curriculumPage}:{})};
+    // The returned marker is advisory: one that no planned fact slot could have
+    // served is dropped, leaving the question itself intact.
+    if(raw.schemaVersion===SCHEMA_VERSION && q.returned===true && !Object.hasOwn(restored,'legacyOffset')) {
+      const phase=(q.complete?learning.position+19:learning.position)%20%5;
+      if((phase===0&&q.family==='facts-add')||(phase===3&&q.family==='facts-subtract'))restored.returned=true;
+    }
+    // No reminder is backfilled from older history; only the pending miss carries over.
+    const practice=(raw.schemaVersion===SCHEMA_VERSION&&normalizePractice(raw.practice,learning,restored))
+      ||{...newPractice(),lastReturn:restored.complete&&restored.returned?restored.serial:null};
+    keepPendingMiss(practice,learning,restored);
+    return {schemaVersion:SCHEMA_VERSION,sequence:raw.sequence,target:raw.target,completed:raw.completed,firstTry:raw.firstTry,afterHelp:raw.afterHelp,learning,practice,question:restored,...(raw.curriculumPage!==undefined?{curriculumPage:raw.curriculumPage}:{})};
   }
+  // A replaced pending question was never completed: its reminder stays, and
+  // the replacement may itself be a returned fact.
   function repair(state,rng=Math.random){
-    if(!state.question.complete&&(!allowed(state.question.family,state.question.operands)||state.question.family!==selectFamily(state.learning)))state.question=scheduledQuestion(state.sequence,state.learning,rng);
+    if(!state.question.complete&&(!allowed(state.question.family,state.question.operands)||state.question.family!==selectFamily(state.learning)))state.question=scheduledQuestion(state.sequence,state.learning,state.practice,rng);
     if(curriculumPage!==null)state.curriculumPage=curriculumPage;
     return state;
   }
   function answer(state, value) {
     const q=state.question;
     if(q.complete || !q.choices.includes(value) || q.misses.includes(value)) return false;
-    if(value !== FAMILIES[q.family].answer(q.operands)) q.misses.push(value);
+    const practice=state.practice, id=factId(q.family,q.operands), key=id&&relatedFamily(q.family,q.operands);
+    if(value !== FAMILIES[q.family].answer(q.operands)) {
+      q.misses.push(value);
+      // The first miss on a fact saves its reminder (keeping an older one's age)
+      // and records support exposure once; later taps and the reveal change nothing.
+      if(id && q.misses.length===1)keepPendingMiss(practice,state.learning,q);
+    }
     else {
       if(state.learning.serial>=Number.MAX_SAFE_INTEGER-1 || state.completed>=Number.MAX_SAFE_INTEGER-1)return false;
+      const learning=state.learning, before=learning.serial;
       q.complete=true; state.completed++; state[q.misses.length?'afterHelp':'firstTry']++;
-      const learning=state.learning;
       learning.serial=q.serial;
       learning.history[q.family].push({serial:q.serial,outcome:OUTCOMES[q.misses.length],misses:q.misses.length});
       learning.history[q.family]=learning.history[q.family].slice(-HISTORY_LIMIT);
       if(!Object.hasOwn(q,'legacyOffset'))learning.position=(learning.position+1)%20;
       learning.seed=advanceSeed(learning.seed);
+      if(id) {
+        const current=practice.reminders.find(r=>r.id===id), others=practice.reminders.filter(r=>r.id!==id);
+        // Supported completion renews the reminder at this completion. A clean
+        // first try retires it only if it was already due and unprimed; an
+        // early or warm repeat leaves it unchanged.
+        if(q.misses.length)practice.reminders=sortReminders([...others,{id,created:q.serial}]);
+        else if(current&&ready(practice,before,current))practice.reminders=others;
+        expose(practice,key,q.serial);
+      }
+      if(q.returned)practice.lastReturn=q.serial;
     }
     return true;
   }
   function next(state,rng=Math.random) {
     if(!state.question.complete || (state.target !== null && state.completed >= state.target)) return false;
-    state.sequence++; state.question=scheduledQuestion(state.sequence,state.learning,rng); return true;
+    state.sequence++; state.question=scheduledQuestion(state.sequence,state.learning,state.practice,rng); return true;
   }
   function view(state) { const q=state.question, family=FAMILIES[q.family], result=family.answer(q.operands);
     return {family:q.family,prompt:family.text(q.operands)+(q.family==='complete-ten'||q.family==='missing-addend'?'':' = ?'),
@@ -260,6 +365,6 @@ const PLACE_ARITHMETIC = (() => {
     }
     return null;
   }
-  return Object.freeze({ SCHEMA_VERSION,FAMILIES,MIX,HISTORY_LIMIT,familyWeight,selectFamily,valid,question,create,restart,normalize,answer,next,view,explain,explainOperation,configure,repair });
+  return Object.freeze({ SCHEMA_VERSION,FAMILIES,MIX,HISTORY_LIMIT,REMINDER_DELAY,FAMILY_GAP,RETURN_SPACING,REMINDER_LIMIT,factId,relatedFamily,familyWeight,selectFamily,valid,question,create,restart,normalize,answer,next,view,explain,explainOperation,configure,repair });
 })();
 globalThis.PLACE_ARITHMETIC = PLACE_ARITHMETIC;

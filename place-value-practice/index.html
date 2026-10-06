@@ -1522,6 +1522,26 @@
     }
     .practice-modes { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; padding: 14px 16px 0; }
     .practice-modes button[aria-pressed="true"] { background: var(--ink, #24342d); color: white; }
+    /* Math practice: one compact row names the active focus; choices live in the Options dialog. */
+    .practice-route { align-items: center; padding-top: 8px; }
+    .practice-route-label { margin: 0; font-weight: 750; }
+    .practice-route .button { min-width: 44px; min-height: 44px; padding: 8px 16px; }
+    .practice-options { box-sizing: border-box; width: min(94vw, 520px); max-height: 92dvh; margin: auto; padding: 20px 20px 0; overflow-x: hidden; overflow-y: auto; border: 0; border-radius: 20px; background: #fffdf7; color: #172e2c; box-shadow: 0 20px 80px #102c2855; }
+    .practice-options::backdrop { background: #102c28aa; }
+    .practice-options h2 { margin: 0 0 10px; font-size: 1.4rem; line-height: 1.2; }
+    .practice-options fieldset { min-width: 0; margin: 0 0 10px; padding: 0; border: 0; }
+    .practice-options legend { margin-bottom: 6px; padding: 0; font-weight: 800; }
+    .practice-option { box-sizing: border-box; display: flex; align-items: flex-start; gap: 12px; min-height: 44px; margin-bottom: 6px; padding: 9px 12px; border: 2px solid #d3ded6; border-radius: 12px; cursor: pointer; }
+    .practice-option:has(input:checked) { border-color: #24342d; background: #eef5ef; }
+    .practice-option input { flex: none; width: 22px; height: 22px; margin: 1px 0 0; accent-color: #24342d; }
+    .practice-option-copy { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+    .practice-option-name { font-weight: 750; }
+    .practice-option-help { font-size: .88rem; line-height: 1.35; color: #3f5249; overflow-wrap: anywhere; }
+    .practice-options-actions { position: sticky; bottom: 0; display: flex; justify-content: flex-end; gap: 12px; padding: 10px 0 20px; background: #fffdf7; }
+    .practice-options-actions .button { min-width: 96px; min-height: 48px; }
+    .practice-unavailable { width: min(100%, 640px); margin: auto; padding: 24px; }
+    .practice-unavailable h2 { margin: 0 0 12px; font-size: 1.5rem; }
+    .practice-unavailable-actions { display: flex; flex-wrap: wrap; gap: 12px; }
     #arithmetic-practice { width: min(100%, 760px); margin: auto; padding: 24px; }
     #arithmetic-practice h2 { font-size: 1.7rem; margin: 0 0 20px; }
     .arithmetic-setup { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-bottom: 24px; }
@@ -1548,14 +1568,13 @@
     .arithmetic-explanation-equation { margin: 0 0 6px; text-align: center; font-size: 1.5rem; font-weight: 700; }
     .arithmetic-explanation-lines { min-width: 0; margin: 0; padding: 0; list-style: none; font-size: 1.1rem; line-height: 1.5; overflow-wrap: anywhere; }
     /* Facts is a stadium-first workspace; other practice modes keep their shell. */
-    .facts-active .app-shell { width: 100%; margin: 0; border: 0; border-radius: 0; box-shadow: none; display: grid; grid-template-columns: auto auto auto; overflow: visible; }
+    .facts-active .app-shell { width: 100%; margin: 0; border: 0; border-radius: 0; box-shadow: none; display: grid; grid-template-columns: auto auto; overflow: visible; }
     .facts-active .app-header { grid-column: 1 / -1; display: block; min-height: 78px; padding: 8px 20px 0; text-align: center; border: 0; }
     .facts-active .app-header h1 { font-size: clamp(2rem, 3.4vw, 3.2rem); line-height: 1.15; letter-spacing: -.04em; }
     .facts-active .eyebrow { font-size: .65rem; }
     .facts-active .practice-modes { padding: 6px 16px 10px; gap: 8px; align-content: start; }
     .facts-active .practice-modes[aria-label="Practice type"],
-    .facts-active .practice-modes[aria-label="Practice presentation"],
-    .facts-active .practice-modes[aria-label="Practice focus"] { justify-content: center; }
+    .facts-active .practice-route { justify-content: center; }
     .facts-active .practice-modes button { min-height: 44px; padding: 8px 12px; font-size: .86rem; }
     #fact-practice { grid-column: 1 / -1; width: 100%; max-width: none; margin: 0; padding: 0; }
     .facts-drive { position: relative; isolation: isolate; width: 100%; height: clamp(330px, 44vh, 500px); overflow: hidden; color: #fffdf0; background: #77b756; }
@@ -1637,7 +1656,7 @@
       .facts-active .app-header h1 { font-size: 1.9rem; }
       .facts-active .practice-modes { padding: 3px 10px; justify-content: center !important; gap: 6px; }
       .facts-active .practice-modes button { padding: 8px 10px; font-size: .8rem; }
-      .facts-active .practice-modes[aria-label="Practice focus"] { padding-bottom: 6px; }
+      .facts-active .practice-route { padding-bottom: 6px; }
       .facts-drive { height: clamp(230px, 29vh, 300px); }
       .facts-stadium { object-fit: cover; object-position: 83% center; }
       .facts-drive-header { top: 8px; left: 10px; padding: 7px 11px 9px; border-width: 2px; }
@@ -1961,15 +1980,15 @@
     </form>
   </dialog>
 
-  <link rel="stylesheet" href="../shared/curriculum.css?v=1.8.3">
-  <script src="../shared/curriculum.js?v=1.8.3"></script>
-  <script src="../shared/curriculum-ui.js?v=1.8.3"></script>
-  <script src="arithmetic-domain.js?v=1.8.3"></script>
-  <script src="worked-explanation.js?v=1.8.3"></script>
+  <link rel="stylesheet" href="../shared/curriculum.css?v=1.9.0">
+  <script src="../shared/curriculum.js?v=1.9.0"></script>
+  <script src="../shared/curriculum-ui.js?v=1.9.0"></script>
+  <script src="arithmetic-domain.js?v=1.9.0"></script>
+  <script src="worked-explanation.js?v=1.9.0"></script>
   <script>
     "use strict";
 
-    const GAME_VERSION = "1.8.3";
+    const GAME_VERSION = "1.9.0";
     (() => {
       document.getElementById('game-version').textContent = `Version ${GAME_VERSION}`;
       const SCHEMA_VERSION = 1;
@@ -6719,12 +6738,14 @@
       if (window.__placePracticeMode === 'place-value') window.__placeValueActivate();
     })();
   </script>
-  <script src="fact-practice-domain.js?v=1.8.3"></script>
-  <script src="fact-practice.js?v=1.8.3"></script>
-  <link rel="stylesheet" href="book-practice.css?v=1.8.3">
-  <script src="book-practice-domain.js?v=1.8.3"></script>
-  <script src="book-practice.js?v=1.8.3"></script>
-  <script src="arithmetic.js?v=1.8.3"></script>
-  <script src="../shared/updater.js?v=1.8.3"></script>
+  <script src="fact-practice-domain.js?v=1.9.0"></script>
+  <script src="fact-practice.js?v=1.9.0"></script>
+  <link rel="stylesheet" href="practice-field.css?v=1.9.0">
+  <script src="practice-field.js?v=1.9.0"></script>
+  <link rel="stylesheet" href="book-practice.css?v=1.9.0">
+  <script src="book-practice-domain.js?v=1.9.0"></script>
+  <script src="book-practice.js?v=1.9.0"></script>
+  <script src="arithmetic.js?v=1.9.0"></script>
+  <script src="../shared/updater.js?v=1.9.0"></script>
 </body>
 </html>
