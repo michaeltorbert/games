@@ -81,15 +81,27 @@ test('every sliding five/twenty completions guarantees refresh/coverage across s
     for(let i=0;i<=observed.length-20;i++)assert.equal(new Set(observed.slice(i,i+20)).size,10);
   }
 });
-test('family selection is independent of construction RNG and restored state is deterministic',()=>{
+test('family selection is independent of construction RNG, exact reminders follow actual operands, and restored state is deterministic',()=>{
   let a=api.create(null,rng),b=api.create(null,rng);
+  const missed={a:new Set(),b:new Set()};
   for(let i=0;i<50;i++) {
-    assert.equal(a.question.family,b.question.family);finish(a,i%4);finish(b,i%4);
+    assert.equal(a.question.family,b.question.family);
+    for(const [name,s] of [['a',a],['b',b]])if(i%4&&api.factId(s.question.family,s.question.operands))missed[name].add(api.factId(s.question.family,s.question.operands));
+    finish(a,i%4);finish(b,i%4);
     a=api.normalize(plain(a));b=api.restart(b,null,()=>.9);api.next(a,()=>.01);
     assert.deepEqual(plain(a.learning),plain(b.learning));
+    // Reminders name only facts this run actually missed, so they depend on its own operands.
+    for(const [name,s] of [['a',a],['b',b]])for(const r of s.practice.reminders)assert.ok(missed[name].has(r.id),`${name} ${r.id}`);
   }
+  assert.ok(missed.a.size>0&&missed.b.size>0);
+  assert.notDeepEqual(plain(a.practice.reminders),plain(b.practice.reminders));
   let x=api.create(null,rng),y=api.create(null,rng);
   for(let i=0;i<30;i++){assert.deepEqual(plain(x),plain(y));finish(x);finish(y);api.next(x,rng);api.next(y,rng);}
+  for(let i=0;i<60;i++){assert.deepEqual(plain(x),plain(y));finish(x,i%3);finish(y,i%3);api.next(x,rng);api.next(y,rng);}
+  assert.ok(x.practice.reminders.length>0);
+  // The same saved artifact restored with the same RNG is reproducible, reminders included.
+  assert.deepEqual(plain(api.restart(plain(x),null,rng)),plain(api.restart(plain(y),null,rng)));
+  assert.deepEqual(plain(api.normalize(plain(x))),plain(x));
 });
 test('literal schema 1/2 migration preserves attempts, validates alignment and never backfills',()=>{
   for(const schemaVersion of [1,2])for(const complete of [false,true])for(let misses=0;misses<4;misses++) {
@@ -109,7 +121,7 @@ test('literal schema 1/2 migration preserves attempts, validates alignment and n
 });
 test('normalization rejects corrupt history/attempts and strips non-history data',()=>{
   const state=api.create(null,rng);finish(state,2);
-  for(const mutate of [s=>s.schemaVersion=4,s=>s.learning.serial=-1,s=>s.learning.position=20,s=>s.learning.seed=4294967296,
+  for(const mutate of [s=>s.schemaVersion=5,s=>s.learning.serial=-1,s=>s.learning.position=20,s=>s.learning.seed=4294967296,
     s=>s.learning.history['facts-add'][0].outcome='firstTry',s=>s.learning.history['facts-add'][0].serial=2,
     s=>s.learning.history['facts-add'].push({...s.learning.history['facts-add'][0]}),s=>s.question.serial=2,
     s=>s.completed=3,s=>s.learning.history['facts-add']=[],s=>s.learning.history['facts-add'][0].misses=4]) {
@@ -267,4 +279,294 @@ test('the shared operation projection serves every Mixed family unchanged and re
   assert.deepEqual(plain(api.explainOperation('sub',[9,2,2])),{kind:'steps',heading:'Take away one part at a time',lines:['9 − 2 = 7','7 − 2 = 5']});
   for(const [o,operands,row] of [['add',[60,41]],['add',[1]],['add',[1,2,3,4]],['add',[1,2,3],1],['add',[1,2],0],['sub',[3,4]],['sub',[5,3,3]],['sub',[9,2],1],['mul',[2,3]],['add',[1.5,2]],['add',[-1,2]],['add',[101,0]],['add','12']])
     assert.equal(api.explainOperation(o,operands,row??null),null,`${o} ${operands} ${row}`);
+});
+// Exact small-fact reminders inside Addition & subtraction (schema 4).
+const source=path=>readFile(new URL(path,import.meta.url),'utf8');
+const paged=vm.createContext({}),oracle=vm.createContext({});
+for(const path of ['../shared/curriculum.js','../place-value-practice/arithmetic-domain.js'])vm.runInContext(await source(path),paged);
+for(const path of ['../shared/curriculum.js','../place-value-practice/fact-practice-domain.js'])vm.runInContext(await source(path),oracle);
+const P=paged.PLACE_ARITHMETIC,CURRICULUM=paged.MATH_CURRICULUM,CATALOG=plain(oracle.PLACE_FACTS.catalog);
+function complete(A,s,misses=0){const answer=A.view(s).answer;for(const v of s.question.choices.filter(n=>n!==answer).slice(0,misses))assert.equal(A.answer(s,v),true);assert.equal(A.answer(s,answer),true);}
+const wrongOf=s=>s.question.choices.filter(n=>n!==api.view(s).answer);
+// Test fixture: replace the pending question with a chosen one at a slot that schedules its family.
+const AT={'facts-add':0,'add-no-carry':1,'facts-subtract':3,'subtract-no-borrow':11};
+function ask(A,s,family,operands){
+  if(s.question.complete)assert.equal(A.next(s,rng),true);
+  const answer=A.view({question:{family,operands}}).answer;
+  s.learning.position=AT[family];
+  const choices=[answer+1,answer,answer-1,answer+2,answer-2,answer+3,answer-3].filter(n=>n>=0&&n<=100).slice(0,4);
+  s.question={id:s.sequence,family,operands:[...operands],choices,misses:[],complete:false,serial:s.learning.serial+1};
+  const restored=A.normalize(plain(s));assert.ok(restored,`${family} ${operands}`);return restored;
+}
+const filler=(A,s)=>{s=ask(A,s,'add-no-carry',[31,68]);complete(A,s);return s;};
+// An independent statement of the policy, used as the oracle for real scheduler traces.
+const opOf=id=>id.startsWith('add:')?'facts-add':'facts-subtract';
+const numbersOf=id=>id.split(':').slice(1).map(Number);
+const familyKey=id=>{const [a,b]=numbersOf(id),[x,y]=(id.startsWith('add:')?[a,b]:[b,a-b]).sort((p,q)=>p-q);return `${x}:${y}`;};
+const tieKey=id=>{const [a,b]=numbersOf(id);return (id.startsWith('add:')?0:1)*10000+a*100+b;};
+function expectedHead(s,allowedId=()=>true){
+  const L=s.learning.serial,p=plain(s.practice);
+  return p.reminders.filter(r=>L-r.created>=2&&L-(p.exposure[familyKey(r.id)]??-Infinity)>=2&&allowedId(r.id))
+    .sort((x,y)=>x.created-y.created||tieKey(x.id)-tieKey(y.id))[0]??null;
+}
+const lcg=seed=>()=>((seed=(Math.imul(seed,1664525)+1013904223)>>>0)/4294967296);
+// Completes `steps` real scheduled questions, checking every build against the oracle.
+function run(A,s,steps,{draw=rng,misses=()=>0,allowedId}={}){
+  const log=[];
+  for(let i=0;i<steps;i++){
+    const q=s.question,phase=s.learning.position%5,planned=phase===0?'facts-add':phase===3?'facts-subtract':null;
+    const head=expectedHead(s,allowedId),spaced=s.practice.lastReturn===null||q.serial-s.practice.lastReturn>=5;
+    const serve=planned!==null&&q.family===planned&&spaced&&head!==null&&opOf(head.id)===planned,id=A.factId(q.family,q.operands);
+    assert.equal(q.returned===true,serve,`serial ${q.serial} ${q.family} ${id}`);
+    if(serve)assert.equal(id,head.id);
+    if(allowedId&&id)assert.ok(allowedId(id),id);
+    const m=misses(q,i);
+    log.push({serial:q.serial,family:q.family,id,returned:serve,before:plain(s.practice.reminders)});
+    complete(A,s,m);
+    if(i%7===0){const restored=A.normalize(plain(s));assert.deepEqual(plain(restored),plain(s));s=restored;}
+    assert.ok(s.practice.reminders.length<=200);
+    assert.equal(A.next(s,draw),true);
+  }
+  return {s,log};
+}
+// Coverage of all ten families in every twenty is the full-scope schedule guarantee; a lowered page substitutes families.
+function windows(log,fullScope=true){
+  for(let i=0;i+5<=log.length;i++){
+    assert.equal(log[i+4].serial-log[i].serial,4);
+    assert.ok(log.slice(i,i+5).filter(r=>r.returned).length<=1,`returns in serials ${log[i].serial}–${log[i+4].serial}`);
+    assert.ok(log.slice(i,i+5).filter(r=>r.family==='facts-add'||r.family==='facts-subtract').length>=2);
+  }
+  if(fullScope)for(let i=0;i+20<=log.length;i++)assert.equal(new Set(log.slice(i,i+20).map(r=>r.family)).size,10);
+}
+const allFacts=()=>CATALOG.map(f=>f.id);
+const EMPTY={reminders:[],exposure:{},lastReturn:null};
+
+test('reminder IDs exhaustively match the 200 Number facts equations, directionally, with 55 related families',()=>{
+  const ids=new Map();
+  for(const family of families)for(const operands of enumerate(family)) {
+    const id=api.factId(family,operands);
+    if(family!=='facts-add'&&family!=='facts-subtract'){assert.equal(id,null,`${family} ${operands}`);continue;}
+    assert.ok(id);assert.ok(!ids.has(id));ids.set(id,{family,operands});
+  }
+  assert.equal(ids.size,200);assert.deepEqual([...ids.keys()].sort(),allFacts().sort());
+  for(const f of CATALOG) {
+    const {family,operands}=ids.get(f.id),view=api.view({question:{family,operands}});
+    assert.equal(family,f.op==='add'?'facts-add':'facts-subtract');assert.deepEqual(operands,[f.a,f.b]);
+    assert.equal(view.answer,f.answer);assert.equal(view.prompt,`${f.a} ${f.op==='add'?'+':'−'} ${f.b} = ?`);
+    // Shared exposure follows Number facts' family; the identity itself never crosses over.
+    const [,x,y]=f.family.split(':');assert.equal(api.relatedFamily(family,operands),`${x}:${y}`);
+  }
+  assert.equal(new Set(CATALOG.map(f=>api.relatedFamily(ids.get(f.id).family,ids.get(f.id).operands))).size,55);
+  assert.notEqual(api.factId('facts-add',[7,6]),api.factId('facts-add',[6,7]));assert.notEqual(api.factId('facts-subtract',[13,7]),api.factId('facts-subtract',[13,6]));
+  for(const [family,operands] of [['facts-add',[10,0]],['facts-subtract',[12,2]],['facts-add',[7]],['facts-add',[1.5,2]],['nope',[1,2]]])assert.equal(api.factId(family,operands),null);
+  // The domain stays standalone: no Number facts global is needed or read.
+  assert.equal(vm.runInContext('typeof PLACE_FACTS',context),'undefined');
+});
+
+test('the first miss saves one reminder at once; more taps, the reveal, reload and abandonment leave it byte-identical',()=>{
+  let s=ask(api,api.create(null,rng),'facts-add',[7,6]);const before=plain(s);
+  assert.equal(api.answer(s,-1),false);assert.deepEqual(plain(s),before);
+  const [w1,w2,w3]=wrongOf(s);
+  assert.equal(api.answer(s,w1),true);
+  assert.deepEqual(plain(s.practice),{reminders:[{id:'add:7:6',created:0}],exposure:{'6:7':0},lastReturn:null});
+  assert.deepEqual(plain(s.learning),before.learning);assert.deepEqual([s.completed,s.firstTry,s.afterHelp],[0,0,0]);
+  const saved=JSON.stringify(s.practice);
+  assert.equal(api.answer(s,w1),false);assert.equal(api.answer(s,w2),true);assert.equal(api.answer(s,w3),true);
+  assert.equal(JSON.stringify(s.practice),saved);
+  s=api.normalize(plain(s));assert.equal(JSON.stringify(s.practice),saved);assert.deepEqual(plain(s.question.misses),[w1,w2,w3]);
+  // Abandoning through a new session keeps the reminder and creates no completion or award.
+  const restarted=api.restart(plain(s),5,rng);
+  assert.equal(JSON.stringify(restarted.practice),saved);assert.deepEqual(plain(restarted.learning),before.learning);
+  assert.deepEqual([restarted.completed,restarted.firstTry,restarted.afterHelp],[0,0,0]);
+  // A miss on a bigger problem never makes an exact reminder.
+  let big=ask(api,restarted,'add-no-carry',[31,68]);api.answer(big,wrongOf(big)[0]);assert.equal(JSON.stringify(big.practice),saved);
+  // A later first miss keeps an existing reminder's age.
+  complete(api,big);big=ask(api,big,'facts-add',[7,6]);api.answer(big,wrongOf(big)[0]);
+  assert.deepEqual(plain(big.practice.reminders),[{id:'add:7:6',created:0}]);assert.equal(big.practice.exposure['6:7'],1);
+});
+
+test('supported completion renews; warm, early and swapped repeats never clear; a due, unprimed first try clears',()=>{
+  let s=ask(api,api.create(null,rng),'facts-add',[7,6]);complete(api,s,1);
+  assert.deepEqual(plain(s.practice),{reminders:[{id:'add:7:6',created:1}],exposure:{'6:7':1},lastReturn:null});
+  assert.deepEqual(plain(s.learning.history['facts-add']),[{serial:1,outcome:'retryCorrect1',misses:1}]);
+  // Immediately again (not yet due): a clean answer leaves the reminder; only exposure moves.
+  s=ask(api,s,'facts-add',[7,6]);complete(api,s);assert.deepEqual(plain(s.practice.reminders),[{id:'add:7:6',created:1}]);assert.equal(s.practice.exposure['6:7'],2);
+  s=filler(api,s);
+  // Due (3 − 1 ≥ 2) but primed by that warm repeat (3 − 2 < 2): still not cleared.
+  s=ask(api,s,'facts-add',[7,6]);complete(api,s);assert.deepEqual(plain(s.practice.reminders),[{id:'add:7:6',created:1}]);
+  // The swapped and inverse facts are different reminders and give no credit.
+  s=filler(api,s);s=filler(api,s);
+  for(const [family,operands] of [['facts-add',[6,7]],['facts-subtract',[13,6]]]){s=ask(api,s,family,operands);complete(api,s);}
+  assert.deepEqual(plain(s.practice.reminders),[{id:'add:7:6',created:1}]);
+  // Supported completion renews to the completed serial even when it was due.
+  s=filler(api,s);s=filler(api,s);s=ask(api,s,'facts-add',[7,6]);complete(api,s,2);
+  assert.deepEqual(plain(s.practice.reminders),[{id:'add:7:6',created:11}]);assert.equal(s.learning.serial,11);
+  s=filler(api,s);s=filler(api,s);
+  // An ordinary occurrence that was due and unprimed before completion clears without counting as a return.
+  s=ask(api,s,'facts-add',[7,6]);assert.equal(s.question.returned,undefined);complete(api,s);
+  assert.deepEqual(plain(s.practice.reminders),[]);assert.equal(s.practice.lastReturn,null);
+  assert.ok(Object.values(s.learning.history).flat().every(row=>Object.keys(row).sort().join()==='misses,outcome,serial'));
+});
+
+test('a returned question keeps its marker through misses and reload, and renewal cannot evade the five-completion spacing',()=>{
+  let s=ask(api,api.create(null,rng),'facts-add',[2,3]);complete(api,s,1);
+  s=ask(api,s,'facts-add',[4,5]);complete(api,s,1);s=filler(api,s);s=filler(api,s);
+  assert.equal(s.learning.serial,4);
+  // Each build is forced onto the addition slot to isolate spacing from the family schedule.
+  s.learning.position=0;assert.equal(api.next(s,rng),true);
+  assert.equal(s.question.returned,true);assert.deepEqual(plain(s.question.operands),[2,3]);assert.equal(s.question.serial,5);
+  assert.equal(new Set(s.question.choices).size,4);assert.ok(s.question.choices.includes(5));
+  api.answer(s,wrongOf(s)[0]);s=api.normalize(plain(s));assert.equal(s.question.returned,true);
+  const totals=[s.completed,s.firstTry,s.afterHelp];complete(api,s);
+  assert.deepEqual([s.completed,s.firstTry,s.afterHelp],[totals[0]+1,totals[1],totals[2]+1]);
+  assert.equal(s.practice.lastReturn,5);assert.deepEqual(plain(s.practice.reminders),[{id:'add:4:5',created:2},{id:'add:2:3',created:5}]);
+  s=api.normalize(plain(s));assert.equal(s.question.returned,true);
+  const serials=[];
+  for(let i=0;i<6;i++){s.learning.position=0;api.next(s,rng);if(s.question.returned)serials.push(s.question.serial);complete(api,s);s=api.normalize(plain(s));}
+  // add:4:5 was ready throughout, but only serial 10 is five completions after the return at 5.
+  assert.deepEqual(serials,[10]);assert.equal(s.practice.lastReturn,10);
+  assert.deepEqual(plain(s.practice.reminders),[{id:'add:2:3',created:5}]);
+});
+
+test('a 200-fact backlog drains through the real scheduler with both operations, sliding-five spacing and unchanged coverage',()=>{
+  let s=api.create(null,rng);
+  s.practice={reminders:allFacts().map(id=>({id,created:0})),exposure:Object.fromEntries(CATALOG.map(f=>[familyKey(f.id),0])),lastReturn:null};
+  s=api.normalize(plain(s));assert.equal(s.practice.reminders.length,200);
+  const {s:end,log}=run(api,s,3000,{draw:lcg(11)});
+  windows(log);
+  const served=log.filter(r=>r.returned);
+  assert.ok(served.some(r=>r.family==='facts-add')&&served.some(r=>r.family==='facts-subtract'));
+  assert.equal(end.practice.reminders.length,0,`left ${end.practice.reminders.length}`);
+  // The family sequence is exactly the schedule's: a twin that never holds reminders sees the same families.
+  let twin=api.create(null,rng);const sequence=[];
+  for(let i=0;i<log.length;i++){sequence.push(twin.question.family);complete(api,twin);twin.practice=plain(EMPTY);api.next(twin,lcg(i+1));}
+  assert.deepEqual(log.map(r=>r.family),sequence);
+});
+
+// Reminder versions (id@created) seen before `until` that never left the queue during the trace.
+function unresolved(log,until){
+  const first=new Map(),resolved=new Set();
+  log.forEach((row,i)=>{const now=new Set(row.before.map(r=>`${r.id}@${r.created}`));for(const key of now)if(!first.has(key))first.set(key,i);for(const key of first.keys())if(!now.has(key))resolved.add(key);});
+  return [...first].filter(([key,i])=>i<until&&!resolved.has(key));
+}
+test('a full backlog with continued misses, renewals and page changes keeps both operations served and every allowed debt moving',()=>{
+  P.configure(187);
+  let s=P.repair(P.create(null,lcg(3)),lcg(4)),returns=0;
+  s.practice={reminders:allFacts().map(id=>({id,created:0})),exposure:Object.fromEntries(CATALOG.map(f=>[familyKey(f.id),0])),lastReturn:null};
+  s=P.normalize(plain(s));
+  // A third of ordinary questions are missed (some revealed); every third return is missed again and renews.
+  const misses=(q,i)=>q.returned?(++returns%3===0?1:0):i%3===0?(i%9===0?3:1):0;
+  const pageOf=id=>CURRICULUM.arithmeticPage(opOf(id),numbersOf(id));
+  let segment=run(P,s,900,{draw:lcg(5),misses});windows(segment.log);s=segment.s;
+  // Every one of the 200 original debts was served or practised again despite new misses joining the queue.
+  assert.deepEqual(unresolved(segment.log,1),[]);
+  for(const op of ['facts-add','facts-subtract'])assert.ok(segment.log.filter(r=>r.returned&&r.family===op).length>20,op);
+  assert.ok(s.practice.reminders.length>0);
+  // Lowering the page (through a new session) leaves out-of-scope debt dormant but intact.
+  P.configure(102);s=P.repair(P.restart(s,null,lcg(6)),lcg(6));
+  const dormant=plain(s.practice.reminders).filter(r=>pageOf(r.id)>102);assert.ok(dormant.length>0);
+  segment=run(P,s,600,{draw:lcg(7),misses,allowedId:id=>pageOf(id)<=102});windows(segment.log,false);s=segment.s;
+  for(const r of dormant)assert.ok(plain(s.practice.reminders).some(x=>x.id===r.id&&x.created===r.created),r.id);
+  assert.ok(segment.log.some(r=>r.returned));
+  // Raising it again lets the dormant debt return.
+  P.configure(187);s=P.repair(P.restart(s,null,lcg(8)),lcg(8));
+  segment=run(P,s,4000,{draw:lcg(9),misses});windows(segment.log);
+  const log=segment.log,served=log.filter(r=>r.returned);
+  for(const op of ['facts-add','facts-subtract'])assert.ok(served.filter(r=>r.family===op).length>20,op);
+  for(const r of dormant)assert.ok(served.some(x=>x.id===r.id),`dormant ${r.id} returned`);
+  // Each reminder version alive in the first quarter is served or practised again before the end.
+  assert.deepEqual(unresolved(log,1000),[]);
+  P.configure(187);
+});
+
+test('Mixed page authority gates reminders; 12 − 2 is a bigger problem at page 110, not a reminder',()=>{
+  // 12 − 2 is subtract-no-borrow in Mixed (page 110), while Number facts' page rule would say 131.
+  assert.equal(CURRICULUM.arithmeticPage('subtract-no-borrow',[12,2]),110);assert.equal(CURRICULUM.factPage('sub',12,2),131);
+  assert.equal(P.valid('facts-subtract',[12,2]),false);assert.equal(P.factId('subtract-no-borrow',[12,2]),null);
+  // For all 200 reminder facts the Mixed page used for gating equals the typed fact page.
+  for(const f of CATALOG)assert.equal(CURRICULUM.arithmeticPage(opOf(f.id),[f.a,f.b]),CURRICULUM.factPage(f.op,f.a,f.b),f.id);
+  P.configure(110);
+  let s=ask(P,P.create(null,rng),'subtract-no-borrow',[12,2]);P.answer(s,11);complete(P,s);
+  assert.deepEqual(plain(s.practice),EMPTY);
+  // A lowered page replaces a disallowed pending missed fact without completing it, and keeps the debt.
+  P.configure(187);s=ask(P,s,'facts-add',[7,6]);P.answer(s,wrongOf(s)[0]);
+  const before=plain(s);P.configure(102);P.repair(s,rng);
+  assert.notDeepEqual(plain(s.question.operands),[7,6]);assert.ok(CURRICULUM.arithmeticPage(s.question.family,s.question.operands)<=102);
+  assert.deepEqual(plain(s.practice),before.practice);assert.deepEqual(plain(s.learning),before.learning);
+  assert.deepEqual([s.completed,s.firstTry,s.afterHelp],[before.completed,before.firstTry,before.afterHelp]);
+  // At page 103 (7 + 6's page) it is allowed again and returns at the addition slot once due.
+  // The repair stored page 102, so the filler is a small fact from an unrelated family.
+  P.configure(103);
+  for(let i=0;i<3;i++){s=ask(P,s,'facts-add',[1,1]);complete(P,s);}
+  s.learning.position=0;P.next(s,rng);assert.equal(s.question.returned,true);assert.deepEqual(plain(s.question.operands),[7,6]);
+  P.configure(187);
+});
+
+test('restart and reload keep reminders, exposure and spacing without awards; all 200 facts fit with no eviction',()=>{
+  let s=api.create(null,rng);
+  for(const id of allFacts()){s=ask(api,s,opOf(id),numbersOf(id));api.answer(s,wrongOf(s)[0]);complete(api,s);}
+  assert.equal(s.practice.reminders.length,200);assert.deepEqual(plain(s.practice.reminders).map(r=>r.id).sort(),allFacts().sort());
+  const before=plain(s);s=ask(api,s,'facts-add',[0,0]);api.answer(s,wrongOf(s)[0]);
+  assert.deepEqual(plain(s.practice.reminders),before.practice.reminders);
+  const restarted=api.restart(plain(s),20,rng);
+  assert.deepEqual(plain(restarted.practice),plain(s.practice));assert.deepEqual(plain(restarted.learning),plain(s.learning));
+  assert.deepEqual([restarted.completed,restarted.firstTry,restarted.afterHelp,restarted.sequence],[0,0,0,0]);
+  assert.deepEqual(plain(api.normalize(plain(restarted))),plain(restarted));
+});
+
+test('schema 1–3 migration carries only an unfinished missed fact, idempotently, without awards or history',()=>{
+  for(const schemaVersion of [1,2])for(const complete of [false,true])for(let misses=0;misses<4;misses++) {
+    const legacy={schemaVersion,startOffset:schemaVersion===1?0:4,sequence:0,target:5,completed:complete?1:0,firstTry:complete&&!misses?1:0,afterHelp:complete&&misses?1:0,
+      question:{id:0,family:'facts-add',operands:[4,5],choices:[9,8,10,7],misses:[8,10,7].slice(0,misses),complete}};
+    const state=api.normalize(plain(legacy));
+    assert.deepEqual(plain(state.practice),!complete&&misses?{reminders:[{id:'add:4:5',created:0}],exposure:{'4:5':0},lastReturn:null}:EMPTY);
+    assert.deepEqual([state.completed,state.firstTry,state.afterHelp],[legacy.completed,legacy.firstTry,legacy.afterHelp]);
+    assert.equal(state.learning.history['facts-add'].length,0);
+    assert.deepEqual(plain(api.normalize(plain(state))),plain(state));
+  }
+  // Schema 3: an unfinished missed fact is carried at the completed count; completed history is never replayed.
+  let s=api.create(null,rng);for(let i=0;i<6;i++){complete(api,s,i%2);api.next(s,rng);}
+  s=ask(api,s,'facts-subtract',[13,7]);api.answer(s,wrongOf(s)[0]);
+  const v3=plain(s);v3.schemaVersion=3;delete v3.practice;v3.question.returned=true;
+  const migrated=api.normalize(plain(v3));
+  assert.deepEqual(plain(migrated.practice),{reminders:[{id:'sub:13:7',created:6}],exposure:{'6:7':6},lastReturn:null});
+  assert.equal(migrated.question.returned,undefined);assert.deepEqual(plain(migrated.learning),v3.learning);
+  assert.deepEqual([migrated.completed,migrated.firstTry,migrated.afterHelp],[v3.completed,v3.firstTry,v3.afterHelp]);
+  assert.deepEqual(plain(api.normalize(plain(migrated))),plain(migrated));
+  complete(api,migrated);const done=plain(migrated);done.schemaVersion=3;delete done.practice;
+  assert.deepEqual(plain(api.normalize(done).practice),EMPTY);assert.deepEqual(plain(api.normalize(done).learning),done.learning);
+  // A pending fact without misses carries nothing.
+  const fresh=plain(ask(api,api.create(null,rng),'facts-add',[3,4]));fresh.schemaVersion=3;delete fresh.practice;
+  assert.deepEqual(plain(api.normalize(fresh).practice),EMPTY);
+});
+
+test('damaged reminder data resets only that unit; core data and future schemas stay strict',()=>{
+  let s=ask(api,api.create(null,rng),'facts-add',[2,3]);complete(api,s,1);s=ask(api,s,'facts-add',[4,5]);complete(api,s,1);s=filler(api,s);s=filler(api,s);
+  s.learning.position=0;api.next(s,rng);assert.equal(s.question.returned,true);complete(api,s);
+  s=ask(api,s,'facts-subtract',[13,7]);api.answer(s,wrongOf(s)[0]);
+  const good=plain(s);assert.deepEqual(plain(api.normalize(good)),good);
+  assert.deepEqual(good.practice,{reminders:[{id:'add:4:5',created:2},{id:'sub:13:7',created:5}],exposure:{'2:3':5,'4:5':2,'6:7':5},lastReturn:5});
+  const seeded={reminders:[{id:'sub:13:7',created:5}],exposure:{'6:7':5},lastReturn:null};
+  const core=x=>{const {practice,...rest}=plain(x);return rest;};
+  for(const mutate of [p=>p.practice=null,p=>delete p.practice,p=>p.practice.reminders={},p=>p.practice.exposure=[],
+    p=>p.practice.reminders.push({...p.practice.reminders[0]}),p=>p.practice.reminders[0].id='add:10:0',p=>p.practice.reminders[0].id='add:04:5',p=>p.practice.reminders[0].id='mul:2:3',
+    p=>p.practice.reminders[0].created=-1,p=>p.practice.reminders[0].created=99,p=>p.practice.reminders[0].created=1.5,p=>p.practice.exposure['9:10']=1,
+    p=>p.practice.exposure['4:5']=99,p=>delete p.practice.exposure['4:5'],p=>p.practice.lastReturn=0,p=>p.practice.lastReturn=99,p=>p.practice.lastReturn='5',
+    p=>p.practice.reminders=Array.from({length:201},(_,i)=>({id:allFacts()[i%200],created:0}))]) {
+    const bad=plain(good);mutate(bad);const restored=api.normalize(bad);
+    assert.ok(restored,String(mutate));assert.deepEqual(core(restored),core(good),String(mutate));
+    assert.deepEqual(plain(restored.practice),seeded,String(mutate));
+  }
+  // A completed return keeps its spacing even when the rest of the unit is reset.
+  let t=ask(api,api.create(null,rng),'facts-add',[2,3]);complete(api,t,1);t=filler(api,t);t=filler(api,t);
+  t.learning.position=0;api.next(t,rng);assert.equal(t.question.returned,true);complete(api,t);assert.equal(t.practice.lastReturn,4);
+  for(const mutate of [p=>p.practice.exposure='broken',p=>p.practice.lastReturn=1]){const bad=plain(t);mutate(bad);assert.deepEqual(plain(api.normalize(bad).practice),{...EMPTY,lastReturn:4},String(mutate));}
+  // Malformed or impossible returned markers are dropped; the question, history and reminders stay.
+  for(const mutate of [q=>q.returned='yes',q=>q.returned=false]){const bad=plain(good);mutate(bad.question);const restored=api.normalize(bad);assert.equal(restored.question.returned,undefined);assert.deepEqual(plain(restored.practice),good.practice);}
+  const atSlot=plain(good);atSlot.question.returned=true;assert.equal(api.normalize(atSlot).question.returned,true);
+  const bigger=plain(filler(api,api.normalize(plain(good))));bigger.question.returned=true;
+  const restoredBigger=api.normalize(bigger);assert.ok(restoredBigger);assert.equal(restoredBigger.question.returned,undefined);
+  // Core corruption is still rejected even with valid reminders, and schema 5 is a future save.
+  for(const mutate of [p=>p.schemaVersion=5,p=>p.learning.history['facts-add'][0].misses=0,p=>p.question.serial=99,p=>p.completed=99])
+    {const bad=plain(good);mutate(bad);assert.equal(api.normalize(bad),null,String(mutate));}
 });

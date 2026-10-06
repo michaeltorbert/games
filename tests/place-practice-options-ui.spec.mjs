@@ -57,6 +57,39 @@ test('every saved focus and presentation value opens the right route; only an ex
  }
 });
 
+test('Options describe each focus truthfully: missed small facts return in Addition & subtraction',async({page},info)=>{
+ once(info,'Copy once; layout runs on every device');
+ await boot(page,{[MODE]:'arithmetic',[SUB]:'mixed-later'});const before=await stores(page);
+ await optionsButton(page).click();const dialog=optionsDialog(page);await expect(dialog).toBeVisible();
+ const described=async(name,text)=>expect(dialog.getByRole('radio',{name,exact:true})).toHaveAccessibleDescription(text);
+ await described(ROUTES.mixed,'Mixed questions from your finished pages, from small facts to bigger numbers. Missed small facts return in later practice. Kinds of bigger problems that needed help come up a little more often.');
+ await described(ROUTES.facts,'Type answers to addition facts up to 9 + 9 and their matching subtraction facts. Missed facts come back later.');
+ await described(ROUTES.book,'Goes through each finished lesson in turn, including shapes, measurement, graphs and coins. Choose a topic on the book screen.');
+ await expect(dialog).not.toContainText(/master|fluent|seconds|deadline/i);
+ await dialog.getByRole('button',{name:'Cancel',exact:true}).click();expect(await stores(page)).toEqual(before);
+});
+
+test('a saved Addition & subtraction reminder survives visits to Number facts and Book topics, which never write the Mixed store',async({page},info)=>{
+ once(info,'Store isolation once; layout runs on every device');
+ await page.goto('/place-value-practice/');
+ const seeded=await page.evaluate(()=>{const s=PLACE_ARITHMETIC.create(10,()=>.3);s.learning.position=0;
+  s.question={id:0,family:'facts-add',operands:[7,6],choices:[14,13,12,15],misses:[],complete:false,serial:1};return JSON.stringify(s);});
+ await boot(page,{[MODE]:'arithmetic',[SUB]:'mixed-later',[MIXED]:seeded});
+ await page.locator('#arithmetic-practice .arithmetic-answer').filter({hasText:/^12$/}).click();await settled(page);
+ const mixed=await page.evaluate(k=>localStorage.getItem(k),MIXED);
+ expect(JSON.parse(mixed).practice.reminders).toEqual([{id:'add:7:6',created:0}]);
+ await chooseOptions(page,{focus:'facts'});await settled(page);await expect(page.locator('#fact-practice')).toBeVisible();
+ await keypad(page,await factAnswer(page));await page.locator('#facts-check').click();await settled(page);expect((await facts(page)).attempt.complete).toBe(true);
+ await chooseOptions(page,{focus:'book'});await expect(page.locator('#book-practice')).toBeVisible();
+ const q=await page.evaluate(()=>PLACE_BOOK.current(__bookTest.snapshot()));
+ await page.locator('#book-practice .arithmetic-answer').filter({hasText:new RegExp(`^${q.answer.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}$`)}).click();
+ await expect(page.locator('#book-practice')).toContainText('Correct!');
+ expect(await page.evaluate(k=>localStorage.getItem(k),MIXED)).toBe(mixed);
+ await chooseOptions(page,{focus:'mixed'});await settled(page);
+ expect(await page.evaluate(()=>__arithmeticTest.snapshot())).toEqual(JSON.parse(mixed));
+ expect(await page.evaluate(k=>localStorage.getItem(k),MIXED)).toBe(mixed);
+});
+
 test('Cancel and Escape change nothing: stores, typed answer, worked panel, route and focus stay',async({page},info)=>{
  once(info,'Dialog contract once; layout runs on every device');
  await boot(page,{[MODE]:'arithmetic',[SUB]:'facts'});

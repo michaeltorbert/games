@@ -47,7 +47,7 @@
   // Descriptions state only what each lane actually does.
   options.append(optionsTitle,
     fieldset('What to practice',[
-      radio('practice-focus','mixed',ROUTES.mixed,'Mixed questions from your finished pages, from small facts to bigger numbers. Kinds of problems that needed help come up a little more often.'),
+      radio('practice-focus','mixed',ROUTES.mixed,'Mixed questions from your finished pages, from small facts to bigger numbers. Missed small facts return in later practice. Kinds of bigger problems that needed help come up a little more often.'),
       radio('practice-focus','facts',ROUTES.facts,'Type answers to addition facts up to 9 + 9 and their matching subtraction facts. Missed facts come back later.'),
       radio('practice-focus','book',ROUTES.book,'Goes through each finished lesson in turn, including shapes, measurement, graphs and coins. Choose a topic on the book screen.')]),
     fieldset('Presentation',[radio('practice-presentation','football','Football','Earn yards toward a touchdown as you practice.'),radio('practice-presentation','plain','Plain','Just the questions, with no football field.')]));

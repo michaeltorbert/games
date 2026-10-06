@@ -165,7 +165,7 @@ test('invalid arithmetic JSON stays writable and persists recovered progress acr
  expect(await raw(page)).toBe(before);
  await correct(page);
  const completed=await snapshot(page);
- expect(completed.schemaVersion).toBe(3);expect(completed.completed).toBe(1);
+ expect(completed.schemaVersion).toBe(4);expect(completed.completed).toBe(1);
  expect(completed.learning.serial).toBe(1);
  expect(JSON.parse(await raw(page,AKEY))).toEqual(completed);
  await page.reload();expect(await snapshot(page)).toEqual(completed);
@@ -290,11 +290,11 @@ test('four short sessions guarantee coverage through reload, Practice again and 
  expect(await raw(page)).toBe(before);
 });
 
-test('schema three stays writable through reload, reveal, answer, reload and Next',async({page})=>{
+test('schema four stays writable through reload, reveal, answer, reload and Next',async({page})=>{
  await page.goto('/place-value-practice/');const before=await raw(page);
  await mathPractice(page).click();await settled(page);
  await correct(page);await page.getByRole('button',{name:'Start new arithmetic session'}).click();
- const initial=await snapshot(page);expect(initial.schemaVersion).toBe(3);expect(initial.learning.position).toBe(1);
+ const initial=await snapshot(page);expect(initial.schemaVersion).toBe(4);expect(initial.learning.position).toBe(1);
  await page.reload();expect(await snapshot(page)).toEqual(initial);
  const answer=await page.evaluate(()=>PLACE_ARITHMETIC.view(__arithmeticTest.snapshot()).answer);
  for(const wrong of initial.question.choices.filter(n=>n!==answer))await page.locator('.arithmetic-answer').filter({hasText:new RegExp(`^${wrong}$`)}).click();
@@ -309,14 +309,16 @@ test('schema three stays writable through reload, reveal, answer, reload and Nex
  expect(await raw(page)).toBe(before);
 });
 
-test('legacy revealed save migrates without losing its attempt and writes schema three on completion',async({page})=>{
+test('legacy revealed save migrates without losing its attempt and writes schema four on completion',async({page})=>{
  await page.goto('/place-value-practice/');const before=await raw(page);
  const legacy={schemaVersion:1,sequence:4,target:5,completed:4,firstTry:4,afterHelp:0,
    question:{id:4,family:'facts-add',operands:[4,5],choices:[9,8,10,7],misses:[8,10,7],complete:false}};
  await page.evaluate(({legacy,AKEY})=>{localStorage.setItem(AKEY,JSON.stringify(legacy));localStorage.setItem('place-value-practice:mode:v1','arithmetic');},{legacy,AKEY});
  await page.reload();const migrated=await snapshot(page);
- expect(migrated.schemaVersion).toBe(3);expect(migrated.learning.serial).toBe(0);
+ expect(migrated.schemaVersion).toBe(4);expect(migrated.learning.serial).toBe(0);
  expect(migrated.question).toEqual({...legacy.question,serial:1,legacyOffset:0});
+ // The already-reported miss carries over as one reminder; no history or award is invented.
+ expect(migrated.practice).toEqual({reminders:[{id:'add:4:5',created:0}],exposure:{'4:5':0},lastReturn:null});
  await expect(page.locator('#arithmetic-equation')).toHaveText('4 + 5 = 9');
  await expect(page.getByLabel('Arithmetic session length')).toHaveValue('5');
  await correct(page);const completed=await snapshot(page);
@@ -324,8 +326,105 @@ test('legacy revealed save migrates without losing its attempt and writes schema
  expect(JSON.parse(await raw(page,AKEY))).toEqual(completed);
  await page.reload();expect(await snapshot(page)).toEqual(completed);
  expect(completed.learning.history['facts-add']).toEqual([{serial:1,outcome:'revealed',misses:3}]);
+ expect(completed.practice.reminders).toEqual([{id:'add:4:5',created:1}]);
  await page.locator('#arithmetic-next').click();expect((await snapshot(page)).learning.position).toBe(0);
  expect(await raw(page)).toBe(before);
+});
+
+// Exact small-fact reminders (schema 4). Math.random is replaced by a fixed sequence so the real scheduler is repeatable.
+const FACTS_KEY='place-value-practice:facts:v1',BOOK_KEY='place-value-practice:book:v1';
+const others=page=>page.evaluate(keys=>keys.map(k=>localStorage.getItem(k)),[FACTS_KEY,BOOK_KEY,KEY]);
+async function tap(page,value){await page.locator('#arithmetic-practice .arithmetic-answer').filter({hasText:new RegExp(`^${value}$`)}).tap();await settled(page);}
+// Saves real Number facts and Book topics progress, plus a pending 7 + 6 at the addition slot.
+async function seedSevenSix(page){
+ await page.addInitScript(()=>{let seed=146;Math.random=()=>((seed=(Math.imul(seed,1664525)+1013904223)>>>0)/4294967296);});
+ await page.goto('/place-value-practice/');
+ await page.evaluate(({AKEY,FACTS_KEY,BOOK_KEY})=>{
+   PLACE_FACTS.configure(187);const f=PLACE_FACTS.create(10,()=>0);PLACE_FACTS.answer(f,f.attempt.id,PLACE_FACTS.byId[f.attempt.factId].answer);
+   localStorage.setItem(FACTS_KEY,JSON.stringify(f));localStorage.setItem(BOOK_KEY,JSON.stringify(PLACE_BOOK.create(187)));
+   const state=PLACE_ARITHMETIC.create(null,()=>.3);state.learning.position=0;
+   state.question={id:0,family:'facts-add',operands:[7,6],choices:[14,13,12,15],misses:[],complete:false,serial:1};
+   localStorage.setItem(AKEY,JSON.stringify(state));localStorage.setItem('place-value-practice:mode:v1','arithmetic');
+ },{AKEY,FACTS_KEY,BOOK_KEY});
+ await page.reload();await settled(page);
+ expect((await snapshot(page)).question.operands).toEqual([7,6]);
+}
+
+test('a tapped small-fact miss saves its reminder in the same write; it returns later and a clean answer clears it',async({page})=>{
+ const errors=[];page.on('pageerror',e=>errors.push(e.message));
+ await seedSevenSix(page);const untouched=await others(page);
+ await tap(page,12);
+ const missed=await snapshot(page);
+ expect(missed.question.misses).toEqual([12]);expect(missed.completed).toBe(0);
+ expect(missed.practice).toEqual({reminders:[{id:'add:7:6',created:0}],exposure:{'6:7':0},lastReturn:null});
+ expect(JSON.parse(await raw(page,AKEY))).toEqual(missed);
+ // Nothing tells the learner about the reminder.
+ await expect(page.locator('#arithmetic-feedback')).toHaveText('Try another number.');
+ await expect(page.locator('#arithmetic-practice')).not.toContainText(/remind|missed|again later/i);
+ await page.reload();expect(await snapshot(page)).toEqual(missed);
+ await tap(page,14);expect((await snapshot(page)).practice).toEqual(missed.practice);
+ await correct(page);
+ expect((await snapshot(page)).practice.reminders).toEqual([{id:'add:7:6',created:1}]);
+ // Real Next/answer taps until the reminder is served by the scheduler.
+ let returned=null;
+ for(let i=0;i<40&&!returned;i++){
+   await page.locator('#arithmetic-next').tap();await settled(page);
+   const current=await snapshot(page);
+   if(current.question.returned){returned=current;break;}
+   expect(current.practice.reminders.map(r=>r.id),`still owed before question ${current.question.serial}`).toEqual(['add:7:6']);
+   await correct(page);
+ }
+ expect(returned,'7 + 6 returned').not.toBeNull();
+ expect(returned.question.operands).toEqual([7,6]);expect(returned.question.serial).toBeGreaterThanOrEqual(4);
+ expect([0,3]).toContain((returned.learning.position)%5);
+ await expect(page.locator('#arithmetic-equation')).toHaveText('7 + 6 = ?');
+ await page.reload();expect(await snapshot(page)).toEqual(returned);
+ const totals=[returned.completed,returned.firstTry];
+ await correct(page);
+ const cleared=await snapshot(page);
+ expect(cleared.practice.reminders).toEqual([]);expect(cleared.practice.lastReturn).toBe(returned.question.serial);
+ expect([cleared.completed,cleared.firstTry]).toEqual([totals[0]+1,totals[1]+1]);
+ const yards=cleared.firstTry*5+cleared.afterHelp;
+ await expect(page.locator('.arithmetic-drive p')).toHaveText(`${yards%100} / 100 yards · ${Math.floor(yards/100)*6} points`);
+ expect(JSON.parse(await raw(page,AKEY))).toEqual(cleared);
+ await page.reload();expect(await snapshot(page)).toEqual(cleared);
+ // Number facts, Book topics and Place value bytes never change.
+ expect(await others(page)).toEqual(untouched);
+ expect(errors).toEqual([]);
+});
+
+test('a stale tab cannot overwrite a saved reminder, and the refreshed tab keeps it byte-identical',async({page,context})=>{
+ await seedSevenSix(page);const untouched=await others(page);
+ const other=await context.newPage();await other.goto('/place-value-practice/');await settled(other);
+ expect((await snapshot(other)).question.operands).toEqual([7,6]);
+ await tap(page,12);const saved=await raw(page,AKEY);
+ expect(JSON.parse(saved).practice.reminders).toEqual([{id:'add:7:6',created:0}]);
+ // The stale tab's tap only refreshes it; the saved bytes are unchanged.
+ await tap(other,14);
+ expect(await raw(other,AKEY)).toBe(saved);expect(await snapshot(other)).toEqual(JSON.parse(saved));
+ await expect(other.locator('.arithmetic-storage')).toContainText('another tab');
+ await tap(other,14);
+ const both=JSON.parse(await raw(other,AKEY));
+ expect(both.question.misses).toEqual([12,14]);expect(both.practice).toEqual(JSON.parse(saved).practice);
+ // Now the first tab is stale: its correct answer refreshes, then a second one completes once.
+ await correct(page);expect(await raw(page,AKEY)).toBe(JSON.stringify(both));
+ await correct(page);
+ const done=await snapshot(page);
+ expect(done.completed).toBe(1);expect(done.afterHelp).toBe(1);expect(done.practice.reminders).toEqual([{id:'add:7:6',created:1}]);
+ expect(JSON.parse(await raw(page,AKEY))).toEqual(done);
+ expect(await others(page)).toEqual(untouched);
+ await other.close();
+});
+
+test('when saving fails, a missed fact is still remembered for this visit and no store changes',async({page})=>{
+ await seedSevenSix(page);const untouched=await others(page),before=await raw(page,AKEY);
+ await page.evaluate(()=>{Storage.prototype.setItem=function(){throw Error('quota');};});
+ await tap(page,12);
+ expect((await snapshot(page)).practice.reminders).toEqual([{id:'add:7:6',created:0}]);
+ await correct(page);
+ expect((await snapshot(page)).practice.reminders).toEqual([{id:'add:7:6',created:1}]);
+ await expect(page.locator('.arithmetic-storage')).toContainText('memory');
+ expect(await raw(page,AKEY)).toBe(before);expect(await others(page)).toEqual(untouched);
 });
 
 // Issue #146: completed Mixed questions show a display-only place-value alignment.
