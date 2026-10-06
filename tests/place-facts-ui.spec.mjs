@@ -13,13 +13,15 @@ async function expectedLines(page){return page.evaluate(()=>PLACE_FACTS.explain(
 // Holds the next Fact store lock request until window[release]() runs. The stub lives on
 // LockManager.prototype and records interception. In WebKit round-1 runs, an override assigned to
 // the navigator.locks instance did not intercept later click-driven requests (the app advanced
-// through the real lock), so these manual-Next lock tests do not rely on that instance form.
+// through the real lock), so no lock test relies on that instance form (#147). window.lockRequests
+// counts intercepted requests; releasing restores the original prototype method before re-entering it.
 async function holdLock(page,release,except=null){
- await page.evaluate(({release,except})=>{const proto=Object.getPrototypeOf(navigator.locks),original=proto.request;window.lockHeld=false;
-  proto.request=function(key,fn){if(key===except)return original.call(this,key,fn);window.lockHeld=true;
+ await page.evaluate(({release,except})=>{const proto=Object.getPrototypeOf(navigator.locks),original=proto.request;window.lockHeld=false;window.lockRequests=0;window.lockOriginal=original;
+  proto.request=function(key,fn){if(key===except)return original.call(this,key,fn);window.lockHeld=true;window.lockRequests++;
    return new Promise(resolve=>{window[release]=()=>{proto.request=original;return original.call(navigator.locks,key,fn).then(resolve);};});};},{release,except});
 }
 async function expectHeld(page){await expect.poll(()=>page.evaluate(()=>window.lockHeld)).toBe(true);await expect(page.locator('#fact-practice')).toHaveAttribute('aria-busy','true');}
+async function expectLockRestored(page){expect(await page.evaluate(()=>Object.getPrototypeOf(navigator.locks).request===window.lockOriginal)).toBe(true);}
 async function boot(page){await page.addInitScript(()=>{localStorage.setItem('place-value-practice:mode:v1','arithmetic');localStorage.setItem('place-value-practice:arithmetic-mode:v1','facts');});await page.goto('/place-value-practice/');await expect(page.locator('#fact-practice')).toBeVisible();}
 async function enter(page,value,touch=false){await settled(page);await page.locator('.facts-keypad').getByRole('button',{name:'Clear',exact:true}).click();if(touch){for(const digit of String(value))await page.locator('.facts-keypad').getByRole('button',{name:digit,exact:true}).click();await page.locator('#facts-check').click();}else{await page.locator('#facts-check').focus();await page.keyboard.type(String(value));await page.keyboard.press('Enter');}await settled(page);}
 async function correct(page,touch=false){await settled(page);const value=await page.evaluate(()=>PLACE_FACTS.byId[__factsTest.snapshot().attempt.factId].answer);await enter(page,value,touch);}
@@ -27,8 +29,15 @@ async function correct(page,touch=false){await settled(page);const value=await p
 test('stadium-first composition retains large art, a bounded runner and accessible Submit controls',async({page})=>{
  await boot(page);await page.locator('.facts-stadium').evaluate(img=>img.decode());await page.locator('.facts-ball').evaluate(img=>img.decode());
  await expect(page.getByRole('button',{name:'Submit',exact:true})).toBeVisible();await expect(page.locator('#facts-next')).toBeHidden();await expect(page.locator('#facts-worked')).toBeHidden();
- const geometry=await page.evaluate(()=>{const rect=s=>document.querySelector(s).getBoundingClientRect(),field=rect('.facts-drive'),runner=rect('.facts-ball'),dock=rect('.facts-dock');return {fieldWidth:field.width,width:innerWidth,fieldHeight:field.height,runnerLeft:runner.left,runnerRight:runner.right,dockTop:dock.top,fieldBottom:field.bottom};});
- expect(geometry.fieldWidth).toBe(geometry.width);expect(geometry.fieldHeight).toBeGreaterThanOrEqual(230);
+ const geometry=await page.evaluate(()=>{const rect=s=>document.querySelector(s).getBoundingClientRect(),field=rect('.facts-drive'),runner=rect('.facts-ball'),dock=rect('.facts-dock');return {fieldWidth:field.width,fieldLeft:field.left,fieldRight:field.right,width:innerWidth,scrollWidth:document.documentElement.scrollWidth,clientWidth:document.documentElement.clientWidth,fieldHeight:field.height,runnerLeft:runner.left,runnerRight:runner.right,dockTop:dock.top,fieldBottom:field.bottom};});
+ // Full bleed within layout rounding: WebKit can report a fractional field width (e.g. 1179.96875 of 1180, #147).
+ // Allow at most 1/8 CSS px on the width and each edge, and still forbid any document horizontal overflow.
+ const bleed=JSON.stringify(geometry);
+ expect(Math.abs(geometry.fieldWidth-geometry.width),`field width ${bleed}`).toBeLessThanOrEqual(0.125);
+ expect(Math.abs(geometry.fieldLeft),`field left edge ${bleed}`).toBeLessThanOrEqual(0.125);
+ expect(Math.abs(geometry.fieldRight-geometry.width),`field right edge ${bleed}`).toBeLessThanOrEqual(0.125);
+ expect(geometry.scrollWidth,`document horizontal overflow ${bleed}`).toBeLessThanOrEqual(geometry.clientWidth);
+ expect(geometry.fieldHeight).toBeGreaterThanOrEqual(230);
  expect(geometry.runnerLeft).toBeGreaterThanOrEqual(0);expect(geometry.runnerRight).toBeLessThanOrEqual(geometry.width);
  expect(geometry.dockTop).toBe(geometry.fieldBottom);
  expect(await page.locator('#fact-practice button:visible').evaluateAll(bs=>bs.every(b=>{const r=b.getBoundingClientRect();return r.height>=44&&r.width>=44;}))).toBe(true);
@@ -274,14 +283,15 @@ for(const startingYards of [95,96,98])test(`touchdown from ${startingYards} yard
  await expect(page.locator('#facts-feedback')).not.toContainText('0 yards into');
  // The touchdown waits for an explicit Next, which must stay reachable with the celebrating drive.
  await expect(page.locator('#facts-next')).toHaveText('Next: extra-point kick');expect((await snapshot(page)).attempt.kind).toBe('drive');
- // Soft: the .facts-drive clearance is a known WebKit iPhone baseline failure (#147); the Next result must still be reported.
- // The message records the scroll position and the header/nav/drive geometry so a failure can be compared with the base layout.
+ // The stadium and Next must each be fully inside the viewport after the live touchdown. These were soft while #147 was
+ // open; the 0fa6999 baseline reproduced no clearance failure in either engine, so both are hard. The message records the
+ // scroll position and the header/nav/drive geometry so a failure can be compared with the base layout.
  const layout=await page.evaluate(()=>JSON.stringify({scrollY,innerHeight,doc:document.documentElement.scrollHeight,rects:Object.fromEntries(['.app-header','.practice-modes','.practice-route','.facts-drive','.facts-dock','.facts-meta','#facts-check','#facts-next'].map(s=>{const r=document.querySelector(s)?.getBoundingClientRect();return [s,r&&[Math.round(r.top),Math.round(r.bottom)]];}))}));
  // Whenever the full stadium and Next fit in the viewport together (iPad), both must be fully visible right after the live touchdown;
- // this is the 1.9.0 iPad 11 landscape 96/98 regression (stadium top 20px above the viewport). Taller spans keep only the soft checks.
+ // this is the 1.9.0 iPad 11 landscape 96/98 regression (stadium top 20px above the viewport).
  const span=await page.evaluate(()=>{const d=document.querySelector('.facts-drive').getBoundingClientRect(),n=document.querySelector('#facts-next').getBoundingClientRect();return {fits:n.bottom-d.top<=innerHeight,visible:d.top>=0&&n.bottom<=innerHeight};});
  if(span.fits)expect(span.visible,`touchdown stadium through Next ${layout}`).toBe(true);
- for(const selector of ['.facts-drive','#facts-next'])expect.soft(await page.locator(selector).evaluate(el=>{const r=el.getBoundingClientRect();return r.top>=0&&r.bottom<=innerHeight;}),`${selector} ${layout}`).toBe(true);
+ for(const selector of ['.facts-drive','#facts-next'])expect(await page.locator(selector).evaluate(el=>{const r=el.getBoundingClientRect();return r.top>=0&&r.bottom<=innerHeight;}),`${selector} ${layout}`).toBe(true);
  await page.emulateMedia({reducedMotion:'reduce'});
  expect(await page.locator('#facts-award').evaluate(el=>getComputedStyle(el).animationName)).toBe('none');
  expect(await page.locator('.facts-ball').evaluate(el=>getComputedStyle(el).transitionProperty)).toBe('none');
@@ -409,16 +419,14 @@ test('opening report removes independent credit durably and hides numeric family
 });
 
 test('toggle-only report opening closes while its eligibility mutation waits for the lock',async({page})=>{
- await boot(page);
- await page.evaluate(()=>{
-  const original=navigator.locks.request.bind(navigator.locks);
-  window.releaseReportLock=null;
-  navigator.locks.request=(key,fn)=>new Promise(resolve=>{window.releaseReportLock=()=>original(key,fn).then(resolve);});
-  const report=document.querySelector('#facts-report');report.open=true;report.dispatchEvent(new Event('toggle'));
- });
+ await boot(page);await settled(page);
+ await holdLock(page,'releaseReportLock');
+ await page.evaluate(()=>{const report=document.querySelector('#facts-report');report.open=true;report.dispatchEvent(new Event('toggle'));});
+ await expectHeld(page);
  await expect(page.locator('#facts-report')).not.toHaveAttribute('open','');
  expect(await page.evaluate(()=>__factsTest.snapshot().attempt.eligible)).toBe(true);
- await page.evaluate(()=>window.releaseReportLock());await expect(page.locator('#facts-report')).toHaveAttribute('open','');
+ expect(await page.evaluate(()=>window.lockRequests)).toBe(1);
+ await page.evaluate(()=>window.releaseReportLock());await expectLockRestored(page);await expect(page.locator('#facts-report')).toHaveAttribute('open','');
  expect((await snapshot(page)).attempt.eligible).toBe(false);
  await page.reload();await correct(page);expect((await snapshot(page)).facts['sub:7:5'].checks).toBe(0);
 });
@@ -427,20 +435,20 @@ test('report stays closed during another locked action on eligible and warm prom
  await boot(page);
  for(const warm of [false,true]){
   await page.evaluate(({KEY,warm})=>{const s=PLACE_FACTS.create();s.attempt.eligible=!warm;localStorage.setItem(KEY,JSON.stringify(s));},{KEY,warm});
-  await page.reload();
-  await page.evaluate(()=>{
-   const original=navigator.locks.request.bind(navigator.locks);
-   navigator.locks.request=(key,fn)=>new Promise(resolve=>{window.releaseBusyLock=()=>{navigator.locks.request=original;return original(key,fn).then(resolve);};});
-  });
+  await page.reload();await settled(page);
+  // Prototype hold (see holdLock): the Check write is the one intercepted request and keeps the panel busy.
+  await holdLock(page,'releaseBusyLock');
   await page.locator('.facts-keypad').getByRole('button',{name:'3',exact:true}).click();await page.locator('#facts-check').click();
-  await expect(page.locator('#fact-practice')).toHaveAttribute('aria-busy','true');
+  await expectHeld(page);
   await page.locator('#facts-report > summary').click();
   const pendingFrames=page.evaluate(async()=>{
    const states=[];for(let i=0;i<5;i++){await new Promise(requestAnimationFrame);states.push({open:document.querySelector('#facts-report').open,supported:__factsTest.snapshot().attempt.rewardSupported});}return states;
   });
   await page.clock.runFor(100);const frames=await pendingFrames;
   expect(frames).toEqual(Array.from({length:5},()=>({open:false,supported:false})));
-  await page.evaluate(()=>window.releaseBusyLock());await settled(page);
+  // The busy report tap was refused rather than queued behind the held lock.
+  expect(await page.evaluate(()=>window.lockRequests)).toBe(1);await expect(page.locator('#fact-practice')).toHaveAttribute('aria-busy','true');
+  await page.evaluate(()=>window.releaseBusyLock());await expectLockRestored(page);await settled(page);
   await page.locator('#facts-report > summary').click();await expect(page.locator('#facts-report')).toHaveAttribute('open','');
   expect((await snapshot(page)).attempt.rewardSupported).toBe(true);
  }

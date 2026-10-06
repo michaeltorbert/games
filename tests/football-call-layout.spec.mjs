@@ -539,8 +539,10 @@ test.describe('football player sprite', () => {
         const inner = { left: box.left + field.clientLeft, right: box.left + field.clientLeft + field.clientWidth };
         const parts = [...document.querySelectorAll('#player svg *')].map(node => node.getBoundingClientRect())
           .filter(rect => rect.width > 0 || rect.height > 0);
-        return { inner, left: Math.min(...parts.map(r => r.left)), right: Math.max(...parts.map(r => r.right)) };
+        return { inner, partCount: parts.length, left: Math.min(...parts.map(r => r.left)), right: Math.max(...parts.map(r => r.right)) };
       });
+      // An empty sprite would make the bounds +/-Infinity and pass vacuously.
+      expect(result.partCount, `${label}: player sprite has drawn parts`).toBeGreaterThan(0);
       expect(result.left, `${label}: player left edge inside the field`).toBeGreaterThanOrEqual(result.inner.left);
       expect(result.right, `${label}: player right edge inside the field`).toBeLessThanOrEqual(result.inner.right);
     };
@@ -572,4 +574,149 @@ test.describe('football player sprite', () => {
     expect(pageErrors, 'page errors').toEqual([]);
     expect(consoleErrors, 'console errors').toEqual([]);
   });
+
+  // Issue #149: the resize correction itself must not slide the sprite in from
+  // outside the narrowed field. These are engine-emulated viewport swaps, not
+  // native Safari rotation; browser chrome and orientation events are not covered.
+  for (const reducedMotion of [false, true]) {
+    test(`phone rotation round trip keeps the player inside the field during correction${reducedMotion ? ' with reduced motion' : ''}`, async ({ page }, testInfo) => {
+      const portrait = page.viewportSize();
+      test.skip(portrait.width > 500, 'Phone portrait targets only');
+      test.setTimeout(120_000);
+      const { pageErrors, consoleErrors } = attachErrorListeners(page);
+      if (reducedMotion) await page.emulateMedia({ reducedMotion: 'reduce' });
+      await page.goto('/football/?boot=offense-call');
+      await expect(page.locator('#player')).toBeVisible();
+      const baselineTransition = await page.evaluate(() => {
+        const style = getComputedStyle(document.getElementById('player'));
+        return { property: style.transitionProperty, duration: style.transitionDuration };
+      });
+      expect(baselineTransition.property).toContain('left');
+
+      const landscape = { width: portrait.height, height: portrait.width };
+      const poses = reducedMotion
+        ? [['standing', null, 0]]
+        : [['standing', null, 0], ['running', 'player-running', 0.5], ['celebrating', 'player-celebrating', 0.45]];
+
+      const swapAndSample = async (size, label) => {
+        await page.evaluate(() => {
+          window.__rotationSamples = [];
+          window.__rotationDone = false;
+          const measure = (elapsed) => {
+            const field = document.getElementById('field-wrap');
+            const player = document.getElementById('player');
+            const box = field.getBoundingClientRect();
+            const inner = { left: box.left + field.clientLeft, right: box.left + field.clientLeft + field.clientWidth };
+            const parts = [...document.querySelectorAll('#player svg *')].map(node => node.getBoundingClientRect())
+              .filter(rect => rect.width > 0 || rect.height > 0);
+            const playerStyle = getComputedStyle(player);
+            const playerBox = player.getBoundingClientRect();
+            window.__rotationSamples.push({
+              elapsed,
+              inner,
+              partCount: parts.length,
+              playerShown: !player.classList.contains('player-hidden') && playerStyle.display !== 'none'
+                && playerStyle.visibility === 'visible' && playerBox.width > 0 && playerBox.height > 0,
+              left: parts.length ? Math.min(...parts.map(r => r.left)) : null,
+              right: parts.length ? Math.max(...parts.map(r => r.right)) : null,
+              inlineTransition: player.style.transition,
+              leftTransitionRunning: player.getAnimations().some(animation => animation.transitionProperty === 'left'
+                && animation.playState === 'running'),
+              ballLeft: parseFloat(document.getElementById('ball').style.left),
+            });
+          };
+          // Registered after the production handler, so the first sample is the corrected state.
+          const onResize = () => {
+            removeEventListener('resize', onResize);
+            const start = performance.now();
+            measure(0);
+            const tick = () => {
+              const elapsed = performance.now() - start;
+              measure(elapsed);
+              if (elapsed < 900) requestAnimationFrame(tick);
+              else window.__rotationDone = true;
+            };
+            requestAnimationFrame(tick);
+          };
+          addEventListener('resize', onResize);
+        });
+        await page.setViewportSize(size);
+        // The early capture waits for the first resize callback, so it shows the corrected frame.
+        await page.waitForFunction(() => window.__rotationSamples.length > 0, null, { timeout: 5000 });
+        await page.screenshot({ path: testInfo.outputPath(`${label}-early.png`) });
+        await page.waitForFunction(() => window.__rotationDone === true, null, { timeout: 5000 });
+        const realized = await page.evaluate(() => ({
+          innerWidth: window.innerWidth,
+          innerHeight: window.innerHeight,
+          clientWidth: document.documentElement.clientWidth,
+          scrollWidth: document.documentElement.scrollWidth,
+        }));
+        expect(realized.innerWidth, `${label}: realized viewport width`).toBe(size.width);
+        expect(realized.innerHeight, `${label}: realized viewport height`).toBe(size.height);
+        expect(realized.scrollWidth, `${label}: no horizontal overflow`).toBeLessThanOrEqual(realized.clientWidth + EPSILON);
+        const samples = await page.evaluate(() => window.__rotationSamples);
+        expect(samples.length, `${label}: sampled several frames`).toBeGreaterThan(5);
+        expect(samples[0].elapsed).toBe(0);
+        expect(samples.at(-1).elapsed, `${label}: sampled through 900ms`).toBeGreaterThanOrEqual(900);
+        expect(samples[0].inlineTransition, `${label}: correction applied without the play transition`).toBe('none');
+        for (const sample of samples) {
+          // Empty or hidden geometry must fail rather than pass the bounds vacuously.
+          expect(sample.playerShown, `${label} at ${sample.elapsed.toFixed(0)}ms: player shown`).toBe(true);
+          expect(sample.partCount, `${label} at ${sample.elapsed.toFixed(0)}ms: player sprite has drawn parts`).toBeGreaterThan(0);
+          expect(Number.isFinite(sample.left) && Number.isFinite(sample.right), `${label} at ${sample.elapsed.toFixed(0)}ms: finite sprite bounds`).toBe(true);
+          expect(sample.right, `${label} at ${sample.elapsed.toFixed(0)}ms: nonempty sprite width`).toBeGreaterThan(sample.left);
+          expect(sample.left, `${label} at ${sample.elapsed.toFixed(0)}ms: player left edge inside the field`)
+            .toBeGreaterThanOrEqual(sample.inner.left);
+          expect(sample.right, `${label} at ${sample.elapsed.toFixed(0)}ms: player right edge inside the field`)
+            .toBeLessThanOrEqual(sample.inner.right);
+          expect(sample.leftTransitionRunning, `${label} at ${sample.elapsed.toFixed(0)}ms: no left transition`).toBe(false);
+        }
+        await page.screenshot({ path: testInfo.outputPath(`${label}-settled.png`) });
+        return samples;
+      };
+
+      for (const yardLine of [1, 2]) {
+        for (const [poseLabel, poseClass, fraction] of poses) {
+          await page.setViewportSize(portrait);
+          await page.evaluate((yardLine) => {
+            window.__footballTest.seedDriveState({ possession: 'offense', direction: 1, quarter: 1, down: 1,
+              yardLine, firstDownLine: yardLine + 10, yardsToGo: 10 });
+            updateField(false);
+          }, yardLine);
+          await page.waitForTimeout(100);
+          await freezePlayerPose(page, poseClass, fraction);
+          const expectedBall = await page.evaluate((y) => yardToPct(y), yardLine);
+          const label = `own-${yardLine}-${poseLabel}${reducedMotion ? '-reduced' : ''}`;
+          const toLandscape = await swapAndSample(landscape, `${label}-landscape`);
+          const toPortrait = await swapAndSample(portrait, `${label}-portrait`);
+          for (const sample of [...toLandscape, ...toPortrait]) {
+            expect(sample.ballLeft, `${label}: ball keeps its yard position`).toBeCloseTo(expectedBall, 5);
+          }
+          const restored = await page.evaluate(() => {
+            const player = document.getElementById('player');
+            const style = getComputedStyle(player);
+            return { inline: player.style.transition, property: style.transitionProperty, duration: style.transitionDuration };
+          });
+          expect(restored.inline, `${label}: inline transition override cleared`).toBe('');
+          expect(restored.property, `${label}: ordinary transition restored`).toBe(baselineTransition.property);
+          expect(restored.duration, `${label}: ordinary transition restored`).toBe(baselineTransition.duration);
+          expect(await page.evaluate(() => state.yd), `${label}: canonical yard unchanged`).toBe(yardLine);
+        }
+      }
+
+      // Ordinary play movement keeps its animated left transition after the corrections.
+      await freezePlayerPose(page, null, 0);
+      const moving = await page.evaluate(async () => {
+        state.animYd = 30;
+        updateField(true);
+        await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+        const player = document.getElementById('player');
+        return player.getAnimations().some(animation => animation.transitionProperty === 'left');
+      });
+      expect(moving, 'normal play movement remains animated').toBe(true);
+
+      expect(pageErrors, 'page errors').toEqual([]);
+      expect(consoleErrors, 'console errors').toEqual([]);
+    });
+  }
 });

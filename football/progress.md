@@ -1222,3 +1222,82 @@ Original prompt: Show what Football issue #101 looks like before and after a pro
   - Registry gate: 4/4 against exact base `e2e341d12b5bf07f42333a0dd2976f509e3b8673`, target `football`.
 - The own-1 position was rendered in WebKit on both iPhones and compared with Codex's base screenshot. This is engine emulation; Apple Simulator and physical Safari remain unverified.
 - Kayak #145 then landed on `main` (`752e59a60d87cbcd3b3183c94affdc69b7b1b0d7`, `services/kayak-reporting/` only). After rebasing, the range-diff shows all six commits unchanged. Every gate was re-run on `d2a53d261993d9e764a2a97d9ddf069eb8355c17` with a clean tree before and after, with the same results: registry 4/4 against `752e59a`, Chromium 161 DOM-free and 394 browser checks with 644 skips, WebKit 95 checks with 19 skips, and all 304 required screenshots verified after each engine.
+
+## 2026-10-06 — Football v1.34.0 (#149, #138, superseding release entry)
+
+Implementation author: Claude (Opus 5.5), from base `0fa6999777289ef580786cbf88437cbb9f952246` (Football 1.33.3). Planning was reconciled across three seats before code was written; no curriculum page, family, scheduler, adaptive, history or persistence change.
+
+### #149 — player correction on phone rotation
+
+- The resize handler now applies the edge-clamped `left` with `transition: none`, forces a style flush, and restores the ordinary transition on the next frame. A repeated resize cancels the pending restore. The ball, first-down marker and canonical yard state are untouched; `updateField(false)` is not called from resize, and no orientation or `visualViewport` handling was added. Normal play movement keeps its 0.75 s transition.
+- New call-layout regression on both phone projects (skipped above 500 px): own 1 and 2, standing/running/celebrating, portrait → landscape → portrait. A listener registered after the production handler samples sprite containment at the resize event and on every frame through 900 ms, checks that no `left` transition runs, verifies the realized `innerWidth`/`innerHeight` and no horizontal overflow, keeps the ball at its yard percentage, and confirms the inline override clears and the computed transition matches the pre-rotation value. A reduced-motion variant repeats a standing round trip. Early and settled screenshots go to the Playwright output directory.
+- This is engine-emulated viewport resizing only. Native Safari rotation, browser chrome and orientation events remain unverified; no native gate is claimed.
+
+### #138 — guided make-ten and tens-and-ones pictures
+
+- `makeSemantic` accepts an optional `guidedVisualType`/`guidedVisualData`; only the guided stage uses it, with `result: null` and `revealsAnswer: false`. Initial and worked stages keep the unchanged `arithmetic-equation` visual. Family IDs, evidence classes, choices and their order, RNG use, history and the independent exposure guard are unchanged; there is no generic answer-token blacklist.
+- A pure builder supplies counts and copy for the three completed domains (Math Mammoth Grade 1-B, 2026, make ten pp. 104–107, tens and ones pp. 108–111):
+  - `within-20` → make ten: two ten-frames, larger addend first in white (first addend on ties, including doubles), the completing part and the rest in gold. Caption "7 + 3 makes 10. Then 3 more."
+  - `ones-add` → tens rods of ten units, white source ones and gold added ones. The rod base is the operand the domain accepts as two-digit, so an unordered score total such as 4 + 23 still builds from 23; ordered team-yard relations never swap. The equation keeps its order.
+  - `ones-subtract` → rods plus ones with the subtracted ones crossed out.
+- Each domain now has one matching hint ("Make ten first, then add the rest." / "Keep the tens. Add the ones." / "Keep the tens. Take away the ones."); the "Work out …" prefix is gone for these domains only. Coach Replay step 1 is that sentence and step 2 is the unchanged full worked result. Guided accessible labels name the equation, describe the picture, repeat the hint and say the answer is hidden.
+- `renderMathVisual()` draws the static picture with DOM nodes (`.math-model`, `.math-ten-frame`, `.math-rod`, `.math-unit`) beside the equation chips. Tablets keep the equation and model inline; phones (≤ 760 px) stack them compactly inside the field. A guided start shows the model immediately and adds no miss flag.
+- Tests: DOM-free enumeration of every accepted pair through the real family builders at pages 113 and 187 (counts, operand order, rod base, zero addends/subtrahends, support-invariant choices and RNG draws, result-free fields, captions, descriptions and hints, Coach Replay steps); possession cases; arithmetic UI tests on every project for all three models on offense and defense through real taps (initial, first miss, worked, Coach Replay, Continue), plus guided starts, with DOM counts, containment in the field, no scroll or horizontal overflow, 44 px targets not reduced, 16 px lower clearance on iPad 11 landscape, inline/stacked layout and unchanged play/choice/RNG state; a learning regression that validation rejects result-bearing guided tampering and events carry no model copy.
+
+### Release metadata and pending checks
+
+- `GAME_VERSION`, all 18 Football asset query strings, the Football registry descriptor and `version.json` are `1.34.0`. Other games are unchanged.
+- The author could not run tools. Every check is pending the coordinator at the exact final artifact: Football release suite in Chromium and WebKit, focused call-layout/arithmetic/learning suites in both engines, `node --test` domain suites, the registry gate, and before/after screenshot comparison against the frozen 1.33.3 baseline. No result is claimed here.
+
+## 2026-10-06 — Football v1.34.0 review-round-1 correction (#149, #138, superseding the pending-checks note above)
+
+Correction author: Claude (Opus 5.5), from the reviewed v1.34.0 candidate on base `0fa6999`. Runtime JavaScript, curriculum, families, eligibility, RNG, history, persistence and versions are unchanged (Football stays `1.34.0`). Only `football.css` and four Football specs change.
+
+### What the coordinator's checks on the reviewed candidate showed
+
+These ran before this correction, by the coordinating Codex, not by the author or the reviewers:
+
+- `node --test` domain suite: the new exhaustive completed-arithmetic test failed at its first accepted pair. The Coach Replay step comparison put a VM-realm array into `node:assert/strict`, which rejects the different prototype even though the text matched. The canonical Chromium release run stopped in its DOM-free phase at 165 passed, 1 failed, so its browser phase never started. No exhaustive count had executed.
+- Focused Football browser suites: Chromium 151 passed. WebKit 150 passed and 1 failed: the existing "second defensive miss" learning test, where Tab from the Coach Replay heading did not reach Back. The same failure reproduced on the unchanged `0fa6999` baseline in WebKit iPad 11 landscape. A disposable copy of the baseline spec that changed only that keypress to Alt+Tab passed 1/1 in the same context. So this is WebKit's Tab-skips-buttons keyboard policy, not a regression from this branch.
+- Place by Place: 510 passed, 120 skipped in each engine.
+
+### Corrections
+
+- Domain test: the Replay steps go through the existing `plain()` before the exact two-step comparison.
+- Exhaustive coverage: expected pairs now come from a test-local oracle written from the published Grade 1-B pages, not from the production `derive`.
+  - The original sweep asserts exact accepted-pair sets for all five families at pages 113 and 187:
+    - 36 make-ten sums per relation at 187;
+    - 34 at 113, since 5 + 7 and 7 + 5 sit on p. 119;
+    - 988 unordered score-total ones pairs;
+    - 494 team-yard ones pairs and 494 score-difference pairs.
+  - The sweep also asserts that its fixed own-30 snaps reach only one line or goal pair, `70 − 0`.
+  - A new sweep runs line-remaining and goal-remaining through legal field states on both possessions:
+    - every yards-to-go with a varied goal distance at or beyond the marker;
+    - every goal distance with a varied yards-to-go;
+    - gains from 0 to the goal, without clamping.
+  - It asserts the exact 494-pair set for each family, possession and page, including the zero subtrahends.
+- WebKit keyboard harness: on macOS, that one Replay step uses Safari's Option-Tab all-controls gesture (`Alt+Tab`) in WebKit; Chromium keeps Tab. The Back/Enter, Space, Escape, Continue and authority assertions are unchanged. No production keyboard change was made. Only Playwright WebKit on macOS was verified. Other hosts keep plain Tab and are unverified.
+- Rotation regressions: each sample now records the drawn sprite-part count, whether the player is shown, and finite bounds. Empty or hidden geometry now fails instead of passing as ±Infinity. The own-goal-line test gets the same part-count guard. The early screenshot waits for the first resize-callback sample, so it shows the corrected frame. Standing, running and celebrating poses are unchanged.
+- Sound toggle on phones: the stacked guided model is nearly field-tall, and its panel passed over the 44 px sound toggle. At ≤ 760 px, the model panel is now centered in the field left of the toggle's corner: `left: calc(50% − 25.5px)`, `width: min(94% − 51px, 380px)`.
+  - This leaves about 3% of the field width clear on each side.
+  - Dots, rods, ones, chips, the caption, answer buttons and the toggle keep their sizes. There is no height cap and no z-index change.
+  - Tablets are unchanged, since their 80% panel already clears the corner.
+  - The arithmetic UI tests now require the overlay and every drawn part to stay clear of the toggle's 44 px rect in every guided and initial state. They also tap the toggle twice during a real guided retry and require `aria-pressed` to flip and restore, with the model counts and the play, question, choice order and RNG draws unchanged.
+- Remaining by design: on phones, the guided panel still covers the ball, the player and part of the "To gain" chip, as football art. That chip is not moved here.
+
+### Still pending
+
+The coordinator must run all of the following at the corrected artifact, in both engines:
+
+- the domain suites;
+- the focused Football suites;
+- the full Football and Place release gates;
+- the registry gate;
+- refreshed guided and rotation screenshots.
+
+Native Safari rotation (#149) also remains pending. No native or full-release pass is claimed.
+
+
+## 2026-10-06 — Coordinator verification after round-1 corrections
+
+Coordinating Codex ran the corrected candidate: focused contextual/learning/registry domain checks passed 65/65. The canonical Chromium Football release passed 167 domain checks and 471 browser checks (657 project-specific skips), then verified all 304 release screenshots across six projects. WebKit passed all 167 domain checks and 456 browser checks, with 15 failures and 657 skips. The failures are five keyboard-focus tests: two repeated across all six projects, plus the primary-target Continue, Season recovery and Time Lab cases. The screenshot-only verifier separately passed all 304 WebKit release screenshots; the full WebKit gate remains failed. Baseline/diagnostic evidence is recorded externally for fresh review. Native Safari rotation remains pending; no merge, deployment or native pass is claimed.

@@ -830,8 +830,12 @@ test('guided first-try success keeps the full offensive result', async ({ page }
   });
 });
 
-test('second defensive miss records learning only after Continue commits one frozen capped transition', async ({ page }, testInfo) => {
+test('second defensive miss records learning only after Continue commits one frozen capped transition', async ({ page, browserName }, testInfo) => {
   primaryOnly(testInfo);
+  // Safari's default keyboard policy skips buttons on Tab; Option-Tab is its
+  // documented all-controls gesture. Verified with Playwright WebKit on macOS
+  // only; other hosts keep plain Tab and are not verified here.
+  const nextControlKey = browserName === 'webkit' && process.platform === 'darwin' ? 'Alt+Tab' : 'Tab';
   await page.goto('/football/?boot=defense-call');
   await page.evaluate(() => window.__footballTest.setRootSeed(0xdefe115e));
 
@@ -924,7 +928,7 @@ test('second defensive miss records learning only after Continue commits one fro
   expect(openedReview.reviewSatisfied).toBe(true);
   expect(openedReview.reviewGateState).toBe('opened');
 
-  await page.keyboard.press('Tab');
+  await page.keyboard.press(nextControlKey);
   await expect(page.locator('#worked-review-back')).toBeFocused();
   await page.locator('#worked-review-back').press('Enter');
   await expect(page.locator('#worked-review')).toBeHidden();
@@ -1189,6 +1193,68 @@ test('runtime validation rejects contradictory or unknown evidence contracts bef
     'Question evidence classification contradicts its answer exposure.',
   ]);
   expect(active.questionInstance).not.toBeNull();
+});
+
+// Issue #138: the guided arithmetic picture is presentation only. Validation
+// still rejects any guided result, and learning events carry no model copy.
+test('guided arithmetic models stay result-free under validation and out of learning events', async ({ page }, testInfo) => {
+  primaryOnly(testInfo);
+  await page.goto('/football/?boot=offense-call');
+  await beginSnap(page, 'offense', { scores: { player: 7, opponent: 6 } });
+
+  const result = await page.evaluate(() => {
+    const activePlay = state.activePlay;
+    const built = FOOTBALL_CONTEXTUAL_QUESTIONS.build(activePlay, 'score-total-ch8-within-20', {
+      support: 'guided', presentationRng: () => 0.4, profile: contextualQuestionProfile(),
+    });
+    const base = FOOTBALL_DOMAIN.clone({ ...built, contextId: activePlay.contextId, questionInstanceId: 777 });
+    const validate = (variant) => {
+      try {
+        validateQuestionInstance(activePlay, FOOTBALL_DOMAIN.deepFreeze(variant));
+        return null;
+      } catch (error) {
+        return { code: error.code, message: error.message };
+      }
+    };
+    const resultBearing = FOOTBALL_DOMAIN.clone(base);
+    resultBearing.visuals.guided.result = { answerId: base.answer.id, value: base.answer.value };
+    const revealing = FOOTBALL_DOMAIN.clone(base);
+    revealing.visuals.guided.revealsAnswer = true;
+    const workedSwap = FOOTBALL_DOMAIN.clone(base);
+    workedSwap.visuals.guided = { ...FOOTBALL_DOMAIN.clone(base.visuals.worked), stage: 'guided' };
+
+    const session = FOOTBALL_LEARNING.createSession();
+    const question = FOOTBALL_DOMAIN.deepFreeze(FOOTBALL_DOMAIN.clone(base));
+    const wrong = question.choices.find(choice => choice.id !== question.correctChoiceId);
+    FOOTBALL_LEARNING.recordPresented(session, question);
+    FOOTBALL_LEARNING.recordAttempt(session, question, { attempt: 1, selectedChoiceId: wrong.id, correct: false, support: 'initial' });
+    FOOTBALL_LEARNING.recordAttempt(session, question, { attempt: 2, selectedChoiceId: question.correctChoiceId, correct: true, support: 'guided' });
+    FOOTBALL_LEARNING.recordResolved(session, question, 'retryCorrect', { support: 'guided' });
+    return {
+      guided: base.visuals.guided,
+      math: base.math,
+      valid: validate(base),
+      tampered: [resultBearing, revealing, workedSwap].map(validate),
+      events: FOOTBALL_LEARNING.snapshot(session).events,
+      supportAfterMiss: FOOTBALL_LEARNING.nextSupport('guided'),
+    };
+  });
+
+  expect(result.guided.type).toBe('arithmetic-model');
+  expect(result.guided.result).toBeNull();
+  expect(result.math.type).toBe('arithmetic-model');
+  expect(result.valid).toBeNull();
+  expect(result.tampered).toEqual([
+    { code: 'malformed-question', message: 'Independent evidence exposes its guided answer.' },
+    { code: 'malformed-question', message: 'Independent evidence exposes its guided answer.' },
+    { code: 'malformed-question', message: 'Independent evidence exposes its guided answer.' },
+  ]);
+  expect(result.events.map(event => event.type)).toEqual(['presented', 'attempt', 'attempt', 'resolved']);
+  const serialized = JSON.stringify(result.events);
+  for (const leaked of ['arithmetic-model', 'make-ten', result.guided.data.caption, 'Make ten first']) {
+    expect(serialized).not.toContain(leaked);
+  }
+  expect(result.supportAfterMiss).toBe('guided');
 });
 
 test('Coach Report uses this game\'s real contextual resolution, not historical mastery', async ({ page }, testInfo) => {

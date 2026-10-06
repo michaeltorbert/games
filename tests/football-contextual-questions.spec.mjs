@@ -2074,17 +2074,322 @@ test('line and goal remainder variants respect the completed ones-subtraction bo
   }
 });
 
-test('within-20 retry hints use completed addition strategies without revealing the result', () => {
+test('within-20 retry hints use one make-ten strategy without revealing the result', () => {
   const { questions, domain } = loadModules();
-  for (const [a, b] of [[7, 6], [9, 9]]) {
+  for (const [a, b, caption] of [[7, 6, '7 + 3 makes 10. Then 3 more.'], [9, 9, '9 + 1 makes 10. Then 8 more.']]) {
     const snap = makeSnap(domain, { scores: { player: a, opponent: b } }, 4);
     const q = questions.build(snap, 'score-total-ch8-within-20', { support: 'guided' });
-    assert.equal(q.hint.text, `Work out ${a} + ${b}. Use a double you know, make ten, or count on.`);
-    assert.equal(q.visuals.guided.ariaLabel, `Use a double you know, make ten, or count on. ${a} + ${b}; the answer is hidden.`);
+    assert.equal(q.hint.text, 'Make ten first, then add the rest.');
+    assert.equal(q.visuals.guided.type, 'arithmetic-model');
+    assert.equal(q.visuals.guided.data.caption, caption);
+    assert.match(q.visuals.guided.ariaLabel, new RegExp(`^${a} \\+ ${b}\\. Two ten-frames: .* Make ten first, then add the rest\\. The answer is hidden\\.$`));
     assert.equal(q.visuals.guided.result, null);
     assert.equal(q.visuals.guided.revealsAnswer, false);
-    assert.doesNotMatch(q.visuals.guided.ariaLabel, /tens and ones/);
+    assert.doesNotMatch(q.visuals.guided.ariaLabel, /tens and ones|double you know|Work out/);
   }
+});
+
+// Issue #138: guided models for every operand pair the completed families accept.
+const COMPLETED_MODEL_BY_SUFFIX = { 'within-20': 'make-ten', 'ones-add': 'tens-add', 'ones-subtract': 'tens-subtract' };
+const COMPLETED_HINT_BY_MODEL = {
+  'make-ten': 'Make ten first, then add the rest.',
+  'tens-add': 'Keep the tens. Add the ones.',
+  'tens-subtract': 'Keep the tens. Take away the ones.',
+};
+
+function loadCurriculumModules() {
+  return readFile(new URL('../shared/curriculum.js', import.meta.url), 'utf8').then((curriculumSource) => {
+    const ctx = vm.createContext({});
+    vm.runInContext(curriculumSource, ctx, { filename: 'curriculum.js' });
+    vm.runInContext(opponentSource, ctx, { filename: 'opponent.js' });
+    vm.runInContext(domainSource, ctx, { filename: 'football-domain.js' });
+    vm.runInContext(copySource, ctx, { filename: 'copy.js' });
+    vm.runInContext(questionsSource, ctx, { filename: 'contextual-questions.js' });
+    return { questions: ctx.FOOTBALL_CONTEXTUAL_QUESTIONS, domain: ctx.FOOTBALL_DOMAIN };
+  });
+}
+
+function containsNumberToken(text, value) {
+  return new RegExp(`(^|[^0-9])${value}([^0-9]|$)`).test(text);
+}
+
+function numericLeaves(value, path = '') {
+  if (typeof value === 'number') return [[path, value]];
+  if (!value || typeof value !== 'object') return [];
+  return Object.entries(value).flatMap(([key, child]) => numericLeaves(child, `${path}/${key}`));
+}
+
+function countingRng() {
+  const rng = () => { rng.draws++; return 0.4; };
+  rng.draws = 0;
+  return rng;
+}
+
+function assertCompletedModel(questions, snap, row, profile, label) {
+  const suffix = Object.keys(COMPLETED_MODEL_BY_SUFFIX).find(name => row.familyId.endsWith(`-${name}`));
+  const kind = COMPLETED_MODEL_BY_SUFFIX[suffix];
+  const before = JSON.stringify(snap);
+  const initialRng = countingRng();
+  const guidedRng = countingRng();
+  const initial = questions.build(snap, row.familyId, { support: 'initial', profile, presentationRng: initialRng });
+  const guided = questions.build(snap, row.familyId, { support: 'guided', profile, presentationRng: guidedRng });
+  assert.equal(JSON.stringify(snap), before, `${label}: snapshot unchanged`);
+  // Support changes only the selected stage; identity, choices and RNG use stay frozen.
+  assert.equal(initialRng.draws, guidedRng.draws, `${label}: presentation draws`);
+  assert.deepEqual(plain({ ...initial, support: null, math: null }), plain({ ...guided, support: null, math: null }), `${label}: support-invariant question`);
+  assert.equal(guided.math.type, 'arithmetic-model', label);
+
+  const answer = initial.answer.value;
+  const { a, b, operator } = initial.visuals.initial.data;
+  const equation = `${a} ${operator} ${b}`;
+  assert.deepEqual(plain(initial.visuals.initial.data), { a, b, operator }, `${label}: initial equation`);
+  assert.equal(initial.visuals.initial.type, 'arithmetic-equation');
+  assert.equal(initial.visuals.initial.result, null);
+  assert.equal(initial.visuals.worked.type, 'arithmetic-equation');
+  assert.deepEqual(plain(initial.visuals.worked.data), { a, b, operator }, `${label}: worked equation`);
+  assert.equal(initial.visuals.worked.result.value, answer);
+  assert.equal(initial.visuals.worked.ariaLabel, `${equation} equals ${answer}.`);
+  assert.equal(initial.explain, `${equation} = ${answer}.`);
+
+  const visual = initial.visuals.guided;
+  const data = visual.data;
+  assert.equal(visual.type, 'arithmetic-model', label);
+  assert.equal(visual.result, null, label);
+  assert.equal(visual.revealsAnswer, false, label);
+  assert.equal(data.model, kind, label);
+  assert.deepEqual([data.a, data.b, data.operator], [a, b, operator], `${label}: equation order unchanged`);
+  for (const key of ['result', 'answer', 'total', 'sum', 'difference']) assert.equal(key in data, false, `${label}: no ${key} field`);
+  // Only the genuine original operands may equal the answer (zero addends/subtrahends).
+  for (const [path, value] of numericLeaves(data)) {
+    if (path === '/a' || path === '/b') continue;
+    assert.notEqual(value, answer, `${label}: ${path} carries the computed result`);
+  }
+
+  if (kind === 'make-ten') {
+    const larger = Math.max(a, b);
+    const other = a + b - larger;
+    assert.equal(data.largerOperand, b > a ? 'b' : 'a', `${label}: larger first, first on ties`);
+    assert.equal(data.larger, larger);
+    assert.equal(data.other, other);
+    assert.equal(data.completeTen, 10 - larger);
+    assert.equal(data.rest, other - (10 - larger));
+    assert.ok(data.completeTen >= 1 && data.rest >= 1, `${label}: crosses ten`);
+    assert.deepEqual(plain(data.frames), [{ source: larger, added: 10 - larger }, { source: 0, added: data.rest }]);
+    assert.equal(data.caption, `${larger} + ${10 - larger} makes 10. Then ${data.rest} more.`);
+  } else {
+    const ordered = row.familyId.startsWith('team-yards') || operator === '−';
+    const baseOperand = ordered || a >= 10 ? 'a' : 'b';
+    if (ordered) assert.equal(data.baseOperand, 'a', `${label}: ordered relation never swaps`);
+    assert.equal(data.baseOperand, baseOperand, `${label}: two-digit rod base`);
+    const base = baseOperand === 'a' ? a : b;
+    const part = baseOperand === 'a' ? b : a;
+    assert.ok(base >= 10 && base <= 99 && part <= 9, label);
+    assert.equal(data.tens * 10 + data.sourceOnes, base, `${label}: rods and white ones rebuild the base`);
+    if (kind === 'tens-add') {
+      assert.equal(data.addedOnes, part);
+      assert.ok(data.sourceOnes + data.addedOnes <= 9, `${label}: no regrouping`);
+    } else {
+      assert.equal(data.removedOnes, part);
+      assert.ok(data.removedOnes <= data.sourceOnes, `${label}: no borrowing`);
+    }
+  }
+
+  // New explanatory copy never names the computed result; the guided label
+  // may repeat the original equation, which can legitimately equal it.
+  const hint = COMPLETED_HINT_BY_MODEL[kind];
+  assert.equal(initial.hint.text, hint, label);
+  assert.doesNotMatch(initial.hint.text, /Work out/);
+  for (const [name, text] of [['caption', data.caption], ['description', data.description], ['hint', initial.hint.text]]) {
+    assert.equal(containsNumberToken(text, answer), false, `${label}: ${name} names ${answer}: ${text}`);
+  }
+  const prefix = `${equation}. `;
+  assert.ok(visual.ariaLabel.startsWith(prefix), `${label}: guided label starts with the equation`);
+  assert.equal(visual.ariaLabel, `${prefix}${data.description} ${hint} The answer is hidden.`);
+  assert.equal(containsNumberToken(visual.ariaLabel.slice(prefix.length), answer), false, `${label}: guided label names ${answer}`);
+  assert.equal(initial.visuals.initial.ariaLabel, `${equation} equals an unknown number.`);
+
+  // Coach Replay: the strategy sentence, then the unchanged full worked result.
+  assert.deepEqual(plain(initial.workedReview.steps.map(step => step.text)), [hint, `${equation} = ${answer}.`]);
+  return { kind, key: `${row.familyId}:${a},${b}` };
+}
+
+// Independent expected pairs, written from the published Grade 1-B pages rather
+// than the production derive. Sums 11-18 follow the make-ten pages (11 on p. 102,
+// near doubles p. 103, with 9 p. 104, with 8 p. 106, the rest p. 119); tens and
+// ones without regrouping open on p. 108 (add) and p. 110 (subtract). A relation
+// already inside 10 (10 + 0, 10 - b) stays a within-10 fact.
+const ORIGINAL_COMPLETED_FAMILIES = ['score-total-ch8-within-20', 'team-yards-add-ch8-within-20',
+  'score-total-ch8-ones-add', 'team-yards-add-ch8-ones-add', 'score-difference-ch8-ones-subtract'];
+const LINE_GOAL_COMPLETED_FAMILIES = ['line-remaining-ch8-ones-subtract', 'goal-remaining-ch8-ones-subtract'];
+
+function makeTenPage(a, b) {
+  if (a + b === 11) return 102;
+  if (Math.abs(a - b) <= 1) return 103;
+  if (a === 9 || b === 9) return 104;
+  if (a === 8 || b === 8) return 106;
+  return 119;
+}
+
+function completedPairOracle(page) {
+  const expected = Object.fromEntries([...ORIGINAL_COMPLETED_FAMILIES, ...LINE_GOAL_COMPLETED_FAMILIES].map(id => [id, new Set()]));
+  const add = (familyId, a, b) => expected[familyId].add(`${familyId}:${a},${b}`);
+  for (let a = 0; a <= 9; a++) for (let b = 0; b <= 9; b++) {
+    if (a + b < 11 || makeTenPage(a, b) > page) continue;
+    add('score-total-ch8-within-20', a, b);
+    add('team-yards-add-ch8-within-20', a, b);
+  }
+  for (let base = 10; base <= 99; base++) for (let part = 0; part <= 9; part++) {
+    if (page >= 108 && base % 10 + part <= 9 && !(base === 10 && part === 0)) {
+      // Score totals are unordered, so the ones may come first; team yards never swap.
+      add('score-total-ch8-ones-add', base, part);
+      add('score-total-ch8-ones-add', part, base);
+      add('team-yards-add-ch8-ones-add', base, part);
+    }
+    if (page >= 110 && base > 10 && part <= base % 10) {
+      for (const familyId of ['score-difference-ch8-ones-subtract', ...LINE_GOAL_COMPLETED_FAMILIES]) add(familyId, base, part);
+    }
+  }
+  return expected;
+}
+
+function keysFor(keys, familyId) {
+  return [...keys].filter(key => key.startsWith(`${familyId}:`)).sort();
+}
+
+test('every accepted completed-arithmetic pair builds a matching result-free guided model at pages 113 and 187', async () => {
+  const { questions, domain } = await loadCurriculumModules();
+  const profile = page => ({ worktexts: { 'Math Mammoth Grade 1-B': { edition: 2026, completedThroughPage: page } } });
+  const pairs = [];
+  for (let a = 0; a <= 99; a++) for (let b = 0; b <= 9; b++) pairs.push([a, b, b]);
+  for (let a = 0; a <= 9; a++) for (let b = 10; b <= 99; b++) pairs.push([a, b, 4]);
+  const seen = {};
+  for (const page of [113, 187]) {
+    const keys = new Set();
+    for (const [a, b, gain] of pairs) {
+      const snap = makeSnap(domain, { scores: { player: a, opponent: b },
+        totalYards: { player: gain === b ? a : 71, opponent: 71 } }, gain);
+      for (const row of questions.inspect(snap, profile(page)).eligible) {
+        if (!/-(within-20|ones-add|ones-subtract)$/.test(row.familyId)) continue;
+        keys.add(assertCompletedModel(questions, snap, row, profile(page), `p${page} ${row.familyId} ${a},${b}`).key);
+      }
+    }
+    seen[page] = keys;
+  }
+  const count = (page, familyId) => keysFor(seen[page], familyId).length;
+  for (const page of [113, 187]) {
+    const expected = completedPairOracle(page);
+    for (const familyId of ORIGINAL_COMPLETED_FAMILIES) {
+      assert.deepEqual(keysFor(seen[page], familyId), [...expected[familyId]].sort(), `p${page} ${familyId} accepted pairs`);
+    }
+    // These snaps fix yards to go at 10 and the ball at its own 30, so the only
+    // line or goal pair they reach is 70 - 0 to the goal.
+    assert.deepEqual([...seen[page]].filter(key => !ORIGINAL_COMPLETED_FAMILIES.some(id => key.startsWith(`${id}:`))),
+      ['goal-remaining-ch8-ones-subtract:70,0'], `p${page} line and goal pairs`);
+  }
+  // Page 187 accepts every no-regrouping pair: 36 within-20 sums and 494 ones pairs per order.
+  assert.equal(count(187, 'score-total-ch8-within-20'), 36);
+  assert.equal(count(187, 'team-yards-add-ch8-within-20'), 36);
+  assert.equal(count(187, 'score-total-ch8-ones-add'), 988);
+  assert.equal(count(187, 'team-yards-add-ch8-ones-add'), 494);
+  assert.equal(count(187, 'score-difference-ch8-ones-subtract'), 494);
+  // Page 113 keeps the completed tens-and-ones pages; only 5 + 7 and 7 + 5 (p. 119) wait.
+  for (const familyId of ['score-total-ch8-ones-add', 'team-yards-add-ch8-ones-add', 'score-difference-ch8-ones-subtract']) {
+    assert.equal(count(113, familyId), count(187, familyId), familyId);
+  }
+  assert.equal(count(113, 'score-total-ch8-within-20'), 34);
+  assert.equal(count(113, 'team-yards-add-ch8-within-20'), 34);
+  for (const key of seen[113]) assert.ok(seen[187].has(key), `${key} at 113 is also accepted at 187`);
+  for (const key of ['score-total-ch8-within-20:7,6', 'score-total-ch8-within-20:9,9', 'score-total-ch8-ones-add:4,23',
+    'score-total-ch8-ones-add:23,0', 'score-total-ch8-ones-add:0,23', 'score-total-ch8-ones-add:99,0',
+    'team-yards-add-ch8-ones-add:23,2', 'score-difference-ch8-ones-subtract:36,4', 'score-difference-ch8-ones-subtract:36,6',
+    'score-difference-ch8-ones-subtract:30,0', 'score-difference-ch8-ones-subtract:99,9']) {
+    assert.ok(seen[113].has(key), `${key} at 113`);
+  }
+  for (const key of ['score-total-ch8-within-20:7,5', 'score-total-ch8-within-20:5,7', 'score-total-ch8-within-20:6,6']) {
+    assert.ok(seen[187].has(key), `${key} at 187`);
+  }
+});
+
+test('every accepted line and goal remainder pair builds its guided model on both possessions at pages 113 and 187', async () => {
+  const { questions, domain } = await loadCurriculumModules();
+  const profile = page => ({ worktexts: { 'Math Mammoth Grade 1-B': { edition: 2026, completedThroughPage: page } } });
+  // Legal field states only: yards to go never passes the goal, and gains run
+  // from 0 up to the goal without clamping.
+  const states = [];
+  for (const possession of ['offense', 'defense']) {
+    // Every yards to go, with a goal distance varied at or beyond the marker.
+    for (let toGo = 1; toGo <= 99; toGo++) {
+      const goal = toGo + (toGo * 37) % (100 - toGo);
+      for (let gain = 0; gain <= goal; gain++) states.push({ possession, goal, toGo, gain });
+    }
+    // Every goal distance, with yards to go varied up to it.
+    for (let goal = 1; goal <= 99; goal++) {
+      const toGo = 1 + (goal * 13 + 5) % goal;
+      for (let gain = 0; gain <= goal; gain++) states.push({ possession, goal, toGo, gain });
+    }
+  }
+  const snaps = states.map(({ possession, goal, toGo, gain }) => {
+    const yardLine = possession === 'offense' ? 100 - goal : goal;
+    const snap = makeSnap(domain, { possession, yardLine, driveStart: yardLine, yardsToGo: toGo }, gain);
+    assert.equal(snap.proposal.appliedGain, gain, `${possession} ${goal}/${toGo}+${gain}: unclamped gain`);
+    return { possession, snap, label: `${possession} goal ${goal} to go ${toGo} gain ${gain}` };
+  });
+  for (const page of [113, 187]) {
+    const seen = { offense: new Set(), defense: new Set() };
+    for (const { possession, snap, label } of snaps) {
+      for (const row of questions.inspect(snap, profile(page)).eligible) {
+        if (!LINE_GOAL_COMPLETED_FAMILIES.includes(row.familyId)) continue;
+        seen[possession].add(assertCompletedModel(questions, snap, row, profile(page), `p${page} ${row.familyId} ${label}`).key);
+      }
+    }
+    const expected = completedPairOracle(page);
+    for (const possession of ['offense', 'defense']) for (const familyId of LINE_GOAL_COMPLETED_FAMILIES) {
+      const keys = keysFor(seen[possession], familyId);
+      assert.deepEqual(keys, [...expected[familyId]].sort(), `p${page} ${possession} ${familyId} accepted pairs`);
+      assert.equal(keys.length, 494, `p${page} ${possession} ${familyId} count`);
+      for (const key of [':11,1', ':20,0', ':30,0', ':36,6', ':99,9']) assert.ok(keys.includes(`${familyId}${key}`), `${familyId}${key}`);
+      for (const key of [':10,0', ':36,7', ':40,1', ':19,10']) assert.ok(!keys.includes(`${familyId}${key}`), `${familyId}${key} excluded`);
+    }
+  }
+});
+
+test('guided models keep operand order, normalize the rod base, and work on both possessions', () => {
+  const { questions, domain } = loadModules();
+  const cases = [
+    ['score-total-ch8-within-20', { scores: { player: 6, opponent: 8 } }, 4,
+      { model: 'make-ten', largerOperand: 'b', frames: [{ source: 8, added: 2 }, { source: 0, added: 4 }], caption: '8 + 2 makes 10. Then 4 more.' }],
+    ['score-total-ch8-within-20', { scores: { player: 7, opponent: 7 } }, 4,
+      { model: 'make-ten', largerOperand: 'a', frames: [{ source: 7, added: 3 }, { source: 0, added: 4 }], caption: '7 + 3 makes 10. Then 4 more.' }],
+    ['score-total-ch8-ones-add', { scores: { player: 4, opponent: 23 } }, 4,
+      { model: 'tens-add', baseOperand: 'b', tens: 2, sourceOnes: 3, addedOnes: 4, caption: '2 tens stay. 3 ones + 4 ones.' }],
+    ['score-total-ch8-ones-add', { scores: { player: 13, opponent: 0 } }, 4,
+      { model: 'tens-add', baseOperand: 'a', tens: 1, sourceOnes: 3, addedOnes: 0, caption: '1 ten stays. 3 ones + 0 ones.' }],
+    ['team-yards-add-ch8-ones-add', { totalYards: { player: 23, opponent: 23 }, scores: { player: 3, opponent: 4 } }, 2,
+      { model: 'tens-add', baseOperand: 'a', tens: 2, sourceOnes: 3, addedOnes: 2, caption: '2 tens stay. 3 ones + 2 ones.' }],
+    ['score-difference-ch8-ones-subtract', { scores: { player: 4, opponent: 36 } }, 4,
+      { model: 'tens-subtract', baseOperand: 'a', tens: 3, sourceOnes: 6, removedOnes: 4, caption: '3 tens stay. 6 ones take away 4.' }],
+    ['score-difference-ch8-ones-subtract', { scores: { player: 21, opponent: 1 } }, 4,
+      { model: 'tens-subtract', baseOperand: 'a', tens: 2, sourceOnes: 1, removedOnes: 1, caption: '2 tens stay. 1 one take away 1.' }],
+  ];
+  for (const possession of ['offense', 'defense']) for (const [familyId, overrides, gain, expected] of cases) {
+    const fixture = { ...overrides };
+    if (possession === 'defense' && overrides.totalYards) fixture.totalYards = { player: 71, opponent: overrides.totalYards.player };
+    const snap = makeSnap(domain, { possession, ...fixture }, gain);
+    assert.ok(questions.inspect(snap).eligible.some(row => row.familyId === familyId), `${possession} ${familyId}`);
+    const q = questions.build(snap, familyId, { support: 'guided' });
+    for (const [key, value] of Object.entries(expected)) {
+      assert.deepEqual(plain(q.visuals.guided.data[key]), value, `${possession} ${familyId} ${key}`);
+    }
+    assert.equal(q.math.type, 'arithmetic-model');
+    assert.equal(q.visuals.initial.type, 'arithmetic-equation');
+    assert.equal(q.visuals.worked.type, 'arithmetic-equation');
+  }
+  // Families outside the completed domains keep their original guided equation.
+  const later = makeSnap(domain, { scores: { player: 27, opponent: 5 } }, 4);
+  const q = questions.build(later, 'score-total-ch8', { support: 'guided' });
+  assert.equal(q.visuals.guided.type, 'arithmetic-equation');
+  assert.equal(q.hint.text, 'Work out 27 + 5. Use the tens and ones or count on or back.');
+  assert.equal(q.visuals.guided.ariaLabel, 'Use the tens and ones: 27 + 5; the answer is hidden.');
 });
 
 test('published Grade 1-B source map matches every runtime family coordinate', async () => {

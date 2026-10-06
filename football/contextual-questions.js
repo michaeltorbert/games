@@ -684,6 +684,8 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
     choiceSpec,
     visualType,
     visualData,
+    guidedVisualType = null,
+    guidedVisualData = null,
     choicePresentation = null,
     initialAriaLabel,
     guidedAriaLabel,
@@ -700,6 +702,8 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
       choiceSpec,
       visualType,
       visualData,
+      // Optional retry-only picture; initial and worked keep visualType.
+      ...(guidedVisualType ? { guidedVisualType, guidedVisualData } : {}),
       choicePresentation,
       visualAriaLabels: {
         initial: initialAriaLabel,
@@ -748,19 +752,68 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
   ];
   // These disjoint domains retain each relation's concept and selection budget.
   // Later Chapter 8 arithmetic remains in the original guided family.
+  // Each completed domain has one retry picture and one matching strategy hint.
   const COMPLETED_ARITHMETIC_DOMAINS = {
     add: [
-      { suffix: 'within-20', page: 102, through: 107,
-        strategyHint: 'Use a double you know, make ten, or count on.',
+      { suffix: 'within-20', page: 102, through: 107, model: 'make-ten',
+        strategyHint: 'Make ten first, then add the rest.',
         accepts: (a, b) => a <= 9 && b <= 9 && a + b <= 20 },
-      { suffix: 'ones-add', page: 108, through: 109,
+      { suffix: 'ones-add', page: 108, through: 109, model: 'tens-add',
+        strategyHint: 'Keep the tens. Add the ones.',
         accepts: (a, b) => a >= 10 && a <= 99 && b <= 9 && a % 10 + b <= 9 },
     ],
     subtract: [
-      { suffix: 'ones-subtract', page: 110, through: 111,
+      { suffix: 'ones-subtract', page: 110, through: 111, model: 'tens-subtract',
+        strategyHint: 'Keep the tens. Take away the ones.',
         accepts: (a, b) => a >= 10 && a <= 99 && b <= 9 && a % 10 >= b },
     ],
   };
+
+  function countOf(count, one, many) {
+    return `${count} ${count === 1 ? one : many}`;
+  }
+
+  // Issue #138: the guided-only picture for a completed domain (Math Mammoth
+  // Grade 1-B, 2026, make ten pp. 104-107, tens and ones pp. 108-111). This is
+  // pure counts and copy; football.js draws it. The equation keeps its operand
+  // order, and no field carries the computed result.
+  function completedArithmeticModel(domain, a, b) {
+    if (domain.model === 'make-ten') {
+      // Fill the larger addend first; the first addend wins a tie (doubles too).
+      const largerOperand = b > a ? 'b' : 'a';
+      const larger = largerOperand === 'a' ? a : b;
+      const other = largerOperand === 'a' ? b : a;
+      const completeTen = 10 - larger;
+      const rest = other - completeTen;
+      return {
+        model: 'make-ten', largerOperand, larger, other, completeTen, rest,
+        frames: [{ source: larger, added: completeTen }, { source: 0, added: rest }],
+        caption: `${larger} + ${completeTen} makes 10. Then ${rest} more.`,
+        description: `Two ten-frames: ${countOf(larger, 'white dot', 'white dots')} and ${countOf(completeTen, 'gold dot', 'gold dots')} make ten, then ${countOf(rest, 'more gold dot', 'more gold dots')}.`,
+      };
+    }
+    // The rods start from the operand the domain accepts as the two-digit base:
+    // an unordered score total may list the ones first, an ordered relation never.
+    const baseOperand = domain.accepts(a, b) ? 'a' : 'b';
+    const base = baseOperand === 'a' ? a : b;
+    const part = baseOperand === 'a' ? b : a;
+    const tens = Math.floor(base / 10);
+    const ones = base % 10;
+    const tensCopy = tens === 1 ? '1 ten stays' : `${tens} tens stay`;
+    const rods = countOf(tens, 'ten rod', 'ten rods');
+    if (domain.model === 'tens-add') {
+      return {
+        model: 'tens-add', baseOperand, tens, sourceOnes: ones, addedOnes: part,
+        caption: `${tensCopy}. ${countOf(ones, 'one', 'ones')} + ${countOf(part, 'one', 'ones')}.`,
+        description: `${rods}, ${countOf(ones, 'white one', 'white ones')}, and ${countOf(part, 'gold one', 'gold ones')} added.`,
+      };
+    }
+    return {
+      model: 'tens-subtract', baseOperand, tens, sourceOnes: ones, removedOnes: part,
+      caption: `${tensCopy}. ${countOf(ones, 'one', 'ones')} take away ${part}.`,
+      description: `${rods} and ${countOf(ones, 'white one', 'white ones')}, with ${part} crossed out.`,
+    };
+  }
   const ARITHMETIC_FAMILIES = ARITHMETIC_RELATIONS.flatMap((spec) => {
     const domains = COMPLETED_ARITHMETIC_DOMAINS[spec.operation === 'add' ? 'add' : 'subtract'];
     return [null, ...domains].map((domain) => ({
@@ -784,14 +837,16 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
           return { decline: decline('outside-arithmetic-variant', 'This relation belongs to a different curriculum domain.') };
         }
         const equation = `${a} ${operator} ${b}`;
+        const model = domain ? completedArithmeticModel(domain, a, b) : null;
         return eligible(makeSemantic({ bindings: relation.bindings, operationType: spec.operation,
           operandIds: relation.operands, answer, prompt: `${relation.context} ${equation}. ${relation.ask}`,
-          hint: `Work out ${equation}. ${domain?.strategyHint || 'Use the tens and ones or count on or back.'}`,
+          hint: domain ? domain.strategyHint : `Work out ${equation}. Use the tens and ones or count on or back.`,
           explanation: `${equation} = ${answer}.`, choiceSpec: numericChoiceSpec(0, 100),
           visualType: 'arithmetic-equation', visualData: { a, b, operator },
+          ...(model ? { guidedVisualType: 'arithmetic-model', guidedVisualData: { a, b, operator, ...model } } : {}),
           initialAriaLabel: `${equation} equals an unknown number.`,
-          guidedAriaLabel: domain?.strategyHint
-            ? `${domain.strategyHint} ${equation}; the answer is hidden.`
+          guidedAriaLabel: model
+            ? `${equation}. ${model.description} ${domain.strategyHint} The answer is hidden.`
             : `Use the tens and ones: ${equation}; the answer is hidden.`,
           workedAriaLabel: `${equation} equals ${answer}.` }));
       },
@@ -1767,14 +1822,16 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
     const visibleAtSource = meta.answerExposure === 'source-visible';
     const stage = (name) => {
       const revealsAnswer = name === 'worked' || visibleAtSource;
-      const data = clone(semantic.visualData);
-      if (!revealsAnswer && ['base-ten-distance', 'base-ten-score'].includes(semantic.visualType)) {
+      const guidedModel = name === 'guided' && Boolean(semantic.guidedVisualType);
+      const type = guidedModel ? semantic.guidedVisualType : semantic.visualType;
+      const data = clone(guidedModel ? semantic.guidedVisualData : semantic.visualData);
+      if (!revealsAnswer && ['base-ten-distance', 'base-ten-score'].includes(type)) {
         if (data.targetPlace === 'tens') data.tens = null;
         if (data.targetPlace === 'ones') data.ones = null;
       }
       return {
         stage: name,
-        type: semantic.visualType,
+        type,
         bindingIds,
         answerId,
         data,
