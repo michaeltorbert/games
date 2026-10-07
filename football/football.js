@@ -1,4 +1,4 @@
-const GAME_VERSION = '1.33.3';
+const GAME_VERSION = '1.34.0';
 let prevPlayerScore = -1, prevOpponentScore = -1;
 let playerRunTimer = 0, playerCelebrateTimer = 0, playerCelebrateDelayTimer = 0;
 const EZ = 5;
@@ -1530,11 +1530,23 @@ function updateField(animated) {
 }
 
 // The edge clamp depends on the field width, so reapply it after rotation or resize.
+// Issue #149: the correction must not use the play-movement transition, which would
+// slide the sprite in from outside the newly narrowed field. Apply it without a
+// transition, flush that style, and restore the ordinary transition on the next
+// frame. A repeated resize replaces any pending restore.
+let playerResizeRestoreFrame = 0;
 window.addEventListener('resize', () => {
   const player = document.getElementById('player');
   const field = document.getElementById('field-wrap');
   if (player && field && !player.classList.contains('player-hidden')) {
+    if (playerResizeRestoreFrame) cancelAnimationFrame(playerResizeRestoreFrame);
+    player.style.transition = 'none';
     player.style.left = playerLeftPct(player, field) + '%';
+    void player.offsetWidth;
+    playerResizeRestoreFrame = requestAnimationFrame(() => {
+      playerResizeRestoreFrame = 0;
+      player.style.transition = '';
+    });
   }
 });
 
@@ -1602,6 +1614,7 @@ function hideMathVisual() {
   overlay.hidden = true;
   overlay.innerHTML = '';
   overlay.removeAttribute('data-type');
+  overlay.removeAttribute('data-model');
   overlay.removeAttribute('data-punt-touchback');
   overlay.setAttribute('aria-label', '');
 }
@@ -1705,6 +1718,7 @@ function renderMathVisual() {
       ];
       break;
     case 'arithmetic-equation':
+    case 'arithmetic-model':
       tokens = [data.a, data.operator, data.b, visual.result ? `= ${visual.result.value}` : '= ?'];
       break;
     case 'base-ten-move': {
@@ -1765,6 +1779,56 @@ function renderMathVisual() {
     return `<span class="${index % 2 === 0 ? 'math-context-token' : 'math-context-link'}"${teamAttribute}>${tokenValue}</span>`;
   }
   ).join('')}</div>` + (support === 'worked' ? `<span class="math-worked">${question.workedExplanation.text}</span>` : '');
+  if (visual.type === 'arithmetic-model') {
+    overlay.dataset.model = data.model;
+    overlay.appendChild(renderArithmeticModel(data));
+  } else {
+    overlay.removeAttribute('data-model');
+  }
+}
+
+// Issue #138: static make-ten and tens-and-ones pictures for a guided retry.
+// White marks the starting number, gold the added ones; removed ones are crossed.
+function renderArithmeticModel(data) {
+  const make = (tag, className, attributes = {}) => {
+    const element = document.createElement(tag);
+    element.className = className;
+    for (const [name, value] of Object.entries(attributes)) element.setAttribute(name, value);
+    return element;
+  };
+  const figure = make('div', 'math-model', { 'aria-hidden': 'true', 'data-model': data.model });
+  const picture = make('div', 'math-model-picture');
+  if (data.model === 'make-ten') {
+    for (const frame of data.frames) {
+      const tenFrame = make('span', 'math-ten-frame');
+      for (let cell = 0; cell < 10; cell++) {
+        const tone = cell < frame.source ? 'source' : cell < frame.source + frame.added ? 'added' : 'empty';
+        tenFrame.appendChild(make('i', 'math-ten-cell', { 'data-tone': tone }));
+      }
+      picture.appendChild(tenFrame);
+    }
+  } else {
+    const rods = make('span', 'math-rods');
+    for (let rod = 0; rod < data.tens; rod++) {
+      const tenRod = make('span', 'math-rod');
+      for (let unit = 0; unit < 10; unit++) tenRod.appendChild(make('i', 'math-rod-unit'));
+      rods.appendChild(tenRod);
+    }
+    picture.appendChild(rods);
+    const ones = make('span', 'math-unit-ones');
+    for (let one = 0; one < data.sourceOnes; one++) {
+      const removed = data.model === 'tens-subtract' && one >= data.sourceOnes - data.removedOnes;
+      ones.appendChild(make('i', 'math-unit', { 'data-tone': removed ? 'removed' : 'source' }));
+    }
+    if (data.model === 'tens-add') {
+      for (let one = 0; one < data.addedOnes; one++) ones.appendChild(make('i', 'math-unit', { 'data-tone': 'added' }));
+    }
+    if (ones.childElementCount) picture.appendChild(ones);
+  }
+  const caption = make('span', 'math-model-caption');
+  caption.textContent = data.caption;
+  figure.append(picture, caption);
+  return figure;
 }
 
 function workedReviewElements() {

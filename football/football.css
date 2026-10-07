@@ -811,6 +811,164 @@ body::after {
   text-transform: uppercase;
 }
 
+/* Issue #138: static guided-retry pictures. The equation and model sit inline
+   on tablets and stack compactly on phones. White is the starting number, gold
+   the added ones, and crossed ones are taken away. */
+#math-overlay[data-type="arithmetic-model"] {
+  width: min(80%, 760px);
+  grid-template-columns: auto auto;
+}
+
+.math-model {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+}
+
+.math-model-picture {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 12px;
+}
+
+.math-ten-frame {
+  display: grid;
+  grid-template-columns: repeat(5, 18px);
+  grid-auto-rows: 18px;
+  gap: 5px;
+  padding: 6px;
+  border: 2px solid rgba(255, 255, 255, 0.86);
+  border-radius: 8px;
+}
+
+.math-ten-cell {
+  border-radius: 50%;
+}
+
+.math-ten-cell[data-tone="source"],
+.math-unit[data-tone="source"],
+.math-unit[data-tone="removed"] {
+  background: #fff;
+}
+
+.math-ten-cell[data-tone="added"],
+.math-unit[data-tone="added"] {
+  background: #ffd62e;
+}
+
+.math-rods,
+.math-unit-ones {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+}
+
+.math-rod {
+  display: grid;
+  grid-template-rows: repeat(10, 4px);
+  gap: 1px;
+  width: 12px;
+  padding: 1px;
+  border-radius: 3px;
+  background: rgba(185, 215, 241, 0.5);
+}
+
+.math-rod-unit {
+  border-radius: 1px;
+  background: #fff;
+}
+
+.math-unit {
+  position: relative;
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+}
+
+.math-unit[data-tone="removed"] {
+  opacity: 0.6;
+}
+
+.math-unit[data-tone="removed"]::after {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  background:
+    linear-gradient(45deg, transparent 42%, #e5484d 42%, #e5484d 58%, transparent 58%),
+    linear-gradient(-45deg, transparent 42%, #e5484d 42%, #e5484d 58%, transparent 58%);
+}
+
+.math-model-caption {
+  color: #fff;
+  font-size: 20px;
+  line-height: 1.1;
+  letter-spacing: 0.02em;
+  text-align: center;
+}
+
+@media (max-width: 760px) {
+  /* The stacked model is nearly field-tall, so it centers in the field left of
+     the sound toggle's 44px corner (7px inset + 44px) instead of passing over it. */
+  #math-overlay[data-type="arithmetic-model"] {
+    left: calc(50% - 25.5px);
+    width: min(calc(94% - 51px), 380px);
+    grid-template-columns: 1fr;
+    gap: 4px;
+    padding: 6px 10px;
+  }
+
+  #math-overlay[data-type="arithmetic-model"] .math-context-row {
+    gap: 6px;
+  }
+
+  #math-overlay[data-type="arithmetic-model"] .math-context-token {
+    min-width: 40px;
+    padding: 4px 8px 3px;
+    border-radius: 10px;
+    font-size: 22px;
+  }
+
+  #math-overlay[data-type="arithmetic-model"] .math-context-link {
+    font-size: 16px;
+  }
+
+  .math-model {
+    gap: 4px;
+  }
+
+  .math-model-picture {
+    gap: 8px;
+  }
+
+  .math-ten-frame {
+    grid-template-columns: repeat(5, 9px);
+    grid-auto-rows: 9px;
+    gap: 3px;
+    padding: 3px;
+  }
+
+  .math-rods,
+  .math-unit-ones {
+    gap: 3px;
+  }
+
+  .math-rod {
+    grid-template-rows: repeat(10, 2px);
+    width: 8px;
+  }
+
+  .math-unit {
+    width: 9px;
+    height: 9px;
+    border-radius: 2px;
+  }
+
+  .math-model-caption {
+    font-size: 14px;
+  }
+}
+
 #ui-desk[data-phase="explanation"] {
   grid-template-columns: minmax(360px, 0.92fr) minmax(390px, 1.08fr);
 }

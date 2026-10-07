@@ -11,6 +11,14 @@ function primaryOnly(testInfo) {
   );
 }
 
+// Safari's default keyboard policy skips buttons on Tab; Option-Tab is its
+// all-controls gesture. Applied to Playwright WebKit on macOS only; every
+// other engine and host keeps plain Tab.
+function tabKeys(browserName) {
+  const option = browserName === 'webkit' && process.platform === 'darwin' ? 'Alt+' : '';
+  return { next: `${option}Tab`, previous: `${option}Shift+Tab` };
+}
+
 function rawResult(gameNumber, playerScore, opponentScore, gameId = `stored-game-${gameNumber}`) {
   return {
     gameNumber,
@@ -605,8 +613,9 @@ test('a terminal binding mismatch never claims the active Season final was saved
   expect(pageErrors).toEqual([]);
 });
 
-test('a terminal punt keeps one pending result, exposes recovery actions, and retries through the locked write path', async ({ page }, testInfo) => {
+test('a terminal punt keeps one pending result, exposes recovery actions, and retries through the locked write path', async ({ page, browserName }, testInfo) => {
   primaryOnly(testInfo);
+  const keys = tabKeys(browserName);
   await startSeasonFromEmpty(page);
   await page.evaluate((key) => {
     const nativeSetItem = Storage.prototype.setItem;
@@ -636,11 +645,11 @@ test('a terminal punt keeps one pending result, exposes recovery actions, and re
   await expect(page.locator('#ov-end-btn')).toHaveText('Retry Saving');
   await expect(page.locator('#ov-end-quick-btn')).toBeVisible();
   await expect(page.locator('#ov-end-btn')).toBeFocused();
-  await page.keyboard.press('Tab');
+  await page.keyboard.press(keys.next);
   await expect(page.locator('#ov-end-quick-btn')).toBeFocused();
-  await page.keyboard.press('Tab');
+  await page.keyboard.press(keys.next);
   await expect(page.locator('#ov-end-btn')).toBeFocused();
-  await page.keyboard.press('Shift+Tab');
+  await page.keyboard.press(keys.previous);
   await expect(page.locator('#ov-end-quick-btn')).toBeFocused();
   expect(await storedResults(page)).toHaveLength(0);
   expect(await page.evaluate(() => JSON.parse(render_game_to_text()).season)).toMatchObject({
