@@ -6,6 +6,14 @@ function primaryOnly(testInfo) {
   test.skip(testInfo.project.name !== PRIMARY_PROJECT, 'Detailed Time Lab behavior runs once on the primary target.');
 }
 
+// Safari's default keyboard policy skips buttons on Tab; Option-Tab is its
+// all-controls gesture. Applied to Playwright WebKit on macOS only; every
+// other engine and host keeps plain Tab.
+function tabKeys(browserName) {
+  const option = browserName === 'webkit' && process.platform === 'darwin' ? 'Alt+' : '';
+  return { next: `${option}Tab`, previous: `${option}Shift+Tab` };
+}
+
 function watchErrors(page) {
   const pageErrors = [];
   const consoleErrors = [];
@@ -487,8 +495,9 @@ test('all mixed visuals stay synchronized with their accessible presentation and
   expectNoErrors(errors);
 });
 
-test('Escape retains focus in the lab while Back and Done restore the start entry', async ({ page }, testInfo) => {
+test('Escape retains focus in the lab while Back and Done restore the start entry', async ({ page, browserName }, testInfo) => {
   primaryOnly(testInfo);
+  const keys = tabKeys(browserName);
   const errors = watchErrors(page);
   await page.goto('/football/');
   await openLab(page);
@@ -496,7 +505,7 @@ test('Escape retains focus in the lab while Back and Done restore the start entr
   await page.keyboard.press('Escape');
   await expect(page.locator('#ov-time-lab')).toHaveClass(/show/);
   expect(await page.evaluate(() => document.activeElement?.closest('.overlay')?.id)).toBe('ov-time-lab');
-  await page.keyboard.press('Shift+Tab');
+  await page.keyboard.press(keys.previous);
   expect(await page.evaluate(() => document.activeElement?.closest('.overlay')?.id)).toBe('ov-time-lab');
 
   await startSeededMode(page, 'calendar', 2);

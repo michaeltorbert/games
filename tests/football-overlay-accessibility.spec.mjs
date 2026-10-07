@@ -9,6 +9,14 @@ function primaryOnly(testInfo) {
   );
 }
 
+// Safari's default keyboard policy skips buttons on Tab; Option-Tab is its
+// all-controls gesture. Applied to Playwright WebKit on macOS only; every
+// other engine and host keeps plain Tab.
+function tabKeys(browserName) {
+  const option = browserName === 'webkit' && process.platform === 'darwin' ? 'Alt+' : '';
+  return { next: `${option}Tab`, previous: `${option}Shift+Tab` };
+}
+
 async function bootCallPhase(page, seed = 0x6a110) {
   await page.goto('/football/?boot=offense-call');
   await page.evaluate((rootSeed) => {
@@ -42,7 +50,8 @@ async function seedOrdinaryDrive(page, possession) {
   });
 }
 
-test('all overlays expose one modal dialog and contain keyboard focus', async ({ page }) => {
+test('all overlays expose one modal dialog and contain keyboard focus', async ({ page, browserName }) => {
+  const keys = tabKeys(browserName);
   await page.goto('/football/');
 
   for (const id of overlayIds) {
@@ -58,7 +67,7 @@ test('all overlays expose one modal dialog and contain keyboard focus', async ({
     expect(await page.locator('#wrap').evaluate(element => element.inert)).toBe(true);
 
     await expect.poll(() => page.evaluate(overlayId => document.activeElement?.closest('.overlay')?.id === overlayId, id)).toBe(true);
-    await page.keyboard.press('Tab');
+    await page.keyboard.press(keys.next);
     expect(await page.evaluate(overlayId => document.activeElement?.closest('.overlay')?.id === overlayId, id)).toBe(true);
     await page.keyboard.press('Escape');
     await expect(overlay).toHaveClass(/show/);
@@ -71,7 +80,8 @@ test('all overlays expose one modal dialog and contain keyboard focus', async ({
   }
 });
 
-test('start overlay traps focus across the selected mode and visible rival radio tab stops', async ({ page }) => {
+test('start overlay traps focus across the selected mode and visible rival radio tab stops', async ({ page, browserName }) => {
+  const keys = tabKeys(browserName);
   await page.goto('/football/');
   const quickMode = page.getByRole('radio', { name: /Quick Game/ });
   const seasonMode = page.getByRole('radio', { name: /3-Game Season/ });
@@ -83,27 +93,28 @@ test('start overlay traps focus across the selected mode and visible rival radio
   await wakeForest.focus();
   await expect(wakeForest).toBeFocused();
 
-  await page.keyboard.press('Shift+Tab');
+  await page.keyboard.press(keys.previous);
   await expect(quickMode).toBeFocused();
-  await page.keyboard.press('Shift+Tab');
+  await page.keyboard.press(keys.previous);
   await expect(timeLab).toBeFocused();
-  await page.keyboard.press('Shift+Tab');
+  await page.keyboard.press(keys.previous);
   await expect(start).toBeFocused();
-  await page.keyboard.press('Tab');
+  await page.keyboard.press(keys.next);
   await expect(timeLab).toBeFocused();
-  await page.keyboard.press('Tab');
+  await page.keyboard.press(keys.next);
   await expect(quickMode).toBeFocused();
-  await page.keyboard.press('Tab');
+  await page.keyboard.press(keys.next);
   await expect(wakeForest).toBeFocused();
 
   await seasonMode.check();
+  await seasonMode.focus();
   await expect(seasonMode).toBeFocused();
   expect(await wakeForest.evaluate(element => element.getClientRects().length)).toBe(0);
-  await page.keyboard.press('Tab');
+  await page.keyboard.press(keys.next);
   await expect(start).toBeFocused();
-  await page.keyboard.press('Tab');
+  await page.keyboard.press(keys.next);
   await expect(timeLab).toBeFocused();
-  await page.keyboard.press('Tab');
+  await page.keyboard.press(keys.next);
   await expect(seasonMode).toBeFocused();
 });
 
@@ -259,8 +270,9 @@ test('keyboard activation moves focus from an ordinary call card to the first an
   }
 });
 
-test('keyboard Continue returns focus to the next nonterminal call grid', async ({ page }, testInfo) => {
+test('keyboard Continue returns focus to the next nonterminal call grid', async ({ page, browserName }, testInfo) => {
   primaryOnly(testInfo);
+  const keys = tabKeys(browserName);
   await bootCallPhase(page, 0x6a410);
 
   for (const possession of ['offense', 'defense']) {
@@ -279,9 +291,9 @@ test('keyboard Continue returns focus to the next nonterminal call grid', async 
     await expect(page.locator('#question-learn-why')).toBeFocused();
     await page.keyboard.press('Enter');
     await expect(page.locator('#worked-review-heading')).toBeFocused();
-    await page.keyboard.press('Tab');
+    await page.keyboard.press(keys.next);
     await expect(page.locator('#worked-review-back')).toBeFocused();
-    await page.keyboard.press('Tab');
+    await page.keyboard.press(keys.next);
     const continueButton = page.locator('#question-continue');
     await expect(continueButton).toBeFocused();
     await continueButton.press('Enter');

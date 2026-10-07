@@ -1301,3 +1301,24 @@ Native Safari rotation (#149) also remains pending. No native or full-release pa
 ## 2026-10-06 — Coordinator verification after round-1 corrections
 
 Coordinating Codex ran the corrected candidate: focused contextual/learning/registry domain checks passed 65/65. The canonical Chromium Football release passed 167 domain checks and 471 browser checks (657 project-specific skips), then verified all 304 release screenshots across six projects. WebKit passed all 167 domain checks and 456 browser checks, with 15 failures and 657 skips. The failures are five keyboard-focus tests: two repeated across all six projects, plus the primary-target Continue, Season recovery and Time Lab cases. The screenshot-only verifier separately passed all 304 WebKit release screenshots; the full WebKit gate remains failed. Baseline/diagnostic evidence is recorded externally for fresh review. Native Safari rotation remains pending; no merge, deployment or native pass is claimed.
+
+## 2026-10-06 — Football v1.34.0 R2 bounded repair
+
+Repair author: Claude (Opus 5.5), from HEAD `bb9164c`, after the coordinator accepted both R2 reconciliations. Runtime JavaScript, versions, cache keys, the registry and Place by Place are unchanged. Football stays at the unreleased `1.34.0`. The coordinator confirmed that the existing bump already covers this CSS change. Only three specs, one CSS declaration and this note change.
+
+- WebKit keyboard harness: the overlay-accessibility, Season and Time Lab specs each get a local `tabKeys(browserName)` helper. It uses the same predicate as the learning spec (`browserName === 'webkit' && process.platform === 'darwin'`). On that combination, Tab and Shift+Tab become Safari's Option-Tab and Option-Shift-Tab all-controls gestures. Chromium and all non-Darwin hosts keep plain keys. Every assertion, scenario, project skip, Enter/Space/Escape action, persistence/authority check and expected focus target is unchanged. Only Playwright WebKit on macOS was diagnosed; other hosts are unverified.
+- Start-overlay traversal setup: `seasonMode.focus()` now follows `seasonMode.check()`, matching the existing Wake Forest setup. The `toBeFocused()` assertion that follows is kept. This sets the keyboard starting point and does not prove pointer-check focus behavior. No focus call follows any traversal gesture.
+- Removed-unit cross: the `.math-unit[data-tone="removed"]::after` inset changes from `-3px` to `-1px`. The marks are now 11 px on phones and 16 px on tablets, below the 12 px and 18 px unit spacing, so adjacent marks no longer overlap. Unit sizes, model spacing, counts, semantics and selectors are unchanged.
+- Unchanged and still open: the cosmetic in-flight player/ball mismatch on resize remains an unreproduced hypothesis in #155. Both transitions are 0.75 s; an earlier 0.6 s citation referred to the first-down line. The native Safari rotation gate stays open on #149 and draft PR #154. This host has only Command Line Tools, so it cannot provide Simulator evidence.
+
+### Pending coordinator checks
+
+The author could not run tools; no result is claimed here. At the exact resulting bytes, the coordinator must run the following in both Chromium and WebKit:
+
+- the full Football release;
+- the full Place by Place release, with explicit base and target, from this checkout;
+- regeneration of all 38 review pixels, including the six tens-subtract comparisons.
+
+## 2026-10-06 — Coordinator final engine verification
+
+Coordinating Codex ran the exact R2 bounded-repair runtime/spec bytes from the authoritative integrated checkout. Full Football Chromium and WebKit each passed 167 domain and 471 browser checks with 657 existing project skips, and each verified all 304 release screenshots. All 15 formerly failing WebKit keyboard cases passed with their assertions intact. Full Place Chromium and WebKit each passed 66 domain and 510 browser checks with 120 existing project skips. Every registry gate used exact base `0fa6999777289ef580786cbf88437cbb9f952246` and target `football`; Place production, Kayak and Prague remained unchanged. Refreshed 38 review images include all six subtraction layouts; coordinator inspected each subtraction comparison. Fresh rotation capture recorded 264 finite, visible-part frames inside the field. This is WebKit engine emulation, not native Safari or Simulator proof. Native #149 remains pending before merge/release; cosmetic hypothesis #155 remains a durable follow-up. The user withdrew future Fable calls; its completed historical work is preserved externally. Final fresh Sol/Opus review and ranking are pending at this entry.

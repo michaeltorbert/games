@@ -893,7 +893,7 @@ body::after {
 .math-unit[data-tone="removed"]::after {
   content: '';
   position: absolute;
-  inset: -3px;
+  inset: -1px;
   background:
     linear-gradient(45deg, transparent 42%, #e5484d 42%, #e5484d 58%, transparent 58%),
     linear-gradient(-45deg, transparent 42%, #e5484d 42%, #e5484d 58%, transparent 58%);
