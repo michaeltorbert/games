@@ -1285,6 +1285,248 @@
     return null;
   }
 
+  // Possession and period transitions. These planners read a plain match-state
+  // snapshot and return frozen decisions; the UI adapter copies each accepted
+  // patch into its live state and owns IDs, timers, focus, DOM, and animation.
+  const POSSESSIONS = Object.freeze(['offense', 'defense']);
+  const PRESENTATION_PHASES = Object.freeze({
+    offenseTransition: 'transition',
+    defenseTransition: 'transition',
+    quarterEnd: 'quarter',
+    halftime: 'halftime',
+    final: 'final',
+  });
+  const PRESENTATION_KINDS = Object.freeze(Object.keys(PRESENTATION_PHASES));
+  const PERIOD_BREAK_PHASES = Object.freeze(['quarter', 'halftime']);
+  const HALFTIME_KICKOFF = Object.freeze({
+    nextPossession: 'defense',
+    nextStartYardLine: 80,
+    restartReason: 'halftimeKickoff',
+  });
+
+  function transitionError(code, path, message, expected, actual) {
+    return new FootballDomainError(code, [diagnostic(code, path, message, expected, actual)]);
+  }
+
+  function requirePossession(possession, path) {
+    if (!POSSESSIONS.includes(possession)) {
+      throw transitionError('INVALID_POSSESSION', path, 'Possession must be offense or defense.', POSSESSIONS, possession);
+    }
+    return possession;
+  }
+
+  function periodState(input) {
+    if (!isRecord(input)) {
+      throw new FootballDomainError('INVALID_TRANSITION_STATE', [diagnostic(
+        'INVALID_TRANSITION_STATE', '/', 'Transition planning needs a plain match-state object.',
+      )]);
+    }
+    const diagnostics = [];
+    integerDiagnostic(input.quarter, '/quarter', 1, 4, diagnostics);
+    integerDiagnostic(input.quarterPossessions, '/quarterPossessions', 0, Number.MAX_SAFE_INTEGER, diagnostics);
+    const finalized = input.finalizedPossessionIds === undefined ? [] : input.finalizedPossessionIds;
+    if (!Array.isArray(finalized)) {
+      diagnostics.push(diagnostic('INVALID_ARRAY', '/finalizedPossessionIds', 'Finalized possession IDs must be an array.'));
+    }
+    if (diagnostics.length) throw new FootballDomainError('INVALID_TRANSITION_STATE', diagnostics);
+    return {
+      gameId: input.gameId ?? null,
+      possessionId: input.possessionId ?? null,
+      phase: typeof input.phase === 'string' ? input.phase : null,
+      quarter: input.quarter,
+      quarterPossessions: input.quarterPossessions,
+      pendingNextPossession: input.pendingNextPossession || null,
+      pendingNextStartYardLine: Number.isInteger(input.pendingNextStartYardLine)
+        ? input.pendingNextStartYardLine
+        : null,
+      pendingRestartReason: input.pendingRestartReason || null,
+      finalizedPossessionIds: [...finalized],
+    };
+  }
+
+  function possessionsPerQuarterFrom(options) {
+    const value = isRecord(options) ? options.possessionsPerQuarter : undefined;
+    if (!Number.isInteger(value) || value < 1) {
+      throw transitionError('INVALID_PERIOD_LENGTH', '/possessionsPerQuarter',
+        'Possessions per quarter must be a positive integer.', 'positive integer', value);
+    }
+    return value;
+  }
+
+  function rejectedTransition(reason) {
+    return immutable({ accepted: false, reason });
+  }
+
+  // Identity of the live possession a delayed or repeated control was issued
+  // for. Closing a possession keeps its ID until the next drive starts.
+  function transitionSource(input) {
+    const match = periodState(input);
+    return immutable({ gameId: match.gameId, possessionId: match.possessionId, quarter: match.quarter });
+  }
+
+  function sourceRejection(match, source, requireFinalized) {
+    if (!isRecord(source)) return 'invalid-source';
+    if ((source.gameId ?? null) !== match.gameId) return 'stale-game';
+    if ((source.possessionId ?? null) !== match.possessionId) return 'stale-possession';
+    if (source.quarter !== match.quarter) return 'stale-quarter';
+    if (requireFinalized && (!match.possessionId || !match.finalizedPossessionIds.includes(match.possessionId))) {
+      return 'unfinalized-source';
+    }
+    return null;
+  }
+
+  function driveStateFor(possession, startYardLine = startingYardFor(possession)) {
+    requirePossession(possession, '/possession');
+    if (!Number.isInteger(startYardLine)) {
+      throw transitionError('INVALID_START_YARD_LINE', '/startYardLine',
+        'A drive needs an integer absolute start yard line.', 'integer', startYardLine);
+    }
+    const direction = possession === 'offense' ? 1 : -1;
+    const yd = Math.max(1, Math.min(99, startYardLine));
+    const fdYd = direction === 1 ? Math.min(yd + 10, 100) : Math.max(yd - 10, 0);
+    return immutable({
+      possession,
+      direction,
+      yd,
+      fdYd,
+      down: 1,
+      ytg: direction === 1 ? Math.max(fdYd - yd, 0) : Math.max(yd - fdYd, 0),
+      driveStart: yd,
+      drivePlays: 0,
+    });
+  }
+
+  // Close a possession once. Halftime replaces the committed placement with the
+  // prescribed kickoff; the Q4 final creates no restart.
+  function planPossessionClosure(input, possessionId, placement, options) {
+    const match = periodState(input);
+    const possessionsPerQuarter = possessionsPerQuarterFrom(options);
+    if (!possessionId || !placement) return rejectedTransition('missing-closure');
+    if (match.finalizedPossessionIds.includes(possessionId)) return rejectedTransition('already-finalized');
+    const quarterPossessions = match.quarterPossessions + 1;
+    const periodComplete = quarterPossessions >= possessionsPerQuarter;
+    const finalPossession = match.quarter >= 4 && periodComplete;
+    const halftimePossession = match.quarter === 2 && periodComplete;
+    const next = finalPossession
+      ? { nextPossession: null, nextStartYardLine: null, restartReason: null }
+      : halftimePossession ? HALFTIME_KICKOFF : placement;
+    return immutable({
+      accepted: true,
+      periodEnd: finalPossession ? 'final'
+        : halftimePossession ? 'halftime'
+          : periodComplete ? 'quarterEnd' : null,
+      patch: {
+        finalizedPossessionIds: [...match.finalizedPossessionIds, possessionId],
+        quarterPossessions,
+        pendingNextPossession: next.nextPossession,
+        pendingNextStartYardLine: next.nextStartYardLine,
+        pendingRestartReason: next.restartReason,
+      },
+    });
+  }
+
+  // An explicit start wins; otherwise a pending placement applies only to its
+  // scheduled receiver, then the receiver's default start.
+  function planDriveStart(input, request) {
+    const match = periodState(input);
+    if (!isRecord(request)) {
+      throw transitionError('INVALID_DRIVE_REQUEST', '/', 'A drive start needs a plain request object.');
+    }
+    const possession = requirePossession(request.possession, '/possession');
+    const scheduled = match.pendingNextPossession === possession;
+    const startYardLine = Number.isInteger(request.startYardLine)
+      ? request.startYardLine
+      : scheduled && Number.isInteger(match.pendingNextStartYardLine)
+        ? match.pendingNextStartYardLine
+        : startingYardFor(possession);
+    const restartReason = request.restartReason
+      || (scheduled ? match.pendingRestartReason : null)
+      || 'scheduledStart';
+    return immutable({
+      accepted: true,
+      drive: driveStateFor(possession, startYardLine),
+      patch: {
+        phase: 'call',
+        restartReason,
+        pendingNextPossession: null,
+        pendingNextStartYardLine: null,
+        pendingRestartReason: null,
+      },
+    });
+  }
+
+  // Continue from an offense/defense possession-change screen.
+  function planTransitionAdvance(input, options) {
+    const match = periodState(input);
+    const side = requirePossession(isRecord(options) ? options.side : undefined, '/side');
+    if (match.phase !== 'transition') return rejectedTransition('phase');
+    if (match.pendingNextPossession && match.pendingNextPossession !== side) {
+      return rejectedTransition('pending-possession');
+    }
+    if (options.expectedSource != null) {
+      const stale = sourceRejection(match, options.expectedSource, false);
+      if (stale) return rejectedTransition(stale);
+    }
+    return immutable({ accepted: true, drive: { possession: side, startYardLine: null, restartReason: null } });
+  }
+
+  // Continue from a quarter break or halftime into the next period's drive.
+  function planPeriodAdvance(input, options = {}) {
+    const match = periodState(input);
+    if (!PERIOD_BREAK_PHASES.includes(match.phase) || match.quarter >= 4) return rejectedTransition('phase');
+    if (isRecord(options) && options.expectedSource != null) {
+      const stale = sourceRejection(match, options.expectedSource, false);
+      if (stale) return rejectedTransition(stale);
+    }
+    const fallbackPossession = match.quarter >= 2 ? 'defense' : 'offense';
+    return immutable({
+      accepted: true,
+      patch: { quarter: Math.min(match.quarter + 1, 4), quarterPossessions: 0 },
+      drive: {
+        possession: match.pendingNextPossession || fallbackPossession,
+        startYardLine: match.pendingNextStartYardLine,
+        restartReason: match.pendingRestartReason,
+      },
+    });
+  }
+
+  // Phase/placement intent for one explicit presentation kind. Direct overlay
+  // helpers use this compatibility form without re-deciding routing.
+  function presentationIntent(input, kind) {
+    const match = periodState(input);
+    if (!PRESENTATION_KINDS.includes(kind)) {
+      throw transitionError('INVALID_PRESENTATION_KIND', '/kind',
+        'Unknown possession presentation kind.', PRESENTATION_KINDS, kind);
+    }
+    const phase = PRESENTATION_PHASES[kind];
+    const nextPossession = kind === 'offenseTransition' ? 'offense'
+      : kind === 'defenseTransition' ? 'defense'
+        : kind === 'quarterEnd' ? match.pendingNextPossession || 'offense'
+          : kind === 'halftime' ? match.pendingNextPossession || 'defense'
+            : null;
+    const patch = kind === 'final'
+      ? { pendingNextPossession: null, pendingNextStartYardLine: null, pendingRestartReason: null, phase }
+      : { phase };
+    return immutable({ accepted: true, kind, phase, nextPossession, patch });
+  }
+
+  // Choose the presentation after a closed possession. A delayed production
+  // route supplies its committed source and is rejected once the live game,
+  // possession, or quarter has moved on, or after it has already presented.
+  function planPossessionPresentation(input, options) {
+    const match = periodState(input);
+    const possessionsPerQuarter = possessionsPerQuarterFrom(options);
+    if (options.expectedSource != null) {
+      const stale = sourceRejection(match, options.expectedSource, true);
+      if (stale) return rejectedTransition(stale);
+      if (match.phase !== 'feedback') return rejectedTransition('phase');
+    }
+    const kind = match.quarterPossessions >= possessionsPerQuarter
+      ? match.quarter >= 4 ? 'final' : match.quarter === 2 ? 'halftime' : 'quarterEnd'
+      : match.pendingNextPossession === 'offense' ? 'offenseTransition' : 'defenseTransition';
+    return presentationIntent(match, kind);
+  }
+
   const API = {
     RESULT_KINDS,
     PLAY_TYPES,
@@ -1321,6 +1563,15 @@
     activeSnapFromPlay,
     validatePlayTransition,
     terminalPlacementForScrimmage,
+    PRESENTATION_KINDS,
+    driveStateFor,
+    transitionSource,
+    planPossessionClosure,
+    planDriveStart,
+    planTransitionAdvance,
+    planPeriodAdvance,
+    presentationIntent,
+    planPossessionPresentation,
   };
 
   Object.defineProperty(root, 'FOOTBALL_DOMAIN', {

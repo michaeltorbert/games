@@ -3151,6 +3151,220 @@ test('production overlay handlers ignore repeated touchdown, transition, and per
   expect(period.after.quarter).toBe(2);
 });
 
+// Route probes run under Playwright's installed clock, paused before the
+// answer commits, so each production route timer fires only on runFor().
+async function bootRouteProbe(page, seed) {
+  await page.clock.install({ time: new Date('2026-01-03T12:00:00Z') });
+  await cleanBoot(page, seed);
+  await page.evaluate(() => {
+    window.__routeDiagnostics = [];
+    window.addEventListener('football:diagnostic', event => window.__routeDiagnostics.push(event.detail));
+    window.__rngCalls = { football: 0, scheduler: 0, presentation: 0 };
+    const counted = (name, value) => () => { window.__rngCalls[name]++; return value; };
+    window.__footballTest.setRngStreams({
+      football: counted('football', 0.4),
+      scheduler: counted('scheduler', 0.25),
+      presentation: counted('presentation', 0.5),
+    });
+    window.__routeCapture = () => {
+      const contracts = window.__footballTest.activeContracts();
+      return {
+        render: JSON.parse(render_game_to_text()),
+        possessionSequence,
+        playSequence,
+        rng: { ...window.__rngCalls },
+        completedPlays: contracts.statsSession.completedPlays,
+        learning: contracts.learning,
+        shownOverlays: [...document.querySelectorAll('.overlay.show')].map(overlay => overlay.id),
+      };
+    };
+    window.__routeDiagnosticList = () => window.__routeDiagnostics
+      .map(item => ({ code: item.code, reason: item.reason }));
+  });
+}
+
+async function seedQ1Punt(page, quarterPossessions) {
+  await page.evaluate((count) => window.__footballTest.seedDriveState({
+    possession: 'offense', direction: 1, quarter: 1, quarterPossessions: count,
+    down: 4, yardsToGo: 10, yardLine: 50, firstDownLine: 60, driveStart: 20,
+  }), quarterPossessions);
+  await page.locator('#decision-grid .decision-btn[data-action="punt"]').click();
+}
+
+async function pauseRouteClock(page) {
+  const now = await page.evaluate(() => Date.now());
+  await page.clock.pauseAt(new Date(now + 100));
+}
+
+async function commitRoutedPunt(page) {
+  return page.evaluate(() => {
+    const question = window.__footballTest.activeContracts();
+    window.__footballTest.answerChoice(question.questionInstance.correctChoiceId);
+    return {
+      source: FOOTBALL_DOMAIN.transitionSource(transitionSnapshot()),
+      committed: window.__routeCapture(),
+    };
+  });
+}
+
+test('stale and repeated delayed possession routes are rejected without state, ID, or RNG effects', async ({ page }, testInfo) => {
+  primaryOnly(testInfo);
+  await bootRouteProbe(page, 0x5dd54);
+  await seedQ1Punt(page, 0);
+  await pauseRouteClock(page);
+
+  // Stale-only stage: measure the DOM before any accepted route can open it.
+  const { source, committed } = await commitRoutedPunt(page);
+  const staleStage = await page.evaluate((routeSource) => {
+    const stale = [
+      routePossessionPresentation('Stale game.', { ...routeSource, gameId: 'previous-game' }),
+      routePossessionPresentation('Stale possession.', { ...routeSource, possessionId: 'previous-possession' }),
+      routePossessionPresentation('Stale quarter.', { ...routeSource, quarter: routeSource.quarter + 1 }),
+    ];
+    return { stale, afterStale: window.__routeCapture(), diagnostics: window.__routeDiagnosticList() };
+  }, source);
+  expect(committed.render).toMatchObject({
+    mode: 'feedback', quarter: 1, quarterPossessions: 1, pendingNextPossession: 'defense',
+    possessionId: source.possessionId,
+  });
+  expect(committed.completedPlays.map(row => row.playType)).toEqual(['punt']);
+  expect(committed.shownOverlays).toEqual([]);
+  expect(staleStage.stale).toEqual([false, false, false]);
+  expect(staleStage.afterStale).toEqual(committed);
+  expect(staleStage.diagnostics).toEqual([
+    { code: 'stale-possession-transition', reason: 'stale-game' },
+    { code: 'stale-possession-transition', reason: 'stale-possession' },
+    { code: 'stale-possession-transition', reason: 'stale-quarter' },
+  ]);
+  await expect(page.locator('#ov-defense')).toBeHidden();
+
+  // First accepted route, then an independent repeated route.
+  const acceptedStage = await page.evaluate((routeSource) => {
+    const accepted = routePossessionPresentation('Punt complete.', routeSource);
+    const presented = window.__routeCapture();
+    const repeated = routePossessionPresentation('Punt complete.', routeSource);
+    return {
+      accepted, presented, repeated,
+      afterRepeat: window.__routeCapture(),
+      diagnostics: window.__routeDiagnosticList(),
+    };
+  }, source);
+  expect(acceptedStage.accepted).toBe(true);
+  expect(acceptedStage.presented.render).toMatchObject({
+    mode: 'transition', possessionId: source.possessionId,
+  });
+  expect(acceptedStage.presented.shownOverlays).toEqual(['ov-defense']);
+  expect(acceptedStage.presented.possessionSequence).toBe(committed.possessionSequence);
+  expect(acceptedStage.presented.rng).toEqual(committed.rng);
+  expect(acceptedStage.repeated).toBe(false);
+  expect(acceptedStage.afterRepeat).toEqual(acceptedStage.presented);
+  expect(acceptedStage.diagnostics).toEqual([
+    ...staleStage.diagnostics,
+    { code: 'stale-possession-transition', reason: 'phase' },
+  ]);
+  await expect(page.locator('#ov-defense')).toBeVisible();
+
+  // Presenting the transition clears advTimer, so the committed 1400 ms route
+  // is canceled here and emits nothing. Live callbacks are covered separately.
+  await page.clock.runFor(1500);
+  const afterCanceled = await page.evaluate(() => ({
+    capture: window.__routeCapture(),
+    diagnostics: window.__routeDiagnosticList(),
+  }));
+  expect(afterCanceled.capture).toEqual(acceptedStage.afterRepeat);
+  expect(afterCanceled.diagnostics).toEqual(acceptedStage.diagnostics);
+  await expect(page.locator('#ov-defense')).toBeVisible();
+
+  // First accepted advance, then an independent duplicate advance.
+  const advance = await page.evaluate(() => {
+    const firstAccepted = startDefense();
+    const before = window.__routeCapture();
+    const secondAccepted = startDefense();
+    return { firstAccepted, secondAccepted, before, after: window.__routeCapture() };
+  });
+  expect(advance.firstAccepted).toBe(true);
+  expect(advance.secondAccepted).toBe(false);
+  expect(advance.before.possessionSequence).toBe(afterCanceled.capture.possessionSequence + 1);
+  expect(advance.before.render).toMatchObject({ mode: 'call', possession: 'defense', quarter: 1 });
+  expect(advance.before.render.possessionId).not.toBe(source.possessionId);
+  expect(advance.after).toEqual(advance.before);
+});
+
+test('a live scheduled possession route rejects a changed source or an already-presented phase without effects', async ({ page }, testInfo) => {
+  primaryOnly(testInfo);
+  await bootRouteProbe(page, 0x5dd94);
+
+  // Changed source: a Q1 punt that ends the quarter schedules its real 1400 ms
+  // route. startDrive() would cancel that timer, so only the live possession
+  // identity advances, through the production allocator. Phase stays
+  // 'feedback', so the source check alone must reject the callback.
+  await seedQ1Punt(page, 3);
+  await pauseRouteClock(page);
+  const changed = await commitRoutedPunt(page);
+  expect(changed.committed.render).toMatchObject({
+    mode: 'feedback', quarter: 1, quarterPossessions: 4, pendingNextPossession: 'defense',
+    possessionId: changed.source.possessionId,
+  });
+  expect(changed.committed.completedPlays.map(row => row.playType)).toEqual(['punt']);
+  await page.evaluate(() => { state.possessionId = nextPossessionId(); });
+  await page.clock.runFor(1399);
+  const changedBefore = await page.evaluate(() => ({
+    capture: window.__routeCapture(),
+    diagnostics: window.__routeDiagnosticList(),
+  }));
+  expect(changedBefore.diagnostics).toEqual([]);
+  expect(changedBefore.capture.render).toMatchObject({ mode: 'feedback', quarter: 1 });
+  expect(changedBefore.capture.render.possessionId).not.toBe(changed.source.possessionId);
+  expect(changedBefore.capture.shownOverlays).toEqual([]);
+  await page.clock.runFor(1);
+  const changedAfter = await page.evaluate(() => ({
+    capture: window.__routeCapture(),
+    diagnostics: window.__routeDiagnosticList(),
+  }));
+  expect(changedAfter.diagnostics).toEqual([
+    { code: 'stale-possession-transition', reason: 'stale-possession' },
+  ]);
+  expect(changedAfter.capture).toEqual(changedBefore.capture);
+  await expect(page.locator('#ov-quarter')).toBeHidden();
+
+  // Already presented: the source-free legacy hook opens the quarter break as
+  // before. showQuarterEnd() keeps advTimer, so the real route still fires and
+  // is rejected by phase without touching the open overlay.
+  await page.clock.resume();
+  await seedQ1Punt(page, 3);
+  await pauseRouteClock(page);
+  const presented = await commitRoutedPunt(page);
+  expect(presented.committed.render).toMatchObject({
+    mode: 'feedback', quarter: 1, quarterPossessions: 4, possessionId: presented.source.possessionId,
+  });
+  expect(presented.source.possessionId).not.toBe(changed.source.possessionId);
+  const legacy = await page.evaluate(() => routePossessionPresentation('Quarter complete.'));
+  expect(legacy).toBe(true);
+  await page.clock.runFor(1399);
+  const presentedBefore = await page.evaluate(() => ({
+    capture: window.__routeCapture(),
+    diagnostics: window.__routeDiagnosticList(),
+  }));
+  expect(presentedBefore.diagnostics).toEqual(changedAfter.diagnostics);
+  expect(presentedBefore.capture.render).toMatchObject({
+    mode: 'quarter', quarter: 1, possessionId: presented.source.possessionId,
+  });
+  expect(presentedBefore.capture.shownOverlays).toEqual(['ov-quarter']);
+  const quarterText = await page.locator('#ov-quarter-sub').textContent();
+  await page.clock.runFor(1);
+  const presentedAfter = await page.evaluate(() => ({
+    capture: window.__routeCapture(),
+    diagnostics: window.__routeDiagnosticList(),
+  }));
+  expect(presentedAfter.diagnostics).toEqual([
+    ...changedAfter.diagnostics,
+    { code: 'stale-possession-transition', reason: 'phase' },
+  ]);
+  expect(presentedAfter.capture).toEqual(presentedBefore.capture);
+  await expect(page.locator('#ov-quarter')).toBeVisible();
+  await expect(page.locator('#ov-quarter-sub')).toHaveText(quarterText);
+});
+
 test('a failed fourth-down go cannot create a fifth down and the receiving drive starts first-and-ten', async ({ page }, testInfo) => {
   primaryOnly(testInfo);
   await cleanBoot(page, 0x5e254);

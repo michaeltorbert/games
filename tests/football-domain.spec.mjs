@@ -160,7 +160,13 @@ test('exports one frozen plain-global API in a Node/vm realm', () => {
     'reprojectFieldGoal', 'validateFieldGoalTransition', 'projectConversion',
     'reprojectConversion', 'validateConversionTransition', 'createActivePlay',
     'activeSnapFromPlay', 'validatePlayTransition', 'terminalPlacementForScrimmage',
+    'driveStateFor', 'transitionSource', 'planPossessionClosure', 'planDriveStart',
+    'planTransitionAdvance', 'planPeriodAdvance', 'presentationIntent',
+    'planPossessionPresentation',
   ]) assert.equal(typeof domain[method], 'function', method);
+  assert.deepEqual(plain(domain.PRESENTATION_KINDS), [
+    'offenseTransition', 'defenseTransition', 'quarterEnd', 'halftime', 'final',
+  ]);
 });
 
 test('normalizes current-game aliases into one frozen canonical context', () => {
@@ -1141,4 +1147,234 @@ test('scrimmage terminal placement is explicit without changing the closed proje
     domain.createSnap(context(), { gain: 4, callKey: 'shortRun' }),
     domain.projectGain(context(), 4),
   ), null);
+});
+
+const PERIOD = { possessionsPerQuarter: 4 };
+
+function matchState(overrides = {}) {
+  return {
+    gameId: 'game-1',
+    possessionId: 'pos-1',
+    phase: 'feedback',
+    quarter: 1,
+    quarterPossessions: 0,
+    pendingNextPossession: null,
+    pendingNextStartYardLine: null,
+    pendingRestartReason: null,
+    finalizedPossessionIds: [],
+    ...overrides,
+  };
+}
+
+const PUNT_PLACEMENT = Object.freeze({
+  nextPossession: 'defense',
+  nextStartYardLine: 63,
+  restartReason: 'puntReturn',
+});
+
+test('possession closure is idempotent and settles halftime and final placements', () => {
+  const domain = loadDomain();
+  const input = matchState({ finalizedPossessionIds: ['pos-0'] });
+  const before = structuredClone(input);
+
+  const midQuarter = domain.planPossessionClosure(input, 'pos-1', PUNT_PLACEMENT, PERIOD);
+  assert.equal(midQuarter.accepted, true);
+  assert.equal(midQuarter.periodEnd, null);
+  assert.deepEqual(plain(midQuarter.patch), {
+    finalizedPossessionIds: ['pos-0', 'pos-1'],
+    quarterPossessions: 1,
+    pendingNextPossession: 'defense',
+    pendingNextStartYardLine: 63,
+    pendingRestartReason: 'puntReturn',
+  });
+  assert.equal(Object.isFrozen(midQuarter.patch.finalizedPossessionIds), true);
+  assert.deepEqual(input, before, 'planning never mutates the caller state');
+
+  assert.deepEqual(plain(domain.planPossessionClosure(
+    matchState({ finalizedPossessionIds: ['pos-1'] }), 'pos-1', PUNT_PLACEMENT, PERIOD,
+  )), { accepted: false, reason: 'already-finalized' });
+  assert.equal(domain.planPossessionClosure(input, null, PUNT_PLACEMENT, PERIOD).accepted, false);
+  assert.equal(domain.planPossessionClosure(input, 'pos-1', null, PERIOD).accepted, false);
+
+  for (const quarter of [1, 3]) {
+    const quarterEnd = domain.planPossessionClosure(
+      matchState({ quarter, quarterPossessions: 3 }), 'pos-1', PUNT_PLACEMENT, PERIOD,
+    );
+    assert.equal(quarterEnd.periodEnd, 'quarterEnd', `Q${quarter}`);
+    assert.equal(quarterEnd.patch.pendingNextStartYardLine, 63, 'quarter breaks keep the committed placement');
+    assert.equal(quarterEnd.patch.pendingRestartReason, 'puntReturn');
+  }
+
+  const halftime = domain.planPossessionClosure(
+    matchState({ quarter: 2, quarterPossessions: 3 }),
+    'pos-1',
+    { nextPossession: 'offense', nextStartYardLine: 35, restartReason: 'turnoverOnDowns' },
+    PERIOD,
+  );
+  assert.equal(halftime.periodEnd, 'halftime');
+  assert.equal(halftime.patch.pendingNextPossession, 'defense');
+  assert.equal(halftime.patch.pendingNextStartYardLine, 80);
+  assert.equal(halftime.patch.pendingRestartReason, 'halftimeKickoff');
+
+  const final = domain.planPossessionClosure(
+    matchState({ quarter: 4, quarterPossessions: 3 }), 'pos-1', PUNT_PLACEMENT, PERIOD,
+  );
+  assert.equal(final.periodEnd, 'final');
+  assert.equal(final.patch.quarterPossessions, 4);
+  assert.equal(final.patch.pendingNextPossession, null);
+  assert.equal(final.patch.pendingNextStartYardLine, null);
+  assert.equal(final.patch.pendingRestartReason, null);
+
+  assert.throws(() => domain.planPossessionClosure(input, 'pos-1', PUNT_PLACEMENT, {}),
+    (error) => error.code === 'INVALID_PERIOD_LENGTH');
+  assert.throws(() => domain.planPossessionClosure(matchState({ quarter: 0 }), 'pos-1', PUNT_PLACEMENT, PERIOD),
+    (error) => error.code === 'INVALID_TRANSITION_STATE');
+});
+
+test('drive starts honor explicit, scheduled, and default placements in both directions', () => {
+  const domain = loadDomain();
+  const pending = matchState({
+    phase: 'transition',
+    pendingNextPossession: 'defense',
+    pendingNextStartYardLine: 63,
+    pendingRestartReason: 'puntReturn',
+  });
+
+  const scheduled = domain.planDriveStart(pending, { possession: 'defense' });
+  assert.deepEqual(plain(scheduled.drive), {
+    possession: 'defense', direction: -1, yd: 63, fdYd: 53, down: 1, ytg: 10, driveStart: 63, drivePlays: 0,
+  });
+  assert.deepEqual(plain(scheduled.patch), {
+    phase: 'call',
+    restartReason: 'puntReturn',
+    pendingNextPossession: null,
+    pendingNextStartYardLine: null,
+    pendingRestartReason: null,
+  });
+  assert.equal(Object.isFrozen(scheduled.drive), true);
+
+  const explicit = domain.planDriveStart(pending, { possession: 'defense', startYardLine: 72, restartReason: 'manual' });
+  assert.equal(explicit.drive.yd, 72);
+  assert.equal(explicit.patch.restartReason, 'manual');
+
+  const otherReceiver = domain.planDriveStart(pending, { possession: 'offense' });
+  assert.equal(otherReceiver.drive.yd, 20, 'a pending placement applies only to its scheduled receiver');
+  assert.equal(otherReceiver.drive.direction, 1);
+  assert.equal(otherReceiver.drive.fdYd, 30);
+  assert.equal(otherReceiver.patch.restartReason, 'scheduledStart');
+
+  assert.equal(domain.planDriveStart(matchState(), { possession: 'defense' }).drive.yd, 80);
+  const goalLine = domain.planDriveStart(matchState(), { possession: 'offense', startYardLine: 95 }).drive;
+  assert.deepEqual([goalLine.yd, goalLine.fdYd, goalLine.ytg], [95, 100, 5]);
+  assert.equal(domain.planDriveStart(matchState(), { possession: 'offense', startYardLine: 0 }).drive.yd, 1);
+  assert.equal(domain.planDriveStart(matchState(), { possession: 'defense', startYardLine: 100 }).drive.yd, 99);
+
+  assert.throws(() => domain.planDriveStart(matchState(), { possession: 'special' }),
+    (error) => error.code === 'INVALID_POSSESSION');
+  assert.throws(() => domain.driveStateFor('offense', 20.5),
+    (error) => error.code === 'INVALID_START_YARD_LINE');
+});
+
+test('transition and period advances reject repeated or stale controls', () => {
+  const domain = loadDomain();
+  const transition = matchState({ phase: 'transition', pendingNextPossession: 'defense' });
+
+  assert.deepEqual(plain(domain.planTransitionAdvance(transition, { side: 'defense' })), {
+    accepted: true,
+    drive: { possession: 'defense', startYardLine: null, restartReason: null },
+  });
+  assert.deepEqual(plain(domain.planTransitionAdvance(transition, { side: 'offense' })),
+    { accepted: false, reason: 'pending-possession' });
+  assert.deepEqual(plain(domain.planTransitionAdvance({ ...transition, phase: 'call' }, { side: 'defense' })),
+    { accepted: false, reason: 'phase' }, 'a repeated control after the drive starts is rejected');
+  assert.equal(domain.planTransitionAdvance(matchState({ phase: 'transition' }), { side: 'offense' }).accepted, true,
+    'a direct legacy transition without a pending receiver still advances');
+  const source = domain.transitionSource(transition);
+  assert.equal(domain.planTransitionAdvance(transition, { side: 'defense', expectedSource: source }).accepted, true);
+  assert.deepEqual(plain(domain.planTransitionAdvance(transition, {
+    side: 'defense', expectedSource: { ...source, possessionId: 'pos-0' },
+  })), { accepted: false, reason: 'stale-possession' });
+
+  for (const quarter of [1, 3]) {
+    const quarterBreak = matchState({
+      phase: 'quarter', quarter, quarterPossessions: 4,
+      pendingNextPossession: 'offense', pendingNextStartYardLine: 35, pendingRestartReason: 'turnoverOnDowns',
+    });
+    assert.deepEqual(plain(domain.planPeriodAdvance(quarterBreak)), {
+      accepted: true,
+      patch: { quarter: quarter + 1, quarterPossessions: 0 },
+      drive: { possession: 'offense', startYardLine: 35, restartReason: 'turnoverOnDowns' },
+    });
+  }
+
+  const halftime = matchState({
+    phase: 'halftime', quarter: 2, quarterPossessions: 4,
+    pendingNextPossession: 'defense', pendingNextStartYardLine: 80, pendingRestartReason: 'halftimeKickoff',
+  });
+  const secondHalf = domain.planPeriodAdvance(halftime);
+  assert.equal(secondHalf.patch.quarter, 3);
+  const kickoff = domain.planDriveStart({ ...halftime, ...plain(secondHalf.patch) }, secondHalf.drive);
+  assert.deepEqual([kickoff.drive.possession, kickoff.drive.yd, kickoff.patch.restartReason],
+    ['defense', 80, 'halftimeKickoff']);
+  assert.equal(domain.planPeriodAdvance(matchState({ phase: 'halftime', quarter: 2 })).drive.possession, 'defense');
+  assert.equal(domain.planPeriodAdvance(matchState({ phase: 'quarter', quarter: 1 })).drive.possession, 'offense');
+
+  assert.deepEqual(plain(domain.planPeriodAdvance(matchState({ phase: 'quarter', quarter: 4 }))),
+    { accepted: false, reason: 'phase' });
+  assert.deepEqual(plain(domain.planPeriodAdvance(matchState({ phase: 'call', quarter: 2 }))),
+    { accepted: false, reason: 'phase' });
+  assert.deepEqual(plain(domain.planPeriodAdvance(halftime, {
+    expectedSource: { ...domain.transitionSource(halftime), quarter: 1 },
+  })), { accepted: false, reason: 'stale-quarter' });
+});
+
+test('presentation routing chooses period screens and rejects stale delayed sources', () => {
+  const domain = loadDomain();
+  const kindFor = (overrides) => domain.planPossessionPresentation(matchState(overrides), PERIOD).kind;
+  assert.equal(kindFor({ quarter: 4, quarterPossessions: 4 }), 'final');
+  assert.equal(kindFor({ quarter: 2, quarterPossessions: 4, pendingNextPossession: 'defense' }), 'halftime');
+  assert.equal(kindFor({ quarter: 1, quarterPossessions: 4, pendingNextPossession: 'offense' }), 'quarterEnd');
+  assert.equal(kindFor({ quarter: 3, quarterPossessions: 4 }), 'quarterEnd');
+  assert.equal(kindFor({ quarterPossessions: 2, pendingNextPossession: 'offense' }), 'offenseTransition');
+  assert.equal(kindFor({ quarterPossessions: 2, pendingNextPossession: 'defense' }), 'defenseTransition');
+
+  const final = domain.planPossessionPresentation(matchState({
+    quarter: 4, quarterPossessions: 4, pendingNextPossession: 'offense', pendingNextStartYardLine: 20,
+  }), PERIOD);
+  assert.deepEqual(plain(final.patch), {
+    pendingNextPossession: null, pendingNextStartYardLine: null, pendingRestartReason: null, phase: 'final',
+  });
+  assert.equal(Object.isFrozen(final.patch), true);
+
+  const closed = matchState({
+    quarterPossessions: 1, pendingNextPossession: 'defense', finalizedPossessionIds: ['pos-1'],
+  });
+  const source = domain.transitionSource(closed);
+  assert.deepEqual(plain(source), { gameId: 'game-1', possessionId: 'pos-1', quarter: 1 });
+  const routed = domain.planPossessionPresentation(closed, { ...PERIOD, expectedSource: source });
+  assert.deepEqual([routed.accepted, routed.kind, routed.phase, routed.nextPossession],
+    [true, 'defenseTransition', 'transition', 'defense']);
+
+  const rejection = (state, expectedSource) => plain(
+    domain.planPossessionPresentation(state, { ...PERIOD, expectedSource }),
+  ).reason;
+  assert.equal(rejection(closed, { ...source, gameId: 'game-0' }), 'stale-game');
+  assert.equal(rejection(closed, { ...source, possessionId: 'pos-0' }), 'stale-possession');
+  assert.equal(rejection(closed, { ...source, quarter: 2 }), 'stale-quarter');
+  assert.equal(rejection(closed, 'pos-1'), 'invalid-source');
+  assert.equal(rejection({ ...closed, finalizedPossessionIds: [] }, source), 'unfinalized-source');
+  assert.equal(rejection({ ...closed, phase: 'transition' }, source), 'phase',
+    'a source that already presented cannot present again');
+  assert.equal(domain.planPossessionPresentation({ ...closed, finalizedPossessionIds: [] }, PERIOD).accepted, true,
+    'legacy routing without a source keeps its unconditional behavior');
+
+  const forcedQuarter = domain.presentationIntent(matchState(), 'quarterEnd');
+  assert.deepEqual([forcedQuarter.phase, forcedQuarter.nextPossession], ['quarter', 'offense']);
+  const forcedHalf = domain.presentationIntent(matchState(), 'halftime');
+  assert.deepEqual([forcedHalf.phase, forcedHalf.nextPossession], ['halftime', 'defense']);
+  assert.equal(domain.presentationIntent(matchState({ pendingNextPossession: 'offense' }), 'halftime').nextPossession,
+    'offense');
+  assert.deepEqual(plain(domain.presentationIntent(matchState(), 'offenseTransition').patch), { phase: 'transition' });
+  assert.throws(() => domain.presentationIntent(matchState(), 'kickoff'),
+    (error) => error.code === 'INVALID_PRESENTATION_KIND');
 });
