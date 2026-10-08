@@ -1760,7 +1760,12 @@ test.describe('issue 49 overlay contract', () => {
       rungs: [],
     });
 
-    await page.getByRole('radio', { name: /WAKE FOREST/i }).check();
+    // Real taps on the full visible labels. A pointer tap does not promise
+    // focus, so focus is established explicitly before the async refresh.
+    const modeLabel = value => page.locator('#play-mode-picker label.play-mode-option')
+      .filter({ has: page.locator(`input[name="play-mode"][value="${value}"]`) });
+    await page.locator('#rival-options label.rival-option[data-rival-id="wake-forest"]').tap();
+    await expect(page.getByRole('radio', { name: /WAKE FOREST/i })).toBeChecked();
     expect(await startView()).toMatchObject({
       ...quickView,
       matchup: 'DUKE VS WAKE FOREST',
@@ -1768,7 +1773,8 @@ test.describe('issue 49 overlay contract', () => {
       rivals: rivals('wake-forest'),
     });
 
-    await page.getByRole('radio', { name: /3-Game Season/ }).check();
+    await modeLabel('season').tap();
+    await expect(page.getByRole('radio', { name: /3-Game Season/ })).toBeChecked();
     expect(await startView()).toMatchObject({
       mode: 'season', quickHidden: true, seasonHidden: false,
       action: { text: 'Start Season', disabled: false }, timeLabDisabled: false,
@@ -1781,12 +1787,20 @@ test.describe('issue 49 overlay contract', () => {
     expect(await startNodesPersist()).toBe(true);
 
     // An async Season update refreshes Start content in place without
-    // reopening the modal or moving focus.
+    // reopening the modal or moving focus. Focus the persistent checked Season
+    // radio first, then capture that exact element.
+    const seasonRadio = page.locator('#play-mode-picker input[name="play-mode"][value="season"]');
+    await seasonRadio.focus();
+    await expect(seasonRadio).toBeFocused();
     const focusedBefore = await page.evaluate(() => {
       window.__issue49StartFocus = document.activeElement;
-      return document.activeElement?.closest('.overlay')?.id || null;
+      return {
+        overlay: document.activeElement?.closest('.overlay')?.id || null,
+        isSeasonRadio: document.activeElement
+          === document.querySelector('#play-mode-picker input[name="play-mode"][value="season"]'),
+      };
     });
-    expect(focusedBefore).toBe('ov-start');
+    expect(focusedBefore).toEqual({ overlay: 'ov-start', isSeasonRadio: true });
     await page.evaluate((key) => {
       const raw = JSON.stringify({
         schemaVersion: 1,
@@ -1817,9 +1831,11 @@ test.describe('issue 49 overlay contract', () => {
     });
     expect(await startNodesPersist()).toBe(true);
     expect(await page.evaluate(() => document.activeElement === window.__issue49StartFocus)).toBe(true);
+    await expect(seasonRadio).toBeFocused();
     await expectOnlyOverlay(page, 'ov-start', 'Season refresh');
 
-    await page.getByRole('radio', { name: /Quick Game/ }).check();
+    await modeLabel('quick').tap();
+    await expect(page.getByRole('radio', { name: /Quick Game/ })).toBeChecked();
     expect(await startView()).toMatchObject({
       ...quickView,
       matchup: 'DUKE VS WAKE FOREST',
