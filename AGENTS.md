@@ -231,7 +231,10 @@ instructional authority are split across ordered plain-global scripts:
 - `football-domain.js` owns the immutable tagged `activePlay` union
   (`scrimmage`, `punt`, `fieldGoal`, `conversion`) and independently validated,
   type-specific transition projection/reprojection. `activeSnap` is only the
-  derived scrimmage compatibility view.
+  derived scrimmage compatibility view. It also owns the DOM-free possession
+  and period transition planners (drive start, closure, transition/period
+  advance, presentation intent, and stale-source rejection); `football.js`
+  only copies their accepted frozen patches into live state.
 - `contextual-questions.js` owns DOM-free, play-grounded question families,
   their immutable literacy/independent evidence classification, and structured
   stable choices. Scrimmage and special-team pools consume only their closed

@@ -137,6 +137,18 @@ repository-level `AGENTS.md`.
   failed fourth-down goes restart at the canonical end spot. Q1→Q2 and Q3→Q4
   retain pending placement, halftime replaces it with the prescribed opponent
   start at absolute 80, and the Q4 final creates no restart.
+- Drive start, possession closure, transition/period advance, and presentation
+  routing are decided by the `FOOTBALL_DOMAIN` transition planners over a plain
+  match-state snapshot. They return frozen accepted patches or rejection
+  reasons and never touch the DOM. `football.js` copies accepted patches and
+  keeps ID allocation, timers, overlays, animation, and focus. Do not put phase
+  or placement rules back into the `show*` renderers.
+- Delayed production routes carry the committed `{gameId, possessionId,
+  quarter}` source. A changed source, an unfinalized source, or one that
+  already presented is rejected with a `stale-possession-transition`
+  diagnostic before any state, ID, or RNG effect. Source-free hooks and direct
+  `show*` helpers keep their legacy behavior. Repeated advance controls are
+  rejected by the core phase and pending-receiver guards.
 
 ## Determinism, Identity, and Privacy
 

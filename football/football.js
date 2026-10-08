@@ -1,4 +1,4 @@
-const GAME_VERSION = '1.34.1';
+const GAME_VERSION = '1.34.2';
 let prevPlayerScore = -1, prevOpponentScore = -1;
 let playerRunTimer = 0, playerCelebrateTimer = 0, playerCelebrateDelayTimer = 0;
 const EZ = 5;
@@ -743,6 +743,30 @@ function gameSnapshot() {
   };
 }
 
+// Plain match-state input for FOOTBALL_DOMAIN transition planners.
+function transitionSnapshot() {
+  return {
+    gameId: state.gameId || null,
+    possessionId: state.possessionId || null,
+    phase: state.phase || null,
+    quarter: state.quarter || 1,
+    quarterPossessions: state.quarterPossessions || 0,
+    pendingNextPossession: state.pendingNextPossession || null,
+    pendingNextStartYardLine: Number.isInteger(state.pendingNextStartYardLine)
+      ? state.pendingNextStartYardLine
+      : null,
+    pendingRestartReason: state.pendingRestartReason || null,
+    finalizedPossessionIds: [...(state.finalizedPossessionIds || [])],
+  };
+}
+
+// Copy an accepted, frozen planner patch into the mutable live state.
+function applyTransitionPatch(patch) {
+  for (const [key, value] of Object.entries(patch)) {
+    state[key] = Array.isArray(value) ? [...value] : value;
+  }
+}
+
 function makeQuestionUiState() {
   return {
     attempt: 1,
@@ -815,20 +839,8 @@ function retainedCommittedSpecialResultState() {
 }
 
 function makeDriveState(possession, startYardLine = startingYardFor(possession)) {
-  const direction = directionFor(possession);
-  const yd = clamp(startYardLine, 1, 99);
-  const fdYd = nextFirstDownLine(yd, direction);
-  return {
-    possession,
-    direction,
-    yd,
-    fdYd,
-    down: 1,
-    ytg: distanceToMarker(yd, fdYd, direction),
-    driveStart: yd,
-    drivePlays: 0,
-    animYd: yd,
-  };
+  const drive = FOOTBALL_DOMAIN.driveStateFor(possession, startYardLine);
+  return { ...drive, animYd: drive.yd };
 }
 
 function createGameState(match = FOOTBALL_OPPONENT.createMatch()) {
@@ -2657,28 +2669,18 @@ function selectFourthDownAction(action) {
 }
 
 function startDrive(possession, startYardLine = null, restartReason = null) {
+  const plan = FOOTBALL_DOMAIN.planDriveStart(transitionSnapshot(), { possession, startYardLine, restartReason });
   clearTimeout(advTimer);
   hideOverlays();
   resetPlayerAnimations();
-  const resolvedStart = Number.isInteger(startYardLine)
-    ? startYardLine
-    : state.pendingNextPossession === possession && Number.isInteger(state.pendingNextStartYardLine)
-      ? state.pendingNextStartYardLine
-      : startingYardFor(possession);
-  const resolvedReason = restartReason
-    || (state.pendingNextPossession === possession ? state.pendingRestartReason : null)
-    || 'scheduledStart';
   state = {
     ...gameSnapshot(),
     possessionId: nextPossessionId(),
-    ...makeDriveState(possession, resolvedStart),
+    ...plan.drive,
+    animYd: plan.drive.yd,
     ...blankPlayState(),
-    phase: 'call',
   };
-  state.pendingNextPossession = null;
-  state.pendingNextStartYardLine = null;
-  state.pendingRestartReason = null;
-  state.restartReason = resolvedReason;
+  applyTransitionPatch(plan.patch);
   updateField(false);
   updateStatus();
   showCallPrompt();
@@ -3425,36 +3427,34 @@ function terminalPlacement(activePlay, transition, policy) {
 }
 
 function finalizePossessionState(possessionId, placement) {
-  if (!possessionId || !placement || (state.finalizedPossessionIds || []).includes(possessionId)) return false;
-  state.finalizedPossessionIds = [...(state.finalizedPossessionIds || []), possessionId];
-  state.quarterPossessions++;
-  const periodComplete = state.quarterPossessions >= POSSESSIONS_PER_QUARTER;
-  const finalPossession = state.quarter >= 4 && periodComplete;
-  const halftimePossession = state.quarter === 2 && periodComplete;
-  state.pendingNextPossession = finalPossession ? null
-    : halftimePossession ? 'defense' : placement.nextPossession;
-  state.pendingNextStartYardLine = finalPossession ? null
-    : halftimePossession ? 80 : placement.nextStartYardLine;
-  state.pendingRestartReason = finalPossession ? null
-    : halftimePossession ? 'halftimeKickoff' : placement.restartReason;
+  const plan = FOOTBALL_DOMAIN.planPossessionClosure(transitionSnapshot(), possessionId, placement, {
+    possessionsPerQuarter: POSSESSIONS_PER_QUARTER,
+  });
+  if (!plan.accepted) return false;
+  applyTransitionPatch(plan.patch);
   return true;
 }
 
-function routePossessionPresentation(message) {
-  if (state.quarterPossessions >= POSSESSIONS_PER_QUARTER) {
-    if (state.quarter >= 4) {
-      showGameOver();
-      return;
-    }
-    if (state.quarter === 2) {
-      showHalftime(message);
-      return;
-    }
-    showQuarterEnd(message);
-    return;
+// Delayed production routes pass the committed source; a stale or repeated
+// route is rejected before any state, DOM, ID, or RNG effect.
+function routePossessionPresentation(message, expectedSource = null) {
+  const intent = FOOTBALL_DOMAIN.planPossessionPresentation(transitionSnapshot(), {
+    possessionsPerQuarter: POSSESSIONS_PER_QUARTER,
+    expectedSource,
+  });
+  if (!intent.accepted) {
+    reportFootballDiagnostic('stale-possession-transition', {
+      message: 'A delayed possession transition no longer matches the live game.',
+      reason: intent.reason,
+    });
+    return false;
   }
-  if (state.pendingNextPossession === 'offense') showOffenseTransition(message);
-  else showDefenseTransition(message);
+  if (intent.kind === 'final') showGameOver(intent);
+  else if (intent.kind === 'halftime') showHalftime(message, intent);
+  else if (intent.kind === 'quarterEnd') showQuarterEnd(message, intent);
+  else if (intent.kind === 'offenseTransition') showOffenseTransition(message, intent);
+  else showDefenseTransition(message, intent);
+  return true;
 }
 
 function puntPreviewSentence(activePlay, transition) {
@@ -3573,6 +3573,7 @@ function finishCommittedTransition(activePlay, transition, policy, outcome, {
   specialResultPresentation = null,
 } = {}) {
   const offense = activePlay.context.possession === 'offense';
+  const source = FOOTBALL_DOMAIN.transitionSource(transitionSnapshot());
   if (activePlay.playType !== 'scrimmage') {
     const presentation = specialResultPresentation
       || buildSpecialResultPresentation(activePlay, transition, policy);
@@ -3586,7 +3587,7 @@ function finishCommittedTransition(activePlay, transition, policy, outcome, {
     if (activePlay.playType === 'punt') showFieldFloat(transition.resultKind === 'puntTouchback' ? 'TOUCHBACK' : 'PUNT');
     else if (transition.points > 0) showFieldFloat(`+${transition.points} PTS`, offense ? 'first-down' : 'negative');
     else showFieldFloat(activePlay.playType === 'fieldGoal' ? 'NO GOOD' : 'TRY FAILED', 'negative');
-    advTimer = setTimeout(() => routePossessionPresentation(message), 1400);
+    advTimer = setTimeout(() => routePossessionPresentation(message, source), 1400);
     return;
   }
 
@@ -3607,14 +3608,16 @@ function finishCommittedTransition(activePlay, transition, policy, outcome, {
     setFeedback('Turnover on downs.', offense ? 'negative' : 'positive');
     if (!offense && (policy === 'firstTryCorrect' || policy === 'retryCorrect')) playCorrect();
     advTimer = setTimeout(() => routePossessionPresentation(
-      offense ? 'Turnover on downs. Time to play defense!' : `${state.outcomeMessage || 'Your defense held!'} Turnover on downs!`
+      offense ? 'Turnover on downs. Time to play defense!' : `${state.outcomeMessage || 'Your defense held!'} Turnover on downs!`,
+      source,
     ), offense ? 1400 : 1500);
     return;
   }
   if (outcome === 'turnover') {
     setFeedback(state.outcomeMessage || 'Turnover.', offense ? 'negative' : 'positive');
     advTimer = setTimeout(() => routePossessionPresentation(
-      offense ? `${state.outcomeMessage || 'Turnover.'} Time to play defense!` : 'Takeaway! Time to play offense!'
+      offense ? `${state.outcomeMessage || 'Turnover.'} Time to play defense!` : 'Takeaway! Time to play offense!',
+      source,
     ), 1500);
     return;
   }
@@ -4851,9 +4854,19 @@ function selectConversionAction(action) {
   return true;
 }
 
-function showDefenseTransition(message) {
+// Overlay helpers accept a routed intent; direct calls ask the domain for the
+// forced-kind intent so phase/pending decisions never live in the renderer.
+function presentationIntentFor(kind, intent) {
+  return intent?.accepted && intent.kind === kind
+    ? intent
+    : FOOTBALL_DOMAIN.presentationIntent(transitionSnapshot(), kind);
+}
+
+function showDefenseTransition(message, intent = null) {
+  const presentation = presentationIntentFor('defenseTransition', intent);
   clearTimeout(advTimer);
-  Object.assign(state, blankPlayState(), retainedCommittedSpecialResultState(), { phase: 'transition' });
+  Object.assign(state, blankPlayState(), retainedCommittedSpecialResultState());
+  applyTransitionPatch(presentation.patch);
   syncUiState();
   document.getElementById('ov-defense-title').textContent = `${state.match.opponent.shortName}'s Ball`;
   document.getElementById('ov-defense-sub').textContent =
@@ -4861,28 +4874,30 @@ function showDefenseTransition(message) {
   activateOverlay('ov-defense');
 }
 
-function startDefense() {
-  if (state.phase !== 'transition'
-    || (state.pendingNextPossession && state.pendingNextPossession !== 'defense')) return false;
+function startDefense(expectedSource = null) {
+  const plan = FOOTBALL_DOMAIN.planTransitionAdvance(transitionSnapshot(), { side: 'defense', expectedSource });
+  if (!plan.accepted) return false;
   hideOverlays();
-  startDrive('defense');
+  startDrive(plan.drive.possession);
   return true;
 }
 
-function showOffenseTransition(message) {
+function showOffenseTransition(message, intent = null) {
+  const presentation = presentationIntentFor('offenseTransition', intent);
   clearTimeout(advTimer);
-  Object.assign(state, blankPlayState(), retainedCommittedSpecialResultState(), { phase: 'transition' });
+  Object.assign(state, blankPlayState(), retainedCommittedSpecialResultState());
+  applyTransitionPatch(presentation.patch);
   syncUiState();
   document.getElementById('ov-offense-sub').textContent =
     `${message} Score: ${state.playerScore} - ${state.opponentScore}`;
   activateOverlay('ov-offense');
 }
 
-function startOffense() {
-  if (state.phase !== 'transition'
-    || (state.pendingNextPossession && state.pendingNextPossession !== 'offense')) return false;
+function startOffense(expectedSource = null) {
+  const plan = FOOTBALL_DOMAIN.planTransitionAdvance(transitionSnapshot(), { side: 'offense', expectedSource });
+  if (!plan.accepted) return false;
   hideOverlays();
-  startDrive('offense');
+  startDrive(plan.drive.possession);
   return true;
 }
 
@@ -4915,9 +4930,11 @@ function setBreakScorebug(overlayId, nextLabel) {
     `<span class="ov-sb-next">Next: ${nextLabel}</span>`;
 }
 
-function showQuarterEnd(message) {
-  const next = possessionTitle(state.pendingNextPossession || 'offense');
-  Object.assign(state, blankPlayState(), retainedCommittedSpecialResultState(), { phase: 'quarter' });
+function showQuarterEnd(message, intent = null) {
+  const presentation = presentationIntentFor('quarterEnd', intent);
+  const next = possessionTitle(presentation.nextPossession);
+  Object.assign(state, blankPlayState(), retainedCommittedSpecialResultState());
+  applyTransitionPatch(presentation.patch);
   syncUiState();
   document.getElementById('ov-quarter-title').textContent = `End of ${QUARTER_NAMES[state.quarter]} Quarter`;
   document.getElementById('ov-quarter-sub').textContent =
@@ -4926,9 +4943,11 @@ function showQuarterEnd(message) {
   activateOverlay('ov-quarter');
 }
 
-function showHalftime(message) {
-  const next = possessionTitle(state.pendingNextPossession || 'defense');
-  Object.assign(state, blankPlayState(), retainedCommittedSpecialResultState(), { phase: 'halftime' });
+function showHalftime(message, intent = null) {
+  const presentation = presentationIntentFor('halftime', intent);
+  const next = possessionTitle(presentation.nextPossession);
+  Object.assign(state, blankPlayState(), retainedCommittedSpecialResultState());
+  applyTransitionPatch(presentation.patch);
   syncUiState();
   document.getElementById('ov-halftime-sub').textContent =
     `${message} Halftime swap: ${next} starts the 2nd half. Score: ${state.playerScore} - ${state.opponentScore}`;
@@ -4936,15 +4955,12 @@ function showHalftime(message) {
   activateOverlay('ov-halftime');
 }
 
-function nextQuarter() {
-  if (!['quarter', 'halftime'].includes(state.phase) || state.quarter >= 4) return false;
-  const endingQuarter = state.quarter;
-  const fallbackPossession = endingQuarter >= 2 ? 'defense' : 'offense';
-  const nextPossession = state.pendingNextPossession || fallbackPossession;
+function nextQuarter(expectedSource = null) {
+  const plan = FOOTBALL_DOMAIN.planPeriodAdvance(transitionSnapshot(), { expectedSource });
+  if (!plan.accepted) return false;
   hideOverlays();
-  state.quarter = Math.min(state.quarter + 1, 4);
-  state.quarterPossessions = 0;
-  startDrive(nextPossession, state.pendingNextStartYardLine, state.pendingRestartReason);
+  applyTransitionPatch(plan.patch);
+  startDrive(plan.drive.possession, plan.drive.startYardLine, plan.drive.restartReason);
   return true;
 }
 
@@ -5130,7 +5146,8 @@ async function handleEndPrimaryAction() {
   }
 }
 
-function showGameOver() {
+function showGameOver(intent = null) {
+  const presentation = presentationIntentFor('final', intent);
   const diff = state.playerScore - state.opponentScore;
   const title = diff > 0 ? 'You Win!' : diff < 0 ? 'Final Score' : 'Tie Game!';
   const badgeText = diff > 0 ? 'VICTORY' : diff < 0 ? 'FINAL' : 'TIE';
@@ -5141,12 +5158,8 @@ function showGameOver() {
       ? 'Good effort. Try another game.'
       : 'Both teams finished even.';
 
-  Object.assign(state, blankPlayState(), retainedCommittedSpecialResultState(), {
-    pendingNextPossession: null,
-    pendingNextStartYardLine: null,
-    pendingRestartReason: null,
-    phase: 'final',
-  });
+  Object.assign(state, blankPlayState(), retainedCommittedSpecialResultState());
+  applyTransitionPatch(presentation.patch);
   syncUiState();
   const endOv = document.getElementById('ov-end');
   const finalSpecialMessage = state.specialResultPresentation?.message || '';
@@ -5590,8 +5603,8 @@ window.__footballTest = {
   finalizePossessionState(possessionId, placement) {
     return finalizePossessionState(possessionId, placement);
   },
-  routePossessionPresentation(message = 'Possession complete.') {
-    routePossessionPresentation(message);
+  routePossessionPresentation(message = 'Possession complete.', source = null) {
+    routePossessionPresentation(message, source);
     return JSON.parse(renderGameToText());
   },
   practiceState() {
