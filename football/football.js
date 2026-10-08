@@ -1,4 +1,4 @@
-const GAME_VERSION = '1.34.0';
+const GAME_VERSION = '1.34.1';
 let prevPlayerScore = -1, prevOpponentScore = -1;
 let playerRunTimer = 0, playerCelebrateTimer = 0, playerCelebrateDelayTimer = 0;
 const EZ = 5;
@@ -1481,12 +1481,16 @@ function buildField() {
 // The ball's yard position is unaffected. The result stays a percentage for the
 // particle spawner.
 const PLAYER_EDGE_CLEARANCE = 3;
+function playerEdgeLimitPx(player) {
+  const behind = player.offsetWidth / 2 - (parseFloat(getComputedStyle(player).marginLeft) || 0);
+  return behind + PLAYER_EDGE_CLEARANCE;
+}
+
 function playerLeftPct(player, field) {
   const ballPct = yardToPct(clamp(state.animYd, 0, 100));
   const fieldWidth = field.clientWidth;
   if (!fieldWidth) return ballPct;
-  const behind = player.offsetWidth / 2 - (parseFloat(getComputedStyle(player).marginLeft) || 0);
-  return Math.max(ballPct, (behind + PLAYER_EDGE_CLEARANCE) / fieldWidth * 100);
+  return Math.max(ballPct, playerEdgeLimitPx(player) / fieldWidth * 100);
 }
 
 function updateField(animated) {
@@ -1534,18 +1538,29 @@ function updateField(animated) {
 // slide the sprite in from outside the newly narrowed field. Apply it without a
 // transition, flush that style, and restore the ordinary transition on the next
 // frame. A repeated resize replaces any pending restore.
+// Issue #155: a resize during a committed play must not stop the player while the
+// ball is still travelling. If the clamped target is unchanged and the sprite's
+// current, possibly mid-transition, position already clears the edge, both
+// movements keep running. Otherwise the ball settles with the player.
 let playerResizeRestoreFrame = 0;
 window.addEventListener('resize', () => {
   const player = document.getElementById('player');
   const field = document.getElementById('field-wrap');
   if (player && field && !player.classList.contains('player-hidden')) {
+    const target = playerLeftPct(player, field);
+    const targetUnchanged = Math.abs(parseFloat(player.style.left) - target) < 0.001;
+    const clearsEdge = parseFloat(getComputedStyle(player).left) >= playerEdgeLimitPx(player) - 0.5;
+    if (targetUnchanged && clearsEdge) return;
+    const ball = document.getElementById('ball');
     if (playerResizeRestoreFrame) cancelAnimationFrame(playerResizeRestoreFrame);
     player.style.transition = 'none';
-    player.style.left = playerLeftPct(player, field) + '%';
+    if (ball) ball.style.transition = 'none';
+    player.style.left = target + '%';
     void player.offsetWidth;
     playerResizeRestoreFrame = requestAnimationFrame(() => {
       playerResizeRestoreFrame = 0;
       player.style.transition = '';
+      if (ball) ball.style.transition = '';
     });
   }
 });

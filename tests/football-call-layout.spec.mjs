@@ -720,3 +720,301 @@ test.describe('football player sprite', () => {
     });
   }
 });
+
+// Issue #155: rotating while a committed play animates must not stop the player
+// while the ball is still travelling. These drive the real call tap, the
+// correct-answer tap that commits through commitPendingResolution() and
+// updateField(true), and a real viewport swap on the wall clock. Samples come
+// from resize and frame callbacks, so they check style and transition state,
+// not painted pixels. Engine-emulated viewport swaps are not native Safari
+// rotation.
+const ROTATION_155_PROJECTS = ['ipad-11-landscape', 'ipad-11-portrait', 'iphone-15-portrait'];
+const ROTATION_155_SEED = 0x155155;
+const INTERIOR_155 = { possession: 'offense', direction: 1, quarter: 1, down: 1,
+  yardLine: 30, yardsToGo: 10, firstDownLine: 40, driveStart: 20 };
+const OWN_GOAL_155 = { possession: 'offense', direction: 1, quarter: 1, down: 1,
+  yardLine: 1, yardsToGo: 10, firstDownLine: 11, driveStart: 1 };
+
+function markersAtRest(page) {
+  return page.waitForFunction(() => ['ball', 'player'].every((id) => {
+    const element = document.getElementById(id);
+    return element.style.transition === ''
+      && !element.getAnimations().some(animation => animation.transitionProperty === 'left');
+  }), null, { timeout: 5000 });
+}
+
+async function tapOffenseCall(page, callKey) {
+  await expect(page.locator('#ui-desk')).toHaveAttribute('data-phase', 'call', { timeout: 6000 });
+  const index = await page.evaluate((key) => window.__footballTest.callKeys().offense.indexOf(key), callKey);
+  expect(index, `${callKey} is an offense call`).toBeGreaterThanOrEqual(0);
+  await page.locator('#call-grid .call-btn').nth(index).tap();
+  await expect(page.locator('#ui-desk')).toHaveAttribute('data-phase', 'question');
+  return page.evaluate(() => {
+    const { activePlay, questionInstance } = window.__footballTest.activeContracts();
+    return {
+      callKey: activePlay.call?.key ?? null,
+      appliedGain: activePlay.proposal.appliedGain,
+      endYardLine: activePlay.proposal.endYardLine,
+      resultKind: activePlay.proposal.resultKind,
+      familyId: questionInstance.familyId,
+      choiceCount: questionInstance.choices.length,
+      correctIndex: questionInstance.choices.findIndex(choice => choice.id === questionInstance.correctChoiceId),
+      draws: { ...window.__draws155 },
+    };
+  });
+}
+
+// The correct-answer tap commits the play, which starts the ball's left transition.
+async function tapCorrectAndAwaitMovement(page, correctIndex) {
+  await markersAtRest(page);
+  await page.locator(`#b${correctIndex}`).tap();
+  await page.waitForFunction(() => document.getElementById('ball').getAnimations()
+    .some(animation => animation.transitionProperty === 'left' && animation.playState === 'running'),
+  null, { timeout: 5000 });
+}
+
+function sampleAfterNextResize(page) {
+  return page.evaluate(() => {
+    const record = { samples: [], ballEnds: [], resizeAt: null, done: false };
+    window.__motion155 = record;
+    const ball = document.getElementById('ball');
+    ball.addEventListener('transitionend', (event) => {
+      if (event.target === ball && event.propertyName === 'left') record.ballEnds.push(performance.now());
+    });
+    const leftRunning = (element) => element.getAnimations().some(animation =>
+      animation.transitionProperty === 'left' && animation.playState === 'running');
+    const measure = (elapsed) => {
+      const field = document.getElementById('field-wrap');
+      const player = document.getElementById('player');
+      const box = field.getBoundingClientRect();
+      const inner = { left: box.left + field.clientLeft, right: box.left + field.clientLeft + field.clientWidth };
+      const parts = [...player.querySelectorAll('svg *')].map(node => node.getBoundingClientRect())
+        .filter(rect => rect.width > 0 || rect.height > 0);
+      record.samples.push({
+        elapsed,
+        innerWidth: window.innerWidth,
+        inner,
+        partCount: parts.length,
+        spriteLeft: parts.length ? Math.min(...parts.map(rect => rect.left)) : null,
+        spriteRight: parts.length ? Math.max(...parts.map(rect => rect.right)) : null,
+        ballRunning: leftRunning(ball),
+        playerRunning: leftRunning(player),
+        ballLeftPx: parseFloat(getComputedStyle(ball).left),
+        playerLeftPx: parseFloat(getComputedStyle(player).left),
+        ballInlinePct: parseFloat(ball.style.left),
+        playerInlinePct: parseFloat(player.style.left),
+        ballTargetPct: yardToPct(state.animYd),
+        playerTargetPct: playerLeftPct(player, field),
+      });
+    };
+    // Registered after the production handler, so the first sample follows it.
+    const onResize = () => {
+      removeEventListener('resize', onResize);
+      const start = performance.now();
+      record.resizeAt = start;
+      measure(0);
+      const tick = () => {
+        const elapsed = performance.now() - start;
+        measure(elapsed);
+        if (elapsed < 1000) requestAnimationFrame(tick);
+        else record.done = true;
+      };
+      requestAnimationFrame(tick);
+    };
+    addEventListener('resize', onResize);
+  });
+}
+
+function canonicalAfterCommit(page) {
+  return page.evaluate(() => ({
+    results: window.__results155,
+    state: {
+      possession: state.possession, yd: state.yd, animYd: state.animYd, fdYd: state.fdYd, down: state.down,
+      ytg: state.ytg, playerScore: state.playerScore, opponentScore: state.opponentScore,
+      playerTotalYards: state.playerTotalYards,
+    },
+  }));
+}
+
+// One fresh seeded game: a committed play, optionally with a viewport swap while
+// it moves, then the next call and its committed movement on the same page.
+async function runCommittedPlay155(page, { size, drive, call, swapTo = null }) {
+  await page.setViewportSize(size);
+  await page.goto('/football/?boot=offense-call');
+  await expect(page.locator('#player')).toBeVisible();
+  await page.evaluate(({ seed, seeded }) => {
+    window.__footballTest.setQuestionFault(null);
+    window.__footballTest.setRootSeed(seed);
+    // Count draws per stream without changing the seeded sequences.
+    const streams = { football: footballRng, scheduler: schedulerRng, presentation: presentationRng };
+    window.__draws155 = { football: 0, scheduler: 0, presentation: 0 };
+    window.__footballTest.setRngStreams(Object.fromEntries(Object.entries(streams).map(([name, draw]) => [name, () => {
+      window.__draws155[name] += 1;
+      return draw();
+    }])));
+    window.__results155 = [];
+    addEventListener('football:result', ({ detail }) => {
+      const { transition } = detail;
+      window.__results155.push({
+        playType: detail.playType, familyId: detail.familyId, policy: detail.policy, outcome: detail.outcome,
+        appliedGain: transition.appliedGain, startYardLine: transition.startYardLine,
+        endYardLine: transition.endYardLine, resultKind: transition.resultKind, newDown: transition.newDown,
+        newYardsToGo: transition.newYardsToGo, newFirstDownLine: transition.newFirstDownLine,
+        draws: { ...window.__draws155 },
+      });
+    });
+    window.__footballTest.seedDriveState(seeded);
+  }, { seed: ROTATION_155_SEED, seeded: drive });
+  // Seeding places the markers without a transition and restores it a frame later.
+  await markersAtRest(page);
+  const durations = await page.evaluate(() => {
+    const duration = (id) => getComputedStyle(document.getElementById(id)).transitionDuration;
+    return { ball: duration('ball'), player: duration('player') };
+  });
+
+  const first = await tapOffenseCall(page, call);
+  if (swapTo) await sampleAfterNextResize(page);
+  await tapCorrectAndAwaitMovement(page, first.correctIndex);
+  let motion = null;
+  if (swapTo) {
+    await page.setViewportSize(swapTo);
+    await page.waitForFunction(() => window.__motion155.done === true, null, { timeout: 5000 });
+    motion = await page.evaluate(() => window.__motion155);
+  }
+  await markersAtRest(page);
+  const afterFirst = await canonicalAfterCommit(page);
+
+  const next = await tapOffenseCall(page, 'shortRun');
+  const nextPlayerStartPct = await page.evaluate(() => parseFloat(document.getElementById('player').style.left));
+  await tapCorrectAndAwaitMovement(page, next.correctIndex);
+  const nextMotion = await page.evaluate((playerStartPct) => {
+    const leftRunning = (element) => element.getAnimations().some(animation =>
+      animation.transitionProperty === 'left' && animation.playState === 'running');
+    const ball = document.getElementById('ball');
+    const player = document.getElementById('player');
+    return {
+      ballRunning: leftRunning(ball),
+      playerRunning: leftRunning(player),
+      ballInlineTransition: ball.style.transition,
+      playerInlineTransition: player.style.transition,
+      ballLeftPx: parseFloat(getComputedStyle(ball).left),
+      playerLeftPx: parseFloat(getComputedStyle(player).left),
+      playerStartPct,
+      playerTargetPct: parseFloat(player.style.left),
+    };
+  }, nextPlayerStartPct);
+  await markersAtRest(page);
+  const afterNext = await canonicalAfterCommit(page);
+  return { durations, motion, nextMotion, canonical: { first, afterFirst, next, afterNext } };
+}
+
+function assertMotionSample155(sample, label, { inSync }) {
+  const at = `${label} at ${sample.elapsed.toFixed(0)}ms`;
+  expect(sample.partCount, `${at}: player sprite has drawn parts`).toBeGreaterThan(0);
+  expect(sample.spriteLeft, `${at}: player left edge inside the field`).toBeGreaterThanOrEqual(sample.inner.left);
+  expect(sample.spriteRight, `${at}: player right edge inside the field`).toBeLessThanOrEqual(sample.inner.right);
+  expect(sample.playerRunning, `${at}: player moves exactly while the ball moves`).toBe(sample.ballRunning);
+  if (sample.ballRunning && inSync) {
+    expect(Math.abs(sample.playerLeftPx - sample.ballLeftPx), `${at}: player anchor tracks the ball`)
+      .toBeLessThanOrEqual(1);
+  }
+  if (!sample.ballRunning) {
+    expect(sample.ballInlinePct, `${at}: ball at its yard`).toBeCloseTo(sample.ballTargetPct, 3);
+    expect(sample.playerInlinePct, `${at}: player at its clamped target`).toBeCloseTo(sample.playerTargetPct, 3);
+  }
+}
+
+function clearStats155(page) {
+  return page.addInitScript(() => {
+    try { window.localStorage.removeItem('footballMathStats:v1'); } catch (error) {}
+  });
+}
+
+test.describe('football committed play during a viewport swap (#155)', () => {
+  for (const reducedMotion of [false, true]) {
+    test(`interior play keeps the player moving with the ball${reducedMotion ? ' with reduced motion' : ''}`, async ({ page }, testInfo) => {
+      test.skip(!ROTATION_155_PROJECTS.includes(testInfo.project.name), 'iPad 11 in both orientations and one phone');
+      test.setTimeout(90_000);
+      const { pageErrors, consoleErrors } = attachErrorListeners(page);
+      await clearStats155(page);
+      // Reduced motion freezes the poses but keeps the left movement.
+      if (reducedMotion) await page.emulateMedia({ reducedMotion: 'reduce' });
+      const size = page.viewportSize();
+      const swapTo = { width: size.height, height: size.width };
+      const label = `${testInfo.project.name} interior${reducedMotion ? ' reduced' : ''}`;
+
+      const reference = await runCommittedPlay155(page, { size, drive: INTERIOR_155, call: 'mediumPass' });
+      const rotated = await runCommittedPlay155(page, { size, drive: INTERIOR_155, call: 'mediumPass', swapTo });
+      for (const run of [reference, rotated]) {
+        expect(run.durations, `${label}: 0.75 s left transitions`).toEqual({ ball: '0.75s', player: '0.75s' });
+      }
+      expect(rotated.canonical.first.appliedGain, `${label}: the committed play moves the ball`).toBeGreaterThan(0);
+
+      const { samples, ballEnds, resizeAt } = rotated.motion;
+      expect(samples[0].innerWidth, `${label}: realized swapped viewport`).toBe(swapTo.width);
+      expect(ballEnds.filter(time => time < resizeAt), `${label}: swap landed before the ball finished`).toEqual([]);
+      expect(samples[0].ballRunning, `${label}: ball still moving after the resize handler`).toBe(true);
+      expect(samples[0].playerRunning, `${label}: player still moving after the resize handler`).toBe(true);
+      expect(samples.length, `${label}: sampled several frames`).toBeGreaterThan(5);
+      expect(samples.at(-1).elapsed, `${label}: sampled through 1000ms`).toBeGreaterThanOrEqual(1000);
+      for (const sample of samples) assertMotionSample155(sample, label, { inSync: true });
+      expect(samples.at(-1).ballRunning, `${label}: movement settled`).toBe(false);
+
+      // The next committed play still moves the player with the ball.
+      const { nextMotion } = rotated;
+      expect(nextMotion.ballRunning, `${label}: next ball movement animates`).toBe(true);
+      expect(nextMotion.playerRunning, `${label}: next player movement animates`).toBe(true);
+      expect(nextMotion.ballInlineTransition, `${label}: no leftover ball override`).toBe('');
+      expect(nextMotion.playerInlineTransition, `${label}: no leftover player override`).toBe('');
+      expect(Math.abs(nextMotion.playerLeftPx - nextMotion.ballLeftPx), `${label}: next movement in step`)
+        .toBeLessThanOrEqual(1);
+
+      // The swap changes no play, result, yard, score or RNG draw.
+      expect(rotated.canonical, `${label}: canonical plays, results and RNG draws`).toEqual(reference.canonical);
+      expect(pageErrors, 'page errors').toEqual([]);
+      expect(consoleErrors, 'console errors').toEqual([]);
+    });
+  }
+
+  // Near the own goal line the edge clamp can change with the field width. The
+  // handler then settles the ball with the player instead of letting either jump.
+  test('own-goal-line play stays inside the field and moves with the ball', async ({ page }, testInfo) => {
+    test.skip(!ROTATION_155_PROJECTS.includes(testInfo.project.name), 'iPad 11 in both orientations and one phone');
+    test.setTimeout(90_000);
+    const { pageErrors, consoleErrors } = attachErrorListeners(page);
+    await clearStats155(page);
+    const size = page.viewportSize();
+    const swapTo = { width: size.height, height: size.width };
+    const label = `${testInfo.project.name} own goal line`;
+
+    const reference = await runCommittedPlay155(page, { size, drive: OWN_GOAL_155, call: 'shortRun' });
+    const rotated = await runCommittedPlay155(page, { size, drive: OWN_GOAL_155, call: 'shortRun', swapTo });
+    expect(rotated.canonical.first.appliedGain, `${label}: the committed play moves the ball`).toBeGreaterThan(0);
+
+    const { samples, ballEnds, resizeAt } = rotated.motion;
+    expect(samples[0].innerWidth, `${label}: realized swapped viewport`).toBe(swapTo.width);
+    expect(ballEnds.filter(time => time < resizeAt), `${label}: swap landed before the ball finished`).toEqual([]);
+    expect(samples.length, `${label}: sampled several frames`).toBeGreaterThan(5);
+    expect(samples.at(-1).elapsed, `${label}: sampled through 1000ms`).toBeGreaterThanOrEqual(1000);
+    for (const sample of samples) assertMotionSample155(sample, label, { inSync: false });
+    expect(samples.at(-1).ballRunning, `${label}: movement settled`).toBe(false);
+    testInfo.annotations.push({
+      type: 'issue-155-resize-path',
+      description: samples[0].ballRunning ? 'ball and player kept moving' : 'ball and player settled together',
+    });
+
+    // Any settlement override is cleared before the next committed movement.
+    // The clamped player target may sit apart from the ball here, but the next
+    // play must carry it past the clamp so its movement is observable.
+    expect(rotated.nextMotion.ballRunning, `${label}: next ball movement animates`).toBe(true);
+    expect(rotated.nextMotion.playerTargetPct, `${label}: next play moves the player target`)
+      .not.toBeCloseTo(rotated.nextMotion.playerStartPct, 3);
+    expect(rotated.nextMotion.playerRunning, `${label}: next player movement animates`).toBe(true);
+    expect(rotated.nextMotion.ballInlineTransition, `${label}: no leftover ball override`).toBe('');
+    expect(rotated.nextMotion.playerInlineTransition, `${label}: no leftover player override`).toBe('');
+
+    expect(rotated.canonical, `${label}: canonical plays, results and RNG draws`).toEqual(reference.canonical);
+    expect(pageErrors, 'page errors').toEqual([]);
+    expect(consoleErrors, 'console errors').toEqual([]);
+  });
+});
