@@ -1,4 +1,5 @@
 import { test, expect } from './curriculum-fixture.mjs';
+import { expectFootballTestMuted } from './football-test-mute.mjs';
 
 const PRIMARY_PROJECT = 'ipad-11-landscape';
 
@@ -396,6 +397,7 @@ test('a live snap after practice is seed-equivalent to the control path', async 
   const controlErrors = watchErrors(control);
   const practiceErrors = watchErrors(practice);
   await Promise.all([control.goto('/football/'), practice.goto('/football/')]);
+  await expectFootballTestMuted(practice);
 
   await Promise.all([control, practice].map(candidate => candidate.evaluate(() => {
     Math.random = () => 0.3141592653;
