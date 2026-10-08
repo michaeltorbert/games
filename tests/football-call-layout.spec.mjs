@@ -630,6 +630,7 @@ test.describe('football player sprite', () => {
             removeEventListener('resize', onResize);
             const start = performance.now();
             measure(0);
+            window.__rotationStartEpoch = performance.timeOrigin + start;
             const tick = () => {
               const elapsed = performance.now() - start;
               measure(elapsed);
@@ -643,7 +644,9 @@ test.describe('football player sprite', () => {
         await page.setViewportSize(size);
         // The early capture waits for the first resize callback, so it shows the corrected frame.
         await page.waitForFunction(() => window.__rotationSamples.length > 0, null, { timeout: 5000 });
+        const earlyShotStart = Date.now();
         await page.screenshot({ path: testInfo.outputPath(`${label}-early.png`) });
+        const earlyShotEnd = Date.now();
         await page.waitForFunction(() => window.__rotationDone === true, null, { timeout: 5000 });
         const realized = await page.evaluate(() => ({
           innerWidth: window.innerWidth,
@@ -655,9 +658,13 @@ test.describe('football player sprite', () => {
         expect(realized.innerHeight, `${label}: realized viewport height`).toBe(size.height);
         expect(realized.scrollWidth, `${label}: no horizontal overflow`).toBeLessThanOrEqual(realized.clientWidth + EPSILON);
         const samples = await page.evaluate(() => window.__rotationSamples);
-        expect(samples.length, `${label}: sampled several frames`).toBeGreaterThan(5);
+        // Frame times and the early screenshot's approximate span, both relative to the resize,
+        // so a short count shows where frames were missing. Wall clocks: approximate only.
+        const startEpoch = await page.evaluate(() => window.__rotationStartEpoch);
+        const timeline = `frames at ${samples.map(s => s.elapsed.toFixed(0)).join(', ')} ms; early screenshot ~${Math.round(earlyShotStart - startEpoch)}..${Math.round(earlyShotEnd - startEpoch)} ms`;
+        expect(samples.length, `${label}: sampled several frames (${timeline})`).toBeGreaterThan(5);
         expect(samples[0].elapsed).toBe(0);
-        expect(samples.at(-1).elapsed, `${label}: sampled through 900ms`).toBeGreaterThanOrEqual(900);
+        expect(samples.at(-1).elapsed, `${label}: sampled through 900ms (${timeline})`).toBeGreaterThanOrEqual(900);
         expect(samples[0].inlineTransition, `${label}: correction applied without the play transition`).toBe('none');
         for (const sample of samples) {
           // Empty or hidden geometry must fail rather than pass the bounds vacuously.

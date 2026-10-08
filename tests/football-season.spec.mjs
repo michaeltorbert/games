@@ -1,4 +1,5 @@
 import { test, expect } from './curriculum-fixture.mjs';
+import { expectFootballTestMuted } from './football-test-mute.mjs';
 
 const STORAGE_KEY = 'footballMathSeason:v1';
 const SCHEDULE = ['unc', 'nc-state', 'wake-forest'];
@@ -802,6 +803,7 @@ test('a competing final cannot confirm the local result after transient conflict
 
   const other = await context.newPage();
   await other.goto('/football/');
+  await expectFootballTestMuted(other);
   await other.evaluate(({ key, result }) => {
     const store = JSON.parse(localStorage.getItem(key));
     store.currentSeason.results.push(result);

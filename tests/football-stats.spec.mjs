@@ -1,4 +1,5 @@
 import { test, expect } from './curriculum-fixture.mjs';
+import { expectFootballTestMuted, muteFootballForTests } from './football-test-mute.mjs';
 
 function primaryOnly(testInfo) {
   test.skip(testInfo.project.name !== 'ipad-11-landscape', 'Persistent stats checks run once on the primary target.');
@@ -998,12 +999,14 @@ test('malformed stores recover, future schemas remain untouched, and blocked sto
   });
 
   const malformedContext = await browser.newContext();
+  await muteFootballForTests(malformedContext);
   const malformedPage = await malformedContext.newPage();
   const malformedErrors = trackErrors(malformedPage);
   await malformedPage.addInitScript(() => {
     if (location.pathname.startsWith('/football')) localStorage.setItem('footballMathStats:v1', '{invalid-json');
   });
   await malformedPage.goto(`${baseURL}/football/`);
+  await expectFootballTestMuted(malformedPage);
   await completeOnePresentedPlay(malformedPage);
   const repaired = JSON.parse(await readPersistedStats(malformedPage, { completedPlays: 1 }));
   expect(repaired.schemaVersion).toBe(4);
@@ -1012,6 +1015,7 @@ test('malformed stores recover, future schemas remain untouched, and blocked sto
   await malformedContext.close();
 
   const futureContext = await browser.newContext();
+  await muteFootballForTests(futureContext);
   const futurePage = await futureContext.newPage();
   const futureErrors = trackErrors(futurePage);
   const futurePayload = JSON.stringify({ schemaVersion: 99, future: 'keep-me' });
@@ -1019,6 +1023,7 @@ test('malformed stores recover, future schemas remain untouched, and blocked sto
     if (location.pathname.startsWith('/football')) localStorage.setItem('footballMathStats:v1', payload);
   }, futurePayload);
   await futurePage.goto(`${baseURL}/football/`);
+  await expectFootballTestMuted(futurePage);
   const futureSession = await completeOnePresentedPlay(futurePage);
   await awaitStatsPersistence(futurePage);
   expect(await futurePage.evaluate(() => localStorage.getItem(FOOTBALL_STATS.STORAGE_KEY))).toBe(futurePayload);
@@ -1027,6 +1032,7 @@ test('malformed stores recover, future schemas remain untouched, and blocked sto
   await futureContext.close();
 
   const blockedContext = await browser.newContext();
+  await muteFootballForTests(blockedContext);
   const blockedPage = await blockedContext.newPage();
   const blockedErrors = trackErrors(blockedPage);
   await blockedPage.addInitScript(() => {
@@ -1034,6 +1040,7 @@ test('malformed stores recover, future schemas remain untouched, and blocked sto
     Storage.prototype.setItem = () => { throw new Error('storage write blocked'); };
   });
   await blockedPage.goto(`${baseURL}/football/`);
+  await expectFootballTestMuted(blockedPage);
   const blockedSession = await completeOnePresentedPlay(blockedPage);
   await awaitStatsPersistence(blockedPage);
   expect(blockedSession.session.completedPlays).toHaveLength(1);

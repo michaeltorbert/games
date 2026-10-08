@@ -1,4 +1,4 @@
-import {test,expect} from '@playwright/test';
+import {footballMuteTest as test,expect} from './curriculum-fixture.mjs';
 import {chooseOptions,mathPractice} from './place-practice-nav.mjs';
 // A route's first entry reuses the page confirmed earlier in this visit, so no second prompt appears.
 async function noPrompt(page){await expect(page.locator('#arithmetic-practice')).toHaveAttribute('aria-busy','false');await expect(page.locator('.curriculum-dialog')).toHaveCount(0);}
