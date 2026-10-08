@@ -1382,3 +1382,27 @@ Implementation author: Claude (Opus 5.5, medium), from exact base `57b2f10` (Foo
 
 - `GAME_VERSION`, all 18 Football asset query strings, the Football registry descriptor and `version.json` are `1.34.2`. Kayak 1.1.38, Prague 1.4.0 and Place by Place 1.9.0 are unchanged.
 - The author had no shell tools and ran nothing. Every check is pending the coordinator at the exact final artifact: direct domain tests, focused context/Season regressions, and the full Chromium and WebKit release matrix with the registry gate. No result is claimed here.
+
+
+## 2026-10-08 — Football v1.34.3 (#49, superseding release entry)
+
+Implementation author: Claude (Opus 5.5, medium), from exact base `7e52279` (Football 1.34.2). The change covers the overlay content contract, modal discovery, the decorative break art and scorebug, and one bounded Final fit repair. Copy, domain transitions, Season, learning, stats, opponent and RNG authority are unchanged, and the plain-global load order is the same.
+
+### #49 — shared overlay slots and derived modal membership
+
+- All eight persistent overlay roots keep their IDs, classes, ARIA wiring and inline actions, and now carry `data-overlay`. Populated content carries scoped `data-slot` names. `activateOverlay()` and `hideOverlays()` read `.overlay[data-overlay]` fresh on every call; the hand-maintained ID list is gone. A missing or unmarked target is rejected before any decoration, visibility, inertness or focus change. Focus entry, Escape containment, radio tab stops and Time Lab focus are unchanged.
+- `populateOverlay()` writes declared slot text with `textContent`, plus slot attributes, `hidden`/`disabled`, and root dataset/classes/flags. It never touches state, phase, visibility (`show`), inertness, focus or effects. The `show*` wrappers keep their domain patches, phase, copy composition and order, and still own audio, confetti and fireworks. Per-container firework epochs are unchanged: activation clears only inactive overlays' decorations.
+- Start joins the same content contract (review finding SOL49-1, corrected before release). Its badge, title, sub, mode picker, Quick and Season panels, rival preview, rival-options and Season-rung containers, Season progress/record/next/status, Start action and Time Lab entry carry scoped Start slots. `updateRivalPreview()`, `renderRivalPicker()`, `renderSeasonPanel()` and `renderStartMode()` write through `populateOverlay()`/`overlaySlot()` instead of global content IDs, with the same copy, mode/rival/Season behavior, action labels and enabled states. The rival radio and Season rung producers still build their structured lists inside the persistent containers, and an async Season update refreshes Start in place without reopening or refocusing it. Focus targeting is unchanged.
+- The Final producers keep their structures. `populateEndStats()` uses the scoped stats slot; `renderEndSeason()` refreshes Season copy and actions in place through `populateOverlay()` and still never reopens or refocuses the Final.
+- The break scorebug is six persistent spans filled by text, still `aria-hidden`; the sub text keeps the accessible score and next-possession sentence. The duplicated field SVG now lives once in `<template id="ov-fieldbg-template">` and is cloned at startup as the first element of each break card with identical markup.
+
+### B1 — ordinary Final fit at 1180×820
+
+- The new characterization suite found a pre-existing defect: at iPad 11 landscape the ordinary loss Final put Play Again below the fold (Chromium bottom 846.5, WebKit 842, viewport 820). An independent Sol 6.1 review confirmed it from pixels and source.
+- Repair: one `#ov-end:not([data-special-result])` rule for widths of at least 700px and heights of 761–820px. It reduces only vertical spacing (overlay and card padding, title/score/sub/season/stats/coach-row/action margins and gaps). Fonts, copy, colors, decoration and order are unchanged. The existing 760px tier, special-result compact rules and Season-save rules keep precedence. Ordinary Finals at this height now look tighter, so their pixels intentionally differ from the clipped baseline.
+
+### Tests and release metadata
+
+- `tests/football-overlay-contract.spec.mjs` (added to `test:football:release`) holds source-derived characterization tests whose original paths passed on the unchanged base apart from B1, now with whole-card bottom and internal-clip containment, separate win/loss/tie Finals, and a played Coach Report plus saved Season loss Final. Separately titled contract tests cover marked discovery including activating an injected ninth modal, rejected unknown/unmarked activation, literal text-only population with no phase/visibility/focus change, the Start slot inventory with Quick/Season and async Season refresh preserving its persistent nodes and focus, Final refresh without refocus, single-source break art, persistent scorebug spans, and no stale special/result-class state.
+- `GAME_VERSION`, all 18 Football asset query strings, the Football registry descriptor and `version.json` are `1.34.3`. Kayak 1.1.38, Prague 1.4.0 and Place by Place 1.9.0 are unchanged.
+- The author had no shell tools and ran nothing. The coordinator ran the pre-SOL49-1 candidate's new spec in both engines; that run does not cover the Start correction. Every check is pending the coordinator at the exact final artifact: syntax, the new spec, the full Chromium and WebKit release matrix with the registry gate, before/after pixel review, and fresh independent review. No result is claimed here.

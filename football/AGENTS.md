@@ -143,6 +143,13 @@ repository-level `AGENTS.md`.
   reasons and never touch the DOM. `football.js` copies accepted patches and
   keeps ID allocation, timers, overlays, animation, and focus. Do not put phase
   or placement rules back into the `show*` renderers.
+- Modal overlays are discovered from `.overlay[data-overlay]` markup; never add
+  a hand-maintained overlay ID list. `show*` wrappers keep state patches,
+  phase, copy composition, and effect order, then call `populateOverlay()`,
+  which only writes declared `data-slot` text/attributes and must never touch
+  state, phase, visibility, focus, or effects. `activateOverlay()` and
+  `hideOverlays()` remain the single visibility, inertness, and focus
+  controller, including Time Lab.
 - Delayed production routes carry the committed `{gameId, possessionId,
   quarter}` source. A changed source, an unfinalized source, or one that
   already presented is rejected with a `stale-possession-transition`

@@ -1,4 +1,4 @@
-const GAME_VERSION = '1.34.2';
+const GAME_VERSION = '1.34.3';
 let prevPlayerScore = -1, prevOpponentScore = -1;
 let playerRunTimer = 0, playerCelebrateTimer = 0, playerCelebrateDelayTimer = 0;
 const EZ = 5;
@@ -379,12 +379,20 @@ function applyMatchPresentation(match = state.match) {
   return rival;
 }
 
+// Start content is written through the overlay's scoped slots; the rival radio
+// and Season rung producers keep building their structured lists in place.
+function startOverlay() {
+  return document.getElementById('ov-start');
+}
+
 function updateRivalPreview(match) {
   const rival = applyMatchPresentation(match);
-  const matchup = document.getElementById('rival-preview-matchup');
-  const style = document.getElementById('rival-preview-style');
-  if (matchup) matchup.textContent = `${match.player.shortName} VS ${match.opponent.shortName}`;
-  if (style) style.textContent = rival.styleBlurb;
+  populateOverlay(startOverlay(), {
+    slots: {
+      'rival-matchup': `${match.player.shortName} VS ${match.opponent.shortName}`,
+      'rival-style': rival.styleBlurb,
+    },
+  });
   updatePromptContext(`${match.player.shortName} VS ${match.opponent.shortName} / FOUR QUARTERS / WIN THE RIVALRY`);
 }
 
@@ -398,7 +406,7 @@ function selectRivalPreview(rivalId) {
 }
 
 function renderRivalPicker() {
-  const options = document.getElementById('rival-options');
+  const options = overlaySlot(startOverlay(), 'rival-options');
   if (!options) return;
   options.replaceChildren();
   for (const rival of FOOTBALL_OPPONENT.listRivals()) {
@@ -488,19 +496,18 @@ function seasonStatusText(snapshot) {
 }
 
 function renderSeasonPanel(snapshot = FOOTBALL_SEASON.snapshot()) {
-  const progress = document.getElementById('season-progress');
-  const record = document.getElementById('season-record');
-  const rungs = document.getElementById('season-rungs');
-  const next = document.getElementById('season-next');
-  const status = document.getElementById('season-status');
-  if (progress) {
-    progress.textContent = snapshot.complete
-      ? 'Season complete'
-      : Number.isInteger(snapshot.gameNumber)
-        ? `Game ${snapshot.gameNumber} of ${snapshot.schedule.length}`
-        : 'Season unavailable';
-  }
-  if (record) record.textContent = seasonRecordText(snapshot.record);
+  const start = startOverlay();
+  const rungs = overlaySlot(start, 'season-rungs');
+  populateOverlay(start, {
+    slots: {
+      'season-progress': snapshot.complete
+        ? 'Season complete'
+        : Number.isInteger(snapshot.gameNumber)
+          ? `Game ${snapshot.gameNumber} of ${snapshot.schedule.length}`
+          : 'Season unavailable',
+      'season-record': seasonRecordText(snapshot.record),
+    },
+  });
   if (rungs) {
     rungs.replaceChildren();
     for (const rung of snapshot.schedule) {
@@ -525,14 +532,16 @@ function renderSeasonPanel(snapshot = FOOTBALL_SEASON.snapshot()) {
       rungs.appendChild(item);
     }
   }
-  if (next) {
-    next.textContent = snapshot.complete
-      ? 'All three games are in the books.'
-      : snapshot.nextRivalId
-        ? `Next up: ${FOOTBALL_OPPONENT.resolveRival(snapshot.nextRivalId).displayName}`
-        : 'Choose Quick Game while season saving is unavailable.';
-  }
-  if (status) status.textContent = seasonStatusText(snapshot);
+  populateOverlay(start, {
+    slots: {
+      'season-next': snapshot.complete
+        ? 'All three games are in the books.'
+        : snapshot.nextRivalId
+          ? `Next up: ${FOOTBALL_OPPONENT.resolveRival(snapshot.nextRivalId).displayName}`
+          : 'Choose Quick Game while season saving is unavailable.',
+      'season-status': seasonStatusText(snapshot),
+    },
+  });
 }
 
 function seasonActionLabel(snapshot) {
@@ -545,24 +554,28 @@ function seasonActionLabel(snapshot) {
   return 'Season Unavailable';
 }
 
+// Refreshes Start content in place; showStart() alone activates the modal.
 function renderStartMode() {
-  const quickPanel = document.getElementById('quick-game-panel');
-  const seasonPanel = document.getElementById('season-panel');
-  const startButton = document.getElementById('start-game-btn');
-  const timeLabButton = document.getElementById('tl-open-button');
-  if (timeLabButton) timeLabButton.disabled = seasonActionBusy || sessionInitialized;
-  for (const input of document.querySelectorAll('input[name="play-mode"]')) {
+  const start = startOverlay();
+  populateOverlay(start, {
+    slots: { 'time-lab-action': { disabled: seasonActionBusy || sessionInitialized } },
+  });
+  const modePicker = overlaySlot(start, 'mode-picker');
+  for (const input of modePicker ? modePicker.querySelectorAll('input[name="play-mode"]') : []) {
     input.checked = input.value === selectedPlayMode;
   }
-  if (quickPanel) quickPanel.hidden = selectedPlayMode !== 'quick';
-  if (seasonPanel) seasonPanel.hidden = selectedPlayMode !== 'season';
+  populateOverlay(start, {
+    slots: {
+      'quick-panel': { hidden: selectedPlayMode !== 'quick' },
+      'season-panel': { hidden: selectedPlayMode !== 'season' },
+    },
+  });
 
   if (selectedPlayMode === 'quick') {
     renderRivalPicker();
-    if (startButton) {
-      startButton.textContent = 'Start Game';
-      startButton.disabled = Boolean(sessionInitialized);
-    }
+    populateOverlay(start, {
+      slots: { action: { text: 'Start Game', disabled: Boolean(sessionInitialized) } },
+    });
     return;
   }
 
@@ -574,10 +587,9 @@ function renderStartMode() {
     applyMatchPresentation(match);
     updatePromptContext(`SEASON / GAME ${snapshot.gameNumber || 1} OF 3 / NEXT ${match.opponent.shortName}`);
   }
-  if (startButton) {
-    startButton.textContent = seasonActionLabel(snapshot);
-    startButton.disabled = seasonActionBusy || snapshot.action === 'unavailable';
-  }
+  populateOverlay(start, {
+    slots: { action: { text: seasonActionLabel(snapshot), disabled: seasonActionBusy || snapshot.action === 'unavailable' } },
+  });
 }
 
 function selectPlayMode(mode) {
@@ -2201,7 +2213,7 @@ function renderCallGrid(calls, onPick, { focusFirst = false } = {}) {
     grid.appendChild(btn);
   });
   const firstButton = grid.querySelector('.call-btn:not(:disabled)');
-  if (focusFirst && firstButton && !document.querySelector('.overlay.show')) {
+  if (focusFirst && firstButton && !shownOverlay()) {
     firstButton.focus({ preventScroll: true });
   }
 }
@@ -2245,7 +2257,7 @@ function renderDecisionGrid(actions, onPick, ariaLabel) {
     grid.appendChild(button);
   });
   const firstButton = grid.querySelector('.decision-btn:not([disabled])');
-  if (firstButton && !document.querySelector('.overlay.show')) {
+  if (firstButton && !shownOverlay()) {
     firstButton.focus({ preventScroll: true });
   }
 }
@@ -3893,8 +3905,9 @@ function spawnConfetti(containerId, count) {
 
 const fireworkEpochs = new WeakMap();
 
-function clearConfetti(containerId) {
-  const container = document.getElementById(containerId);
+// Accepts a container element or ID; each container keeps its own epoch.
+function clearConfetti(containerOrId) {
+  const container = typeof containerOrId === 'string' ? document.getElementById(containerOrId) : containerOrId;
   if (container) {
     fireworkEpochs.set(container, (fireworkEpochs.get(container) || 0) + 1);
     container.innerHTML = '';
@@ -3932,7 +3945,7 @@ function spawnFireworks(containerId, side = 'offense') {
 
 function spawnBurst(container, colors, runId) {
   // Bail if the overlay was dismissed before this delayed burst fired.
-  const overlay = container.closest('.overlay');
+  const overlay = container.closest(OVERLAY_SELECTOR);
   if (!overlay || !overlay.classList.contains('show') || fireworkEpochs.get(container) !== runId) return;
   const burst = document.createElement('div');
   burst.className = 'fw-burst';
@@ -4500,7 +4513,66 @@ function advanceTimeLabForTest() {
   return advanceTimeLab(slot.question.questionInstanceId);
 }
 
-const OVERLAY_IDS = ['ov-start', 'ov-time-lab', 'ov-td', 'ov-defense', 'ov-offense', 'ov-quarter', 'ov-halftime', 'ov-end'];
+// Modal membership comes from markup: every `.overlay[data-overlay]` root takes
+// part in activation, hiding, inertness, focus, and Escape. The collection is
+// read fresh on each call so a newly marked modal needs no registration.
+const OVERLAY_SELECTOR = '.overlay[data-overlay]';
+
+function overlayElements() {
+  return Array.from(document.querySelectorAll(OVERLAY_SELECTOR));
+}
+
+function shownOverlay() {
+  return document.querySelector(`${OVERLAY_SELECTOR}.show`);
+}
+
+function overlaySlot(overlay, name) {
+  return overlay ? overlay.querySelector(`[data-slot="${name}"]`) : null;
+}
+
+// Populate declared overlay slots. Text is written with textContent only.
+// This writer is presentation-only: it never reads or changes game state or
+// phase, never shows, hides, or focuses a modal, and never starts effects.
+// `content.slots` maps a slot name to text, or to { text, hidden, disabled,
+// attributes }; `content.root` sets root `dataset`, `classes`, and boolean
+// attribute `flags`. Visibility (`show`) stays with the modal controller.
+function populateOverlay(overlay, content = {}) {
+  if (!overlay) return null;
+  for (const [name, spec] of Object.entries(content.slots || {})) {
+    const slot = overlaySlot(overlay, name);
+    if (!slot) continue;
+    const value = spec !== null && typeof spec === 'object' ? spec : { text: spec };
+    if ('text' in value) slot.textContent = String(value.text);
+    if ('hidden' in value) slot.hidden = Boolean(value.hidden);
+    if ('disabled' in value) slot.disabled = Boolean(value.disabled);
+    for (const [attribute, attributeValue] of Object.entries(value.attributes || {})) {
+      if (attributeValue === null) slot.removeAttribute(attribute);
+      else slot.setAttribute(attribute, String(attributeValue));
+    }
+  }
+  const root = content.root || {};
+  for (const [key, value] of Object.entries(root.dataset || {})) {
+    if (key !== 'overlay') overlay.dataset[key] = String(value);
+  }
+  for (const [name, enabled] of Object.entries(root.classes || {})) {
+    if (name !== 'show') overlay.classList.toggle(name, Boolean(enabled));
+  }
+  for (const [name, enabled] of Object.entries(root.flags || {})) {
+    if (!['inert', 'hidden', 'aria-hidden', 'data-overlay'].includes(name)) overlay.toggleAttribute(name, Boolean(enabled));
+  }
+  return overlay;
+}
+
+// Clone the single decorative field-art source into each break card at its
+// original first-child position.
+function installBreakFieldArt() {
+  const art = document.getElementById('ov-fieldbg-template')?.content.firstElementChild;
+  if (!art) return;
+  for (const card of document.querySelectorAll(`${OVERLAY_SELECTOR}.ov-break > .overlay-card`)) {
+    if (card.firstElementChild?.matches('svg.ov-fieldbg')) continue;
+    card.insertBefore(document.importNode(art, true), card.firstElementChild);
+  }
+}
 
 function setGameUiInert(isInert) {
   const wrap = document.getElementById('wrap');
@@ -4551,7 +4623,7 @@ function focusActiveOverlay(overlay) {
 
 function focusGameplayControl() {
   requestAnimationFrame(() => {
-    if (document.querySelector('.overlay.show')) return;
+    if (shownOverlay()) return;
     const selectors = ['#decision-grid .decision-btn', '#call-grid .call-btn', '#btn-row .ans-btn', '#mute-toggle'];
     let target = null;
     for (const selector of selectors) {
@@ -4564,13 +4636,18 @@ function focusGameplayControl() {
   });
 }
 
+function overlayDecorations(overlays = overlayElements()) {
+  return overlays.flatMap(overlay => Array.from(overlay.querySelectorAll('[data-slot="confetti"]')));
+}
+
+// An unmarked or missing target is rejected before any decoration, visibility,
+// inertness, or focus change. The active overlay keeps its own decorations.
 function activateOverlay(id) {
-  const active = document.getElementById(id);
-  if (!active) return;
-  if (id !== 'ov-td') clearConfetti('ov-td-confetti');
-  if (id !== 'ov-end') clearConfetti('ov-end-confetti');
-  OVERLAY_IDS.forEach((overlayId) => {
-    const overlay = document.getElementById(overlayId);
+  const overlays = overlayElements();
+  const active = overlays.find(overlay => overlay.id === id);
+  if (!active) return false;
+  overlayDecorations(overlays.filter(overlay => overlay !== active)).forEach(clearConfetti);
+  overlays.forEach((overlay) => {
     const isActive = overlay === active;
     overlay.classList.toggle('show', isActive);
     overlay.setAttribute('aria-hidden', String(!isActive));
@@ -4578,18 +4655,18 @@ function activateOverlay(id) {
   });
   setGameUiInert(true);
   focusActiveOverlay(active);
+  return true;
 }
 
 function hideOverlays() {
-  OVERLAY_IDS.forEach((id) => {
-    const overlay = document.getElementById(id);
+  const overlays = overlayElements();
+  overlays.forEach((overlay) => {
     overlay.classList.remove('show');
     overlay.setAttribute('aria-hidden', 'true');
     overlay.inert = true;
   });
   setGameUiInert(false);
-  clearConfetti('ov-td-confetti');
-  clearConfetti('ov-end-confetti');
+  overlayDecorations(overlays).forEach(clearConfetti);
   focusGameplayControl();
 }
 
@@ -4599,7 +4676,7 @@ document.addEventListener('keydown', function(event) {
     collapseWorkedReview();
     return;
   }
-  const overlay = document.querySelector('.overlay.show');
+  const overlay = shownOverlay();
   if (!overlay) return;
   if (event.key === 'Escape') {
     event.preventDefault();
@@ -4721,19 +4798,20 @@ async function startGame() {
 }
 
 function showTD(side = 'offense') {
-  const button = document.getElementById('ov-td-btn');
-  const overlay = document.getElementById('ov-td');
-  const badge = document.getElementById('ov-td-badge');
-  const title = document.getElementById('ov-td-title');
   Object.assign(state, blankPlayState(), { phase: 'touchdown', touchdownSide: side });
   syncUiState();
-  if (overlay) overlay.dataset.side = side;
-  if (badge) badge.textContent = side === 'defense' ? `${state.match.opponent.shortName} TD` : 'TOUCHDOWN';
-  if (title) title.textContent = side === 'defense' ? `${state.match.opponent.shortName} Scores` : 'Touchdown!';
-  document.getElementById('ov-td-sub').textContent = side === 'defense'
-    ? `Score: ${state.playerScore} - ${state.opponentScore}. ${state.match.opponent.shortName} has ${state.opponentTds} TD${state.opponentTds === 1 ? '' : 's'} — get it back!`
-    : `Score: ${state.playerScore} - ${state.opponentScore}. ${state.tds} player TD${state.tds === 1 ? '' : 's'}!`;
-  if (button) button.textContent = touchdownContinueLabel(side);
+  const opponent = state.match.opponent.shortName;
+  populateOverlay(document.getElementById('ov-td'), {
+    root: { dataset: { side } },
+    slots: {
+      badge: side === 'defense' ? `${opponent} TD` : 'TOUCHDOWN',
+      title: side === 'defense' ? `${opponent} Scores` : 'Touchdown!',
+      sub: side === 'defense'
+        ? `Score: ${state.playerScore} - ${state.opponentScore}. ${opponent} has ${state.opponentTds} TD${state.opponentTds === 1 ? '' : 's'} — get it back!`
+        : `Score: ${state.playerScore} - ${state.opponentScore}. ${state.tds} player TD${state.tds === 1 ? '' : 's'}!`,
+      action: touchdownContinueLabel(side),
+    },
+  });
   activateOverlay('ov-td');
   clearConfetti('ov-td-confetti');
   if (side !== 'defense') {
@@ -4868,9 +4946,12 @@ function showDefenseTransition(message, intent = null) {
   Object.assign(state, blankPlayState(), retainedCommittedSpecialResultState());
   applyTransitionPatch(presentation.patch);
   syncUiState();
-  document.getElementById('ov-defense-title').textContent = `${state.match.opponent.shortName}'s Ball`;
-  document.getElementById('ov-defense-sub').textContent =
-    `${message} Score: ${state.playerScore} - ${state.opponentScore}`;
+  populateOverlay(document.getElementById('ov-defense'), {
+    slots: {
+      title: `${state.match.opponent.shortName}'s Ball`,
+      sub: `${message} Score: ${state.playerScore} - ${state.opponentScore}`,
+    },
+  });
   activateOverlay('ov-defense');
 }
 
@@ -4888,8 +4969,9 @@ function showOffenseTransition(message, intent = null) {
   Object.assign(state, blankPlayState(), retainedCommittedSpecialResultState());
   applyTransitionPatch(presentation.patch);
   syncUiState();
-  document.getElementById('ov-offense-sub').textContent =
-    `${message} Score: ${state.playerScore} - ${state.opponentScore}`;
+  populateOverlay(document.getElementById('ov-offense'), {
+    slots: { sub: `${message} Score: ${state.playerScore} - ${state.opponentScore}` },
+  });
   activateOverlay('ov-offense');
 }
 
@@ -4916,18 +4998,16 @@ function finishPossession(message) {
   routePossessionPresentation(message);
 }
 
-// Fill a break overlay's broadcast scorebug (decorative; sub text keeps the
-// full score/next-possession sentence for screen readers).
-function setBreakScorebug(overlayId, nextLabel) {
-  const bug = document.getElementById(overlayId + '-scorebug');
-  if (!bug) return;
-  bug.innerHTML =
-    `<span class="ov-sb-team">${state.match.player.shortName}</span>` +
-    `<span class="ov-sb-pts">${state.playerScore}</span>` +
-    `<span class="ov-sb-dash">–</span>` +
-    `<span class="ov-sb-pts">${state.opponentScore}</span>` +
-    `<span class="ov-sb-team">${state.match.opponent.shortName}</span>` +
-    `<span class="ov-sb-next">Next: ${nextLabel}</span>`;
+// Text for a break overlay's persistent broadcast scorebug spans (decorative;
+// the sub text keeps the full score/next-possession sentence for screen readers).
+function breakScorebugSlots(nextLabel) {
+  return {
+    'scorebug-player': state.match.player.shortName,
+    'scorebug-player-score': state.playerScore,
+    'scorebug-opponent-score': state.opponentScore,
+    'scorebug-opponent': state.match.opponent.shortName,
+    'scorebug-next': `Next: ${nextLabel}`,
+  };
 }
 
 function showQuarterEnd(message, intent = null) {
@@ -4936,10 +5016,13 @@ function showQuarterEnd(message, intent = null) {
   Object.assign(state, blankPlayState(), retainedCommittedSpecialResultState());
   applyTransitionPatch(presentation.patch);
   syncUiState();
-  document.getElementById('ov-quarter-title').textContent = `End of ${QUARTER_NAMES[state.quarter]} Quarter`;
-  document.getElementById('ov-quarter-sub').textContent =
-    `${message} Next possession after the break: ${next}. Score: ${state.playerScore} - ${state.opponentScore}`;
-  setBreakScorebug('ov-quarter', next);
+  populateOverlay(document.getElementById('ov-quarter'), {
+    slots: {
+      title: `End of ${QUARTER_NAMES[state.quarter]} Quarter`,
+      sub: `${message} Next possession after the break: ${next}. Score: ${state.playerScore} - ${state.opponentScore}`,
+      ...breakScorebugSlots(next),
+    },
+  });
   activateOverlay('ov-quarter');
 }
 
@@ -4949,9 +5032,12 @@ function showHalftime(message, intent = null) {
   Object.assign(state, blankPlayState(), retainedCommittedSpecialResultState());
   applyTransitionPatch(presentation.patch);
   syncUiState();
-  document.getElementById('ov-halftime-sub').textContent =
-    `${message} Halftime swap: ${next} starts the 2nd half. Score: ${state.playerScore} - ${state.opponentScore}`;
-  setBreakScorebug('ov-halftime', next);
+  populateOverlay(document.getElementById('ov-halftime'), {
+    slots: {
+      sub: `${message} Halftime swap: ${next} starts the 2nd half. Score: ${state.playerScore} - ${state.opponentScore}`,
+      ...breakScorebugSlots(next),
+    },
+  });
   activateOverlay('ov-halftime');
 }
 
@@ -4965,7 +5051,7 @@ function nextQuarter(expectedSource = null) {
 }
 
 function populateEndStats() {
-  const stats = document.getElementById('ov-end-stats');
+  const stats = overlaySlot(document.getElementById('ov-end'), 'stats');
   if (!stats) return;
   const total = state.gradedQuestions || 0;
   const correct = state.correctAnswers || 0;
@@ -5079,53 +5165,57 @@ function buildCoachReport() {
   return rows.slice(0, 2);
 }
 
+// Refreshes Final Season content in place. Async Season updates call this while
+// the Final may already be open; it never reopens or refocuses the modal.
 function renderEndSeason() {
-  const container = document.getElementById('ov-end-season');
-  const primary = document.getElementById('ov-end-btn');
-  const quick = document.getElementById('ov-end-quick-btn');
   const overlay = document.getElementById('ov-end');
-  if (!container || !primary || !quick) return;
+  if (!overlaySlot(overlay, 'season') || !overlaySlot(overlay, 'action') || !overlaySlot(overlay, 'secondary-action')) return;
   if (!activeSeasonBinding) {
-    if (overlay) overlay.classList.remove('season-save-pending');
-    container.hidden = true;
-    container.textContent = '';
-    primary.textContent = 'Play Again!';
-    primary.disabled = false;
-    quick.hidden = true;
-    quick.disabled = false;
+    populateOverlay(overlay, {
+      root: { classes: { 'season-save-pending': false } },
+      slots: {
+        season: { hidden: true, text: '' },
+        action: { text: 'Play Again!', disabled: false },
+        'secondary-action': { hidden: true, disabled: false },
+      },
+    });
     return;
   }
 
   const snapshot = FOOTBALL_SEASON.snapshot();
   const pendingResult = snapshot.saveState === 'pending' && FOOTBALL_SEASON.pendingKind() === 'result';
-  if (overlay) overlay.classList.toggle('season-save-pending', pendingResult);
-  container.hidden = false;
-  quick.hidden = true;
-  primary.disabled = seasonEndActionBusy;
-  quick.disabled = seasonEndActionBusy;
+  let seasonText;
   if (pendingResult) {
-    container.textContent = `Season game ${activeSeasonBinding.gameNumber} is final. ${seasonStatusText(snapshot)}`;
-    primary.textContent = seasonEndActionBusy ? 'Saving…' : 'Retry Saving';
-    quick.hidden = false;
-    return;
-  }
-  const exactSavedResult = FOOTBALL_SEASON.hasExactSavedResult(activeSeasonBinding, {
-    playerScore: state.playerScore,
-    opponentScore: state.opponentScore,
-  });
-  if (snapshot.saveState === 'conflict') {
-    container.textContent = `${seasonStatusText(snapshot)} ${seasonRecordText(snapshot.record)}.`;
-  } else if (!exactSavedResult) {
-    container.textContent = 'This game’s Season result could not be confirmed. This device’s saved Season is unchanged by this game.';
-  } else if (snapshot.complete) {
-    container.textContent = `Season complete: ${seasonRecordText(snapshot.record)}.`;
+    seasonText = `Season game ${activeSeasonBinding.gameNumber} is final. ${seasonStatusText(snapshot)}`;
   } else {
-    const nextRival = snapshot.nextRivalId
-      ? FOOTBALL_OPPONENT.resolveRival(snapshot.nextRivalId).displayName
-      : 'the next rival';
-    container.textContent = `Game ${activeSeasonBinding.gameNumber} saved. ${seasonRecordText(snapshot.record)}. Next: ${nextRival}.`;
+    const exactSavedResult = FOOTBALL_SEASON.hasExactSavedResult(activeSeasonBinding, {
+      playerScore: state.playerScore,
+      opponentScore: state.opponentScore,
+    });
+    if (snapshot.saveState === 'conflict') {
+      seasonText = `${seasonStatusText(snapshot)} ${seasonRecordText(snapshot.record)}.`;
+    } else if (!exactSavedResult) {
+      seasonText = 'This game’s Season result could not be confirmed. This device’s saved Season is unchanged by this game.';
+    } else if (snapshot.complete) {
+      seasonText = `Season complete: ${seasonRecordText(snapshot.record)}.`;
+    } else {
+      const nextRival = snapshot.nextRivalId
+        ? FOOTBALL_OPPONENT.resolveRival(snapshot.nextRivalId).displayName
+        : 'the next rival';
+      seasonText = `Game ${activeSeasonBinding.gameNumber} saved. ${seasonRecordText(snapshot.record)}. Next: ${nextRival}.`;
+    }
   }
-  primary.textContent = 'Continue Season';
+  populateOverlay(overlay, {
+    root: { classes: { 'season-save-pending': pendingResult } },
+    slots: {
+      season: { hidden: false, text: seasonText },
+      action: {
+        text: !pendingResult ? 'Continue Season' : seasonEndActionBusy ? 'Saving…' : 'Retry Saving',
+        disabled: seasonEndActionBusy,
+      },
+      'secondary-action': { hidden: !pendingResult, disabled: seasonEndActionBusy },
+    },
+  });
 }
 
 async function handleEndPrimaryAction() {
@@ -5161,27 +5251,24 @@ function showGameOver(intent = null) {
   Object.assign(state, blankPlayState(), retainedCommittedSpecialResultState());
   applyTransitionPatch(presentation.patch);
   syncUiState();
-  const endOv = document.getElementById('ov-end');
   const finalSpecialMessage = state.specialResultPresentation?.message || '';
-  endOv.classList.remove('ov-win', 'ov-loss', 'ov-tie');
-  endOv.classList.add(resultClass);
-  endOv.toggleAttribute('data-special-result', Boolean(finalSpecialMessage));
-  const badge = document.getElementById('ov-end-badge');
-  if (badge) badge.textContent = badgeText;
-  document.getElementById('ov-end-title').textContent = title;
-  const finalScore = document.getElementById('ov-end-score');
-  if (finalScore) finalScore.textContent = `${state.playerScore} - ${state.opponentScore}`;
-  if (finalScore) finalScore.setAttribute(
-    'aria-label',
-    `${state.match.player.displayName} ${state.playerScore}, ${state.match.opponent.displayName} ${state.opponentScore}`,
-  );
-  const finalSpecialResult = document.getElementById('ov-end-result');
-  if (finalSpecialResult) {
-    finalSpecialResult.textContent = finalSpecialMessage;
-    finalSpecialResult.hidden = !finalSpecialMessage;
-  }
-  document.getElementById('ov-end-sub').textContent =
-    `${detail} ${state.match.player.displayName} vs ${state.match.opponent.displayName}. Player TDs: ${state.tds}.`;
+  const { player, opponent } = state.match;
+  populateOverlay(document.getElementById('ov-end'), {
+    root: {
+      classes: { 'ov-win': resultClass === 'ov-win', 'ov-loss': resultClass === 'ov-loss', 'ov-tie': resultClass === 'ov-tie' },
+      flags: { 'data-special-result': Boolean(finalSpecialMessage) },
+    },
+    slots: {
+      badge: badgeText,
+      title,
+      score: {
+        text: `${state.playerScore} - ${state.opponentScore}`,
+        attributes: { 'aria-label': `${player.displayName} ${state.playerScore}, ${opponent.displayName} ${state.opponentScore}` },
+      },
+      result: { text: finalSpecialMessage, hidden: !finalSpecialMessage },
+      sub: `${detail} ${player.displayName} vs ${opponent.displayName}. Player TDs: ${state.tds}.`,
+    },
+  });
   populateEndStats();
   renderEndSeason();
   clearConfetti('ov-end-confetti');
@@ -5195,8 +5282,7 @@ function showGameOver(intent = null) {
 function restart(preferredMode = null) {
   const rematchRivalId = state.match.opponent.id;
   const returningFromSeason = Boolean(activeSeasonBinding);
-  clearConfetti('ov-td-confetti');
-  clearConfetti('ov-end-confetti');
+  overlayDecorations().forEach(clearConfetti);
   resetPlayerAnimations();
   clearGameSessionInitialization();
   pendingStatsPlay = null;
@@ -5631,6 +5717,7 @@ window.__footballTest = {
 };
 
 // -- Init ---------------------------------------------------------------------
+installBreakFieldArt();
 buildField();
 state = createGameState();
 updateField(false);

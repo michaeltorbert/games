@@ -2989,6 +2989,50 @@ body::after {
   text-transform: uppercase;
 }
 
+/* Ordinary Final fit at the primary iPad 11 landscape height (761–820px).
+   Vertical spacing only: copy, type, colors, decoration and order are kept.
+   Special results keep their own compact rules, and the later Season-save
+   rules still win where they set the same spacing. */
+@media (min-width: 700px) and (min-height: 761px) and (max-height: 820px) {
+  #ov-end:not([data-special-result]) {
+    padding-top: 16px;
+    padding-bottom: 16px;
+  }
+
+  #ov-end:not([data-special-result]) .overlay-card {
+    padding-top: 28px;
+    padding-bottom: 24px;
+  }
+
+  #ov-end:not([data-special-result]) .ov-title { margin-top: 12px; }
+  #ov-end:not([data-special-result]) .ov-final-score { margin-top: 2px; }
+  #ov-end:not([data-special-result]) .ov-sub { margin-top: 8px; }
+
+  #ov-end:not([data-special-result]) .ov-end-season {
+    margin-top: 8px;
+    padding-top: 6px;
+    padding-bottom: 6px;
+  }
+
+  #ov-end:not([data-special-result]) .ov-stats {
+    gap: 8px;
+    margin-top: 12px;
+  }
+
+  #ov-end:not([data-special-result]) .ov-stat {
+    gap: 4px;
+    padding-top: 10px;
+    padding-bottom: 9px;
+  }
+
+  #ov-end:not([data-special-result]) .ov-coach-row {
+    padding-top: 6px;
+    padding-bottom: 6px;
+  }
+
+  #ov-end:not([data-special-result]) .ov-end-actions .ov-btn { margin-top: 14px; }
+}
+
 @media (max-height: 760px) and (min-width: 700px) {
   #ov-start .overlay-card {
     min-height: 0;
