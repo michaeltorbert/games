@@ -11,6 +11,17 @@ import { test, expect } from './curriculum-fixture.mjs';
  */
 
 const EPSILON = 1;
+const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+
+// Pixel size from a PNG's leading IHDR chunk; fails on anything else.
+function pngSize(buffer) {
+  if (!Buffer.isBuffer(buffer) || buffer.length < 24
+    || PNG_SIGNATURE.some((byte, index) => buffer[index] !== byte)
+    || buffer.toString('ascii', 12, 16) !== 'IHDR') {
+    throw new Error('Screenshot is not a PNG with a leading IHDR chunk');
+  }
+  return { width: buffer.readUInt32BE(16), height: buffer.readUInt32BE(20) };
+}
 
 function attachErrorListeners(page) {
   const pageErrors = [];
@@ -623,6 +634,7 @@ test.describe('football player sprite', () => {
               leftTransitionRunning: player.getAnimations().some(animation => animation.transitionProperty === 'left'
                 && animation.playState === 'running'),
               ballLeft: parseFloat(document.getElementById('ball').style.left),
+              devicePixelRatio: window.devicePixelRatio,
             });
           };
           // Registered after the production handler, so the first sample is the corrected state.
@@ -643,9 +655,12 @@ test.describe('football player sprite', () => {
         });
         await page.setViewportSize(size);
         // The early capture waits for the first resize callback, so it shows the corrected frame.
+        // It is exported at CSS-pixel scale (one PNG pixel per CSS pixel) to shorten the
+        // capture that overlaps the sampling window. Only the exported image is downscaled;
+        // the page keeps its device pixel ratio, which every frame sample records.
         await page.waitForFunction(() => window.__rotationSamples.length > 0, null, { timeout: 5000 });
         const earlyShotStart = Date.now();
-        await page.screenshot({ path: testInfo.outputPath(`${label}-early.png`) });
+        const earlyShot = await page.screenshot({ path: testInfo.outputPath(`${label}-early-css-px.png`), scale: 'css' });
         const earlyShotEnd = Date.now();
         await page.waitForFunction(() => window.__rotationDone === true, null, { timeout: 5000 });
         const realized = await page.evaluate(() => ({
@@ -653,15 +668,37 @@ test.describe('football player sprite', () => {
           innerHeight: window.innerHeight,
           clientWidth: document.documentElement.clientWidth,
           scrollWidth: document.documentElement.scrollWidth,
+          devicePixelRatio: window.devicePixelRatio,
         }));
-        expect(realized.innerWidth, `${label}: realized viewport width`).toBe(size.width);
-        expect(realized.innerHeight, `${label}: realized viewport height`).toBe(size.height);
-        expect(realized.scrollWidth, `${label}: no horizontal overflow`).toBeLessThanOrEqual(realized.clientWidth + EPSILON);
         const samples = await page.evaluate(() => window.__rotationSamples);
         // Frame times and the early screenshot's approximate span, both relative to the resize,
         // so a short count shows where frames were missing. Wall clocks: approximate only.
         const startEpoch = await page.evaluate(() => window.__rotationStartEpoch);
         const timeline = `frames at ${samples.map(s => s.elapsed.toFixed(0)).join(', ')} ms; early screenshot ~${Math.round(earlyShotStart - startEpoch)}..${Math.round(earlyShotEnd - startEpoch)} ms`;
+        const earlyShotSize = pngSize(earlyShot);
+        const expectedDevicePixelRatio = testInfo.project.use.deviceScaleFactor;
+        await testInfo.attach(`${label}-rotation-diagnostics.json`, {
+          contentType: 'application/json',
+          body: JSON.stringify({
+            label,
+            requestedViewport: size,
+            earlyExport: { scale: 'css', units: 'CSS pixels', png: earlyShotSize },
+            settledExport: { scale: 'device' },
+            expectedDevicePixelRatio,
+            realized,
+            earlyShotWindowMs: [Math.round(earlyShotStart - startEpoch), Math.round(earlyShotEnd - startEpoch)],
+            timeline,
+            samples,
+          }, null, 2),
+        });
+        expect(earlyShotSize, `${label}: early CSS-pixel export matches the viewport`).toEqual(size);
+        expect(expectedDevicePixelRatio, `${label}: project device scale factor`).toEqual(expect.any(Number));
+        expect(realized.devicePixelRatio, `${label}: runtime device pixel ratio after sampling`).toBe(expectedDevicePixelRatio);
+        expect(samples.map(s => s.devicePixelRatio), `${label}: runtime device pixel ratio through the capture (${timeline})`)
+          .toEqual(samples.map(() => expectedDevicePixelRatio));
+        expect(realized.innerWidth, `${label}: realized viewport width`).toBe(size.width);
+        expect(realized.innerHeight, `${label}: realized viewport height`).toBe(size.height);
+        expect(realized.scrollWidth, `${label}: no horizontal overflow`).toBeLessThanOrEqual(realized.clientWidth + EPSILON);
         expect(samples.length, `${label}: sampled several frames (${timeline})`).toBeGreaterThan(5);
         expect(samples[0].elapsed).toBe(0);
         expect(samples.at(-1).elapsed, `${label}: sampled through 900ms (${timeline})`).toBeGreaterThanOrEqual(900);
