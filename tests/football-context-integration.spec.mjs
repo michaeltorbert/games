@@ -7,6 +7,13 @@ function primaryOnly(testInfo) {
   );
 }
 
+// Apply the same primary-only exclusion before any test-scoped context or page
+// fixture exists. A fixture-free beforeAll skip marks this file's tests skipped
+// for non-primary projects without creating, or later closing, a browser context.
+test.beforeAll(({}, testInfo) => {
+  primaryOnly(testInfo);
+});
+
 const OFFENSE_SEED = Object.freeze({
   possession: 'offense',
   direction: 1,
