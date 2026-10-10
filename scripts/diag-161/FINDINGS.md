@@ -1,3 +1,24 @@
+> **Adoption and history note (added later; the report below is unchanged).**
+> The whole-file fresh-CLI approach that `gate.mjs` verified is now the normal
+> release process. `npm run test:football:release` runs
+> `scripts/run-football-release.mjs`, Chromium by default and WebKit with
+> `-- --engine=webkit`. It keeps only the release essentials of the gate: one
+> fresh Playwright CLI per browser file on all six projects, preparation and
+> strict verification once, and the exact case-union and existing-skip-reason
+> validator. Verification of that runner is recorded outside this file.
+>
+> The diagnostic machinery this report cites (`README.md`, `check-run.mjs`,
+> `diag.config.mjs`, `differential/`, `gate.mjs`, `lib.mjs`, `preflight.mjs`,
+> `run-arm.mjs`, `selfcheck/`, `serve-logged.mjs`, `stall-reporter.mjs`) is no
+> longer in the working tree. It remains in commit
+> `a60b7016ca6b7d34c9bb5ecf1b0eb7f96c4f8c94`; run the **Reproduce** commands from
+> that commit. Raw evidence stays in the git-ignored
+> `tests/artifacts.nosync/issue-161/` and `output/issue-161/`.
+>
+> The adoption changes test orchestration only. It fixes neither stall, the
+> navigation and teardown causes stay open under #161, and a single release file
+> could still cross the browser-lifetime bound.
+
 # Issue #161 findings: WebKit navigation and context-teardown stalls
 
 **Status.** This is the author's bounded intermediate report on the investigation, corrected after Sol final review v1. It is not an approval; the author is not an approver. It claims no root cause, no fix and no overall completion:

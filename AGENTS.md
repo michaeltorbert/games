@@ -165,6 +165,21 @@ npm run test:football:release
 Use `test:football` for the focused layout suite and
 `test:football:release` for the complete football release matrix.
 
+`test:football:release` runs `scripts/run-football-release.mjs`. It defaults to
+Chromium; run the WebKit companion with
+`npm run test:football:release -- --engine=webkit`. No other arguments are
+accepted, and it refuses to start while `ISSUE49_CAPTURE_STAGE` is set or port
+8090 is in use. It enumerates the release browser cases, prepares release
+artifacts once, runs the domain checks once, then runs each release browser file
+in its own fresh Playwright CLI and browser on all six projects with the base
+retries, workers and deadlines. It then checks the exact case union against the
+enumeration (every skip must carry a reason already in its spec) and runs the
+strict screenshot verifier once. Each run writes a new directory under
+`tests/artifacts.nosync/football-release/` holding `status.json`, per-step logs
+and per-file reports. It stops at the first failure and never retries or removes
+an earlier run. Per-file browsers work around the unresolved long-lived WebKit
+browser stall in issue #161; they do not fix it.
+
 The registry gate resolves `REGISTRY_RELEASE_BASE` once to an exact commit
 (default `origin/main`) and permits baseline changes only for
 `REGISTRY_RELEASE_TARGET` (default `football`), while allowing genuinely new
