@@ -141,7 +141,13 @@ A low-load navigation run was not performed.
 
 **Retained boundary and ownership.**
 - **What is exact.** In historical workers2, exactly one of 166 `Playwright.deleteContext` sends (id 25085, context `…4D`) has no exact-form reply. The timed-out test's own Playwright error names browser pid 60127.
-- **Counter evidence.** Context ids for ordinals 1–72 were created twice (once per browser) and ordinals 73–76 once. Under the verified per-browser counter, the stalled context was the **76th context of the browser that created it**. The other browser stopped at 72.
+- **Counter evidence.** The whole workers2 capture holds 166 `createContext` replies across three browsers.
+  - **Initial pair.** Before the third browser launched at 07:06:23.817Z there were 148 replies, all from the initial pair (pids 60126 and 60127). In that interval, ordinals 1–72 were each created twice (once per browser) and ordinals 73–76 once.
+  - **Third browser.** After that launch, the third browser (pid 60588) created 18 contexts, repeating ordinals 1–18. Over the whole capture, ordinals 1–18 therefore appear three times, 19–72 twice and 73–76 once.
+  - **Timing.** The stalled `deleteContext` (07:06:22.462Z) precedes the third launch, so only the initial pair bears on it.
+  - **Ordinal.** Under the verified per-browser counter, the stalled context was the **76th context of the initial-pair browser that created it**, and the other initial browser stopped at 72.
+  - **Owner remains inferred.** That this browser was pid 60127 is still inferred, not exact.
+  - **Field name.** The extraction field `createdTwice` lists ordinals created at least twice: a legacy name, not an exact count.
 - **What is inferred.** That the owner is pid 60127 is inferred from the error-named pid, the counter and a 2 ms time join. It is **not** exact protocol pairing. The shared historical log cannot be made exact, and a fresh run cannot repair it.
 
 **Fresh exact ownership.** One protocol sink per Playwright Test worker process installs the logger at runtime. Every protocol line falls inside exactly one launched-to-exited browser segment. This removed ownership ambiguity for every fresh capture: 9 browsers in total, including two pairs of overlapping native workers.
