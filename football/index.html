@@ -4,14 +4,14 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <title>Football Math!</title>
-<link rel="apple-touch-icon" href="apple-touch-icon.png?v=1.34.3">
-<link rel="icon" type="image/png" href="apple-touch-icon.png?v=1.34.3">
+<link rel="apple-touch-icon" href="apple-touch-icon.png?v=1.34.4">
+<link rel="icon" type="image/png" href="apple-touch-icon.png?v=1.34.4">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow+Condensed:wght@600;700;800&display=swap">
-<link rel="stylesheet" href="../shared/fonts.css?v=1.34.3">
-<link rel="stylesheet" href="../shared/reset.css?v=1.34.3">
-<link rel="stylesheet" href="football.css?v=1.34.3">
+<link rel="stylesheet" href="../shared/fonts.css?v=1.34.4">
+<link rel="stylesheet" href="../shared/reset.css?v=1.34.4">
+<link rel="stylesheet" href="football.css?v=1.34.4">
 </head>
 <body>
 <div id="broadcast-shell">
@@ -152,6 +152,11 @@
     <div id="version-display"></div>
   </div>
 </div>
+
+<!-- Play-call tile: cloned once per call by renderCallGrid(). Kept on one line
+     so the button has no whitespace text nodes, and outside #call-grid so the
+     grid's :nth-child layout rules see only tiles. -->
+<template id="tpl-call-btn"><button class="call-btn"><span class="call-meta"><span data-slot="mode"></span><span class="call-risk" data-slot="risk"></span></span><span class="call-diagram" aria-hidden="true" data-slot="diagram"></span><span class="call-label" data-slot="label"></span><span class="call-desc" data-slot="desc"></span></button></template>
 
 <div class="overlay show" id="ov-start" data-overlay="start" role="dialog" aria-modal="true" aria-labelledby="ov-start-title" aria-describedby="ov-start-sub" aria-hidden="false">
   <div class="overlay-card">
@@ -360,21 +365,21 @@
   </div>
 </div>
 
-<link rel="stylesheet" href="../shared/curriculum.css?v=1.34.3">
-<script src="../shared/curriculum.js?v=1.34.3"></script>
-<script src="../shared/curriculum-ui.js?v=1.34.3"></script>
-<script src="copy.js?v=1.34.3"></script>
-<script src="learning.js?v=1.34.3"></script>
-<script src="stats.js?v=1.34.3"></script>
-<script src="opponent.js?v=1.34.3"></script>
-<script src="season.js?v=1.34.3"></script>
-<script src="football-domain.js?v=1.34.3"></script>
-<script src="contextual-questions.js?v=1.34.3"></script>
-<script src="time-lab.js?v=1.34.3"></script>
-<script src="football.js?v=1.34.3"></script>
+<link rel="stylesheet" href="../shared/curriculum.css?v=1.34.4">
+<script src="../shared/curriculum.js?v=1.34.4"></script>
+<script src="../shared/curriculum-ui.js?v=1.34.4"></script>
+<script src="copy.js?v=1.34.4"></script>
+<script src="learning.js?v=1.34.4"></script>
+<script src="stats.js?v=1.34.4"></script>
+<script src="opponent.js?v=1.34.4"></script>
+<script src="season.js?v=1.34.4"></script>
+<script src="football-domain.js?v=1.34.4"></script>
+<script src="contextual-questions.js?v=1.34.4"></script>
+<script src="time-lab.js?v=1.34.4"></script>
+<script src="football.js?v=1.34.4"></script>
 <script>
   document.getElementById('version-display').textContent = `v${GAME_VERSION}`;
 </script>
-<script src="../shared/updater.js?v=1.34.3"></script>
+<script src="../shared/updater.js?v=1.34.4"></script>
 </body>
 </html>

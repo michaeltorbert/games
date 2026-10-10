@@ -1062,3 +1062,325 @@ test.describe('football committed play during a viewport swap (#155)', () => {
     expect(consoleErrors, 'console errors').toEqual([]);
   });
 });
+
+// Issue #48: call tiles are cloned from <template id="tpl-call-btn">. These
+// cases read the rendered tiles, so a missing template, a misbound slot, or
+// call text parsed as markup fails here. The descriptor, tap and Space cases
+// also hold on the pre-template base; the template cases do not.
+const CALL_TILES_48 = {
+  offense: {
+    mode: 'Play call',
+    tiles: [
+      { key: 'shortRun', risk: 'easy', riskText: 'EASY', label: 'Short Run', desc: 'Steady · 2-4 yds', diagram: 'shortRun' },
+      { key: 'shortPass', risk: 'easy', riskText: 'EASY', label: 'Short Pass', desc: 'Quick · 4-7 yds', diagram: 'shortPass' },
+      { key: 'longRun', risk: 'medium', riskText: 'MEDIUM', label: 'Long Run', desc: 'Bold · 6-12 yds', diagram: 'longRun' },
+      { key: 'mediumPass', risk: 'hard', riskText: 'HARD', label: 'Medium Pass', desc: 'Big play · 8-16 yds', diagram: 'mediumPass' },
+      { key: 'longPass', risk: 'very-hard', riskText: 'VERY HARD', label: 'Long Pass', desc: 'Deep shot · 12-25 yds', diagram: 'longPass' },
+    ],
+  },
+  defense: {
+    mode: 'Coverage',
+    tiles: [
+      { key: 'run', risk: 'easy', riskText: 'EASY', label: 'Run Defense', desc: 'Closes run lanes', diagram: 'run' },
+      { key: 'shortPass', risk: 'easy', riskText: 'EASY', label: 'Short Pass D', desc: 'Covers quick throws', diagram: 'defense-shortPass' },
+      { key: 'mediumPass', risk: 'medium', riskText: 'MEDIUM', label: 'Medium Pass D', desc: 'Protects the middle', diagram: 'defense-mediumPass' },
+      { key: 'deepPass', risk: 'hard', riskText: 'HARD', label: 'Deep Pass D', desc: 'Protects the deep ball', diagram: 'deepPass' },
+    ],
+  },
+};
+const CALL_SLOTS_48 = ['mode', 'risk', 'diagram', 'label', 'desc'];
+
+async function showCallGrid48(page, possession) {
+  await page.evaluate((side) => {
+    window.__footballTest.setQuestionFault(null);
+    window.__footballTest.setRootSeed(0x480048);
+    window.__footballTest.resetLearning();
+    window.__footballTest.seedDriveState({ possession: side, quarter: 1, down: 1, yardsToGo: 10 });
+  }, possession);
+  await expect(page.locator('#ui-desk')).toHaveAttribute('data-phase', 'call');
+  await expect(page.locator('#call-grid')).toHaveAttribute('data-possession', possession);
+}
+
+// The diagram slot must hold exactly the trusted PLAY_DIAGRAMS markup for the
+// tile's own key (defense shortPass/mediumPass use their defense variants).
+function readCallTiles48(page, diagramKeys) {
+  return page.evaluate((diagramKeys) => {
+    const grid = document.getElementById('call-grid');
+    const tiles = Array.from(grid.children);
+    const textNodes = (element) => Array.from(element.childNodes).filter(node => node.nodeType !== Node.ELEMENT_NODE).length;
+    return {
+      count: grid.dataset.count,
+      tiles: tiles.map((tile, index) => {
+        const meta = tile.querySelector('.call-meta');
+        const diagram = tile.querySelector('.call-diagram');
+        const reference = document.createElement('span');
+        reference.innerHTML = PLAY_DIAGRAMS[diagramKeys[index]] || '';
+        return {
+          tag: tile.tagName,
+          className: tile.className,
+          risk: tile.dataset.risk,
+          parts: Array.from(tile.children).map(child => child.className),
+          metaParts: Array.from(meta.children).map(child => child.className),
+          strayNodes: textNodes(tile) + textNodes(meta),
+          mode: meta.firstElementChild.textContent,
+          riskText: tile.querySelector('.call-risk').textContent,
+          label: tile.querySelector('.call-label').textContent,
+          desc: tile.querySelector('.call-desc').textContent,
+          text: tile.textContent,
+          diagramHidden: diagram.getAttribute('aria-hidden'),
+          diagramSvgs: diagram.querySelectorAll(':scope > svg').length,
+          diagramMatches: reference.innerHTML !== '' && diagram.innerHTML === reference.innerHTML,
+        };
+      }),
+    };
+  }, diagramKeys);
+}
+
+async function expectCallTiles48(page, possession) {
+  const { mode, tiles } = CALL_TILES_48[possession];
+  const snapshot = await readCallTiles48(page, tiles.map(tile => tile.diagram));
+  expect(snapshot.count, `${possession}: grid count`).toBe(String(tiles.length));
+  expect(snapshot.tiles.map(tile => tile.label), `${possession}: tile order`).toEqual(tiles.map(tile => tile.label));
+  snapshot.tiles.forEach((tile, index) => {
+    const want = tiles[index];
+    expect(tile, `${possession} ${want.key}`).toEqual({
+      tag: 'BUTTON',
+      className: 'call-btn',
+      risk: want.risk,
+      parts: ['call-meta', 'call-diagram', 'call-label', 'call-desc'],
+      metaParts: ['', 'call-risk'],
+      strayNodes: 0,
+      mode,
+      riskText: want.riskText,
+      label: want.label,
+      desc: want.desc,
+      text: `${mode}${want.riskText}${want.label}${want.desc}`,
+      diagramHidden: 'true',
+      diagramSvgs: 1,
+      diagramMatches: true,
+    });
+  });
+}
+
+function clearStats48(page) {
+  return page.addInitScript(() => {
+    try { window.localStorage.removeItem('footballMathStats:v1'); } catch (error) {}
+  });
+}
+
+function selectedCalls48(page) {
+  return page.evaluate(() => window.__footballTest.activeContracts().activeSnap?.context.calls ?? null);
+}
+
+test.describe('football call tiles from the #48 template', () => {
+  test('offense and defense tiles keep their order, copy, risk and diagrams', async ({ page }) => {
+    const { pageErrors, consoleErrors } = attachErrorListeners(page);
+    await page.goto('/football/?boot=offense-call');
+    expect(await page.evaluate(() => window.__footballTest.callKeys())).toEqual({
+      offense: CALL_TILES_48.offense.tiles.map(tile => tile.key),
+      defense: CALL_TILES_48.defense.tiles.map(tile => tile.key),
+    });
+    for (const possession of ['offense', 'defense', 'offense']) {
+      await showCallGrid48(page, possession);
+      await expectCallTiles48(page, possession);
+    }
+    expect(pageErrors, 'page errors').toEqual([]);
+    expect(consoleErrors, 'console errors').toEqual([]);
+  });
+
+  test('every tile is a fresh clone of the inert template skeleton', async ({ page }) => {
+    const { pageErrors, consoleErrors } = attachErrorListeners(page);
+    await page.goto('/football/?boot=offense-call');
+
+    const source = await page.evaluate(() => {
+      const template = document.getElementById('tpl-call-btn');
+      const button = template?.content.firstElementChild;
+      return {
+        isTemplate: template instanceof HTMLTemplateElement,
+        outsideDesk: Boolean(template) && !template.closest('#ui-desk, #call-grid'),
+        contentNodes: template ? template.content.childNodes.length : 0,
+        tag: button?.tagName ?? null,
+        className: button?.className ?? null,
+        slots: button ? Array.from(button.querySelectorAll('[data-slot]')).map(slot => slot.dataset.slot) : [],
+        emptySlots: button ? Array.from(button.querySelectorAll('[data-slot]')).every(slot => slot.childNodes.length === 0) : false,
+        ids: button ? button.querySelectorAll('[id]').length + (button.id ? 1 : 0) : -1,
+        attributes: button ? button.getAttributeNames() : [],
+      };
+    });
+    expect(source).toEqual({
+      isTemplate: true,
+      outsideDesk: true,
+      contentNodes: 1,
+      tag: 'BUTTON',
+      className: 'call-btn',
+      slots: CALL_SLOTS_48,
+      emptySlots: true,
+      ids: 0,
+      attributes: ['class'],
+    });
+
+    for (const possession of ['offense', 'defense']) {
+      await showCallGrid48(page, possession);
+      const clones = await page.evaluate(() => {
+        const source = document.getElementById('tpl-call-btn').content.firstElementChild;
+        const grid = document.getElementById('call-grid');
+        const tiles = Array.from(grid.querySelectorAll('.call-btn'));
+        window.__tiles48 = tiles;
+        const skeleton = (tile) => {
+          const copy = tile.cloneNode(true);
+          copy.removeAttribute('data-risk');
+          copy.querySelectorAll('[data-slot]').forEach(slot => slot.replaceChildren());
+          return copy.outerHTML;
+        };
+        return {
+          gridChildren: grid.children.length,
+          gridTemplates: grid.querySelectorAll('template').length,
+          distinct: new Set(tiles).size === tiles.length && !tiles.includes(source),
+          skeletons: tiles.map(tile => skeleton(tile) === source.outerHTML),
+          idsOutsideDiagram: tiles.map(tile => Array.from(tile.querySelectorAll('[id]'))
+            .filter(node => !node.closest('.call-diagram')).length + (tile.id ? 1 : 0)),
+          sourceStillEmpty: Array.from(source.querySelectorAll('[data-slot]')).every(slot => slot.childNodes.length === 0)
+            && !source.hasAttribute('data-risk'),
+        };
+      });
+      const count = CALL_TILES_48[possession].tiles.length;
+      expect(clones, `${possession}: cloned tiles`).toEqual({
+        gridChildren: count,
+        gridTemplates: 0,
+        distinct: true,
+        skeletons: Array(count).fill(true),
+        idsOutsideDiagram: Array(count).fill(0),
+        sourceStillEmpty: true,
+      });
+
+      // A repeat render replaces every tile with new clones; nothing accumulates.
+      const repeat = await page.evaluate(() => {
+        const before = window.__tiles48;
+        renderOrdinaryCallPrompt();
+        const after = Array.from(document.querySelectorAll('#call-grid .call-btn'));
+        delete window.__tiles48;
+        return {
+          count: after.length,
+          oldDetached: before.every(tile => !tile.isConnected),
+          allNew: after.every(tile => !before.includes(tile)),
+        };
+      });
+      expect(repeat, `${possession}: repeat render`).toEqual({ count, oldDetached: true, allNew: true });
+      await expectCallTiles48(page, possession);
+    }
+
+    // Each render reads the live template: a marker on it reaches every new
+    // tile, and removing it leaves no trace on the next render.
+    const marker = await page.evaluate(() => {
+      const source = document.getElementById('tpl-call-btn').content.firstElementChild;
+      const marked = () => Array.from(document.querySelectorAll('#call-grid .call-btn'))
+        .map(tile => tile.dataset.templateProbe ?? null);
+      source.dataset.templateProbe = 'tpl-48';
+      let withMarker;
+      try {
+        renderOrdinaryCallPrompt();
+        withMarker = marked();
+      } finally {
+        delete source.dataset.templateProbe;
+      }
+      renderOrdinaryCallPrompt();
+      return { withMarker, withoutMarker: marked() };
+    });
+    const count = CALL_TILES_48.defense.tiles.length;
+    expect(marker).toEqual({ withMarker: Array(count).fill('tpl-48'), withoutMarker: Array(count).fill(null) });
+    await expectCallTiles48(page, 'defense');
+
+    expect(pageErrors, 'page errors').toEqual([]);
+    expect(consoleErrors, 'console errors').toEqual([]);
+  });
+
+  test('call text is written literally and unknown calls fall back safely', async ({ page }) => {
+    const { pageErrors, consoleErrors } = attachErrorListeners(page);
+    await page.goto('/football/?boot=offense-call');
+    await showCallGrid48(page, 'offense');
+
+    const label = '<b data-probe="label">Bold</b> & <i>co</i>';
+    const desc = '<img data-probe="desc" alt=""> 4 < 5 yds';
+    const probe = await page.evaluate(({ label, desc }) => {
+      renderCallGrid([{ key: 'not-a-call', label, desc }], () => false);
+      const tiles = document.querySelectorAll('#call-grid .call-btn');
+      const tile = tiles[0];
+      return {
+        count: tiles.length,
+        risk: tile.dataset.risk,
+        riskText: tile.querySelector('.call-risk').textContent,
+        label: tile.querySelector('.call-label').textContent,
+        desc: tile.querySelector('.call-desc').textContent,
+        injected: tile.querySelectorAll('[data-probe], b, i, img').length,
+        diagramNodes: tile.querySelector('.call-diagram').childNodes.length,
+      };
+    }, { label, desc });
+    expect(probe).toEqual({
+      count: 1,
+      risk: 'medium',
+      riskText: 'MEDIUM',
+      label,
+      desc,
+      injected: 0,
+      diagramNodes: 0,
+    });
+
+    await page.evaluate(() => renderOrdinaryCallPrompt());
+    await expectCallTiles48(page, 'offense');
+    expect(pageErrors, 'page errors').toEqual([]);
+    expect(consoleErrors, 'console errors').toEqual([]);
+  });
+
+  test('tapping each of the nine tiles selects exactly that call', async ({ page }) => {
+    test.setTimeout(90_000);
+    const { pageErrors, consoleErrors } = attachErrorListeners(page);
+    await clearStats48(page);
+    await page.goto('/football/?boot=offense-call');
+
+    for (const possession of ['offense', 'defense']) {
+      for (const [index, want] of CALL_TILES_48[possession].tiles.entries()) {
+        await showCallGrid48(page, possession);
+        const tile = page.locator('#call-grid .call-btn').nth(index);
+        await expect(tile.locator('.call-label')).toHaveText(want.label);
+        await tile.tap();
+        await expect(page.locator('#ui-desk'), `${possession} ${want.key}: question follows the tap`)
+          .toHaveAttribute('data-phase', 'question');
+        const calls = await selectedCalls48(page);
+        expect(calls, `${possession} ${want.key}: selected call`).toMatchObject(possession === 'offense'
+          ? { offense: want.key, defense: null }
+          : { defense: want.key });
+      }
+    }
+
+    expect(pageErrors, 'page errors').toEqual([]);
+    expect(consoleErrors, 'console errors').toEqual([]);
+  });
+
+  test('Space on a focused tile selects it and moves focus to the answers', async ({ page }) => {
+    const { pageErrors, consoleErrors } = attachErrorListeners(page);
+    await clearStats48(page);
+    await page.goto('/football/?boot=offense-call');
+
+    for (const [possession, index] of [['offense', 1], ['defense', 2]]) {
+      const want = CALL_TILES_48[possession].tiles[index];
+      await showCallGrid48(page, possession);
+      // seedDriveState() runs hideOverlays(), whose focusGameplayControl()
+      // focuses the first call tile on the next animation frame. Let that land
+      // first, or it can take focus from the chosen tile between keydown and keyup.
+      await expect(page.locator('#call-grid .call-btn').first()).toBeFocused();
+      const tile = page.locator('#call-grid .call-btn').nth(index);
+      await tile.focus();
+      await expect(tile).toBeFocused();
+      await page.keyboard.press('Space');
+      await expect(page.locator('#ui-desk')).toHaveAttribute('data-phase', 'question');
+      await expect(page.locator('#btn-row .ans-btn:not(.hidden):not(:disabled)').first(),
+        `${possession}: focus moves to the first answer`).toBeFocused();
+      expect(await selectedCalls48(page), `${possession}: Space selected ${want.key}`).toMatchObject(possession === 'offense'
+        ? { offense: want.key, defense: null }
+        : { defense: want.key });
+    }
+
+    expect(pageErrors, 'page errors').toEqual([]);
+    expect(consoleErrors, 'console errors').toEqual([]);
+  });
+});
