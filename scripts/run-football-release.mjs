@@ -84,6 +84,8 @@ async function main(argv) {
   if (!engine) return usage(`Unsupported arguments: ${argv.join(' ')}`);
   // The overlay contract spec would write its capture stage outside the run.
   if (process.env.ISSUE49_CAPTURE_STAGE !== undefined) return usage('ISSUE49_CAPTURE_STAGE is set; unset it before a release run.');
+  // Playwright's JSON reporter prefers it over each run's own report outputFile.
+  if (process.env.PLAYWRIGHT_JSON_OUTPUT_FILE !== undefined) return usage('PLAYWRIGHT_JSON_OUTPUT_FILE is set; unset it before a release run.');
 
   fs.mkdirSync(RUNS_ROOT, { recursive: true });
   const ts = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d+Z$/, 'Z');

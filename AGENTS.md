@@ -168,8 +168,8 @@ Use `test:football` for the focused layout suite and
 `test:football:release` runs `scripts/run-football-release.mjs`. It defaults to
 Chromium; run the WebKit companion with
 `npm run test:football:release -- --engine=webkit`. No other arguments are
-accepted, and it refuses to start while `ISSUE49_CAPTURE_STAGE` is set or port
-8090 is in use. It enumerates the release browser cases, prepares release
+accepted, and it refuses to start while `ISSUE49_CAPTURE_STAGE` or
+`PLAYWRIGHT_JSON_OUTPUT_FILE` is set or port 8090 is in use. It enumerates the release browser cases, prepares release
 artifacts once, runs the domain checks once, then runs each release browser file
 in its own fresh Playwright CLI and browser on all six projects with the base
 retries, workers and deadlines. It then checks the exact case union against the
