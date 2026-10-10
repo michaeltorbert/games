@@ -1,4 +1,4 @@
-const GAME_VERSION = '1.34.3';
+const GAME_VERSION = '1.34.4';
 let prevPlayerScore = -1, prevOpponentScore = -1;
 let playerRunTimer = 0, playerCelebrateTimer = 0, playerCelebrateDelayTimer = 0;
 const EZ = 5;
@@ -2178,6 +2178,27 @@ function renderButtons() {
   });
 }
 
+function callTileSlot(tile, name) {
+  const slot = tile.querySelector(`[data-slot="${name}"]`);
+  if (!slot) throw new Error(`Call tile template is missing its "${name}" slot.`);
+  return slot;
+}
+
+// Clone one tile from the inert #tpl-call-btn markup. Text is written with
+// textContent only; the diagram slot takes the trusted PLAY_DIAGRAMS markup.
+function createCallTile(call, possession) {
+  const source = document.getElementById('tpl-call-btn')?.content.firstElementChild;
+  if (!source) throw new Error('Missing call tile template #tpl-call-btn.');
+  const btn = document.importNode(source, true);
+  btn.dataset.risk = call.risk || 'medium';
+  callTileSlot(btn, 'mode').textContent = possession === 'defense' ? 'Coverage' : 'Play call';
+  callTileSlot(btn, 'risk').textContent = riskLabelText(call.risk);
+  callTileSlot(btn, 'diagram').innerHTML = playDiagramSvg(call.key, possession);
+  callTileSlot(btn, 'label').textContent = call.label;
+  callTileSlot(btn, 'desc').textContent = call.desc;
+  return btn;
+}
+
 function renderCallGrid(calls, onPick, { focusFirst = false } = {}) {
   hideAnswerButtons();
   hideDecisionGrid();
@@ -2190,16 +2211,7 @@ function renderCallGrid(calls, onPick, { focusFirst = false } = {}) {
   grid.dataset.count = String(calls.length);
   grid.dataset.possession = state.possession;
   calls.forEach((call) => {
-    const btn = document.createElement('button');
-    btn.className = 'call-btn';
-    btn.dataset.risk = call.risk || 'medium';
-    const diagram = playDiagramSvg(call.key, state.possession);
-    const callMode = state.possession === 'defense' ? 'Coverage' : 'Play call';
-    btn.innerHTML =
-      `<span class="call-meta"><span>${callMode}</span><span class="call-risk">${riskLabelText(call.risk)}</span></span>` +
-      `<span class="call-diagram" aria-hidden="true">${diagram}</span>` +
-      `<span class="call-label">${call.label}</span>` +
-      `<span class="call-desc">${call.desc}</span>`;
+    const btn = createCallTile(call, state.possession);
     btn.addEventListener('click', () => {
       const transferFocus = document.activeElement === btn;
       const handled = onPick(call.key);
