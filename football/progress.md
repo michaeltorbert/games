@@ -1442,3 +1442,65 @@ Implementation author: Claude (Opus 5.5, medium), a new session separate from bo
 - `tests/football-context-integration.spec.mjs` appends five primary-target cases with independently written expected values: exact frozen inventory and no new window/domain surface; the CSS selector and raw initial-markup bridge (characterized values plus constant membership); all twelve phases, both possessions and both touchdown sides observed through `#wrap`/`#ui-desk` and the other DOM bridges, using real call, answer, decision and overlay taps where practical and labeled seeded/synthetic helpers for the defense touchdown and period breaks; domain presentation/drive/advance/route round trips including a non-feedback route rejection; and a targeted `football.js` source guard for missed semantic literals and mistyped constant members that leaves homonyms alone. Existing cases, assertions and skips are unchanged.
 - `GAME_VERSION`, all 18 Football asset query strings, the Football registry descriptor and `version.json` are `1.34.5`. Kayak 1.1.38, Prague 1.4.0 and Place by Place 1.9.0 are unchanged.
 - The author had no shell tools and ran nothing. Every check is pending the coordinator at the exact final artifact: syntax, the new cases (and their expected failures against the base), the full Chromium and WebKit six-target release matrix with the registry gate, before/after pixels for every presentation family, and fresh independent review. No result is claimed here.
+
+
+## 2026-10-10 — Football v1.34.6 (#48 explicit renderer snapshots, superseding release entry)
+
+Implementation author: Claude (Opus 5.5, medium), a new session separate from both planning seats, from exact base `ea10dd2` (merge of Football 1.34.5). This is the final #48 seam: `updateField`, `updateStatus`, `renderCallGrid` and `renderButtons` draw from an explicit snapshot. No phase-aware view model, CSS, markup, copy, domain, RNG, persistence, Season, curriculum, audio or load-order change.
+
+### #48 — explicit render snapshots
+
+- `renderSnapshot(source, season)` is pure. It reads only its arguments and returns a deep-frozen clone of the public display facts these renderers read:
+  - phase, possession, direction, quarter, down, ytg, yd, fdYd, animYd, g, matchup, touchdownSide and both scores;
+  - the match;
+  - a flattened `play` (type, attempt type, try yard line, field-goal distance, punt travel);
+  - `outcomeCommitted`;
+  - `publicOpponentRead()` of the opponent snapshot;
+  - question choices (`id`, `label`, `value`, `ariaLabel`) and choice presentation;
+  - `season: { gameNumber, gameCount }`.
+
+  It never copies play/game/possession IDs, the planned call, weights, pending resolutions or Season identity. `gameSnapshot()`, `transitionSnapshot()`, `createGameState()` and `activeSeasonBinding` are unchanged.
+- `publicSeasonFacts()` reads the live binding's public game number and the schedule length without changing them.
+- `captureLiveRender()` is the production boundary. It is used only right before a synchronous pass that reaches `syncUiState` directly or through `updateStatus`:
+  - ordinary call prompt; fourth-down, recovery and conversion status;
+  - `startDrive`, `prepareQuestion` and commit;
+  - every former `syncUiState()` call, including commit's second sync;
+  - `restart`, the test drive seed and boot.
+
+  Field-only and direct test renders use the pure constructor.
+- `updateField(view, animated)`, `updateStatus(view)`, `renderCallGrid(view, calls, onPick, options)`, `renderButtons(view)` and `syncUiState(view)` reject a missing, non-object or unfrozen view before any DOM write. There is no global fallback.
+- The transitive helpers take explicit inputs, and their defaults to the live match were removed:
+  - `playContextText(view)`, `renderDefenseRead(view)` and `updatePromptContext(text)`;
+  - `ownerForPossession`, `formatPossessionCopy`, the ribbon/stage copy helpers, `applyMatchPresentation`, `rivalForMatch` and `playerLeftPct(player, field, animYd)`.
+
+  All three renderer `fieldPositionAt` calls pass `view.match`. Its own default remains for non-renderer callers.
+- The Season label reads `view.season`, not `activeSeasonBinding`.
+
+### Lifecycle and timing
+
+- `syncUiState` used to reset live `questionUi.reviewExpanded` outside the explanation phase. That reset is now the first step of `captureLiveRender()`, with the same explanation guard. The renderer chain calls only the new DOM-only `clearWorkedReviewDisplay()`.
+- `resetWorkedReviewPresentation()` still resets the flag and then clears the display; `showWorkedReviewSummary()` still calls it.
+- Nothing in the renderer chain reads the flag. Its readers are expand, the deferred expand-focus frame, Escape and `render_game_to_text()`. In each pass the reset still happens synchronously before review cleanup and before the next frame, so moving it ahead of the pass's field and status writes changes nothing observable.
+- Call and answer callbacks, the deferred focus check, the 400 ms ball and 500 ms score-pulse timers, and the field transition frames are unchanged and read live state or the DOM when they run.
+- The resize handler passes live `state.animYd` when the event fires. No view is kept across an event, timer or await.
+- `prevPlayerScore`/`prevOpponentScore` remain presentation memory of the last rendered view.
+
+### Tests and release metadata
+
+- `tests/football-context-integration.spec.mjs` appends six primary-target cases:
+  - **Ownership and guards:** exact view keys; deep freezing; no shared nested objects; isolation after mutating every nested source; failed writes; no private tokens; pure capture leaves the source's `reviewExpanded: true` alone; all nine guard rejections happen before any DOM change.
+  - **Detached view A over live game B:** B is a real offense explanation with Coach Replay expanded. A synthetic game A uses another rival, defense, Q4, a 21–3 score, another spot, a call grid, answer choices, conversion/two-point/field-goal/punt/committed-punt/touchdown/halftime contexts and Season text. It checks A's DOM, B's state identity and JSON, `reviewExpanded` still true, stats/learning/storage/Season unchanged, and zero RNG draws.
+  - **Coach Replay lifecycle:** production boundaries mid-explanation keep the replay open; a real Continue closes it in the next call, and Escape there is a no-op; a synthetic off-explanation phase shows the reset comes only from the production boundary.
+  - **Stale display:** a tap on a conflicting grid drawn from another view gives the same live play as a control page; a tap on a pre-tap stale grid is rejected without state, stats or RNG effects.
+  - **Season text:** with a real Season game live, the stage copy follows the supplied view while the binding and storage stay unchanged.
+  - **Motion:** resize follows the live ball rather than the drawn view, and a real committed play moves the ball to the live spot.
+- `tests/football-call-layout.spec.mjs` changes only signatures. Its direct `updateField`/`renderCallGrid` calls pass `renderSnapshot(state, publicSeasonFacts())`, and the #155 sampler passes live `state.animYd`. Its assertions and settings are unchanged.
+- `GAME_VERSION`, all 18 Football asset query strings, the Football registry descriptor and `version.json` are `1.34.6`. Kayak 1.1.38, Prague 1.4.0 and Place by Place 1.9.0 are unchanged.
+- The author had no shell tools and ran nothing. These checks are pending the coordinator at the exact final artifact:
+  - syntax and the registry gate;
+  - the new cases;
+  - the full Chromium and WebKit six-target release matrix;
+  - before/after pixels for every presentation family against the accepted 1.34.5 captures;
+  - fresh independent review.
+
+  No result is claimed here.

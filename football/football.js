@@ -1,4 +1,4 @@
-const GAME_VERSION = '1.34.5';
+const GAME_VERSION = '1.34.6';
 let prevPlayerScore = -1, prevOpponentScore = -1;
 let playerRunTimer = 0, playerCelebrateTimer = 0, playerCelebrateDelayTimer = 0;
 const EZ = 5;
@@ -370,28 +370,28 @@ function possessionTitle(possession) {
   return possession === POSSESSIONS.offense ? 'Your ball' : `${state.match.opponent.shortName}'s ball`;
 }
 
-function formatPossessionCopy(template, match = state.match) {
+function formatPossessionCopy(template, match) {
   return String(template)
     .replace(/\bDUKE\b/g, match.player.shortName)
     .replace(/\bUNC\b/g, match.opponent.shortName)
     .replace(/\bDuke\b/g, match.player.displayName);
 }
 
-function possessionRibbonText(possession) {
+function possessionRibbonText(possession, match) {
   const template = possession === POSSESSIONS.offense ? POSSESSION_COPY.ribbon.offense : POSSESSION_COPY.ribbon.defense;
-  return formatPossessionCopy(template);
+  return formatPossessionCopy(template, match);
 }
 
-function stagePossessionText(possession) {
+function stagePossessionText(possession, match) {
   const template = possession === POSSESSIONS.offense ? POSSESSION_COPY.stage.offense : POSSESSION_COPY.stage.defense;
-  return formatPossessionCopy(template);
+  return formatPossessionCopy(template, match);
 }
 
-function rivalForMatch(match = state.match) {
+function rivalForMatch(match) {
   return FOOTBALL_OPPONENT.resolveRival(match.opponent.id);
 }
 
-function applyMatchPresentation(match = state.match) {
+function applyMatchPresentation(match) {
   const rival = rivalForMatch(match);
   const root = document.documentElement;
   root.dataset.opponent = rival.id;
@@ -636,81 +636,161 @@ function riskLabelText(risk) {
   return String(risk || 'medium').replace(/-/g, ' ').toUpperCase();
 }
 
-function syncUiState() {
+// -- Render snapshots ---------------------------------------------------------
+// updateField, updateStatus, renderCallGrid, renderButtons, and syncUiState
+// draw only from an owned, deep-frozen view. They never read live `state` or
+// the Season binding, so a view keeps showing what it captured even after the
+// game moves on. The view copies only the public facts those renderers read:
+// no IDs, private opponent plans, pending transitions, or Season identity.
+// Game, domain, and Season authority stay with live state; action callbacks,
+// timers, and the resize handler keep reading it when they run.
+function renderSnapshot(source, season) {
+  if (!source || typeof source !== 'object') throw new TypeError('renderSnapshot needs a source game state.');
+  if (!season || typeof season !== 'object') throw new TypeError('renderSnapshot needs public Season facts.');
+  const activePlay = source.activePlay || null;
+  const question = source.questionInstance || null;
+  return FOOTBALL_DOMAIN.deepFreeze(FOOTBALL_DOMAIN.clone({
+    phase: source.phase,
+    possession: source.possession,
+    direction: source.direction,
+    quarter: source.quarter,
+    down: source.down,
+    ytg: source.ytg,
+    yd: source.yd,
+    fdYd: source.fdYd,
+    animYd: source.animYd,
+    g: source.g,
+    matchup: source.matchup,
+    touchdownSide: source.touchdownSide,
+    playerScore: source.playerScore,
+    opponentScore: source.opponentScore,
+    match: source.match,
+    play: activePlay ? {
+      playType: activePlay.playType,
+      attemptType: activePlay.context?.attemptType,
+      tryYardLine: activePlay.context?.tryYardLine,
+      attemptDistance: activePlay.context?.attemptDistance,
+      puntTravelYards: activePlay.proposal?.appliedTravelYards,
+    } : null,
+    outcomeCommitted: Boolean(source.questionUi?.outcomeCommitted),
+    opponentRead: publicOpponentRead(source.opponentSnapshot),
+    question: question ? {
+      choicePresentation: question.choicePresentation,
+      choices: (question.choices || []).map(choice => ({
+        id: choice.id,
+        label: choice.label,
+        value: choice.value,
+        ariaLabel: choice.ariaLabel,
+      })),
+    } : null,
+    season: {
+      gameNumber: season.gameNumber ?? null,
+      gameCount: season.gameCount,
+    },
+  }));
+}
+
+// Public Season display facts only. Reads the live binding without changing it.
+function publicSeasonFacts() {
+  return {
+    gameNumber: activeSeasonBinding?.gameNumber ?? null,
+    gameCount: FOOTBALL_SEASON.SCHEDULE.length,
+  };
+}
+
+// Production render boundary. Call it only right before a synchronous pass that
+// reaches syncUiState (directly or through updateStatus). Outside the
+// explanation phase it first closes Coach Replay in live state, the lifecycle
+// reset syncUiState used to perform; renderers only clear its display.
+function captureLiveRender() {
+  if (state.phase !== PHASES.explanation && state.questionUi) state.questionUi.reviewExpanded = false;
+  return renderSnapshot(state, publicSeasonFacts());
+}
+
+function requireRenderSnapshot(view) {
+  if (!view || typeof view !== 'object' || !Object.isFrozen(view)) {
+    throw new TypeError('Renderers need a frozen renderSnapshot() view.');
+  }
+  return view;
+}
+
+function syncUiState(view) {
+  requireRenderSnapshot(view);
   const wrap = document.getElementById('wrap');
   const desk = document.getElementById('ui-desk');
-  if (wrap) wrap.dataset.phase = state.phase || PHASES.start;
+  if (wrap) wrap.dataset.phase = view.phase || PHASES.start;
   if (desk) {
-    desk.dataset.phase = state.phase || PHASES.start;
-    desk.dataset.possession = state.possession || POSSESSIONS.offense;
+    desk.dataset.phase = view.phase || PHASES.start;
+    desk.dataset.possession = view.possession || POSSESSIONS.offense;
   }
   const stageCopy = document.getElementById('stage-mode-copy');
   if (stageCopy) {
-    stageCopy.textContent = activeSeasonBinding
-      ? `Season game ${activeSeasonBinding.gameNumber} of ${FOOTBALL_SEASON.SCHEDULE.length}`
+    stageCopy.textContent = view.season.gameNumber != null
+      ? `Season game ${view.season.gameNumber} of ${view.season.gameCount}`
       : 'Broadcast view';
   }
-  if (![PHASES.question, PHASES.explanation].includes(state.phase)) hideMathVisual();
-  if (state.phase !== PHASES.explanation) resetWorkedReviewPresentation();
-  updatePromptContext();
-  renderDefenseRead();
+  if (![PHASES.question, PHASES.explanation].includes(view.phase)) hideMathVisual();
+  if (view.phase !== PHASES.explanation) clearWorkedReviewDisplay();
+  updatePromptContext(playContextText(view));
+  renderDefenseRead(view);
 }
 
-function playContextText() {
-  if (state.phase === PHASES.start || !state.possession) {
-    return `${state.match.player.shortName} VS ${state.match.opponent.shortName} / FOUR QUARTERS / WIN THE RIVALRY`;
+function playContextText(view) {
+  const { match } = view;
+  if (view.phase === PHASES.start || !view.possession) {
+    return `${match.player.shortName} VS ${match.opponent.shortName} / FOUR QUARTERS / WIN THE RIVALRY`;
   }
 
-  const score = `SCORE ${state.playerScore}-${state.opponentScore}`;
-  if (state.phase === PHASES.touchdown) {
-    return state.touchdownSide === POSSESSIONS.defense
-      ? `${state.match.opponent.shortName} TOUCHDOWN / ${score}`
-      : `${state.match.player.shortName} TOUCHDOWN / ${score}`;
+  const score = `SCORE ${view.playerScore}-${view.opponentScore}`;
+  if (view.phase === PHASES.touchdown) {
+    return view.touchdownSide === POSSESSIONS.defense
+      ? `${match.opponent.shortName} TOUCHDOWN / ${score}`
+      : `${match.player.shortName} TOUCHDOWN / ${score}`;
   }
-  if (state.phase === PHASES.transition) {
-    const incoming = state.possession === POSSESSIONS.offense
-      ? `${state.match.player.shortName} ON OFFENSE`
-      : `${state.match.opponent.shortName} ON OFFENSE`;
+  if (view.phase === PHASES.transition) {
+    const incoming = view.possession === POSSESSIONS.offense
+      ? `${match.player.shortName} ON OFFENSE`
+      : `${match.opponent.shortName} ON OFFENSE`;
     return `POSSESSION CHANGE / ${incoming} / ${score}`;
   }
-  if (state.phase === PHASES.quarter) return `END OF Q${state.quarter} / ${score}`;
-  if (state.phase === PHASES.halftime) return `HALFTIME / ${score}`;
-  if (state.phase === PHASES.final) return `FINAL / ${score}`;
+  if (view.phase === PHASES.quarter) return `END OF Q${view.quarter} / ${score}`;
+  if (view.phase === PHASES.halftime) return `HALFTIME / ${score}`;
+  if (view.phase === PHASES.final) return `FINAL / ${score}`;
 
-  if (state.phase === PHASES.conversionDecision || state.activePlay?.playType === 'conversion') {
-    const attempt = state.activePlay?.context?.attemptType === 'twoPoint' ? 'TWO-POINT TRY' : 'CONVERSION';
-    return `${ownerForPossession(state.possession)} / ${attempt} / ${score}`;
+  if (view.phase === PHASES.conversionDecision || view.play?.playType === 'conversion') {
+    const attempt = view.play?.attemptType === 'twoPoint' ? 'TWO-POINT TRY' : 'CONVERSION';
+    return `${ownerForPossession(view.possession, match)} / ${attempt} / ${score}`;
   }
 
-  const owner = state.possession === POSSESSIONS.offense
-    ? `${state.match.player.shortName} BALL`
-    : `${state.match.opponent.shortName} BALL`;
-  const bits = [owner, `Q${state.quarter}`, `BALL ON ${fieldPositionAt(state.yd).compact}`];
+  const owner = view.possession === POSSESSIONS.offense
+    ? `${match.player.shortName} BALL`
+    : `${match.opponent.shortName} BALL`;
+  const bits = [owner, `Q${view.quarter}`, `BALL ON ${fieldPositionAt(view.yd, match).compact}`];
 
-  if (state.phase === PHASES.call || state.phase === PHASES.fourthDownDecision) {
-    bits.push(`${DOWN_NAMES[state.down] || state.down} & ${state.ytg}`);
+  if (view.phase === PHASES.call || view.phase === PHASES.fourthDownDecision) {
+    bits.push(`${DOWN_NAMES[view.down] || view.down} & ${view.ytg}`);
   }
 
-  if (state.activePlay?.playType === 'fieldGoal') bits.push(`${state.activePlay.context.attemptDistance}-YARD FIELD GOAL`);
-  if (state.activePlay?.playType === 'punt' && !state.questionUi?.outcomeCommitted) {
-    bits.push(`${state.activePlay.proposal.appliedTravelYards}-YARD PUNT`);
+  if (view.play?.playType === 'fieldGoal') bits.push(`${view.play.attemptDistance}-YARD FIELD GOAL`);
+  if (view.play?.playType === 'punt' && !view.outcomeCommitted) {
+    bits.push(`${view.play.puntTravelYards}-YARD PUNT`);
   }
 
-  if (state.phase === PHASES.question || state.phase === PHASES.explanation || state.phase === PHASES.feedback) {
-    if (state.g != null) bits.push(`${state.g} YDS IN PLAY`);
-    if (state.possession === POSSESSIONS.defense && state.matchup) {
-      bits.push(state.matchup === 'matched' ? 'GOOD MATCHUP' : 'MISMATCH');
+  if (view.phase === PHASES.question || view.phase === PHASES.explanation || view.phase === PHASES.feedback) {
+    if (view.g != null) bits.push(`${view.g} YDS IN PLAY`);
+    if (view.possession === POSSESSIONS.defense && view.matchup) {
+      bits.push(view.matchup === 'matched' ? 'GOOD MATCHUP' : 'MISMATCH');
     }
   }
 
   return bits.join(' / ');
 }
 
-function ownerForPossession(possession) {
-  return possession === POSSESSIONS.offense ? `${state.match.player.shortName} BALL` : `${state.match.opponent.shortName} BALL`;
+function ownerForPossession(possession, match) {
+  return possession === POSSESSIONS.offense ? `${match.player.shortName} BALL` : `${match.opponent.shortName} BALL`;
 }
 
-function updatePromptContext(text = playContextText()) {
+function updatePromptContext(text) {
   const el = document.getElementById('play-context');
   if (el) el.textContent = text;
 }
@@ -1543,32 +1623,33 @@ function playerEdgeLimitPx(player) {
   return behind + PLAYER_EDGE_CLEARANCE;
 }
 
-function playerLeftPct(player, field) {
-  const ballPct = yardToPct(clamp(state.animYd, 0, 100));
+function playerLeftPct(player, field, animYd) {
+  const ballPct = yardToPct(clamp(animYd, 0, 100));
   const fieldWidth = field.clientWidth;
   if (!fieldWidth) return ballPct;
   return Math.max(ballPct, playerEdgeLimitPx(player) / fieldWidth * 100);
 }
 
-function updateField(animated) {
+function updateField(view, animated) {
+  requireRenderSnapshot(view);
   const ball = document.getElementById('ball');
   const fdl = document.getElementById('fd-line');
   const fdChain = document.getElementById('fd-chain');
   const fw = document.getElementById('field-wrap');
-  fw.classList.toggle('defense', state.possession === POSSESSIONS.defense);
+  fw.classList.toggle('defense', view.possession === POSSESSIONS.defense);
   if (!animated) {
     ball.style.transition = 'none'; fdl.style.transition = 'none';
     requestAnimationFrame(() => { ball.style.transition = ''; fdl.style.transition = ''; });
   }
-  const rotation = state.possession === POSSESSIONS.defense ? 18 : -18;
-  const fdLeft = yardToPct(clamp(state.fdYd, 0, 100)) + '%';
-  ball.style.left = yardToPct(state.animYd) + '%';
+  const rotation = view.possession === POSSESSIONS.defense ? 18 : -18;
+  const fdLeft = yardToPct(clamp(view.fdYd, 0, 100)) + '%';
+  ball.style.left = yardToPct(view.animYd) + '%';
   ball.style.setProperty('--ball-rotation', `${rotation}deg`);
   fdl.style.left = fdLeft;
   if (fdChain) {
     fdChain.style.left = fdLeft;
-    fdChain.classList.toggle('near-right-sideline', state.fdYd >= 76);
-    fdChain.classList.toggle('near-left-sideline', state.fdYd <= 5);
+    fdChain.classList.toggle('near-right-sideline', view.fdYd >= 76);
+    fdChain.classList.toggle('near-left-sideline', view.fdYd <= 5);
   }
   if (animated) {
     ball.classList.add('ball-moving');
@@ -1576,9 +1657,9 @@ function updateField(animated) {
   }
   const player = document.getElementById('player');
   if (player) {
-    if (state.possession === POSSESSIONS.offense) {
+    if (view.possession === POSSESSIONS.offense) {
       player.classList.remove('player-hidden');
-      player.style.left = playerLeftPct(player, fw) + '%';
+      player.style.left = playerLeftPct(player, fw, view.animYd) + '%';
       player.style.setProperty('--player-dir', '1');
       if (!animated) {
         player.style.transition = 'none';
@@ -1599,12 +1680,13 @@ function updateField(animated) {
 // ball is still travelling. If the clamped target is unchanged and the sprite's
 // current, possibly mid-transition, position already clears the edge, both
 // movements keep running. Otherwise the ball settles with the player.
+// The correction reads the live ball yard when the resize fires, not a render view.
 let playerResizeRestoreFrame = 0;
 window.addEventListener('resize', () => {
   const player = document.getElementById('player');
   const field = document.getElementById('field-wrap');
   if (player && field && !player.classList.contains('player-hidden')) {
-    const target = playerLeftPct(player, field);
+    const target = playerLeftPct(player, field, state.animYd);
     const targetUnchanged = Math.abs(parseFloat(player.style.left) - target) < 0.001;
     const clearsEdge = parseFloat(getComputedStyle(player).left) >= playerEdgeLimitPx(player) - 0.5;
     if (targetUnchanged && clearsEdge) return;
@@ -1622,52 +1704,55 @@ window.addEventListener('resize', () => {
   }
 });
 
-function updateStatus() {
-  applyMatchPresentation(state.match);
-  const conversionMode = state.phase === PHASES.conversionDecision || state.activePlay?.playType === 'conversion';
+function updateStatus(view) {
+  requireRenderSnapshot(view);
+  applyMatchPresentation(view.match);
+  const conversionMode = view.phase === PHASES.conversionDecision || view.play?.playType === 'conversion';
   const downLabel = document.getElementById('s-down-label');
   const yardLabel = document.getElementById('s-yd-label');
   if (downLabel) downLabel.textContent = conversionMode ? 'Play' : 'Down';
   if (yardLabel) yardLabel.textContent = conversionMode ? 'Try Spot' : 'Ball On';
-  document.getElementById('s-down').textContent = conversionMode ? 'TRY' : downDistanceLabel(state.down, state.ytg);
+  document.getElementById('s-down').textContent = conversionMode ? 'TRY' : downDistanceLabel(view.down, view.ytg);
   document.getElementById('s-yd').textContent = conversionMode
-    ? fieldPositionAt(state.activePlay?.context?.tryYardLine ?? FOOTBALL_DOMAIN.tryYardLineFor(state.direction)).compact
-    : fieldPositionAt(state.yd).compact;
-  document.getElementById('s-quarter').textContent = state.quarter;
+    ? fieldPositionAt(view.play?.tryYardLine ?? FOOTBALL_DOMAIN.tryYardLineFor(view.direction), view.match).compact
+    : fieldPositionAt(view.yd, view.match).compact;
+  document.getElementById('s-quarter').textContent = view.quarter;
   const pEl = document.getElementById('s-pscore');
   const oEl = document.getElementById('s-oscore');
-  pEl.textContent = state.playerScore;
-  oEl.textContent = state.opponentScore;
+  pEl.textContent = view.playerScore;
+  oEl.textContent = view.opponentScore;
 
-  // Score pulse — only when score actually changes, skip initial render
-  if (prevPlayerScore >= 0 && state.playerScore !== prevPlayerScore) {
+  // Score pulse — only when score actually changes, skip initial render.
+  // prevPlayerScore/prevOpponentScore are presentation memory of the last
+  // rendered view, not game state.
+  if (prevPlayerScore >= 0 && view.playerScore !== prevPlayerScore) {
     pEl.classList.remove('score-pulse');
     void pEl.offsetWidth;
     pEl.classList.add('score-pulse');
     setTimeout(() => pEl.classList.remove('score-pulse'), 500);
   }
-  if (prevOpponentScore >= 0 && state.opponentScore !== prevOpponentScore) {
+  if (prevOpponentScore >= 0 && view.opponentScore !== prevOpponentScore) {
     oEl.classList.remove('score-pulse');
     void oEl.offsetWidth;
     oEl.classList.add('score-pulse');
     setTimeout(() => oEl.classList.remove('score-pulse'), 500);
   }
-  prevPlayerScore = state.playerScore;
-  prevOpponentScore = state.opponentScore;
+  prevPlayerScore = view.playerScore;
+  prevOpponentScore = view.opponentScore;
 
   const status = document.getElementById('status');
   const scorebug = document.getElementById('scorebug');
   const wrap = document.getElementById('wrap');
-  status.dataset.possession = state.possession;
-  if (scorebug) scorebug.dataset.possession = state.possession;
-  if (wrap) wrap.dataset.possession = state.possession;
+  status.dataset.possession = view.possession;
+  if (scorebug) scorebug.dataset.possession = view.possession;
+  if (wrap) wrap.dataset.possession = view.possession;
   const poss = document.getElementById('sb-poss');
-  poss.classList.toggle('poss-defense', state.possession === POSSESSIONS.defense);
+  poss.classList.toggle('poss-defense', view.possession === POSSESSIONS.defense);
   const ribbon = document.getElementById('status-ribbon-text');
-  if (ribbon) ribbon.textContent = possessionRibbonText(state.possession);
+  if (ribbon) ribbon.textContent = possessionRibbonText(view.possession, view.match);
   const stagePossession = document.getElementById('stage-possession');
-  if (stagePossession) stagePossession.textContent = stagePossessionText(state.possession);
-  syncUiState();
+  if (stagePossession) stagePossession.textContent = stagePossessionText(view.possession, view.match);
+  syncUiState(view);
 }
 
 function setFeedback(t, tone = 'neutral') {
@@ -1924,9 +2009,15 @@ function reviewAvailable() {
     && !learn.classList.contains('hidden');
 }
 
+// Closes Coach Replay in live state and clears its display. Renderers call
+// clearWorkedReviewDisplay() only; captureLiveRender() owns their live reset.
 function resetWorkedReviewPresentation() {
-  const { summary, summaryCopy, region, heading, content, back, learn } = workedReviewElements();
   if (state.questionUi) state.questionUi.reviewExpanded = false;
+  clearWorkedReviewDisplay();
+}
+
+function clearWorkedReviewDisplay() {
+  const { summary, summaryCopy, region, heading, content, back, learn } = workedReviewElements();
   if (summary) summary.classList.add('hidden');
   if (summaryCopy) summaryCopy.textContent = '';
   if (content) content.replaceChildren();
@@ -2136,15 +2227,15 @@ function setActionSubcopy(t) {
   if (el) el.textContent = t;
 }
 
-function renderDefenseRead() {
+function renderDefenseRead(view) {
   const el = document.getElementById('defense-read');
   if (!el) return;
-  const snapshot = state.phase === PHASES.call && state.possession === POSSESSIONS.defense
-    ? state.opponentSnapshot
+  const read = view.phase === PHASES.call && view.possession === POSSESSIONS.defense
+    ? view.opponentRead
     : null;
-  el.hidden = !snapshot;
-  el.textContent = snapshot
-    ? `Pre-snap read: ${state.match.opponent.shortName} shows ${snapshot.look.label}, ${snapshot.look.alignment}. ${snapshot.lean.label}.`
+  el.hidden = !read;
+  el.textContent = read
+    ? `Pre-snap read: ${view.match.opponent.shortName} shows ${read.look.label}, ${read.look.alignment}. ${read.lean.label}.`
     : '';
 }
 
@@ -2181,13 +2272,14 @@ function hideDecisionGrid() {
   grid.replaceChildren();
 }
 
-function renderButtons() {
+function renderButtons(view) {
+  requireRenderSnapshot(view);
   hideCallGrid();
   hideDecisionGrid();
   const row = document.getElementById('btn-row');
   row.classList.remove('hidden');
-  const choices = state.questionInstance?.choices || [];
-  row.dataset.choiceType = state.questionInstance?.choicePresentation === 'field-position'
+  const choices = view.question?.choices || [];
+  row.dataset.choiceType = view.question?.choicePresentation === 'field-position'
     ? 'yard'
     : choices.every(choice => typeof choice.value === 'number') ? 'number' : 'text';
   hideContinueButton();
@@ -2232,7 +2324,9 @@ function createCallTile(call, possession) {
   return btn;
 }
 
-function renderCallGrid(calls, onPick, { focusFirst = false } = {}) {
+// onPick resolves against live state when tapped; the view only draws the grid.
+function renderCallGrid(view, calls, onPick, { focusFirst = false } = {}) {
+  requireRenderSnapshot(view);
   hideAnswerButtons();
   hideDecisionGrid();
   hideMathVisual();
@@ -2240,11 +2334,11 @@ function renderCallGrid(calls, onPick, { focusFirst = false } = {}) {
   grid.innerHTML = '';
   grid.classList.remove('hidden');
   grid.setAttribute('role', 'group');
-  grid.setAttribute('aria-label', state.possession === POSSESSIONS.defense ? 'Defense coverage calls' : 'Offense play calls');
+  grid.setAttribute('aria-label', view.possession === POSSESSIONS.defense ? 'Defense coverage calls' : 'Offense play calls');
   grid.dataset.count = String(calls.length);
-  grid.dataset.possession = state.possession;
+  grid.dataset.possession = view.possession;
   calls.forEach((call) => {
-    const btn = createCallTile(call, state.possession);
+    const btn = createCallTile(call, view.possession);
     btn.addEventListener('click', () => {
       const transferFocus = document.activeElement === btn;
       const handled = onPick(call.key);
@@ -2430,17 +2524,18 @@ function announceSpecialAction(text) {
 
 function renderOrdinaryCallPrompt({ focusFirstCall = false } = {}) {
   state.phase = PHASES.call;
-  updateStatus();
+  const view = captureLiveRender();
+  updateStatus(view);
   if (state.possession === POSSESSIONS.offense) {
     document.getElementById('play-label').textContent = downDistanceLabel(state.down, state.ytg);
     document.getElementById('question').textContent = 'Call the snap. Every play uses your learning plan.';
     applyDeskHeader('callOffense');
-    renderCallGrid(Object.values(OFFENSE_CALLS), selectOffenseCall, { focusFirst: focusFirstCall });
+    renderCallGrid(view, Object.values(OFFENSE_CALLS), selectOffenseCall, { focusFirst: focusFirstCall });
   } else {
     document.getElementById('play-label').textContent = downDistanceLabel(state.down, state.ytg);
     document.getElementById('question').textContent = 'Call the coverage.';
     applyDeskHeader('callDefense');
-    renderCallGrid(Object.values(DEFENSE_CALLS), selectDefenseCall, { focusFirst: focusFirstCall });
+    renderCallGrid(view, Object.values(DEFENSE_CALLS), selectDefenseCall, { focusFirst: focusFirstCall });
   }
   setFeedback('');
 }
@@ -2470,7 +2565,7 @@ function taggedOpponentDecision(decision) {
 function showPlayerFourthDownDecision(recovery = null) {
   state.phase = PHASES.fourthDownDecision;
   state.specialRecoveryPlay = recovery;
-  updateStatus();
+  updateStatus(captureLiveRender());
   document.getElementById('play-label').textContent = downDistanceLabel(state.down, state.ytg);
   const frozenAction = recovery?.playType === 'punt' ? 'punt'
     : recovery?.playType === 'fieldGoal' ? 'fieldGoal' : null;
@@ -2518,7 +2613,7 @@ function showPlayerFourthDownDecision(recovery = null) {
   );
   setFeedback(decisionCopy, 'info');
   announceSpecialAction(decisionCopy);
-  syncUiState();
+  syncUiState(captureLiveRender());
 }
 
 function opponentSpecialActionLabel(action) {
@@ -2597,7 +2692,7 @@ function handleInvalidSpecialPlay(error, origin, action, decision = null) {
   } else if (state.possession === POSSESSIONS.offense) {
     showPlayerFourthDownDecision(recovery);
   } else {
-    updateStatus();
+    updateStatus(captureLiveRender());
     const preservedPuntTravel = recovery?.proposal?.requestedTravelYards ?? recovery?.travelYards;
     const recoveryCopy = action === 'punt'
       ? `Retry the preserved ${preservedPuntTravel}-yard punt.`
@@ -2615,7 +2710,7 @@ function handleInvalidSpecialPlay(error, origin, action, decision = null) {
     }], retryOpponentSpecialAction, 'Retry the same opponent action');
     setFeedback(`That play could not be checked. ${recoveryCopy}`, 'info');
     announceSpecialAction(recoveryCopy);
-    syncUiState();
+    syncUiState(captureLiveRender());
   }
 }
 
@@ -2738,8 +2833,9 @@ function startDrive(possession, startYardLine = null, restartReason = null) {
     ...blankPlayState(),
   };
   applyTransitionPatch(plan.patch);
-  updateField(false);
-  updateStatus();
+  const view = captureLiveRender();
+  updateField(view, false);
+  updateStatus(view);
   showCallPrompt();
 }
 
@@ -2844,10 +2940,11 @@ function prepareQuestion(bundle, labelHtml, feedbackCopy = '') {
     : isFieldReading
       ? (state.possession === POSSESSIONS.offense ? 'specialFieldReadingOffense' : 'specialFieldReadingDefense')
       : (state.possession === POSSESSIONS.offense ? 'specialQuestionOffense' : 'specialQuestionDefense'));
-  syncUiState();
+  const view = captureLiveRender();
+  syncUiState(view);
   const visibleGuidance = question.support === 'guided' ? question.hint.text : '';
   setFeedback([feedbackCopy, visibleGuidance].filter(Boolean).join(' '), visibleGuidance ? 'info' : 'neutral');
-  renderButtons();
+  renderButtons(view);
   renderMathVisual();
   if (questionFaultMode === 'prepare-after-ui') {
     throw Object.assign(new Error('Injected question preparation failure after UI setup.'), {
@@ -3322,7 +3419,7 @@ function handleInstructionalMiss(btn, choice, question) {
   state.pendingResolution = secondMissPending;
   disableAnswers();
   syncQuestionMirrors();
-  syncUiState();
+  syncUiState(captureLiveRender());
   renderMathVisual();
   applyDeskHeader(state.activePlay.playType === 'scrimmage'
     ? (state.possession === POSSESSIONS.offense ? 'explainOffense' : 'explainDefense')
@@ -3359,7 +3456,7 @@ function continueAfterExplanation() {
   hideContinueButton();
   state.phase = PHASES.feedback;
   syncQuestionMirrors();
-  syncUiState();
+  syncUiState(captureLiveRender());
 
   if (state.activePlay.playType !== 'scrimmage') {
     // The committed special-result semantic is built from the independently
@@ -3827,9 +3924,10 @@ function commitPendingResolution({ focusNextCall = false } = {}) {
     && state.quarterPossessions >= POSSESSIONS_PER_QUARTER) {
     settleSeasonGameOnce();
   }
-  if (activePlay.playType === 'scrimmage' || activePlay.playType === 'punt') updateField(true);
-  updateStatus();
-  syncUiState();
+  const view = captureLiveRender();
+  if (activePlay.playType === 'scrimmage' || activePlay.playType === 'punt') updateField(view, true);
+  updateStatus(view);
+  syncUiState(captureLiveRender());
   finishCommittedTransition(activePlay, validation.value, pending.policy, outcome, {
     focusNextCall,
     specialResultPresentation,
@@ -4771,7 +4869,7 @@ function showStart() {
   setFeedback('');
   hideAnswerButtons();
   hideCallGrid();
-  syncUiState();
+  syncUiState(captureLiveRender());
 }
 
 function startQuickGame() {
@@ -4844,7 +4942,7 @@ async function startGame() {
 
 function showTD(side = POSSESSIONS.offense) {
   Object.assign(state, blankPlayState(), { phase: PHASES.touchdown, touchdownSide: side });
-  syncUiState();
+  syncUiState(captureLiveRender());
   const opponent = state.match.opponent.shortName;
   populateOverlay(document.getElementById('ov-td'), {
     root: { dataset: { side } },
@@ -4895,7 +4993,7 @@ function showConversionDecision(recovery = null, decision = null) {
     publicSpecialAction: state.possession === POSSESSIONS.defense ? recoveryAction : null,
     specialRecoveryPlay: recovery,
   });
-  updateStatus();
+  updateStatus(captureLiveRender());
   document.getElementById('play-label').textContent = 'Conversion Try';
   if (state.possession === POSSESSIONS.offense) {
     const actions = recoveryAction ? [{
@@ -4926,7 +5024,7 @@ function showConversionDecision(recovery = null, decision = null) {
     announceSpecialAction(recoveryAction
       ? 'The same conversion choice is waiting for another try.'
       : 'Touchdown: six points. Choose the separate conversion.');
-    syncUiState();
+    syncUiState(captureLiveRender());
     return;
   }
 
@@ -4946,7 +5044,7 @@ function showConversionDecision(recovery = null, decision = null) {
     }], retryOpponentConversionAction, 'Retry the same opponent conversion');
     setFeedback('That try could not be checked. The same opponent conversion is waiting.', 'info');
     announceSpecialAction(opponentSpecialActionLabel(frozenDecision.action));
-    syncUiState();
+    syncUiState(captureLiveRender());
     return;
   }
   applyDeskHeader('conversionDefense');
@@ -4990,7 +5088,7 @@ function showDefenseTransition(message, intent = null) {
   clearTimeout(advTimer);
   Object.assign(state, blankPlayState(), retainedCommittedSpecialResultState());
   applyTransitionPatch(presentation.patch);
-  syncUiState();
+  syncUiState(captureLiveRender());
   populateOverlay(document.getElementById('ov-defense'), {
     slots: {
       title: `${state.match.opponent.shortName}'s Ball`,
@@ -5013,7 +5111,7 @@ function showOffenseTransition(message, intent = null) {
   clearTimeout(advTimer);
   Object.assign(state, blankPlayState(), retainedCommittedSpecialResultState());
   applyTransitionPatch(presentation.patch);
-  syncUiState();
+  syncUiState(captureLiveRender());
   populateOverlay(document.getElementById('ov-offense'), {
     slots: { sub: `${message} Score: ${state.playerScore} - ${state.opponentScore}` },
   });
@@ -5060,7 +5158,7 @@ function showQuarterEnd(message, intent = null) {
   const next = possessionTitle(presentation.nextPossession);
   Object.assign(state, blankPlayState(), retainedCommittedSpecialResultState());
   applyTransitionPatch(presentation.patch);
-  syncUiState();
+  syncUiState(captureLiveRender());
   populateOverlay(document.getElementById('ov-quarter'), {
     slots: {
       title: `End of ${QUARTER_NAMES[state.quarter]} Quarter`,
@@ -5076,7 +5174,7 @@ function showHalftime(message, intent = null) {
   const next = possessionTitle(presentation.nextPossession);
   Object.assign(state, blankPlayState(), retainedCommittedSpecialResultState());
   applyTransitionPatch(presentation.patch);
-  syncUiState();
+  syncUiState(captureLiveRender());
   populateOverlay(document.getElementById('ov-halftime'), {
     slots: {
       sub: `${message} Halftime swap: ${next} starts the 2nd half. Score: ${state.playerScore} - ${state.opponentScore}`,
@@ -5295,7 +5393,7 @@ function showGameOver(intent = null) {
 
   Object.assign(state, blankPlayState(), retainedCommittedSpecialResultState());
   applyTransitionPatch(presentation.patch);
-  syncUiState();
+  syncUiState(captureLiveRender());
   const finalSpecialMessage = state.specialResultPresentation?.message || '';
   const { player, opponent } = state.match;
   populateOverlay(document.getElementById('ov-end'), {
@@ -5338,8 +5436,9 @@ function restart(preferredMode = null) {
   state = createGameState(FOOTBALL_OPPONENT.createMatch(selectedRivalId));
   prevPlayerScore = -1;
   prevOpponentScore = -1;
-  updateField(false);
-  updateStatus();
+  const view = captureLiveRender();
+  updateField(view, false);
+  updateStatus(view);
   showStart();
 }
 
@@ -5618,8 +5717,9 @@ function seedDriveStateForTest(overrides = {}) {
     state.opponentSnapshot = FOOTBALL_DOMAIN.deepFreeze(FOOTBALL_DOMAIN.clone(overrides.opponentSnapshot));
   }
   hideOverlays();
-  updateField(false);
-  updateStatus();
+  const view = captureLiveRender();
+  updateField(view, false);
+  updateStatus(view);
   showCallPrompt({ preserveOpponentSnapshot: possession === POSSESSIONS.defense && Boolean(state.opponentSnapshot) });
   return JSON.parse(renderGameToText());
 }
@@ -5765,8 +5865,11 @@ window.__footballTest = {
 installBreakFieldArt();
 buildField();
 state = createGameState();
-updateField(false);
-updateStatus();
+{
+  const view = captureLiveRender();
+  updateField(view, false);
+  updateStatus(view);
+}
 updateMuteButton();
 
 function applyBootMode() {

@@ -4199,3 +4199,632 @@ test('#48 football.js names game phases and possession sides only through the co
   expect(phaseMembers.length).toBeGreaterThan(0);
   expect(possessionMembers.sort()).toEqual(['defense', 'offense']);
 });
+
+// #48 explicit renderer snapshots. Sources named "synthetic" below are
+// test-built plain objects passed to the pure renderSnapshot() constructor;
+// live game state is reached only through real taps and existing seams.
+const RENDER_VIEW_KEYS = [
+  'animYd', 'direction', 'down', 'fdYd', 'g', 'match', 'matchup', 'opponentRead', 'opponentScore',
+  'outcomeCommitted', 'phase', 'play', 'playerScore', 'possession', 'quarter', 'question', 'season',
+  'touchdownSide', 'yd', 'ytg',
+];
+
+async function expandLiveCoachReplay(page) {
+  await chooseCall(page, 'Short Run');
+  await tapChoice(page, 'wrong');
+  await tapChoice(page, 'wrong');
+  await expect(page.locator('#ui-desk')).toHaveAttribute('data-phase', 'explanation');
+  await page.locator('#question-learn-why').click();
+  await expect(page.locator('#worked-review')).toBeVisible();
+  expect((await activeContracts(page)).render.reviewExpanded).toBe(true);
+}
+
+test('#48 render snapshots are owned, deep-frozen, public-only, and required by every renderer', async ({ page }, testInfo) => {
+  primaryOnly(testInfo);
+  await cleanBoot(page, 0x48d01);
+  await seedDrive(page, DEFENSE_SEED);
+  const result = await page.evaluate(() => {
+    const liveBefore = JSON.stringify(state);
+    // Synthetic unfrozen source copied from the live defensive call.
+    const source = JSON.parse(JSON.stringify(state));
+    source.questionInstance = {
+      choicePresentation: 'number',
+      correctChoiceId: 'q-1',
+      prompt: { text: 'private prompt' },
+      choices: [{ id: 'q-1', label: '4', value: 4, ariaLabel: 'four yards' }, { id: 'q-2', label: '6', value: 6 }],
+    };
+    source.activePlay = {
+      playType: 'punt',
+      playId: 'private-play',
+      contextId: 'private-context',
+      context: { match: source.match },
+      proposal: { appliedTravelYards: 41, requestedTravelYards: 41 },
+    };
+    source.questionUi.reviewExpanded = true;
+    const season = { gameNumber: 2, gameCount: 3, seasonId: 'private-season', gameId: 'private-game' };
+    const view = renderSnapshot(source, season);
+    const json = JSON.stringify(view);
+    const deepFrozen = value => value === null || typeof value !== 'object'
+      || (Object.isFrozen(value) && Object.values(value).every(deepFrozen));
+    const sharesSource = [
+      view.match === source.match,
+      view.match.opponent === source.match.opponent,
+      view.question.choices === source.questionInstance.choices,
+      view.question.choices[0] === source.questionInstance.choices[0],
+      view.opponentRead.look === source.opponentSnapshot.look,
+      view.season === season,
+    ];
+    const pureCapture = { sourceFrozen: Object.isFrozen(source), reviewExpanded: source.questionUi.reviewExpanded };
+
+    // Mutate every nested source after capture, then try to write the view.
+    source.questionInstance.choices[0].label = 'changed';
+    source.questionInstance.choices.push({ id: 'q-3', label: '8', value: 8 });
+    source.opponentSnapshot.look.label = 'changed look';
+    source.match.opponent.shortName = 'CHANGED';
+    source.activePlay.proposal.appliedTravelYards = 1;
+    source.questionUi.outcomeCommitted = true;
+    Object.assign(source, { phase: PHASES.final, playerScore: 99, animYd: 0 });
+    season.gameNumber = 3;
+    const writes = [
+      Reflect.set(view, 'phase', PHASES.final),
+      Reflect.set(view.match.opponent, 'shortName', 'X'),
+      Reflect.set(view.question.choices, 0, null),
+      Reflect.set(view.season, 'gameNumber', 1),
+    ];
+
+    // Renderers reject a missing, non-object, or unfrozen view before any DOM write.
+    const dom = () => JSON.stringify([
+      document.getElementById('s-pscore').textContent,
+      document.getElementById('wrap').dataset.phase,
+      document.getElementById('play-context').textContent,
+      document.getElementById('ball').style.left,
+      document.querySelectorAll('#call-grid .call-btn').length,
+    ]);
+    const domBefore = dom();
+    const rejects = [
+      () => updateStatus(),
+      () => updateStatus({ ...view }),
+      () => updateField(undefined, false),
+      () => updateField('view', false),
+      () => renderButtons(null),
+      () => renderCallGrid({ ...view }, Object.values(DEFENSE_CALLS), () => false),
+      () => syncUiState(),
+      () => renderSnapshot(state),
+      () => renderSnapshot(null, season),
+    ].map((run) => {
+      try { run(); return 'no-throw'; } catch (error) { return error.constructor.name; }
+    });
+
+    return {
+      keys: Object.keys(view).sort(),
+      playKeys: Object.keys(view.play).sort(),
+      readKeys: Object.keys(view.opponentRead).sort(),
+      questionKeys: Object.keys(view.question).sort(),
+      choiceKeys: Object.keys(view.question.choices[0]).sort(),
+      deepFrozen: deepFrozen(view),
+      sharesSource,
+      pureCapture,
+      unchanged: JSON.stringify(view) === json,
+      writes,
+      leaked: ['plannedCallKey', 'weights', 'tendency', 'profileKey', 'private-play', 'private-context',
+        'private prompt', 'correctChoiceId', 'private-season', 'private-game', 'gameId', 'possessionId',
+        'pendingResolution'].filter(token => json.includes(token)),
+      captured: {
+        phase: view.phase,
+        possession: view.possession,
+        playerScore: view.playerScore,
+        animYd: view.animYd,
+        opponent: view.match.opponent.shortName,
+        look: view.opponentRead.look.label,
+        choices: view.question.choices.map(choice => choice.label),
+        punt: view.play.puntTravelYards,
+        outcomeCommitted: view.outcomeCommitted,
+        season: { ...view.season },
+      },
+      live: { opponent: state.match.opponent.shortName, look: state.opponentSnapshot.look.label },
+      rejects,
+      domUnchanged: dom() === domBefore,
+      liveUnchanged: JSON.stringify(state) === liveBefore,
+      liveCaptureMatchesPure: JSON.stringify(captureLiveRender()) === JSON.stringify(renderSnapshot(state, publicSeasonFacts())),
+    };
+  });
+
+  expect(result.keys).toEqual(RENDER_VIEW_KEYS);
+  expect(result.playKeys).toEqual(['attemptDistance', 'attemptType', 'playType', 'puntTravelYards', 'tryYardLine']);
+  expect(result.readKeys).toEqual(['lean', 'look', 'opponentId']);
+  expect(result.questionKeys).toEqual(['choicePresentation', 'choices']);
+  expect(result.choiceKeys).toEqual(['ariaLabel', 'id', 'label', 'value']);
+  expect(result.deepFrozen).toBe(true);
+  expect(result.sharesSource).toEqual([false, false, false, false, false, false]);
+  expect(result.pureCapture).toEqual({ sourceFrozen: false, reviewExpanded: true });
+  expect(result.unchanged).toBe(true);
+  expect(result.writes).toEqual([false, false, false, false]);
+  expect(result.leaked).toEqual([]);
+  expect(result.captured).toEqual({
+    phase: 'call',
+    possession: 'defense',
+    playerScore: 14,
+    animYd: 70,
+    opponent: result.live.opponent,
+    look: result.live.look,
+    choices: ['4', '6'],
+    punt: 41,
+    outcomeCommitted: false,
+    season: { gameNumber: 2, gameCount: 3 },
+  });
+  expect(result.rejects).toEqual(Array(9).fill('TypeError'));
+  expect(result.domUnchanged).toBe(true);
+  expect(result.liveUnchanged).toBe(true);
+  expect(result.liveCaptureMatchesPure).toBe(true);
+});
+
+test('#48 a detached view draws game A over a conflicting live game B without changing B', async ({ page }, testInfo) => {
+  primaryOnly(testInfo);
+  await cleanBoot(page, 0x48d02);
+  // Live game B: a real offense explanation with Coach Replay expanded.
+  await seedDrive(page, OFFENSE_SEED);
+  await expandLiveCoachReplay(page);
+
+  const result = await page.evaluate(() => {
+    window.__renderDraws48 = { football: 0, scheduler: 0, presentation: 0 };
+    const counter = key => () => { window.__renderDraws48[key]++; return 0.5; };
+    window.__footballTest.setRngStreams({
+      football: counter('football'),
+      scheduler: counter('scheduler'),
+      presentation: counter('presentation'),
+    });
+    const durable = () => JSON.stringify({
+      history: window.__footballTest.statsHistory(),
+      session: window.__footballTest.statsSession(),
+      learning: window.__footballTest.learningState(),
+      season: window.__footballTest.activeSeasonGame(),
+      storage: Object.keys(localStorage).sort().map(key => [key, localStorage.getItem(key)]),
+    });
+    const liveState = state;
+    const liveBefore = JSON.stringify(state);
+    const durableBefore = durable();
+    const text = id => document.getElementById(id).textContent;
+    const data = (id, key) => document.getElementById(id).dataset[key] ?? null;
+
+    // Synthetic game A: another rival, defense call, Q4, other score and spot.
+    const rivalA = FOOTBALL_OPPONENT.RIVAL_ORDER.find(id => id !== state.match.opponent.id);
+    const sourceA = {
+      ...createGameState(FOOTBALL_OPPONENT.createMatch(rivalA)),
+      phase: PHASES.call,
+      possession: POSSESSIONS.defense,
+      direction: -1,
+      quarter: 4,
+      down: 3,
+      ytg: 7,
+      yd: 63,
+      fdYd: 56,
+      animYd: 63,
+      playerScore: 21,
+      opponentScore: 3,
+      opponentSnapshot: {
+        opponentId: rivalA,
+        look: { key: 'probe', label: 'Probe Look', alignment: 'split wide' },
+        lean: { key: 'probe', label: 'Probe lean' },
+        plannedCallKey: 'shortRun',
+      },
+    };
+    const viewA = renderSnapshot(sourceA, { gameNumber: 3, gameCount: 3 });
+    updateField(viewA, false);
+    updateStatus(viewA);
+    renderCallGrid(viewA, Object.values(DEFENSE_CALLS), () => false, { focusFirst: true });
+    const region = document.getElementById('worked-review');
+    const call = {
+      opponentName: text('s-opponent-name'),
+      rootOpponent: document.documentElement.dataset.opponent,
+      scores: [text('s-pscore'), text('s-oscore')],
+      quarter: text('s-quarter'),
+      down: text('s-down'),
+      yard: text('s-yd'),
+      phases: [data('wrap', 'phase'), data('ui-desk', 'phase')],
+      possessions: ['ui-desk', 'status', 'scorebug', 'wrap', 'call-grid'].map(id => data(id, 'possession')),
+      fieldDefense: document.getElementById('field-wrap').classList.contains('defense'),
+      ballLeft: parseFloat(document.getElementById('ball').style.left),
+      fdLeft: parseFloat(document.getElementById('fd-line').style.left),
+      playerHidden: document.getElementById('player').classList.contains('player-hidden'),
+      stage: text('stage-mode-copy'),
+      context: text('play-context'),
+      read: text('defense-read'),
+      readHidden: document.getElementById('defense-read').hidden,
+      tiles: [...document.querySelectorAll('#call-grid .call-btn')]
+        .map(tile => tile.querySelector('[data-slot="mode"]').textContent),
+      focusedFirst: document.activeElement === document.querySelector('#call-grid .call-btn'),
+      review: {
+        hidden: region.hidden,
+        inert: region.inert,
+        ariaHidden: region.getAttribute('aria-hidden'),
+        learnHidden: document.getElementById('question-learn-why').classList.contains('hidden'),
+      },
+    };
+
+    // Synthetic answer choices for A while live B holds its own question.
+    renderButtons(renderSnapshot({
+      ...sourceA,
+      phase: PHASES.question,
+      possession: POSSESSIONS.offense,
+      opponentSnapshot: null,
+      questionInstance: {
+        choicePresentation: 'number',
+        choices: [
+          { id: 'a-1', label: '11', value: 11, ariaLabel: 'eleven yards' },
+          { id: 'a-2', label: '12', value: 12 },
+          { id: 'a-3', label: '13', value: 13 },
+        ],
+      },
+    }, { gameNumber: null, gameCount: 3 }));
+    const buttons = {
+      type: data('btn-row', 'choiceType'),
+      choices: [0, 1, 2, 3].map((i) => {
+        const button = document.getElementById(`b${i}`);
+        return {
+          text: button.textContent,
+          hidden: button.classList.contains('hidden'),
+          disabled: button.disabled,
+          id: button.dataset.choiceId ?? null,
+          aria: button.getAttribute('aria-label'),
+        };
+      }),
+      liveLabels: state.questionInstance.choices.map(choice => choice.label),
+    };
+
+    // Synthetic special-play contexts drawn through updateStatus and syncUiState.
+    const special = (patch) => {
+      updateStatus(renderSnapshot({ ...sourceA, opponentSnapshot: null, ...patch }, { gameNumber: null, gameCount: 3 }));
+      return {
+        context: text('play-context'),
+        down: text('s-down'),
+        yard: text('s-yd'),
+        labels: [text('s-down-label'), text('s-yd-label')],
+        stage: text('stage-mode-copy'),
+      };
+    };
+    const specials = {
+      conversion: special({ phase: PHASES.conversionDecision, possession: POSSESSIONS.offense, direction: 1 }),
+      twoPoint: special({
+        phase: PHASES.question,
+        activePlay: { playType: 'conversion', context: { attemptType: 'twoPoint', tryYardLine: 3 } },
+      }),
+      fieldGoal: special({ phase: PHASES.question, activePlay: { playType: 'fieldGoal', context: { attemptDistance: 44 } } }),
+      punt: special({ phase: PHASES.question, activePlay: { playType: 'punt', proposal: { appliedTravelYards: 38 } } }),
+      puntCommitted: special({
+        phase: PHASES.feedback,
+        activePlay: { playType: 'punt', proposal: { appliedTravelYards: 38 } },
+        questionUi: { ...sourceA.questionUi, outcomeCommitted: true },
+      }),
+      touchdown: special({ phase: PHASES.touchdown, touchdownSide: POSSESSIONS.defense }),
+      halftime: special({ phase: PHASES.halftime }),
+    };
+
+    const draws = { ...window.__renderDraws48 };
+    return {
+      call,
+      buttons,
+      specials,
+      names: { player: viewA.match.player.shortName, opponent: viewA.match.opponent.shortName, rivalA },
+      expected: {
+        yard: fieldPositionAt(63, viewA.match).compact,
+        tryOffense: fieldPositionAt(FOOTBALL_DOMAIN.tryYardLineFor(1), viewA.match).compact,
+        tryThree: fieldPositionAt(3, viewA.match).compact,
+        ballLeft: yardToPct(63),
+        fdLeft: yardToPct(56),
+      },
+      liveB: {
+        opponent: state.match.opponent.shortName,
+        yard: fieldPositionAt(state.yd, state.match).compact,
+        sameObject: state === liveState,
+        unchanged: JSON.stringify(state) === liveBefore,
+        phase: state.phase,
+        reviewExpanded: state.questionUi.reviewExpanded,
+        durableUnchanged: durable() === durableBefore,
+        semanticReviewExpanded: JSON.parse(render_game_to_text()).reviewExpanded,
+      },
+      draws,
+    };
+  });
+
+  const { names, expected, specials } = result;
+  // Display A comes entirely from the supplied view.
+  expect(names.opponent).not.toBe(result.liveB.opponent);
+  expect(expected.yard).not.toBe(result.liveB.yard);
+  // Inline CSS percentages serialize at reduced precision (55.400000000000006%
+  // reads back as 55.4%), so the marker positions are compared numerically.
+  const { ballLeft, fdLeft, ...call } = result.call;
+  expect(ballLeft).toBeCloseTo(expected.ballLeft, 4);
+  expect(fdLeft).toBeCloseTo(expected.fdLeft, 4);
+  expect(call).toEqual({
+    opponentName: names.opponent,
+    rootOpponent: names.rivalA,
+    scores: ['21', '3'],
+    quarter: '4',
+    down: '3rd & 7',
+    yard: expected.yard,
+    phases: ['call', 'call'],
+    possessions: Array(5).fill('defense'),
+    fieldDefense: true,
+    playerHidden: true,
+    stage: 'Season game 3 of 3',
+    context: `${names.opponent} BALL / Q4 / BALL ON ${expected.yard} / 3rd & 7`,
+    read: `Pre-snap read: ${names.opponent} shows Probe Look, split wide. Probe lean.`,
+    readHidden: false,
+    tiles: Array(4).fill('Coverage'),
+    focusedFirst: true,
+    review: { hidden: true, inert: true, ariaHidden: 'true', learnHidden: true },
+  });
+  expect(result.buttons.type).toBe('number');
+  expect(result.buttons.choices).toEqual([
+    { text: '11', hidden: false, disabled: false, id: 'a-1', aria: 'eleven yards' },
+    { text: '12', hidden: false, disabled: false, id: 'a-2', aria: '12' },
+    { text: '13', hidden: false, disabled: false, id: 'a-3', aria: '13' },
+    expect.objectContaining({ text: '', hidden: true, disabled: true, id: null }),
+  ]);
+  expect(result.buttons.liveLabels).not.toEqual(['11', '12', '13']);
+  expect(specials.conversion).toEqual({
+    context: `${names.player} BALL / CONVERSION / SCORE 21-3`,
+    down: 'TRY',
+    yard: expected.tryOffense,
+    labels: ['Play', 'Try Spot'],
+    stage: 'Broadcast view',
+  });
+  expect(specials.twoPoint).toMatchObject({
+    context: `${names.opponent} BALL / TWO-POINT TRY / SCORE 21-3`,
+    down: 'TRY',
+    yard: expected.tryThree,
+  });
+  expect(specials.fieldGoal).toMatchObject({
+    context: `${names.opponent} BALL / Q4 / BALL ON ${expected.yard} / 44-YARD FIELD GOAL`,
+    down: '3rd & 7',
+    labels: ['Down', 'Ball On'],
+  });
+  expect(specials.punt.context).toBe(`${names.opponent} BALL / Q4 / BALL ON ${expected.yard} / 38-YARD PUNT`);
+  expect(specials.puntCommitted.context).toBe(`${names.opponent} BALL / Q4 / BALL ON ${expected.yard}`);
+  expect(specials.touchdown.context).toBe(`${names.opponent} TOUCHDOWN / SCORE 21-3`);
+  expect(specials.halftime.context).toBe('HALFTIME / SCORE 21-3');
+
+  // Live game B, its expanded Coach Replay flag, RNG, and persistence are untouched.
+  expect(result.liveB).toEqual({
+    opponent: result.liveB.opponent,
+    yard: result.liveB.yard,
+    sameObject: true,
+    unchanged: true,
+    phase: 'explanation',
+    reviewExpanded: true,
+    durableUnchanged: true,
+    semanticReviewExpanded: true,
+  });
+  expect(result.draws).toEqual({ football: 0, scheduler: 0, presentation: 0 });
+});
+
+test('#48 production render boundaries keep the Coach Replay reset and its explanation guard', async ({ page }, testInfo) => {
+  primaryOnly(testInfo);
+  await cleanBoot(page, 0x48d03);
+  await seedDrive(page, OFFENSE_SEED);
+  await expandLiveCoachReplay(page);
+
+  // Production boundaries during the explanation keep Coach Replay open.
+  const midExplanation = await page.evaluate(() => {
+    updateStatus(captureLiveRender());
+    syncUiState(captureLiveRender());
+    const region = document.getElementById('worked-review');
+    return {
+      phase: state.phase,
+      expanded: state.questionUi.reviewExpanded,
+      hidden: region.hidden,
+      inert: region.inert,
+      steps: region.querySelectorAll('.worked-review-steps li').length,
+    };
+  });
+  expect(midExplanation).toMatchObject({ phase: 'explanation', expanded: true, hidden: false, inert: false });
+  expect(midExplanation.steps).toBeGreaterThan(0);
+
+  // Real Continue tap into the next call closes it in state and display.
+  await page.locator('#question-continue').click();
+  await expect(page.locator('#ui-desk')).toHaveAttribute('data-phase', 'call', { timeout: 6000 });
+  const nextCall = await page.evaluate(() => {
+    const render = JSON.parse(render_game_to_text());
+    const region = document.getElementById('worked-review');
+    return {
+      mode: render.mode,
+      reviewExpanded: render.reviewExpanded,
+      hidden: region.hidden,
+      inert: region.inert,
+      ariaHidden: region.getAttribute('aria-hidden'),
+      learnHidden: document.getElementById('question-learn-why').classList.contains('hidden'),
+      tiles: document.querySelectorAll('#call-grid .call-btn').length,
+    };
+  });
+  expect(nextCall).toEqual({
+    mode: 'call', reviewExpanded: false, hidden: true, inert: true, ariaHidden: 'true', learnHidden: true, tiles: 5,
+  });
+  await page.keyboard.press('Escape');
+  expect(await page.evaluate(() => [state.phase, state.questionUi.reviewExpanded,
+    document.querySelectorAll('#call-grid .call-btn').length])).toEqual(['call', false, 5]);
+
+  // Synthetic phase change that keeps the expanded questionUi: a pure capture
+  // and a detached render leave the live flag alone; only the production
+  // boundary performs the reset that syncUiState used to perform.
+  await expandLiveCoachReplay(page);
+  const offExplanation = await page.evaluate(() => {
+    const ui = state.questionUi;
+    state.phase = PHASES.feedback;
+    const pure = renderSnapshot(state, publicSeasonFacts());
+    const afterPure = ui.reviewExpanded;
+    updateStatus(pure);
+    const afterDetached = ui.reviewExpanded;
+    const regionHiddenByDetached = document.getElementById('worked-review').hidden;
+    syncUiState(captureLiveRender());
+    return {
+      afterPure,
+      afterDetached,
+      regionHiddenByDetached,
+      afterBoundary: ui.reviewExpanded,
+      sameUi: state.questionUi === ui,
+    };
+  });
+  expect(offExplanation).toEqual({
+    afterPure: true, afterDetached: true, regionHiddenByDetached: true, afterBoundary: false, sameUi: true,
+  });
+});
+
+test('#48 call taps on a stale or conflicting display resolve against live authority', async ({ page }, testInfo) => {
+  primaryOnly(testInfo);
+  const tapTrace = async (conflictingDisplay) => {
+    await cleanBoot(page, 0x48d04);
+    await seedDrive(page, OFFENSE_SEED);
+    await page.evaluate(() => { window.__staleView48 = renderSnapshot(state, publicSeasonFacts()); });
+    if (conflictingDisplay) {
+      // Synthetic display A (defense, other rival and score) wired to the live offense handler.
+      await page.evaluate(() => {
+        const rivalA = FOOTBALL_OPPONENT.RIVAL_ORDER.find(id => id !== state.match.opponent.id);
+        const viewA = renderSnapshot({
+          ...createGameState(FOOTBALL_OPPONENT.createMatch(rivalA)),
+          phase: PHASES.call,
+          possession: POSSESSIONS.defense,
+          direction: -1,
+          playerScore: 0,
+          opponentScore: 28,
+          yd: 75,
+          fdYd: 65,
+          animYd: 75,
+        }, { gameNumber: 2, gameCount: 3 });
+        updateField(viewA, false);
+        updateStatus(viewA);
+        renderCallGrid(viewA, Object.values(OFFENSE_CALLS), selectOffenseCall);
+      });
+      await expect(page.locator('#call-grid')).toHaveAttribute('data-possession', 'defense');
+      await expect(page.locator('#s-oscore')).toHaveText('28');
+    }
+    await chooseCall(page, 'Short Run');
+    await expect(page.locator('#ui-desk')).toHaveAttribute('data-phase', 'question');
+    return page.evaluate(() => {
+      const { activePlay, questionInstance, render } = window.__footballTest.activeContracts();
+      return {
+        call: activePlay.call.key,
+        possession: activePlay.context.possession,
+        scores: activePlay.context.scores,
+        yardLine: activePlay.context.yardLine,
+        proposal: {
+          appliedGain: activePlay.proposal.appliedGain,
+          endYardLine: activePlay.proposal.endYardLine,
+          resultKind: activePlay.proposal.resultKind,
+        },
+        familyId: questionInstance.familyId,
+        choices: questionInstance.choices.map(choice => choice.label),
+        opponent: render.match.opponent.id,
+      };
+    });
+  };
+
+  const control = await tapTrace(false);
+  const conflicting = await tapTrace(true);
+  expect(control).toMatchObject({
+    call: 'shortRun', possession: 'offense', scores: { player: 7, opponent: 7 }, yardLine: 30,
+  });
+  expect(conflicting).toEqual(control);
+
+  // A grid drawn from the view captured before the tap is stale once live
+  // play reaches the question; its real tap is rejected without any effect.
+  await page.evaluate(() => {
+    window.__staleBefore48 = JSON.stringify({ state, session: window.__footballTest.statsSession() });
+    window.__staleDraws48 = 0;
+    const count = () => { window.__staleDraws48++; return 0.5; };
+    window.__footballTest.setRngStreams({ football: () => count(), scheduler: () => count(), presentation: () => count() });
+    renderCallGrid(window.__staleView48, Object.values(OFFENSE_CALLS), selectOffenseCall);
+  });
+  await page.locator('#call-grid .call-btn').first().click();
+  const stale = await page.evaluate(() => ({
+    phase: state.phase,
+    unchanged: JSON.stringify({ state, session: window.__footballTest.statsSession() }) === window.__staleBefore48,
+    draws: window.__staleDraws48,
+  }));
+  expect(stale).toEqual({ phase: 'question', unchanged: true, draws: 0 });
+});
+
+test('#48 Season stage copy comes from the supplied view while the live binding stays authoritative', async ({ page }, testInfo) => {
+  primaryOnly(testInfo);
+  await page.addInitScript(() => {
+    localStorage.removeItem('footballMathStats:v1');
+    localStorage.removeItem('footballMathSeason:v1');
+  });
+  await page.goto('/football/');
+  await page.getByRole('radio', { name: /3-Game Season/ }).check();
+  await page.locator('#start-game-btn').click();
+  await expect(page.locator('#ui-desk')).toHaveAttribute('data-phase', 'call');
+  await expect(page.locator('#stage-mode-copy')).toHaveText('Season game 1 of 3');
+
+  const result = await page.evaluate(() => {
+    const binding = JSON.stringify(window.__footballTest.activeSeasonGame());
+    const saved = localStorage.getItem('footballMathSeason:v1');
+    const stage = () => document.getElementById('stage-mode-copy').textContent;
+    updateStatus(renderSnapshot(state, { gameNumber: null, gameCount: 3 }));
+    const quickView = stage();
+    syncUiState(renderSnapshot(state, { gameNumber: 2, gameCount: 3 }));
+    const otherGameView = stage();
+    const facts = publicSeasonFacts();
+    syncUiState(captureLiveRender());
+    return {
+      quickView,
+      otherGameView,
+      facts,
+      production: stage(),
+      bindingUnchanged: JSON.stringify(window.__footballTest.activeSeasonGame()) === binding,
+      storageUnchanged: localStorage.getItem('footballMathSeason:v1') === saved,
+    };
+  });
+  expect(result).toEqual({
+    quickView: 'Broadcast view',
+    otherGameView: 'Season game 2 of 3',
+    facts: { gameNumber: 1, gameCount: 3 },
+    production: 'Season game 1 of 3',
+    bindingUnchanged: true,
+    storageUnchanged: true,
+  });
+});
+
+test('#48 resize corrections and committed field motion follow the live ball, not a rendered view', async ({ page }, testInfo) => {
+  primaryOnly(testInfo);
+  await cleanBoot(page, 0x48d06);
+  await seedDrive(page, OFFENSE_SEED);
+
+  const resized = await page.evaluate(async () => {
+    const player = document.getElementById('player');
+    const field = document.getElementById('field-wrap');
+    const frames = () => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    // Synthetic view with the ball at 80 while the live ball stays at 30.
+    updateField(renderSnapshot({ ...state, animYd: 80, yd: 80, fdYd: 90 }, publicSeasonFacts()), false);
+    await frames();
+    const viewLeft = parseFloat(player.style.left);
+    window.dispatchEvent(new Event('resize'));
+    const afterResize = parseFloat(player.style.left);
+    await frames();
+    return {
+      liveAnimYd: state.animYd,
+      viewLeft,
+      viewTarget: playerLeftPct(player, field, 80),
+      afterResize,
+      liveTarget: playerLeftPct(player, field, state.animYd),
+      transition: player.style.transition,
+    };
+  });
+  expect(resized.liveAnimYd).toBe(30);
+  expect(resized.viewLeft).toBeCloseTo(resized.viewTarget, 5);
+  expect(resized.afterResize).toBeCloseTo(resized.liveTarget, 5);
+  expect(resized.afterResize).not.toBeCloseTo(resized.viewLeft, 1);
+  expect(resized.transition).toBe('');
+
+  // A real correct answer commits the play and moves the ball to the live spot.
+  await chooseCall(page, 'Short Run');
+  await tapChoice(page, 'correct');
+  await page.waitForFunction(() => state.animYd !== 30, null, { timeout: 5000 });
+  const moved = await page.evaluate(() => ({
+    animYd: state.animYd,
+    ballLeft: parseFloat(document.getElementById('ball').style.left),
+    expected: yardToPct(state.animYd),
+  }));
+  expect(moved.animYd).toBeGreaterThan(30);
+  expect(moved.ballLeft).toBeCloseTo(moved.expected, 5);
+  await expect(page.locator('#ball')).not.toHaveClass(/ball-moving/);
+});
