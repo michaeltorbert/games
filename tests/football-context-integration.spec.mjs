@@ -3850,3 +3850,352 @@ test('every entry path initializes one fresh learning/RNG session exactly once',
     expect(await page.evaluate(() => window.__rootRandomDraws)).toBe(1);
   }
 });
+
+// #48 phase and possession constants. Expected values are written out here,
+// independently of football.js, because they are the stable data-phase,
+// data-possession, and data-side contract shared with CSS and markup.
+const EXPECTED_PHASES = Object.freeze({
+  start: 'start',
+  call: 'call',
+  fourthDownDecision: 'fourth-down-decision',
+  question: 'question',
+  explanation: 'explanation',
+  feedback: 'feedback',
+  touchdown: 'touchdown',
+  conversionDecision: 'conversion-decision',
+  transition: 'transition',
+  quarter: 'quarter',
+  halftime: 'halftime',
+  final: 'final',
+});
+const EXPECTED_POSSESSIONS = Object.freeze({ offense: 'offense', defense: 'defense' });
+const PHASE_VALUES = Object.values(EXPECTED_PHASES);
+const POSSESSION_VALUES = Object.values(EXPECTED_POSSESSIONS);
+
+async function phaseContractSample(page, label) {
+  const sample = await page.evaluate(() => {
+    const render = JSON.parse(render_game_to_text());
+    const data = (id, key) => document.getElementById(id)?.dataset[key] ?? null;
+    return {
+      mode: render.mode,
+      possession: render.possession,
+      touchdownSide: render.touchdownSide,
+      wrapPhase: data('wrap', 'phase'),
+      deskPhase: data('ui-desk', 'phase'),
+      deskPossession: data('ui-desk', 'possession'),
+      otherPossessions: ['scorebug', 'status', 'wrap', 'call-grid', 'decision-grid']
+        .map(id => data(id, 'possession'))
+        .filter(value => value !== null),
+      side: data('ov-td', 'side'),
+    };
+  });
+  expect(PHASE_VALUES, `${label}: mode`).toContain(sample.mode);
+  expect(sample.wrapPhase, `${label}: #wrap data-phase`).toBe(sample.mode);
+  expect(sample.deskPhase, `${label}: #ui-desk data-phase`).toBe(sample.mode);
+  expect(POSSESSION_VALUES, `${label}: possession`).toContain(sample.possession);
+  expect(sample.deskPossession, `${label}: #ui-desk data-possession`).toBe(sample.possession);
+  for (const value of sample.otherPossessions) {
+    expect(POSSESSION_VALUES, `${label}: data-possession`).toContain(value);
+  }
+  expect(POSSESSION_VALUES, `${label}: #ov-td data-side`).toContain(sample.side);
+  if (sample.touchdownSide !== null) {
+    expect(POSSESSION_VALUES, `${label}: touchdownSide`).toContain(sample.touchdownSide);
+  }
+  return sample;
+}
+
+// Real button tap on a rendered answer choice.
+async function tapChoice(page, pick) {
+  const { questionInstance, questionUi } = await activeContracts(page);
+  const choiceId = pick === 'correct'
+    ? questionInstance.correctChoiceId
+    : questionInstance.choices.find(choice => choice.id !== questionInstance.correctChoiceId
+      && !questionUi.missedChoiceIds.includes(choice.id)).id;
+  const index = questionInstance.choices.findIndex(choice => choice.id === choiceId);
+  await page.locator(`#b${index}`).click();
+}
+
+test('#48 PHASES and POSSESSIONS are frozen single definitions with the exact stable values', async ({ page }, testInfo) => {
+  primaryOnly(testInfo);
+  await cleanBoot(page, 0x48c01);
+  const inventory = await page.evaluate(() => {
+    try { PHASES.call = 'changed'; } catch (error) {}
+    try { PHASES.extra = 'extra'; } catch (error) {}
+    try { POSSESSIONS.offense = 'changed'; } catch (error) {}
+    return {
+      phases: { ...PHASES },
+      possessions: { ...POSSESSIONS },
+      phaseKeys: Object.keys(PHASES),
+      possessionKeys: Object.keys(POSSESSIONS),
+      frozen: [Object.isFrozen(PHASES), Object.isFrozen(POSSESSIONS)],
+      windowProperties: ['PHASES' in window, 'POSSESSIONS' in window],
+      domainExports: ['PHASES' in FOOTBALL_DOMAIN, 'POSSESSIONS' in FOOTBALL_DOMAIN],
+    };
+  });
+  expect(inventory.phases).toEqual(EXPECTED_PHASES);
+  expect(inventory.phaseKeys).toEqual(Object.keys(EXPECTED_PHASES));
+  expect(inventory.possessions).toEqual(EXPECTED_POSSESSIONS);
+  expect(inventory.possessionKeys).toEqual(['offense', 'defense']);
+  expect(new Set(Object.values(inventory.phases)).size).toBe(12);
+  expect(inventory.frozen).toEqual([true, true]);
+  // Lexical constants in football.js only: no new window or domain surface.
+  expect(inventory.windowProperties).toEqual([false, false]);
+  expect(inventory.domainExports).toEqual([false, false]);
+});
+
+test('#48 CSS selectors and initial markup use only the PHASES and POSSESSIONS values', async ({ page }, testInfo) => {
+  primaryOnly(testInfo);
+  await cleanBoot(page, 0x48c02);
+  const bridge = await page.evaluate(async () => {
+    const [css, html] = await Promise.all(['football.css', 'index.html'].map(async file => {
+      const response = await fetch(new URL(file, location.href), { cache: 'no-store' });
+      return response.text();
+    }));
+    const selectorValues = (attribute) => [...new Set(
+      [...css.matchAll(new RegExp(`\\[data-${attribute}="([^"]*)"\\]`, 'g'))].map(match => match[1]),
+    )].sort();
+    const markup = new DOMParser().parseFromString(html, 'text/html');
+    const markupValues = (attribute) => [...markup.querySelectorAll(`[data-${attribute}]`)]
+      .map(element => `${element.id}=${element.getAttribute(`data-${attribute}`)}`);
+    return {
+      phases: Object.values(PHASES),
+      possessions: Object.values(POSSESSIONS),
+      css: {
+        phase: selectorValues('phase'),
+        possession: selectorValues('possession'),
+        side: selectorValues('side'),
+      },
+      markup: {
+        phase: markupValues('phase'),
+        possession: markupValues('possession'),
+        side: markupValues('side'),
+      },
+    };
+  });
+  // Characterize the selector values football.css styles today.
+  expect(bridge.css).toEqual({
+    phase: ['call', 'conversion-decision', 'explanation', 'feedback', 'fourth-down-decision', 'question'],
+    possession: ['defense'],
+    side: ['defense'],
+  });
+  for (const value of bridge.css.phase) expect(bridge.phases).toContain(value);
+  for (const value of [...bridge.css.possession, ...bridge.css.side]) expect(bridge.possessions).toContain(value);
+  // Initial markup ships only the offense defaults; data-phase is written at boot.
+  expect(bridge.markup).toEqual({
+    phase: [],
+    possession: ['scorebug=offense'],
+    side: ['ov-td=offense'],
+  });
+});
+
+test('#48 every live phase and both possessions reach the DOM bridge through production paths', async ({ page }, testInfo) => {
+  primaryOnly(testInfo);
+  const observed = { modes: new Set(), possessions: new Set(), sides: new Set() };
+  const record = (sample) => {
+    observed.modes.add(sample.mode);
+    observed.possessions.add(sample.possession);
+    observed.possessions.add(sample.deskPossession);
+    for (const value of sample.otherPossessions) observed.possessions.add(value);
+    observed.sides.add(sample.side);
+  };
+
+  // Production Start screen.
+  await page.goto('/football/');
+  record(await phaseContractSample(page, 'start'));
+
+  // Ordinary offense: real call and answer taps through retry, worked review, and Continue.
+  await cleanBoot(page, 0x48c03);
+  await seedDrive(page, OFFENSE_SEED);
+  record(await phaseContractSample(page, 'offense call'));
+  await chooseCall(page, 'Short Run');
+  record(await phaseContractSample(page, 'question'));
+  await tapChoice(page, 'wrong');
+  await tapChoice(page, 'wrong');
+  const explanation = await phaseContractSample(page, 'explanation');
+  expect(explanation.mode).toBe('explanation');
+  record(explanation);
+  await page.locator('#question-learn-why').click();
+  await page.locator('#question-continue').click();
+  const feedback = await phaseContractSample(page, 'feedback');
+  expect(feedback.mode).toBe('feedback');
+  record(feedback);
+
+  // Fourth down (seeded state), then real punt and answer taps to the routed
+  // defense transition and its Continue into a defensive call.
+  await page.evaluate(() => window.__footballTest.seedDriveState({
+    possession: 'offense', direction: 1, quarter: 1, quarterPossessions: 0,
+    down: 4, yardsToGo: 10, yardLine: 50, firstDownLine: 60, driveStart: 20,
+  }));
+  const fourthDown = await phaseContractSample(page, 'fourth-down-decision');
+  expect(fourthDown.mode).toBe('fourth-down-decision');
+  record(fourthDown);
+  await page.locator('#decision-grid .decision-btn[data-action="punt"]').click();
+  await tapChoice(page, 'correct');
+  await expect(page.locator('#ov-defense')).toBeVisible();
+  const transition = await phaseContractSample(page, 'transition');
+  expect(transition.mode).toBe('transition');
+  record(transition);
+  await page.locator('#ov-defense .ov-btn').click();
+  const defenseCall = await phaseContractSample(page, 'defense call');
+  expect(defenseCall).toMatchObject({ mode: 'call', possession: 'defense', deskPossession: 'defense' });
+  expect(defenseCall.otherPossessions).toEqual(['defense', 'defense', 'defense', 'defense']);
+  record(defenseCall);
+
+  // Offense touchdown (seeded drive, fixed football RNG), real taps through the
+  // touchdown overlay into the conversion decision.
+  await page.evaluate(() => {
+    const football = () => 0;
+    const scheduler = () => 0.25;
+    const presentation = () => 0.5;
+    window.__footballTest.setRngStreams({ football, scheduler, presentation });
+    window.__footballTest.seedDriveState({
+      possession: 'offense', direction: 1, quarter: 1, quarterPossessions: 0,
+      down: 1, yardsToGo: 1, yardLine: 99, firstDownLine: 100, driveStart: 80,
+    });
+  });
+  await chooseCall(page, 'Short Run');
+  await tapChoice(page, 'correct');
+  await expect(page.locator('#ov-td')).toBeVisible();
+  const offenseTouchdown = await phaseContractSample(page, 'offense touchdown');
+  expect(offenseTouchdown).toMatchObject({ mode: 'touchdown', touchdownSide: 'offense', side: 'offense' });
+  record(offenseTouchdown);
+  await page.locator('#ov-td-btn').click();
+  const conversion = await phaseContractSample(page, 'conversion-decision');
+  expect(conversion.mode).toBe('conversion-decision');
+  record(conversion);
+
+  // Synthetic helpers: the legacy show/route seams production timers also call.
+  await page.evaluate(() => {
+    window.__footballTest.seedDriveState({
+      possession: 'defense', direction: -1, quarter: 1, quarterPossessions: 0,
+      down: 1, yardsToGo: 10, yardLine: 80, firstDownLine: 70, driveStart: 80,
+    });
+    showTD('defense');
+  });
+  const defenseTouchdown = await phaseContractSample(page, 'defense touchdown');
+  expect(defenseTouchdown).toMatchObject({ mode: 'touchdown', touchdownSide: 'defense', side: 'defense' });
+  record(defenseTouchdown);
+
+  for (const [quarter, expectedMode] of [[1, 'quarter'], [2, 'halftime'], [4, 'final']]) {
+    await page.evaluate((period) => {
+      window.__footballTest.seedDriveState({
+        possession: 'offense', direction: 1, quarter: period, quarterPossessions: 3,
+        down: 1, yardsToGo: 10, yardLine: 20, firstDownLine: 30, driveStart: 20,
+      });
+      finalizePossessionState(state.possessionId, {
+        nextPossession: 'defense', nextStartYardLine: 67, restartReason: 'punt',
+      });
+      routePossessionPresentation('Period complete.');
+    }, quarter);
+    const period = await phaseContractSample(page, expectedMode);
+    expect(period.mode).toBe(expectedMode);
+    record(period);
+  }
+
+  expect([...observed.modes].sort()).toEqual([...PHASE_VALUES].sort());
+  expect([...observed.possessions].sort()).toEqual(['defense', 'offense']);
+  expect([...observed.sides].sort()).toEqual(['defense', 'offense']);
+});
+
+test('#48 domain patches, drives, and presentation intents round-trip through the constants', async ({ page }, testInfo) => {
+  primaryOnly(testInfo);
+  await cleanBoot(page, 0x48c04);
+  const roundTrip = await page.evaluate(() => {
+    const base = {
+      gameId: 'game-48', possessionId: 'possession-48', phase: PHASES.feedback,
+      quarter: 1, quarterPossessions: 0, pendingNextPossession: null,
+      pendingNextStartYardLine: null, pendingRestartReason: null,
+      finalizedPossessionIds: ['possession-48'],
+    };
+    const source = { gameId: 'game-48', possessionId: 'possession-48', quarter: 1 };
+    const intents = Object.fromEntries(
+      ['offenseTransition', 'defenseTransition', 'quarterEnd', 'halftime', 'final'].map(kind => {
+        const intent = FOOTBALL_DOMAIN.presentationIntent(base, kind);
+        return [kind, { phase: intent.phase, patchPhase: intent.patch.phase, nextPossession: intent.nextPossession }];
+      }),
+    );
+    const drive = FOOTBALL_DOMAIN.planDriveStart(base, { possession: POSSESSIONS.defense });
+    return {
+      phases: Object.values(PHASES),
+      possessions: Object.values(POSSESSIONS),
+      intents,
+      drive: { phase: drive.patch.phase, possession: drive.drive.possession, direction: drive.drive.direction },
+      advances: Object.values(POSSESSIONS).map(side =>
+        FOOTBALL_DOMAIN.planTransitionAdvance({ ...base, phase: PHASES.transition }, { side }).accepted),
+      periods: [PHASES.quarter, PHASES.halftime].map(phase =>
+        FOOTBALL_DOMAIN.planPeriodAdvance({ ...base, phase }).accepted),
+      routed: FOOTBALL_DOMAIN.planPossessionPresentation(
+        { ...base, pendingNextPossession: POSSESSIONS.offense },
+        { possessionsPerQuarter: POSSESSIONS_PER_QUARTER, expectedSource: source },
+      ),
+      routedFromQuestion: FOOTBALL_DOMAIN.planPossessionPresentation(
+        { ...base, phase: PHASES.question },
+        { possessionsPerQuarter: POSSESSIONS_PER_QUARTER, expectedSource: source },
+      ),
+      adapter: Object.values(POSSESSIONS).map(possession => ({
+        possession,
+        opposite: oppositePossession(possession),
+        domainOpposite: FOOTBALL_DOMAIN.oppositePossession(possession),
+        direction: directionFor(possession),
+        driveDirection: makeDriveState(possession).direction,
+      })),
+    };
+  });
+  expect(roundTrip.intents).toEqual({
+    offenseTransition: { phase: 'transition', patchPhase: 'transition', nextPossession: 'offense' },
+    defenseTransition: { phase: 'transition', patchPhase: 'transition', nextPossession: 'defense' },
+    quarterEnd: { phase: 'quarter', patchPhase: 'quarter', nextPossession: 'offense' },
+    halftime: { phase: 'halftime', patchPhase: 'halftime', nextPossession: 'defense' },
+    final: { phase: 'final', patchPhase: 'final', nextPossession: null },
+  });
+  for (const intent of Object.values(roundTrip.intents)) {
+    expect(roundTrip.phases).toContain(intent.phase);
+    if (intent.nextPossession !== null) expect(roundTrip.possessions).toContain(intent.nextPossession);
+  }
+  expect(roundTrip.drive).toEqual({ phase: 'call', possession: 'defense', direction: -1 });
+  expect(roundTrip.advances).toEqual([true, true]);
+  expect(roundTrip.periods).toEqual([true, true]);
+  expect(roundTrip.routed).toMatchObject({ accepted: true, kind: 'offenseTransition', phase: 'transition' });
+  expect(roundTrip.routedFromQuestion).toEqual({ accepted: false, reason: 'phase' });
+  expect(roundTrip.adapter).toEqual([
+    { possession: 'offense', opposite: 'defense', domainOpposite: 'defense', direction: 1, driveDirection: 1 },
+    { possession: 'defense', opposite: 'offense', domainOpposite: 'offense', direction: -1, driveDirection: -1 },
+  ]);
+});
+
+test('#48 football.js names game phases and possession sides only through the constants', async ({ page }, testInfo) => {
+  primaryOnly(testInfo);
+  await cleanBoot(page, 0x48c05);
+  const source = await page.evaluate(async () => {
+    const response = await fetch(new URL('football.js', location.href), { cache: 'no-store' });
+    return {
+      text: await response.text(),
+      phaseKeys: Object.keys(PHASES),
+      possessionKeys: Object.keys(POSSESSIONS),
+    };
+  });
+  const code = source.text.split('\n').filter(line => !line.trim().startsWith('//')).join('\n');
+  const matches = (pattern) => [...code.matchAll(pattern)].map(match => match[0]);
+
+  // Semantic writes, guards, defaults, and arguments. Homonyms such as element
+  // IDs, CSS classes, result kinds, presentation kinds, copy keys, and Time Lab
+  // views are not phase or possession values and stay as their own strings.
+  expect(matches(/\b(?:phase|origin)\s*(?:===|!==|=|:)\s*'[^']*'/g)).toEqual([]);
+  expect(matches(/\b(?:possession|touchdownSide|expectedSide|side)\s*(?:===|!==)\s*'[^']*'/g)).toEqual([]);
+  expect(matches(/\b(?:phase|possession)\s*(?:\|\||\?\?)\s*'[^']*'/g)).toEqual([]);
+  expect(matches(/\bside\s*(?:=|:)\s*'(?:offense|defense)'/g)).toEqual([]);
+  expect(matches(/\b(?:startDrive|showTD|makeDriveState)\(\s*'[^']*'/g)).toEqual([]);
+  expect(matches(/spawnFireworks\([^)]*'(?:offense|defense)'/g)).toEqual([]);
+  expect(matches(/\?\s*'(?:offense|defense)'\s*:\s*'(?:offense|defense)'/g)).toEqual([]);
+  expect(matches(/\[\s*'(?:offense|defense|question|explanation)'\s*,[^\]]*\]\s*\.includes/g)).toEqual([]);
+  expect(matches(/'(?:fourth-down-decision|conversion-decision)'/g))
+    .toEqual(["'fourth-down-decision'", "'conversion-decision'"]);
+
+  // A mistyped member would silently read undefined.
+  const phaseMembers = [...new Set(matches(/\bPHASES\.\w+/g).map(member => member.slice('PHASES.'.length)))];
+  const possessionMembers = [...new Set(matches(/\bPOSSESSIONS\.\w+/g).map(member => member.slice('POSSESSIONS.'.length)))];
+  expect(phaseMembers.filter(key => !source.phaseKeys.includes(key))).toEqual([]);
+  expect(possessionMembers.filter(key => !source.possessionKeys.includes(key))).toEqual([]);
+  expect(phaseMembers.length).toBeGreaterThan(0);
+  expect(possessionMembers.sort()).toEqual(['defense', 'offense']);
+});

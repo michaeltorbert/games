@@ -1,3 +1,6 @@
+/* data-phase, data-possession, and data-side selector values are the stable
+   strings defined by PHASES and POSSESSIONS in football.js; rename them only
+   together with that contract, index.html, the domain, and tests. */
 :root {
   --night: #031016;
   --night-soft: #071827;
