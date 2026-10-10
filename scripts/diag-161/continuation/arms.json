@@ -1,0 +1,90 @@
+{
+  "batch": "issue-161-continuation-batch-1",
+  "predeclared": "Frozen before execution; any change invalidates the fresh Sol harness review.",
+  "order": ["N1-nav-trace-on", "N2-nav-trace-off", "N3-nav-trace-off", "N4-nav-trace-on", "T1-blank-serial", "T2-blank-workers2"],
+  "execution": {
+    "serial": "C4: arms run strictly one at a time in the order above, never concurrently. Each arm owns a fresh server process and port 8090 and starts only after the previous arm's CLI, server and owned browsers have exited and its check has been written.",
+    "prerequisite": "selfcheck.mjs must exit 0 (collector sensitivity and server parity) in the same batch before the first arm.",
+    "perArmCeiling": { "minutes": 15, "bytes": 2147483648, "note": "Sampled guards, not exact caps: run-dir size is measured every 5 s and the CLI budget is a timer (15 min minus a 150 s cleanup reserve); a run can exceed a cap by up to one sampling interval of growth before abort." },
+    "batchCeiling": { "minutes": 90, "bytes": 12884901888, "note": "C5: six arms x 15 min / 2 GiB. A ceiling hit records INCOMPLETE exposure, never PASS. run-batch starts an arm only if the full per-arm ceiling still fits in the remaining batch budget. Batch byte accounting counts arm run directories only (not check/selfcheck directories)." },
+    "sealing": "A run directory is sealed (MANIFEST.sha256, read-only) only after the CLI process group, the server and any owned leftover browser are each observed to have exited; otherwise it is left with UNSEALED-INCOMPLETE.txt, status INCOMPLETE-unsealed-writers, run-arm exit 3, and the batch stops.",
+    "runtimeFingerprint": "Declared runtime record, not a full installation byte hash: content of scripts/, tests/, football/, shared/, root config/package/lock/version.json, a selected list of installed Playwright files, the WebKit pw_run.sh launcher only (not WebKit framework binaries), and the Node version.",
+    "stageBoundMs": 30000,
+    "cyclesPerBrowser": 150,
+    "commonFlags": "--retries=0 --max-failures=1; release deadlines, assertions, specs, projects and configs unchanged",
+    "stopBatchOn": [
+      "selfcheck not PASS",
+      "fingerprint mismatch (source/runtime drift)",
+      "port 8090 busy or foreign WebKit process present before an arm",
+      "run-arm exit 2 (harness/preflight stop) or 3 (INCOMPLETE: budget, size cap, interrupt)",
+      "check-run FAIL (broken observation, unsafe ownership, broken stage accounting) or INCONCLUSIVE",
+      "an owned browser still alive after bounded cleanup"
+    ],
+    "continueBatchOn": ["run-arm exit 0 (COMPLETED-PASS) or 1 (FAILED: a target failure was captured) with check-run PASS"]
+  },
+  "factors": {
+    "trace": "C1: the factor is 'Playwright's configured tracing bundle' (use.trace on: trace events, screenshots/screencast and DOM snapshots, for every context the lane creates) versus trace off. Turning it off changes all of these at once; no result here splits them.",
+    "fixedAcrossArms": "Playwright 1.56.1, WebKit 2215, one lane-owned browser per worker launched with the stock fixture's launch options (as diff-single), project iphone-15-portrait device options (393x852, DPR 3, isMobile, hasTouch), per-process protocol sinks with DEBUG=pw:api,pw:browser,pw:protocol, PW_RUNNER_DEBUG=1, runner-owned observed server, 5 s health probes, 30 s ps census of WebKit processes, run-local cwd.",
+    "project": "Only iphone-15-portrait, the first historically failing project. Results do not generalise to the other five projects."
+  },
+  "arms": [
+    { "id": "N1-nav-trace-on",  "workload": "nav", "trace": "on",  "lanes": 1, "workers": 1, "project": "iphone-15-portrait" },
+    { "id": "N2-nav-trace-off", "workload": "nav", "trace": "off", "lanes": 1, "workers": 1, "project": "iphone-15-portrait" },
+    { "id": "N3-nav-trace-off", "workload": "nav", "trace": "off", "lanes": 1, "workers": 1, "project": "iphone-15-portrait" },
+    { "id": "N4-nav-trace-on",  "workload": "nav", "trace": "on",  "lanes": 1, "workers": 1, "project": "iphone-15-portrait" },
+    { "id": "T1-blank-serial",  "workload": "blank", "trace": "on", "lanes": 1, "workers": 1, "project": "iphone-15-portrait" },
+    { "id": "T2-blank-workers2", "workload": "blank", "trace": "on", "lanes": 2, "workers": 2, "project": "iphone-15-portrait" }
+  ],
+  "workloads": {
+    "nav": "Per cycle: newContext(project device options, baseURL) -> newPage -> goto /version.json waiting for load (must be 200 at that path) -> context.close. 150 cycles in one lane-owned browser. Same recipe as retained diff-single.",
+    "blank": "Per cycle: newContext(project device options) -> newPage left on about:blank -> page.screenshot -> page.evaluate (must still be about:blank) -> context.close. 150 cycles per lane-owned browser. Approximates the historical skipped-test teardown path; it is not a replica of the Time Lab case and loads no server resource."
+  },
+  "audio": "No arm loads Football or any page with audio; the spec refuses any URL other than /version.json, and the checker fails a blank arm that makes any non-probe request. The Football test mute is therefore not applicable here. Any later Football workload must apply and verify tests/football-test-mute.mjs before input; native sound APIs and saved preferences are untouched.",
+  "ownership": {
+    "method": "One protocol sink per Playwright Test worker process, installed at runtime by replacing utilsBundle debug.log inside that process (sink.mjs). Basis: playwright-core/index.js -> lib/inprocess (browser server in the worker), wkConnection rawSend/dispatch -> helper.debugProtocolLogger -> debugLogger -> debug, whose output is looked up at call time. Each lane holds at most one live browser, so every protocol line in a sink belongs to that worker's single live browser.",
+    "notAccepted": "Shared stderr, a shared DEBUG_FILE, timing joins and worker-tagged fixture logs are not accepted as exact protocol ownership.",
+    "verifiedBy": "check-run protocol-ownership: zero pw:protocol and launch lines on the shared CLI stderr, sink opened first and positively closed, every protocol line inside exactly one launched-to-exited browser segment, no duplicate send ids, no orphan replies, no overlapping launches in a sink. Sole recorded exemption: at most one reply with id -9999 per browser, the source-defined Playwright.close control whose send bypasses the protocol logger (webkit.js:64, wkConnection.js:56-58).",
+    "C3-feasibility": "Feasible by source inspection without changing topology; native Playwright Test two-worker scheduling is kept (two lanes, --workers=2, fullyParallel from the base config). Not yet demonstrated on a live run.",
+    "C3-fallback": "If T2's check reports protocol-ownership FAIL, T2 is recorded as NOT INTERPRETABLE (unsafe ownership) and the batch stops; no improvised topology arm is run in this batch. If topology is INCONCLUSIVE (two concurrent workers not obtained), T2 is recorded as two-worker exposure NOT OBTAINED. Any replacement (for example separate CLIs per browser) is a declared topology intervention that needs a new manifest and a fresh review."
+  },
+  "interpretation": {
+    "navigation": [
+      "A goto failure is classified by its protocol boundary in the lane's own sink: 'pre-request-gap-after-willCheck' matches the historical N boundary; any other label is a separately classified boundary, not a recurrence of N.",
+      "Boundaries are classified at the failed stage's end mark; replies/events arriving later (while the pending operation races cleanup) are reported as lateEvents and never change the label. Unparsed protocol records inside the failed window that could belong to the context make an absence-based label 'indeterminate-unparsed-records' (provisional label kept).",
+      "C2: a captured trace-OFF failure establishes that the configured tracing bundle is not necessary for THAT occurrence, even if neither trace-ON replicate reproduces.",
+      "C2: if both trace-ON replicates complete, the batch is non-reproduction under the current runtime. The report compares current runtime identity with the historical diff-single meta.json, and trace-OFF completions are uninformative about tracing.",
+      "Trace-OFF completions never establish that tracing is necessary; ON-only failure is consistent with a trace interaction under this exposure and is not causation.",
+      "A fixed failure ordinal is a correlation, not a measured limit; a changed ordinal does not establish a resource cause.",
+      "Completion of 150 cycles is non-reproduction within that exposure, not a fix, improvement or safe threshold."
+    ],
+    "teardown": [
+      "A context.close failure is classified in the lane's own sink: deleteContext sent or not, acknowledged or not, pages destroyed, and commands outstanding at send.",
+      "T non-reproduction is bounded exposure only (150 contexts per lane-owned browser). It does not resolve the trigger and cannot repair the historical workers2 attribution.",
+      "A T capture adjacent in ordinal to N does not establish a common mechanism.",
+      "A censored lane (stopped by --max-failures after the other lane failed) contributes only the cycles it completed."
+    ],
+    "exposure": "Fifty contexts per browser (diff-relaunch) and 150 here are tested exposures only; neither is a safe universal threshold."
+  },
+  "sensitivity": {
+    "script": "selfcheck.mjs",
+    "cases": [
+      "healthy lane including the source-defined Playwright.close (-9999) reply passes",
+      "missing deleteContext acknowledgement detected and labelled",
+      "ordinary orphan reply and a duplicate -9999 reply still fail ownership",
+      "navigate reply/didCheck and deleteContext ack arriving after the failed stage end are reported late and do not change the boundary",
+      "unparsed record inside the failed window makes the absence label indeterminate",
+      "nested BigInt evidence serializes deliberately",
+      "a lingering same-group writer is detected, killed and observed exited before sealing; an unproven exit leaves the directory UNSEALED",
+      "colliding message ids from two streams detected when merged; exact when separate",
+      "out-of-order replies paired correctly",
+      "collector interruption (no exit mark, truncated tail) makes absence 'unobserved', never 'unanswered'",
+      "first failure plus cleanup failure keeps the first failure",
+      "protocol on shared stderr fails ownership",
+      "pre-request-gap boundary classified, and a healthy navigation not",
+      "probe missing from the server log fails observer liveness",
+      "real debug.log replacement routes pw:protocol to the sink and not to stderr",
+      "serve-logged parity with unchanged serve-root (status, type, bytes)"
+    ],
+    "meaning": "These cases test the collector and checker only; they prove nothing about WebKit or Playwright behaviour."
+  }
+}
