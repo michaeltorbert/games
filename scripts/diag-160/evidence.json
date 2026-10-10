@@ -1,0 +1,189 @@
+{
+  "schema": 1,
+  "issue": 160,
+  "engine": "chromium",
+  "notIssue": "#161 (WebKit) is separate; nothing here concerns it",
+  "provenance": {
+    "label": "mechanically transcribed from retained run status.json / judgement.json / diag160.json / files.sha256.json; raw bundles are local, gitignored and not part of this repository",
+    "executor": "coordinator (Codex); the author did not run any command",
+    "harnessFingerprint": "531bc960d6f8c6b791c15f6db7516d3059c0de1872120f03f3ded1aee01f2fc4",
+    "freshReview": "fresh Sol approved this fingerprint for execution after corrections F1-F4",
+    "head": "577a2ca7783360b659f17c7a7d3f6eb3c7f95913",
+    "branch": "codex/issue-160-halftime-diagnostics",
+    "guardedSources": {
+      "rule": "every run: guarded files equal their HEAD blobs and git status of football/, tests/, scripts/ (except scripts/diag-160), playwright.config.mjs and package*.json is clean",
+      "football/football.js": { "sha256": "a4dd0a581a18013accac90f39d28e17568bec37d6f9beb1edf21913448e20945", "blob": "8dfe09ca5decba59cbf025fd0661c25bd537670a" },
+      "tests/football-context-integration.spec.mjs": { "sha256": "4c728cbad7c559ffdc5a6e3d83a8334909254912a61d3811f1632a5ae8de1ae8", "blob": "16b7fd68e321e7607558df3fffe072de085b6c72" },
+      "tests/curriculum-fixture.mjs": { "sha256": "1f22b496b1bde7b99a5fb4162dafc853747adc2672e5485f31d3364ebf23a1ab", "blob": "136d420467a61d2d78e25e4ece6646357476aa74" },
+      "tests/football-test-mute.mjs": { "sha256": "a1a870f8ec5f13e9b936f809ecdc670ff36c2163ed7fd507787931cb5dd8d442", "blob": "58f4310ee2dcda46bb9fdd23194b9ae6d890b4a0" },
+      "playwright.config.mjs": { "sha256": "de0847ffaf708f50340692b85a0250abf76376875841de52529ab02c68794868", "blob": "358cb92fb7d811de663e723dc070f2cdef9cbb08" },
+      "scripts/football-release.config.mjs": { "sha256": "9a2a694dfe7034fc6fb422b51a4e6342a5d2eec0840cdb5df0c041bc00bc7f40", "blob": "29d4ab57b50b0f9a605719e0f5f12f61fb89c155" },
+      "scripts/run-football-release.mjs": { "sha256": "36cec13e214ee5de5c1fc9d7165d20cb811c256f3144e8175f990cd32feffa54", "blob": "d83f1da2a59e180f416bca18d24e09d46f1e1be7" }
+    },
+    "toolSha256AtExecution": {
+      "README.md": "8639dba87cb3b83f171f837fca90728c6a5821e10138e88f30b99ac6e7cfcf30",
+      "arms.json": "175db3a08bfe79486673e57c81c49d767e44e70c8ed10f9c9097033f11d05c19",
+      "classify.mjs": "e13a94807b9e73a2ed63cfb760b56e648dea19a4668211ff46e8059cc2b74aff",
+      "classify.test.mjs": "7339a482f6e3cacb222c36e23b6e0c12e5ddd17ca28505f1df825500bd8fca37",
+      "config.mjs": "17edf3f7b64f872dbd112cb366444337a7f53907aa6a1c4352f25ca6c6583049",
+      "coverage.mjs": "f38a79f83ee7805bee33b6bcf5ba69be185e3e72291f58f9ec4443bfc6f1ca0d",
+      "coverage.test.mjs": "b54a2540ae7a956dd153ce6a701c1e1676b7aa06a74fadd772660070b16d9b35",
+      "fixture.mjs": "ec729d1d8e677e689e4d93fdf097d0a924aac7760f92d3c40437afb3c44ace1c",
+      "gen-spec.mjs": "de024a4723ca1b2c0e347f5ea0a1348db0dc46e70dc443e1dedab0f448aee03f",
+      "instrument.mjs": "4ea063d9792408d831481536ea51735caaf1170d01eb8399be01138cb8e08a3a",
+      "run.mjs": "3558f8bf8536bd1713aa51d489748484a6dcc741fcadb7fc21fab8bd8d35773b"
+    },
+    "instrumentation": {
+      "originalSha256": "a4dd0a581a18013accac90f39d28e17568bec37d6f9beb1edf21913448e20945",
+      "instrumentedSha256": "fad872a2be8449b2f0691c2a7c3e22a309e926dff53aad2441701a484c5bb077",
+      "counts": { "arm": 1, "route": 1, "intent": 1, "activate-enter": 1, "activate": 1, "clear": 9 },
+      "originalLines": { "arm": [3744], "route": [3594], "intent": [3596], "activate-enter": [4788], "activate": [4799], "clear": [2771, 2825, 4859, 4876, 4890, 4987, 5088, 5111, 5645] },
+      "servedAsBuilt": "every instrumented diag recorded one route result 'instrumented' with the instrumentedSha256 above"
+    },
+    "generated": {
+      "gen-manifest.json": "01a53a4aac15de9ee1b67f2e24f36f789279087988e7d72d3f3b5bafddec8539",
+      "target.spec.mjs": "393627c4d665f4103822a9cd8f3b9c8334985a3b6bb873e0c083a2b9c134e053",
+      "control.spec.mjs": "26481c9f0bfeb24990d6a1b7cb3d35b464e546a3fda030b8556b097e1c763f47",
+      "football-context-integration.diag160.spec.mjs": "79ed6f92cefa99c779748396a6fbabd4ceace1b228222e381c1656c11ee67777",
+      "roundTrip": "exact (generation throws otherwise); identical bytes in every run"
+    },
+    "runtime": { "node": "v25.9.0", "playwright": "1.56.1", "chromium": "141.0.7390.37 (revision 1194)", "host": "darwin 27.0.0, Apple M5 Pro, 15 logical CPUs, 48 GiB" },
+    "invariants": { "timerMs": 1400, "assertionTimeoutMs": 2500, "retries": 0, "workers": "unset (resolved 7)", "projects": 6, "trace": "off", "graceMs": 3000 }
+  },
+  "commands": {
+    "note": "repository-relative; <run> = output/issue-160/runs/<runId>; every Playwright CLI ran with cwd <run>/cwd and env DIAG160_OUT=<run>/out/<step>, DIAG160_SOURCE_MANIFEST=<run>/manifest.json",
+    "phases": ["node scripts/diag-160/run.mjs selfcheck", "node scripts/diag-160/run.mjs controls", "node scripts/diag-160/run.mjs isolated", "node scripts/diag-160/run.mjs file", "node scripts/diag-160/run.mjs combined"],
+    "playwright": "node node_modules/@playwright/test/cli.js test --config scripts/diag-160/config.mjs <specs> [--list] [--max-failures=1] [--grep=<target title>]",
+    "controlEnv": "DIAG160_MODE=instrumented DIAG160_CONTROL=<block|stale|cancel> (normal: no DIAG160_CONTROL); no --max-failures",
+    "naturalInstrumentedEnv": "DIAG160_MODE=instrumented; --max-failures=1",
+    "unmodifiedEnv": "no DIAG160_MODE; canonical spec with --grep; --max-failures=1"
+  },
+  "runs": [
+    {
+      "runId": "20261010T213951Z-selfcheck-7a6cdc",
+      "phase": "selfcheck",
+      "status": "PASS-selfcheck",
+      "browser": false,
+      "sha256": { "status.json": "987cf86fb5439621cd6f7cfd2042d3400543853443105655ee1c3827a64577df", "manifest.json": "6063c3283f1cc72d64344fbc86e0b17f1ec9596fde7be41bde49e6182d39ee79", "instrument-manifest.json": "93fcb07deafa3e711de29d496b14c58bc367f55c54cc24726e7058d1f70f0c39" }
+    },
+    {
+      "runId": "20261010T214112Z-controls-4437e0",
+      "phase": "controls",
+      "status": "PASS-controls-synthetic",
+      "started": "2026-10-10T21:41:12.784Z",
+      "finished": "2026-10-10T21:41:42.469Z",
+      "hostLoadavgAtStart": [10.07, 25.68, 29.11],
+      "filesSha256Json": "aa9b3224d021fbce8fb9d7a2d2735be3efddb456b9572e4d6db9f614c804314e",
+      "verifiedRawHashCount": 41,
+      "sha256": { "status.json": "bd00e82fd509bff6565f43c543271f42e41393974441e73f60ebdb18bdcdb390", "manifest.json": "41718c822959406aa09ac49b1779cf3fdce712207f61d3aca5fb6903e554b246" },
+      "arms": [
+        {
+          "step": "00-control-normal", "synthetic": "sensitivity arm, no intervention", "expected": ["PASS", "PASS"], "observed": ["PASS", "PASS"], "exit": 0, "workers": 7,
+          "sha256": { "judgement.json": "d6f7c1507ece7d93ba619851a5c03e51e380401e3a99fe85ac6e06e5d31d6c55", "report.json": "61ac53e0402492e56e96ccdb8bfcdcf6de814c08709ec8ca40719f49709dd7ae", "diag160.json": "dd34ac9114700f0a8efbf4802151a5d8260ded2fd8484bda5294e9906513193c" },
+          "chains": {
+            "defense": { "armToRouteMs": 1400.9, "routeToShowMs": 2.2, "showFromExpectStartMs": [1398, 1401], "deadlineMarginMs": 1099, "clockBandMs": 3 },
+            "halftime": { "armToRouteMs": 1402.0, "routeToShowMs": 2.6, "showFromExpectStartMs": [1394, 1397], "deadlineMarginMs": 1103, "clockBandMs": 3 }
+          },
+          "routeHandlerMs": 17.8
+        },
+        {
+          "step": "01-control-block", "synthetic": true, "intervention": "page main-thread busy-wait arm+1300..arm+4400 ms (applied, lead 1292.1 ms)", "expected": ["PASS", "K1"], "observed": ["PASS", "K1"], "exit": 1, "assertion": "failed (synthetic)",
+          "sha256": { "judgement.json": "d25b4812daa6bde7e5cdb5e04bfccefdbcaf0793fa87b86e3a1ad3885cc2f2a3", "report.json": "9f33ea658a3cf2854295e1a5a0aec623592b881cd26738e6cb76ab6160a65ff5", "diag160.json": "03dc7dedf7e6f154378061dd12b14cae76d1aed48b41e2c555c5850dd6665bed" },
+          "halftime": { "armToRouteMs": 4402.4, "routeToShowMs": 5.4, "showFromExpectStartMs": [4397, 4401], "afterDeadlineMs": 1889, "grace": { "polls": 2, "found": "route", "elapsedMs": 2008.3, "truncated": null } }
+        },
+        {
+          "step": "02-control-stale", "synthetic": true, "intervention": "lexical state.possessionId replaced after the answer; timer untouched", "expected": ["PASS", "K4"], "observed": ["PASS", "K4"], "exit": 1, "assertion": "failed (synthetic)",
+          "sha256": { "judgement.json": "dd326db72426cb4b7e0e947d38d8210816bbfceede820bad0888dc3a0268cd80", "report.json": "2c61f8f63d8004438f0be9510d4f1dbec863fb8405e93e86cfd1733ed402b5b7", "diag160.json": "fc103cba863e957f0abf8fcce3908d35d60a4645d67cda91a4f172914495c765" },
+          "halftime": { "armToRouteMs": 1401.2, "reason": "stale-possession", "nativeDiagnosticEvent": true, "grace": { "polls": 1, "found": "route", "elapsedMs": 1.8 } }
+        },
+        {
+          "step": "03-control-cancel", "synthetic": true, "intervention": "clearTimeout(advTimer) from an evaluate (site control-evaluate)", "expected": ["PASS", "K6"], "observed": ["PASS", "K6"], "exit": 1, "assertion": "failed (synthetic)",
+          "sha256": { "judgement.json": "f81aae79354c38dd9bd2b566481a1455cc274f061238ae0b4f719b9fa5e07d0b", "report.json": "a730aa2f2cf3b02885bb1b81e4e6279ae3420370a53c4d59f8aa6d0fd072856b", "diag160.json": "cb912885a0bbff0f262336b068f96e28fae4ce969ee94cb0ea4c4610efe5e571" },
+          "halftime": { "sites": ["control-evaluate"], "grace": { "polls": 1, "found": "clear", "elapsedMs": 1.7 } }
+        }
+      ],
+      "notDemonstratedInBrowser": ["KV (visible before deadline, assertion failed)", "K5 (accepted, no activation / not visible)", "U variants", "TOOL-DEFECT"],
+      "classifierOnly": "those labels are covered by synthetic logs in classify.test.mjs (19 tests) only"
+    },
+    {
+      "runId": "20261010T214155Z-isolated-239546",
+      "phase": "isolated",
+      "status": "PASS-isolated",
+      "started": "2026-10-10T21:41:55.846Z",
+      "finished": "2026-10-10T21:42:32.478Z",
+      "hostLoadavgAtStart": [7.51, 22.90, 27.91],
+      "filesSha256Json": "c8714fc94328b1cdaa9c84dc9e6c6ff080082890f9d81613607c8184f6b8e14b",
+      "verifiedRawHashCount": 50,
+      "sha256": { "status.json": "b7918458bfd0bd323b9225d3f0527883719d5a9f475b37e0edfa2e9aa63e078b", "manifest.json": "27790c9275ad4455c68cefe35ac7f49b28ffc325b2dbb6d543f28da897691383", "enumeration report.json": "a8f52a5e6179c9bf06debcbf2abca2b0697c072e201b9c464f19e03f66a260c3" },
+      "coveragePerStep": "enumerated 6 = ran 6 (1 passed on ipad-11-landscape, 5 primary-only skips with canonical reason); no coverage issues",
+      "steps": [
+        { "step": "01-isolated-0-instrumented", "label": "PASS", "workers": 7, "actualWorkers": 6, "cliDurationMs": 5832.7, "routeHandlerMs": 19.3,
+          "sha256": { "judgement.json": "e0cdf48a376d0cfdd2b3ba72d2fe0678fd2052cb733fca79de9f5b4c0640e40a", "report.json": "b12b05e9e50da7626e90de4a949d5db64838879ef23228e8db980cbf34a12b80", "diag160.json": "9043f7e62d1d9988e5579fb7f2dc66284ea56094adc968ea367433540aaaa9cd" },
+          "chains": { "defense": { "armToRouteMs": 1401.4, "routeToShowMs": 1.9, "showFromExpectStartMs": [1397, 1401], "deadlineMarginMs": 1099 }, "halftime": { "armToRouteMs": 1401.0, "routeToShowMs": 2.2, "showFromExpectStartMs": [1392, 1396], "deadlineMarginMs": 1104 } }, "clockBandMs": 4 },
+        { "step": "02-isolated-1-unmodified", "label": "no chronology (unmodified)", "workers": 7, "actualWorkers": 6, "cliDurationMs": 5574.5,
+          "sha256": { "judgement.json": "a20d38a69704610910dc21084f639e70700a6db3358281db401e088c0326d008", "report.json": "725b9ad27369fb11f290012455339209bb6e98f4804aa52728e0516478bd9f7b" } },
+        { "step": "03-isolated-2-instrumented", "label": "PASS", "workers": 7, "actualWorkers": 6, "cliDurationMs": 5476.8, "routeHandlerMs": 17.8,
+          "sha256": { "judgement.json": "5b8cfb31eddd9ec657fac8cdd507b02db335bea7d97c1033600737d2d3d4d982", "report.json": "486d3484bfb7e4692a051bcf2388acd5f751e3334a501eb103dbe4b56541355c", "diag160.json": "2acaee78f03397fbf7ea0dac8bbc84a75b4fab5501690318c5c2a76393ffb3ee" },
+          "chains": { "defense": { "armToRouteMs": 1401.5, "routeToShowMs": 3.2, "showFromExpectStartMs": [1396, 1400], "deadlineMarginMs": 1100 }, "halftime": { "armToRouteMs": 1401.3, "routeToShowMs": 2.3, "showFromExpectStartMs": [1391, 1395], "deadlineMarginMs": 1105 } }, "clockBandMs": 4 },
+        { "step": "04-isolated-3-unmodified", "label": "no chronology (unmodified)", "workers": 7, "actualWorkers": 6, "cliDurationMs": 5580.6,
+          "sha256": { "judgement.json": "5e49a3fce009618f998d85ca147f6e44bb205898488c2f2eb4db2aa7343f6c6d", "report.json": "fbc4fb7cd4e32cb2772bd39b29101ed4e94742b5dfde42bcab61bfc8829711cf" } },
+        { "step": "05-isolated-4-instrumented", "label": "PASS", "workers": 7, "actualWorkers": 6, "cliDurationMs": 5546.5, "routeHandlerMs": 18.8,
+          "sha256": { "judgement.json": "e3c8eca7b12bcecc55d1cf8249747b4091d4c8864b5f1f631217ddd58f07b0e9", "report.json": "4b760cac7755f02eeaaa6bda0fdd882373fe2c3ee619af90ecaae7d13298f7b2", "diag160.json": "9082a22e3ba893fc6081df1d7f9f8f3f2a24c5c59e10491af637430fec4273b2" },
+          "chains": { "defense": { "armToRouteMs": 1401.9, "routeToShowMs": 2.1, "showFromExpectStartMs": [1397, 1401], "deadlineMarginMs": 1099 }, "halftime": { "armToRouteMs": 1400.9, "routeToShowMs": 2.1, "showFromExpectStartMs": [1393, 1397], "deadlineMarginMs": 1103 } }, "clockBandMs": 4 },
+        { "step": "06-isolated-5-unmodified", "label": "no chronology (unmodified)", "workers": 7, "actualWorkers": 6, "cliDurationMs": 5578.1,
+          "sha256": { "judgement.json": "3fc17fd0e0dfc5bfa5c3a37f6d55687721092d4df22c5f75bd9a84e272b09772", "report.json": "e396718194e6aff6ebb530b820c0ca497860a645b691bb67002366249e2b3cfb" } }
+      ]
+    },
+    {
+      "runId": "20261010T214240Z-file-480c4d",
+      "phase": "file",
+      "status": "PASS-file",
+      "started": "2026-10-10T21:42:40.948Z",
+      "finished": "2026-10-10T21:43:11.427Z",
+      "hostLoadavgAtStart": [7.43, 20.73, 26.85],
+      "filesSha256Json": "ea64887b14d8655530e9b508d202cc1105a961bfe5e8f5356709182ee86102e9",
+      "verifiedRawHashCount": 18,
+      "sha256": { "status.json": "2db2b8755a5b1a503d30d0d2c14bc12957fd71413146e5653149020517c9a3ab", "manifest.json": "8cc05680f6381a996462fed37aec4311a50551dd78a62b616de326fec03d71d6", "enumeration report.json": "40c52d8dff6247e30ddc907766f09fc2104d1b87316a51135b8f6768644737b3", "judgement.json": "918b1287e770f41e3be850b69f96ad4c20c97d7ecc2d7b7aa1f5fb37110fdcf4", "report.json": "95830e74ff12091b358d12663b3133d3a41efb6e87fe93fa612150705a462373", "diag160.json": "4974d41bac845565a9b0ad3b5594b4a9935dc05eafe868bd6b01b91d05675d08" },
+      "workers": 7, "actualWorkers": 7, "cliDurationMs": 29338.5, "routeHandlerMs": 35.5,
+      "coverage": { "enumerated": 438, "ran": 438, "passed": 73, "skipped": 365, "note": "73 cases x 6 projects; all 73 pass on ipad-11-landscape, all others primary-only skips; no issues" },
+      "label": "PASS",
+      "chains": { "defense": { "armToRouteMs": 1401.0, "routeToShowMs": 2.6, "showFromExpectStartMs": [1370, 1377], "deadlineMarginMs": 1123 }, "halftime": { "armToRouteMs": 1401.4, "routeToShowMs": 3.0, "showFromExpectStartMs": [1385, 1392], "deadlineMarginMs": 1108 } },
+      "clockBandMs": 7
+    },
+    {
+      "runId": "20261010T214318Z-combined-41bdbf",
+      "phase": "combined",
+      "status": "PASS-combined",
+      "topology": "one Playwright CLI over the 21-file release browser selection, context-integration replaced by its generated copy; diagnostic topology, not the release gate (which runs one fresh CLI per file)",
+      "started": "2026-10-10T21:43:18.489Z",
+      "finished": "2026-10-10T21:49:03.474Z",
+      "hostLoadavgAtStart": [16.78, 21.76, 26.96],
+      "filesSha256Json": "e15f16b616c81a332ff9c7a3e7674c625a39fbd77e97387bdad7336d333770c5",
+      "verifiedRawHashCount": 1012,
+      "sha256": { "status.json": "2bdf3093c3593bc2065dc2615deb4c29aa2a8f907803c4012a85f77d553d7ad3", "manifest.json": "1040dcdd7a8da3d5b0f000a00ec1d1d47f3875247beb8325570b0a7a000dcef4", "enumeration report.json": "b67fa15b092f0fcf4183c7ba69e724155cc6a887e2b8d98cfdda15256fe602bd", "judgement.json": "37930fc94a49a9e57b6c1b7e88eebe75f3126aa9682967d59af42439263ee159", "report.json": "de1132db47ae05574127b49ca05827bf7da790e51c35ee7c53ab94853294808b", "diag160.json": "e97bf70a6ed56a44a323edd00673b43393ffe6e9cc5318b39cd5969dadc7b3c6" },
+      "prepare": { "exit": 0, "ms": 51 },
+      "workers": 7, "actualWorkers": 7, "cliDurationMs": 343503.8, "routeHandlerMs": 98.6,
+      "coverage": {
+        "files": 21, "enumerated": 1362, "ran": 1362, "passed": 631, "skipped": 731,
+        "byProject": {
+          "iphone-15-portrait": [227, 85, 142], "iphone-17-pro-max-portrait": [227, 82, 145], "ipad-11-portrait": [227, 82, 145],
+          "ipad-pro-13-portrait": [227, 79, 148], "ipad-pro-13-landscape": [227, 79, 148], "ipad-11-landscape": [227, 224, 3]
+        },
+        "byProjectFields": ["cases", "passed", "skipped"],
+        "issues": "none (missing, duplicates, unexpected, wrong partition, project mismatch, not exactly one pass/skip, unsupported skip reason, fixme/expected-fail, stray files, rootDir)"
+      },
+      "label": "PASS",
+      "chains": { "defense": { "armToRouteMs": 1401.6, "routeToShowMs": 3.3, "showFromExpectStartMs": [1374, 1383], "deadlineMarginMs": 1117 }, "halftime": { "armToRouteMs": 1401.9, "routeToShowMs": 3.2, "showFromExpectStartMs": [1293, 1302], "deadlineMarginMs": 1198 } },
+      "clockBandMs": 9,
+      "buffer": { "dropped": 0, "pageErrors": 0, "consoleWarningsOrErrors": 0 }
+    }
+  ],
+  "exposure": {
+    "naturalTargetExecutions": { "instrumented": 5, "unmodified": 3, "plusNormalSensitivityArm": 1 },
+    "naturalHalftimeChainsWithChronology": 5,
+    "naturalFailures": 0,
+    "naturalAnomalies": 0,
+    "correlation": "all runs on one host within ~8 minutes; exposures are correlated and not independent samples",
+    "caseUnionVsTarget": "combined covered 1362 cases, but the target case executed once in it (ipad-11-landscape); its other 5 project cases are canonical primary-only skips"
+  }
+}

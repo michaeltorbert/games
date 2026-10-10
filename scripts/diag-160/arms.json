@@ -1,0 +1,64 @@
+{
+  "schema": 1,
+  "issue": 160,
+  "base": "577a2ca7783360b659f17c7a7d3f6eb3c7f95913",
+  "target": "tests/football-context-integration.spec.mjs > committed special results survive defense-transition and halftime overlays, then clear on Continue",
+  "invariants": {
+    "assertionTimeoutMs": 2500,
+    "timerMs": 1400,
+    "retries": 0,
+    "workers": "unset; resolved count recorded from each report.json",
+    "projects": 6,
+    "trace": "off",
+    "graceMs": 3000,
+    "graceRule": "Node-monotonic cap, starts after the unchanged 2500ms assertion has failed, identical for synthetic and natural instrumented failures; never changes an outcome"
+  },
+  "phases": [
+    {
+      "phase": "selfcheck",
+      "browser": false,
+      "steps": ["classifier node:test", "coverage node:test", "instrumentation anchor counts + vm compile", "generation round trip + node --check"]
+    },
+    {
+      "phase": "controls",
+      "synthetic": true,
+      "spec": "control.spec.mjs",
+      "arms": [
+        { "name": "normal", "control": null, "status": "passed", "chains": ["PASS", "PASS"] },
+        { "name": "block", "control": "block", "status": "failed", "chains": ["PASS", "K1"],
+          "intervention": "page main-thread busy-wait from arm+1300ms to arm+4400ms (page monotonic)" },
+        { "name": "stale", "control": "stale", "status": "failed", "chains": ["PASS", "K4"], "detail": { "reason": "stale-possession" },
+          "intervention": "lexical state.possessionId replaced after the answer; armed timer untouched" },
+        { "name": "cancel", "control": "cancel", "status": "failed", "chains": ["PASS", "K6"], "detail": { "sites": ["control-evaluate"] },
+          "intervention": "clearTimeout(advTimer) from an evaluate, recorded as site control-evaluate" }
+      ],
+      "classifierOnly": ["KV late consumer", "boundary U", "K5 no activation / not visible / exception", "U missing fields, observers, multiples, missing callback", "TOOL-DEFECT"]
+    },
+    {
+      "phase": "isolated",
+      "order": ["instrumented", "unmodified", "instrumented", "unmodified", "instrumented", "unmodified"],
+      "instrumented": "gen/target.spec.mjs, DIAG160_MODE=instrumented",
+      "unmodified": "tests/football-context-integration.spec.mjs --grep <escaped target title>, no diagnostic fixture or route",
+      "coverage": "every run validated against one --list --grep enumeration of the canonical file"
+    },
+    {
+      "phase": "file",
+      "runs": 1,
+      "spec": "gen/football-context-integration.diag160.spec.mjs (full canonical file; only the target instrumented)",
+      "coverage": "validated against a --list enumeration of the canonical file"
+    },
+    {
+      "phase": "combined",
+      "runs": 1,
+      "selection": "BROWSER list parsed from scripts/run-football-release.mjs, context-integration replaced by its generated full copy, one CLI, all six projects",
+      "coverage": "executed report validated against a --list enumeration of the unchanged canonical selection by the canonical release validate()",
+      "note": "diagnostic topology; not the release gate and not a historical reconstruction"
+    }
+  ],
+  "stop": [
+    "selfcheck failure, anchor/hash mismatch, or TOOL-DEFECT: checkpoint before anything else",
+    "control mislabel: stop; rerun only after a tool fix, new hashes and fresh review",
+    "natural execution CLIs (isolated, file, combined) run with --max-failures=1: queued cases stop after the first test failure, already-running workers may finish; unrun cases make the run incomplete (STOPPED), never PASS. Controls run without fail-fast. Classifier anomalies in passing cases are judged after the CLI exits (bounded batch limitation)",
+    "first natural anomaly (any non-PASS label, captured page exception, assertion failure, unexpected/flaky test, report error, case-coverage failure, missing diag) or unrelated failure: stop and retain; no unchanged repeat"
+  ]
+}
