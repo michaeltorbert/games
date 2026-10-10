@@ -541,7 +541,7 @@ test.describe('football player sprite', () => {
     const seedAt = (yardLine) => page.evaluate((yardLine) => {
       window.__footballTest.seedDriveState({ possession: 'offense', direction: 1, quarter: 1, down: 1,
         yardLine, firstDownLine: yardLine + 10, yardsToGo: 10 });
-      updateField(false);
+      updateField(renderSnapshot(state, publicSeasonFacts()), false);
     }, yardLine);
     const assertInsideField = async (label) => {
       const result = await page.evaluate(() => {
@@ -725,7 +725,7 @@ test.describe('football player sprite', () => {
           await page.evaluate((yardLine) => {
             window.__footballTest.seedDriveState({ possession: 'offense', direction: 1, quarter: 1, down: 1,
               yardLine, firstDownLine: yardLine + 10, yardsToGo: 10 });
-            updateField(false);
+            updateField(renderSnapshot(state, publicSeasonFacts()), false);
           }, yardLine);
           await page.waitForTimeout(100);
           await freezePlayerPose(page, poseClass, fraction);
@@ -752,7 +752,7 @@ test.describe('football player sprite', () => {
       await freezePlayerPose(page, null, 0);
       const moving = await page.evaluate(async () => {
         state.animYd = 30;
-        updateField(true);
+        updateField(renderSnapshot(state, publicSeasonFacts()), true);
         await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
         const player = document.getElementById('player');
         return player.getAnimations().some(animation => animation.transitionProperty === 'left');
@@ -848,7 +848,7 @@ function sampleAfterNextResize(page) {
         ballInlinePct: parseFloat(ball.style.left),
         playerInlinePct: parseFloat(player.style.left),
         ballTargetPct: yardToPct(state.animYd),
-        playerTargetPct: playerLeftPct(player, field),
+        playerTargetPct: playerLeftPct(player, field, state.animYd),
       });
     };
     // Registered after the production handler, so the first sample follows it.
@@ -1302,7 +1302,7 @@ test.describe('football call tiles from the #48 template', () => {
     const label = '<b data-probe="label">Bold</b> & <i>co</i>';
     const desc = '<img data-probe="desc" alt=""> 4 < 5 yds';
     const probe = await page.evaluate(({ label, desc }) => {
-      renderCallGrid([{ key: 'not-a-call', label, desc }], () => false);
+      renderCallGrid(renderSnapshot(state, publicSeasonFacts()), [{ key: 'not-a-call', label, desc }], () => false);
       const tiles = document.querySelectorAll('#call-grid .call-btn');
       const tile = tiles[0];
       return {
