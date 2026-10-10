@@ -1,4 +1,4 @@
-const GAME_VERSION = '1.34.4';
+const GAME_VERSION = '1.34.5';
 let prevPlayerScore = -1, prevOpponentScore = -1;
 let playerRunTimer = 0, playerCelebrateTimer = 0, playerCelebrateDelayTimer = 0;
 const EZ = 5;
@@ -9,6 +9,39 @@ const QUARTER_NAMES = ["", "1st", "2nd", "3rd", "4th"];
 const START_YARD = 20;
 const TD_POINTS = 6;
 const POSSESSIONS_PER_QUARTER = 4;
+
+// Single definitions for the live game phase and possession side. The string
+// values are a stable public contract, not just internal names:
+// - #wrap and #ui-desk carry data-phase; #ui-desk, #scorebug, #status, #wrap,
+//   #call-grid, and #decision-grid carry data-possession; #ov-td carries
+//   data-side (a possession value). football.css selects on these exact values,
+//   and index.html ships data-possession="offense" and data-side="offense".
+// - FOOTBALL_DOMAIN keeps its own private literals and returns accepted patches
+//   and drives with these same strings ('call', 'transition', 'quarter',
+//   'halftime', 'final', 'offense', 'defense'); they are copied unchanged.
+// - render_game_to_text() exposes them as mode, possession, and touchdownSide.
+// Renaming a value is a coordinated JS, CSS, markup, domain, and test change;
+// these constants cannot enforce CSS selectors by themselves. Time Lab views
+// and presentation kinds are separate vocabularies and do not use PHASES.
+const PHASES = Object.freeze({
+  start: 'start',
+  call: 'call',
+  fourthDownDecision: 'fourth-down-decision',
+  question: 'question',
+  explanation: 'explanation',
+  feedback: 'feedback',
+  touchdown: 'touchdown',
+  conversionDecision: 'conversion-decision',
+  transition: 'transition',
+  quarter: 'quarter',
+  halftime: 'halftime',
+  final: 'final',
+});
+
+const POSSESSIONS = Object.freeze({
+  offense: 'offense',
+  defense: 'defense',
+});
 
 const COACH_CONCEPT_LABELS = Object.freeze({
   'missing-part': 'Missing parts to 10',
@@ -147,7 +180,7 @@ const PLAY_DIAGRAMS = {
 };
 
 function playDiagramSvg(callKey, possession) {
-  if (possession === 'defense') {
+  if (possession === POSSESSIONS.defense) {
     return PLAY_DIAGRAMS['defense-' + callKey] || PLAY_DIAGRAMS[callKey] || '';
   }
   return PLAY_DIAGRAMS[callKey] || '';
@@ -290,8 +323,8 @@ function clamp(n, min, max) {
 }
 
 function teamRoleForPossession(possession) {
-  if (possession === 'offense') return 'player';
-  if (possession === 'defense') return 'opponent';
+  if (possession === POSSESSIONS.offense) return 'player';
+  if (possession === POSSESSIONS.defense) return 'opponent';
   throw new TypeError(`Unknown possession ${possession}.`);
 }
 
@@ -326,15 +359,15 @@ function halfLabel(quarter) {
 }
 
 function directionFor(possession) {
-  return possession === 'offense' ? 1 : -1;
+  return possession === POSSESSIONS.offense ? 1 : -1;
 }
 
 function oppositePossession(possession) {
-  return possession === 'offense' ? 'defense' : 'offense';
+  return possession === POSSESSIONS.offense ? POSSESSIONS.defense : POSSESSIONS.offense;
 }
 
 function possessionTitle(possession) {
-  return possession === 'offense' ? 'Your ball' : `${state.match.opponent.shortName}'s ball`;
+  return possession === POSSESSIONS.offense ? 'Your ball' : `${state.match.opponent.shortName}'s ball`;
 }
 
 function formatPossessionCopy(template, match = state.match) {
@@ -345,12 +378,12 @@ function formatPossessionCopy(template, match = state.match) {
 }
 
 function possessionRibbonText(possession) {
-  const template = possession === 'offense' ? POSSESSION_COPY.ribbon.offense : POSSESSION_COPY.ribbon.defense;
+  const template = possession === POSSESSIONS.offense ? POSSESSION_COPY.ribbon.offense : POSSESSION_COPY.ribbon.defense;
   return formatPossessionCopy(template);
 }
 
 function stagePossessionText(possession) {
-  const template = possession === 'offense' ? POSSESSION_COPY.stage.offense : POSSESSION_COPY.stage.defense;
+  const template = possession === POSSESSIONS.offense ? POSSESSION_COPY.stage.offense : POSSESSION_COPY.stage.defense;
   return formatPossessionCopy(template);
 }
 
@@ -397,7 +430,7 @@ function updateRivalPreview(match) {
 }
 
 function selectRivalPreview(rivalId) {
-  if (state.phase !== 'start' || selectedPlayMode !== 'quick') return false;
+  if (state.phase !== PHASES.start || selectedPlayMode !== 'quick') return false;
   const match = FOOTBALL_OPPONENT.createMatch(rivalId);
   selectedRivalId = rivalId;
   state = { ...state, match };
@@ -593,7 +626,7 @@ function renderStartMode() {
 }
 
 function selectPlayMode(mode) {
-  if (state.phase !== 'start' || !['quick', 'season'].includes(mode)) return false;
+  if (state.phase !== PHASES.start || !['quick', 'season'].includes(mode)) return false;
   selectedPlayMode = mode;
   renderStartMode();
   return true;
@@ -606,10 +639,10 @@ function riskLabelText(risk) {
 function syncUiState() {
   const wrap = document.getElementById('wrap');
   const desk = document.getElementById('ui-desk');
-  if (wrap) wrap.dataset.phase = state.phase || 'start';
+  if (wrap) wrap.dataset.phase = state.phase || PHASES.start;
   if (desk) {
-    desk.dataset.phase = state.phase || 'start';
-    desk.dataset.possession = state.possession || 'offense';
+    desk.dataset.phase = state.phase || PHASES.start;
+    desk.dataset.possession = state.possession || POSSESSIONS.offense;
   }
   const stageCopy = document.getElementById('stage-mode-copy');
   if (stageCopy) {
@@ -617,44 +650,44 @@ function syncUiState() {
       ? `Season game ${activeSeasonBinding.gameNumber} of ${FOOTBALL_SEASON.SCHEDULE.length}`
       : 'Broadcast view';
   }
-  if (!['question', 'explanation'].includes(state.phase)) hideMathVisual();
-  if (state.phase !== 'explanation') resetWorkedReviewPresentation();
+  if (![PHASES.question, PHASES.explanation].includes(state.phase)) hideMathVisual();
+  if (state.phase !== PHASES.explanation) resetWorkedReviewPresentation();
   updatePromptContext();
   renderDefenseRead();
 }
 
 function playContextText() {
-  if (state.phase === 'start' || !state.possession) {
+  if (state.phase === PHASES.start || !state.possession) {
     return `${state.match.player.shortName} VS ${state.match.opponent.shortName} / FOUR QUARTERS / WIN THE RIVALRY`;
   }
 
   const score = `SCORE ${state.playerScore}-${state.opponentScore}`;
-  if (state.phase === 'touchdown') {
-    return state.touchdownSide === 'defense'
+  if (state.phase === PHASES.touchdown) {
+    return state.touchdownSide === POSSESSIONS.defense
       ? `${state.match.opponent.shortName} TOUCHDOWN / ${score}`
       : `${state.match.player.shortName} TOUCHDOWN / ${score}`;
   }
-  if (state.phase === 'transition') {
-    const incoming = state.possession === 'offense'
+  if (state.phase === PHASES.transition) {
+    const incoming = state.possession === POSSESSIONS.offense
       ? `${state.match.player.shortName} ON OFFENSE`
       : `${state.match.opponent.shortName} ON OFFENSE`;
     return `POSSESSION CHANGE / ${incoming} / ${score}`;
   }
-  if (state.phase === 'quarter') return `END OF Q${state.quarter} / ${score}`;
-  if (state.phase === 'halftime') return `HALFTIME / ${score}`;
-  if (state.phase === 'final') return `FINAL / ${score}`;
+  if (state.phase === PHASES.quarter) return `END OF Q${state.quarter} / ${score}`;
+  if (state.phase === PHASES.halftime) return `HALFTIME / ${score}`;
+  if (state.phase === PHASES.final) return `FINAL / ${score}`;
 
-  if (state.phase === 'conversion-decision' || state.activePlay?.playType === 'conversion') {
+  if (state.phase === PHASES.conversionDecision || state.activePlay?.playType === 'conversion') {
     const attempt = state.activePlay?.context?.attemptType === 'twoPoint' ? 'TWO-POINT TRY' : 'CONVERSION';
     return `${ownerForPossession(state.possession)} / ${attempt} / ${score}`;
   }
 
-  const owner = state.possession === 'offense'
+  const owner = state.possession === POSSESSIONS.offense
     ? `${state.match.player.shortName} BALL`
     : `${state.match.opponent.shortName} BALL`;
   const bits = [owner, `Q${state.quarter}`, `BALL ON ${fieldPositionAt(state.yd).compact}`];
 
-  if (state.phase === 'call' || state.phase === 'fourth-down-decision') {
+  if (state.phase === PHASES.call || state.phase === PHASES.fourthDownDecision) {
     bits.push(`${DOWN_NAMES[state.down] || state.down} & ${state.ytg}`);
   }
 
@@ -663,9 +696,9 @@ function playContextText() {
     bits.push(`${state.activePlay.proposal.appliedTravelYards}-YARD PUNT`);
   }
 
-  if (state.phase === 'question' || state.phase === 'explanation' || state.phase === 'feedback') {
+  if (state.phase === PHASES.question || state.phase === PHASES.explanation || state.phase === PHASES.feedback) {
     if (state.g != null) bits.push(`${state.g} YDS IN PLAY`);
-    if (state.possession === 'defense' && state.matchup) {
+    if (state.possession === POSSESSIONS.defense && state.matchup) {
       bits.push(state.matchup === 'matched' ? 'GOOD MATCHUP' : 'MISMATCH');
     }
   }
@@ -674,7 +707,7 @@ function playContextText() {
 }
 
 function ownerForPossession(possession) {
-  return possession === 'offense' ? `${state.match.player.shortName} BALL` : `${state.match.opponent.shortName} BALL`;
+  return possession === POSSESSIONS.offense ? `${state.match.player.shortName} BALL` : `${state.match.opponent.shortName} BALL`;
 }
 
 function updatePromptContext(text = playContextText()) {
@@ -696,7 +729,7 @@ function applyDeskHeader(key) {
 }
 
 function touchdownContinueLabel(side) {
-  return side === 'defense' ? 'Defend Conversion' : 'Choose Conversion';
+  return side === POSSESSIONS.defense ? 'Defend Conversion' : 'Choose Conversion';
 }
 
 function startingYardFor(possession) {
@@ -878,8 +911,8 @@ function createGameState(match = FOOTBALL_OPPONENT.createMatch()) {
     pendingRestartReason: null,
     finalizedPossessionIds: [],
     committedPlayIds: [],
-    phase: 'start',
-    ...makeDriveState('offense'),
+    phase: PHASES.start,
+    ...makeDriveState(POSSESSIONS.offense),
     ...blankPlayState(),
   };
 }
@@ -936,7 +969,7 @@ function statsCallsFromSnap(snap) {
     // intentionally matches the backward-compatible `opponent` alias below.
     offense: calls.offense,
     defense: calls.defense,
-    opponent: snap.context.possession === 'defense' ? calls.offense : null,
+    opponent: snap.context.possession === POSSESSIONS.defense ? calls.offense : null,
     matchup: calls.matchup,
   };
 }
@@ -1522,12 +1555,12 @@ function updateField(animated) {
   const fdl = document.getElementById('fd-line');
   const fdChain = document.getElementById('fd-chain');
   const fw = document.getElementById('field-wrap');
-  fw.classList.toggle('defense', state.possession === 'defense');
+  fw.classList.toggle('defense', state.possession === POSSESSIONS.defense);
   if (!animated) {
     ball.style.transition = 'none'; fdl.style.transition = 'none';
     requestAnimationFrame(() => { ball.style.transition = ''; fdl.style.transition = ''; });
   }
-  const rotation = state.possession === 'defense' ? 18 : -18;
+  const rotation = state.possession === POSSESSIONS.defense ? 18 : -18;
   const fdLeft = yardToPct(clamp(state.fdYd, 0, 100)) + '%';
   ball.style.left = yardToPct(state.animYd) + '%';
   ball.style.setProperty('--ball-rotation', `${rotation}deg`);
@@ -1543,7 +1576,7 @@ function updateField(animated) {
   }
   const player = document.getElementById('player');
   if (player) {
-    if (state.possession === 'offense') {
+    if (state.possession === POSSESSIONS.offense) {
       player.classList.remove('player-hidden');
       player.style.left = playerLeftPct(player, fw) + '%';
       player.style.setProperty('--player-dir', '1');
@@ -1591,7 +1624,7 @@ window.addEventListener('resize', () => {
 
 function updateStatus() {
   applyMatchPresentation(state.match);
-  const conversionMode = state.phase === 'conversion-decision' || state.activePlay?.playType === 'conversion';
+  const conversionMode = state.phase === PHASES.conversionDecision || state.activePlay?.playType === 'conversion';
   const downLabel = document.getElementById('s-down-label');
   const yardLabel = document.getElementById('s-yd-label');
   if (downLabel) downLabel.textContent = conversionMode ? 'Play' : 'Down';
@@ -1629,7 +1662,7 @@ function updateStatus() {
   if (scorebug) scorebug.dataset.possession = state.possession;
   if (wrap) wrap.dataset.possession = state.possession;
   const poss = document.getElementById('sb-poss');
-  poss.classList.toggle('poss-defense', state.possession === 'defense');
+  poss.classList.toggle('poss-defense', state.possession === POSSESSIONS.defense);
   const ribbon = document.getElementById('status-ribbon-text');
   if (ribbon) ribbon.textContent = possessionRibbonText(state.possession);
   const stagePossession = document.getElementById('stage-possession');
@@ -1663,7 +1696,7 @@ function renderMathVisual() {
   const question = state.questionInstance;
   const support = state.questionUi?.support || 'initial';
   const visual = question?.visuals?.[support];
-  if (!overlay || !visual || !['question', 'explanation'].includes(state.phase)) {
+  if (!overlay || !visual || ![PHASES.question, PHASES.explanation].includes(state.phase)) {
     hideMathVisual();
     return;
   }
@@ -1885,7 +1918,7 @@ function workedReviewElements() {
 
 function reviewAvailable() {
   const learn = document.getElementById('question-learn-why');
-  return state.phase === 'explanation'
+  return state.phase === PHASES.explanation
     && Boolean(learn)
     && !learn.disabled
     && !learn.classList.contains('hidden');
@@ -1932,7 +1965,7 @@ function collapseWorkedReview({ restoreFocus = true } = {}) {
   }
   if (learn) {
     learn.setAttribute('aria-expanded', 'false');
-    const canOffer = state.phase === 'explanation'
+    const canOffer = state.phase === PHASES.explanation
       && Boolean(state.questionInstance?.workedReview)
       && !learn.disabled;
     learn.classList.toggle('hidden', !canOffer);
@@ -1985,7 +2018,7 @@ function makeWorkedReviewFragment(review) {
 }
 
 function expandWorkedReview() {
-  if (state.phase !== 'explanation' || !reviewAvailable() || state.questionUi?.reviewExpanded) return false;
+  if (state.phase !== PHASES.explanation || !reviewAvailable() || state.questionUi?.reviewExpanded) return false;
   const question = state.questionInstance;
   const { region, heading, content, back, learn, continueButton } = workedReviewElements();
   try {
@@ -2009,7 +2042,7 @@ function expandWorkedReview() {
     showContinueButton({ focus: false });
     heading.focus({ preventScroll: true });
     requestAnimationFrame(() => {
-      if (state.phase === 'explanation'
+      if (state.phase === PHASES.explanation
         && state.questionInstance === question
         && state.questionUi?.reviewExpanded
         && !region.hidden && !region.inert
@@ -2106,7 +2139,7 @@ function setActionSubcopy(t) {
 function renderDefenseRead() {
   const el = document.getElementById('defense-read');
   if (!el) return;
-  const snapshot = state.phase === 'call' && state.possession === 'defense'
+  const snapshot = state.phase === PHASES.call && state.possession === POSSESSIONS.defense
     ? state.opponentSnapshot
     : null;
   el.hidden = !snapshot;
@@ -2191,7 +2224,7 @@ function createCallTile(call, possession) {
   if (!source) throw new Error('Missing call tile template #tpl-call-btn.');
   const btn = document.importNode(source, true);
   btn.dataset.risk = call.risk || 'medium';
-  callTileSlot(btn, 'mode').textContent = possession === 'defense' ? 'Coverage' : 'Play call';
+  callTileSlot(btn, 'mode').textContent = possession === POSSESSIONS.defense ? 'Coverage' : 'Play call';
   callTileSlot(btn, 'risk').textContent = riskLabelText(call.risk);
   callTileSlot(btn, 'diagram').innerHTML = playDiagramSvg(call.key, possession);
   callTileSlot(btn, 'label').textContent = call.label;
@@ -2207,7 +2240,7 @@ function renderCallGrid(calls, onPick, { focusFirst = false } = {}) {
   grid.innerHTML = '';
   grid.classList.remove('hidden');
   grid.setAttribute('role', 'group');
-  grid.setAttribute('aria-label', state.possession === 'defense' ? 'Defense coverage calls' : 'Offense play calls');
+  grid.setAttribute('aria-label', state.possession === POSSESSIONS.defense ? 'Defense coverage calls' : 'Offense play calls');
   grid.dataset.count = String(calls.length);
   grid.dataset.possession = state.possession;
   calls.forEach((call) => {
@@ -2396,9 +2429,9 @@ function announceSpecialAction(text) {
 }
 
 function renderOrdinaryCallPrompt({ focusFirstCall = false } = {}) {
-  state.phase = 'call';
+  state.phase = PHASES.call;
   updateStatus();
-  if (state.possession === 'offense') {
+  if (state.possession === POSSESSIONS.offense) {
     document.getElementById('play-label').textContent = downDistanceLabel(state.down, state.ytg);
     document.getElementById('question').textContent = 'Call the snap. Every play uses your learning plan.';
     applyDeskHeader('callOffense');
@@ -2435,7 +2468,7 @@ function taggedOpponentDecision(decision) {
 }
 
 function showPlayerFourthDownDecision(recovery = null) {
-  state.phase = 'fourth-down-decision';
+  state.phase = PHASES.fourthDownDecision;
   state.specialRecoveryPlay = recovery;
   updateStatus();
   document.getElementById('play-label').textContent = downDistanceLabel(state.down, state.ytg);
@@ -2539,7 +2572,7 @@ function handleInvalidSpecialPlay(error, origin, action, decision = null) {
     contextId: error?.contextId ?? recovery?.contextId ?? null,
     questionInstanceId: error?.questionInstanceId ?? null,
   });
-  const fieldGoalNoLongerLegal = origin === 'fourth-down-decision'
+  const fieldGoalNoLongerLegal = origin === PHASES.fourthDownDecision
     && action === 'fieldGoal'
     && !FOOTBALL_DOMAIN.isFieldGoalLegal(state.yd, state.direction);
   if (fieldGoalNoLongerLegal) {
@@ -2549,19 +2582,19 @@ function handleInvalidSpecialPlay(error, origin, action, decision = null) {
       publicSpecialAction: null,
       specialRecoveryPlay: null,
     });
-    if (state.possession === 'offense') showPlayerFourthDownDecision();
+    if (state.possession === POSSESSIONS.offense) showPlayerFourthDownDecision();
     else beginOpponentFourthDown();
     return;
   }
   Object.assign(state, blankPlayState(), {
     phase: origin,
     opponentDecisionSnapshot: decision,
-    publicSpecialAction: state.possession === 'defense' ? action : null,
+    publicSpecialAction: state.possession === POSSESSIONS.defense ? action : null,
     specialRecoveryPlay: recovery,
   });
-  if (origin === 'conversion-decision') {
+  if (origin === PHASES.conversionDecision) {
     showConversionDecision(recovery, decision);
-  } else if (state.possession === 'offense') {
+  } else if (state.possession === POSSESSIONS.offense) {
     showPlayerFourthDownDecision(recovery);
   } else {
     updateStatus();
@@ -2589,13 +2622,13 @@ function handleInvalidSpecialPlay(error, origin, action, decision = null) {
 function retryOpponentSpecialAction(action) {
   const decision = state.opponentDecisionSnapshot;
   const recoveryType = state.specialRecoveryPlay?.playType;
-  if (state.phase !== 'fourth-down-decision' || state.possession !== 'defense'
+  if (state.phase !== PHASES.fourthDownDecision || state.possession !== POSSESSIONS.defense
     || !decision || decision.action !== action || recoveryType !== action) return false;
   let activePlay;
   try {
     activePlay = buildSpecialPlay(action, state.specialRecoveryPlay);
   } catch (error) {
-    handleInvalidSpecialPlay(error, 'fourth-down-decision', action, decision);
+    handleInvalidSpecialPlay(error, PHASES.fourthDownDecision, action, decision);
     return false;
   }
   startSpecialPlay(activePlay, opponentSpecialActionLabel(action));
@@ -2606,13 +2639,13 @@ function retryOpponentConversionAction(action) {
   const decision = state.opponentDecisionSnapshot;
   const recoveryAction = state.specialRecoveryPlay?.context?.attemptType
     || state.specialRecoveryPlay?.attemptType;
-  if (state.phase !== 'conversion-decision' || state.possession !== 'defense'
+  if (state.phase !== PHASES.conversionDecision || state.possession !== POSSESSIONS.defense
     || !decision || decision.action !== action || recoveryAction !== action) return false;
   let activePlay;
   try {
     activePlay = buildSpecialPlay(action, state.specialRecoveryPlay);
   } catch (error) {
-    handleInvalidSpecialPlay(error, 'conversion-decision', action, decision);
+    handleInvalidSpecialPlay(error, PHASES.conversionDecision, action, decision);
     return false;
   }
   startSpecialPlay(activePlay, opponentSpecialActionLabel(action));
@@ -2633,7 +2666,7 @@ function beginOpponentFourthDown(decision = null, recovery = null) {
   try {
     activePlay = buildSpecialPlay(frozenDecision.action, recovery);
   } catch (error) {
-    handleInvalidSpecialPlay(error, 'fourth-down-decision', frozenDecision.action, frozenDecision);
+    handleInvalidSpecialPlay(error, PHASES.fourthDownDecision, frozenDecision.action, frozenDecision);
     return;
   }
   startSpecialPlay(activePlay, opponentSpecialActionLabel(frozenDecision.action));
@@ -2646,7 +2679,7 @@ function showCallPrompt({ preserveOpponentSnapshot = false, forceScrimmage = fal
   const recovery = state.down === 4 ? state.specialRecoveryPlay : null;
   const goChosen = state.down === 4 && (forceScrimmage || state.fourthDownGoChosen);
   Object.assign(state, blankPlayState(), {
-    phase: 'call',
+    phase: PHASES.call,
     opponentDecisionSnapshot: decision,
     opponentSnapshot,
     specialRecoveryPlay: recovery,
@@ -2654,24 +2687,24 @@ function showCallPrompt({ preserveOpponentSnapshot = false, forceScrimmage = fal
   });
   announceSpecialAction('');
   if (state.down === 4 && !goChosen) {
-    if (state.possession === 'offense') showPlayerFourthDownDecision(recovery);
+    if (state.possession === POSSESSIONS.offense) showPlayerFourthDownDecision(recovery);
     else beginOpponentFourthDown(decision, recovery);
     return;
   }
-  if (state.possession === 'defense') {
+  if (state.possession === POSSESSIONS.defense) {
     state.opponentSnapshot = opponentSnapshot || planOpponentSnap();
   }
   renderOrdinaryCallPrompt({ focusFirstCall });
 }
 
 function selectFourthDownAction(action) {
-  if (state.phase !== 'fourth-down-decision' || state.possession !== 'offense') return false;
+  if (state.phase !== PHASES.fourthDownDecision || state.possession !== POSSESSIONS.offense) return false;
   const recoveryAction = state.specialRecoveryPlay?.playType;
   if (recoveryAction && action !== recoveryAction) return false;
   if (action === 'go') {
     const recovery = state.specialRecoveryPlay;
     Object.assign(state, blankPlayState(), {
-      phase: 'call',
+      phase: PHASES.call,
       fourthDownGoChosen: true,
       specialRecoveryPlay: recovery,
     });
@@ -2683,7 +2716,7 @@ function selectFourthDownAction(action) {
   try {
     activePlay = buildSpecialPlay(action, state.specialRecoveryPlay);
   } catch (error) {
-    handleInvalidSpecialPlay(error, 'fourth-down-decision', action);
+    handleInvalidSpecialPlay(error, PHASES.fourthDownDecision, action);
     return false;
   }
   startSpecialPlay(activePlay, action === 'punt'
@@ -2753,7 +2786,7 @@ function activatePlayMirrors(activePlay, question = null) {
         : activePlay.context.attemptType === 'twoPoint' ? 'Two-Point Try' : 'PAT';
   state.callKey = snap?.call?.key || null;
   state.defenseCallKey = snap?.context?.calls?.defense || null;
-  state.opponentCallKey = snap?.context?.possession === 'defense' ? snap.context.calls.offense : null;
+  state.opponentCallKey = snap?.context?.possession === POSSESSIONS.defense ? snap.context.calls.offense : null;
   state.matchup = snap?.context?.calls?.matchup || null;
   state.play = play;
   state.outcomeMessage = null;
@@ -2800,17 +2833,17 @@ function prepareQuestion(bundle, labelHtml, feedbackCopy = '') {
     questionInstanceId: question.questionInstanceId,
     transitionToCommit: null,
   });
-  state.phase = 'question';
+  state.phase = PHASES.question;
   document.getElementById('play-label').innerHTML = labelHtml;
   document.getElementById('question').textContent = question.prompt.text;
   const isFieldReading = question.answerExposure === 'source-visible';
   applyDeskHeader(activePlay.playType === 'scrimmage'
     ? isFieldReading
-      ? (state.possession === 'offense' ? 'fieldReadingOffense' : 'fieldReadingDefense')
-      : (state.possession === 'offense' ? 'questionOffense' : 'questionDefense')
+      ? (state.possession === POSSESSIONS.offense ? 'fieldReadingOffense' : 'fieldReadingDefense')
+      : (state.possession === POSSESSIONS.offense ? 'questionOffense' : 'questionDefense')
     : isFieldReading
-      ? (state.possession === 'offense' ? 'specialFieldReadingOffense' : 'specialFieldReadingDefense')
-      : (state.possession === 'offense' ? 'specialQuestionOffense' : 'specialQuestionDefense'));
+      ? (state.possession === POSSESSIONS.offense ? 'specialFieldReadingOffense' : 'specialFieldReadingDefense')
+      : (state.possession === POSSESSIONS.offense ? 'specialQuestionOffense' : 'specialQuestionDefense'));
   syncUiState();
   const visibleGuidance = question.support === 'guided' ? question.hint.text : '';
   setFeedback([feedbackCopy, visibleGuidance].filter(Boolean).join(' '), visibleGuidance ? 'info' : 'neutral');
@@ -2826,8 +2859,8 @@ function prepareQuestion(bundle, labelHtml, feedbackCopy = '') {
 }
 
 function restoreCallAfterInvalid(opponentSnapshot = null) {
-  if (state.possession === 'defense' && opponentSnapshot) state.opponentSnapshot = opponentSnapshot;
-  showCallPrompt({ preserveOpponentSnapshot: state.possession === 'defense' && Boolean(opponentSnapshot) });
+  if (state.possession === POSSESSIONS.defense && opponentSnapshot) state.opponentSnapshot = opponentSnapshot;
+  showCallPrompt({ preserveOpponentSnapshot: state.possession === POSSESSIONS.defense && Boolean(opponentSnapshot) });
   setFeedback('That snap could not be validated. Call the play again.', 'info');
 }
 
@@ -2844,7 +2877,7 @@ function handleInvalidSnap(error, opponentSnapshot = null) {
 }
 
 function snapOpponentSnapshot(snap) {
-  return snap?.context?.possession === 'defense'
+  return snap?.context?.possession === POSSESSIONS.defense
     ? snap.context.privateOpponentSnapshot
     : null;
 }
@@ -2867,7 +2900,7 @@ function handleQuestionPreparationFailure(error, activePlay, question, feedbackC
 function expectedRequestedGainForResolution(snap, policy) {
   const originalRequestedGain = snap?.proposal?.requestedGain;
   const possession = snap?.context?.possession;
-  if (!Number.isInteger(originalRequestedGain) || !['offense', 'defense'].includes(possession)) {
+  if (!Number.isInteger(originalRequestedGain) || !Object.values(POSSESSIONS).includes(possession)) {
     const error = new Error('Resolution policy requires a valid frozen snap.');
     error.code = 'invalid-resolution-policy';
     throw error;
@@ -2875,7 +2908,7 @@ function expectedRequestedGainForResolution(snap, policy) {
 
   if (policy === 'questionBypass') return originalRequestedGain;
   if (policy === 'firstTryCorrect' || policy === 'retryCorrect') {
-    if (possession === 'defense') return 0;
+    if (possession === POSSESSIONS.defense) return 0;
     if (policy === 'retryCorrect') return creditedRetryGainForSnap(snap);
     return originalRequestedGain;
   }
@@ -2890,7 +2923,7 @@ function creditedRetryGainForSnap(snap) {
   const originalRequestedGain = snap?.proposal?.requestedGain;
   const originalAppliedGain = snap?.proposal?.appliedGain;
   if (!Number.isInteger(originalRequestedGain) || !Number.isInteger(originalAppliedGain)
-    || originalAppliedGain <= 0 || snap?.context?.possession !== 'offense') {
+    || originalAppliedGain <= 0 || snap?.context?.possession !== POSSESSIONS.offense) {
     return originalRequestedGain;
   }
   return Math.max(1, Math.floor(originalAppliedGain / 2));
@@ -2905,7 +2938,7 @@ function resolutionAssistMetadata(activePlay, policy, transition) {
   const assisted = policy === 'retryCorrect';
   const reductionApplied = Boolean(assisted
     && snap
-    && activePlay.context.possession === 'offense'
+    && activePlay.context.possession === POSSESSIONS.offense
     && rawGain > 0
     && creditedGain !== rawGain);
   return {
@@ -2919,7 +2952,7 @@ function resolutionAssistMetadata(activePlay, policy, transition) {
 }
 
 function secondMissOutcomeForSnap(snap) {
-  if (snap?.context?.possession === 'defense') {
+  if (snap?.context?.possession === POSSESSIONS.defense) {
     return { requestedGain: Math.min(snap.proposal.appliedGain, 3), resultKind: null, resultReason: null };
   }
   const outcome = SECOND_MISS_OUTCOMES[snap?.call?.key];
@@ -2951,7 +2984,7 @@ function expectedTransitionForResolution(activePlay, policy) {
   if (activePlay.playType === 'scrimmage') {
     const snap = FOOTBALL_DOMAIN.activeSnapFromPlay(activePlay);
     if (instructionalSuccess) {
-      if (possession === 'defense') return FOOTBALL_DOMAIN.reprojectGain(snap, 0);
+      if (possession === POSSESSIONS.defense) return FOOTBALL_DOMAIN.reprojectGain(snap, 0);
       return policy === 'retryCorrect'
         ? FOOTBALL_DOMAIN.reprojectGain(snap, creditedRetryGainForSnap(snap))
         : activePlay.proposal;
@@ -2962,7 +2995,7 @@ function expectedTransitionForResolution(activePlay, policy) {
       resultReason: miss.resultReason,
     } : null);
   }
-  const proposalWins = instructionalSuccess ? possession === 'offense' : possession === 'defense';
+  const proposalWins = instructionalSuccess ? possession === POSSESSIONS.offense : possession === POSSESSIONS.defense;
   if (proposalWins) return activePlay.proposal;
   if (activePlay.playType === 'punt') return FOOTBALL_DOMAIN.reprojectPunt(activePlay, 'receiverFavorable');
   if (activePlay.playType === 'fieldGoal') {
@@ -3030,7 +3063,7 @@ function bypassQuestionSubsystem(activePlay, error, feedbackCopy) {
     });
     if (activePlay.playType === 'scrimmage') handleInvalidSnap(invalid, activePlayOpponentSnapshot(activePlay));
     else handleInvalidSpecialPlay(invalid,
-      activePlay.playType === 'conversion' ? 'conversion-decision' : 'fourth-down-decision',
+      activePlay.playType === 'conversion' ? PHASES.conversionDecision : PHASES.fourthDownDecision,
       activePlay.playType === 'conversion' ? activePlay.context.attemptType : activePlay.playType,
       state.opponentDecisionSnapshot);
     return;
@@ -3047,7 +3080,7 @@ function bypassQuestionSubsystem(activePlay, error, feedbackCopy) {
     questionInstanceId: error?.questionInstanceId ?? null,
   };
   activatePlayMirrors(activePlay, null);
-  state.phase = 'feedback';
+  state.phase = PHASES.feedback;
   hideAnswerButtons();
   hideCallGrid();
   hideDecisionGrid();
@@ -3057,8 +3090,8 @@ function bypassQuestionSubsystem(activePlay, error, feedbackCopy) {
   markStatsBypassed(activePlay, bypassLinks);
   state.pendingResolution = makePendingResolution('questionBypass', exact.value, bypassLinks);
   applyDeskHeader(activePlay.playType === 'scrimmage'
-    ? (state.possession === 'offense' ? 'resultOffense' : 'resultDefense')
-    : (state.possession === 'offense' ? 'specialResultOffense' : 'specialResultDefense'));
+    ? (state.possession === POSSESSIONS.offense ? 'resultOffense' : 'resultDefense')
+    : (state.possession === POSSESSIONS.offense ? 'specialResultOffense' : 'specialResultDefense'));
   setFeedback(feedbackCopy || 'The play goes on without a question.', 'info');
   commitPendingResolution();
 }
@@ -3108,7 +3141,7 @@ function startSpecialPlay(activePlay, revealCopy = '') {
 }
 
 function selectOffenseCall(callKey) {
-  if (state.phase !== 'call' || state.possession !== 'offense') return;
+  if (state.phase !== PHASES.call || state.possession !== POSSESSIONS.offense) return;
   let activePlay;
   try {
     activePlay = makeActiveScrimmagePlay(callKey, {
@@ -3148,7 +3181,7 @@ function defenseMatches(defenseCallKey, opponentCallKey) {
 }
 
 function selectDefenseCall(defenseCallKey) {
-  if (state.phase !== 'call' || state.possession !== 'defense') return;
+  if (state.phase !== PHASES.call || state.possession !== POSSESSIONS.defense) return;
   const selection = state.opponentSnapshot;
   if (!selection) {
     reportFootballDiagnostic('missing-opponent-snapshot', {
@@ -3191,7 +3224,7 @@ function selectDefenseCall(defenseCallKey) {
 }
 
 function handleAnswer(idx) {
-  if (state.phase !== 'question') return;
+  if (state.phase !== PHASES.question) return;
   const btn = document.getElementById('b' + idx);
   if (!btn || btn.disabled || btn.classList.contains('hidden')) return;
   const choice = state.questionInstance?.choices?.[idx];
@@ -3228,14 +3261,14 @@ function completeCorrectAnswer(btn, question) {
   state.pendingResolution = makePendingResolution(result);
   btn.classList.add('correct');
   disableAnswers();
-  state.phase = 'feedback';
+  state.phase = PHASES.feedback;
   hideContinueButton();
   const special = state.activePlay.playType !== 'scrimmage';
   const msg = special
-    ? state.possession === 'defense'
+    ? state.possession === POSSESSIONS.defense
       ? 'Correct. Your defense denies the opponent’s best special-teams result.'
       : state.questionUi.attempt > 1 ? 'Great retry. Your special-teams play succeeds.' : 'Correct. Run the special-teams play!'
-    : state.possession === 'defense'
+    : state.possession === POSSESSIONS.defense
       ? outcomeMessage(PLAY_OUTCOME_COPY.defenseStop, state.opponentCallKey)
       : state.questionUi.attempt > 1
         ? state.pendingResolution.assist?.reductionApplied
@@ -3244,8 +3277,8 @@ function completeCorrectAnswer(btn, question) {
         : 'Correct. Run the play!';
   state.outcomeMessage = msg;
   applyDeskHeader(special
-    ? (state.possession === 'offense' ? 'specialResultOffense' : 'specialResultDefense')
-    : (state.possession === 'offense' ? 'resultOffense' : 'resultDefense'));
+    ? (state.possession === POSSESSIONS.offense ? 'specialResultOffense' : 'specialResultDefense')
+    : (state.possession === POSSESSIONS.offense ? 'resultOffense' : 'resultDefense'));
   setFeedback(msg, 'positive');
   commitPendingResolution();
 }
@@ -3273,8 +3306,8 @@ function handleInstructionalMiss(btn, choice, question) {
     syncQuestionMirrors();
     renderMathVisual();
     applyDeskHeader(state.activePlay.playType === 'scrimmage'
-      ? (state.possession === 'offense' ? 'retryOffense' : 'retryDefense')
-      : (state.possession === 'offense' ? 'specialRetryOffense' : 'specialRetryDefense'));
+      ? (state.possession === POSSESSIONS.offense ? 'retryOffense' : 'retryDefense')
+      : (state.possession === POSSESSIONS.offense ? 'specialRetryOffense' : 'specialRetryDefense'));
     setFeedback(`Good try. ${question.hint.text}`, 'info');
     const next = [0, 1, 2, 3]
       .map(i => document.getElementById('b' + i))
@@ -3284,7 +3317,7 @@ function handleInstructionalMiss(btn, choice, question) {
   }
 
   state.questionUi.support = 'worked';
-  state.phase = 'explanation';
+  state.phase = PHASES.explanation;
   state.questionUi.continueRequired = true;
   state.pendingResolution = secondMissPending;
   disableAnswers();
@@ -3292,8 +3325,8 @@ function handleInstructionalMiss(btn, choice, question) {
   syncUiState();
   renderMathVisual();
   applyDeskHeader(state.activePlay.playType === 'scrimmage'
-    ? (state.possession === 'offense' ? 'explainOffense' : 'explainDefense')
-    : (state.possession === 'offense' ? 'specialExplainOffense' : 'specialExplainDefense'));
+    ? (state.possession === POSSESSIONS.offense ? 'explainOffense' : 'explainDefense')
+    : (state.possession === POSSESSIONS.offense ? 'specialExplainOffense' : 'specialExplainDefense'));
   setFeedback(question.workedExplanation.text, 'info');
   showWorkedReviewSummary();
 }
@@ -3313,7 +3346,7 @@ function recordQuestionResolution(result) {
 }
 
 function continueAfterExplanation() {
-  if (state.phase !== 'explanation' || !state.questionUi.continueRequired || state.questionUi.outcomeCommitted) return;
+  if (state.phase !== PHASES.explanation || !state.questionUi.continueRequired || state.questionUi.outcomeCommitted) return;
   if (!state.questionUi.reviewSatisfied) {
     const learn = document.getElementById('question-learn-why');
     if (learn && !learn.disabled && !learn.classList.contains('hidden')) learn.focus({ preventScroll: true });
@@ -3324,14 +3357,14 @@ function continueAfterExplanation() {
   collapseWorkedReview({ restoreFocus: false });
   state.questionUi.continueRequired = false;
   hideContinueButton();
-  state.phase = 'feedback';
+  state.phase = PHASES.feedback;
   syncQuestionMirrors();
   syncUiState();
 
   if (state.activePlay.playType !== 'scrimmage') {
     // The committed special-result semantic is built from the independently
     // validated transition inside commitPendingResolution().
-  } else if (state.possession === 'offense') {
+  } else if (state.possession === POSSESSIONS.offense) {
     const reason = state.pendingResolution.transitionToCommit.resultReason;
     const msg = PLAY_OUTCOME_COPY.secondMiss[reason];
     state.outcomeMessage = msg;
@@ -3389,7 +3422,7 @@ function liveStateMatchesSnap(snap) {
 
 function applyCanonicalTransition(activePlay, transition) {
   if (activePlay.playType === 'scrimmage') {
-    if (state.possession === 'offense') state.playerTotalYards += transition.appliedGain;
+    if (state.possession === POSSESSIONS.offense) state.playerTotalYards += transition.appliedGain;
     else state.opponentTotalYards += transition.appliedGain;
     state.yd = transition.endYardLine;
     state.fdYd = transition.newFirstDownLine;
@@ -3401,7 +3434,7 @@ function applyCanonicalTransition(activePlay, transition) {
     state.g = transition.appliedGain;
     state.play = legacyPlayFromTransition(state.activeSnap, transition, state.questionInstance);
     if (transition.resultKind === 'touchdown') {
-      if (activePlay.context.possession === 'offense') {
+      if (activePlay.context.possession === POSSESSIONS.offense) {
         state.tds++;
         state.playerScore += TD_POINTS;
       } else {
@@ -3413,7 +3446,7 @@ function applyCanonicalTransition(activePlay, transition) {
     state.yd = transition.landingYardLine;
     state.animYd = transition.landingYardLine;
   } else if (transition.points > 0) {
-    if (activePlay.context.possession === 'offense') state.playerScore += transition.points;
+    if (activePlay.context.possession === POSSESSIONS.offense) state.playerScore += transition.points;
     else state.opponentScore += transition.points;
   }
 }
@@ -3422,7 +3455,7 @@ function outcomeForTransition(activePlay, transition, policy) {
   if (activePlay.playType === 'punt') return transition.resultKind === 'puntTouchback' ? 'puntTouchback' : 'puntLanded';
   if (activePlay.playType === 'conversion') {
     return transition.resultKind === 'conversionMissed'
-      && activePlay.context.possession === 'defense'
+      && activePlay.context.possession === POSSESSIONS.defense
       && (policy === 'firstTryCorrect' || policy === 'retryCorrect')
       ? 'conversionDenied'
       : transition.resultKind;
@@ -3432,7 +3465,7 @@ function outcomeForTransition(activePlay, transition, policy) {
   if (transition.resultKind === 'firstDown') return 'firstDown';
   if (transition.resultKind === 'turnoverOnDowns') return 'turnoverOnDowns';
   if (transition.resultKind === 'turnover') return 'turnover';
-  if (state.possession === 'defense' && transition.appliedGain === 0 && policy !== 'questionBypass') return 'stop';
+  if (state.possession === POSSESSIONS.defense && transition.appliedGain === 0 && policy !== 'questionBypass') return 'stop';
   return transition.appliedGain > 0 ? 'gain' : transition.appliedGain < 0 ? 'loss' : 'noGain';
 }
 
@@ -3587,7 +3620,7 @@ function buildSpecialResultPresentation(activePlay, transition, policy) {
 
 function applyCommittedOutcomeBookkeeping(activePlay, outcome) {
   if (activePlay.playType !== 'scrimmage') return;
-  const offense = activePlay.context.possession === 'offense';
+  const offense = activePlay.context.possession === POSSESSIONS.offense;
   if (outcome === 'turnoverOnDowns' && !offense) state.defenseStops++;
   if (outcome === 'firstDown' && offense) state.firstDowns++;
 }
@@ -3596,7 +3629,7 @@ function finishCommittedTransition(activePlay, transition, policy, outcome, {
   focusNextCall = false,
   specialResultPresentation = null,
 } = {}) {
-  const offense = activePlay.context.possession === 'offense';
+  const offense = activePlay.context.possession === POSSESSIONS.offense;
   const source = FOOTBALL_DOMAIN.transitionSource(transitionSnapshot());
   if (activePlay.playType !== 'scrimmage') {
     const presentation = specialResultPresentation
@@ -3625,7 +3658,7 @@ function finishCommittedTransition(activePlay, transition, policy, outcome, {
 
   if (outcome === 'touchdown') {
     setFeedback(offense ? 'Touchdown! Six points. Choose the conversion next.' : `${state.match.opponent.shortName} touchdown. Six points; the conversion is next.`, offense ? 'positive' : 'negative');
-    advTimer = setTimeout(() => showTD(offense ? 'offense' : 'defense'), 900);
+    advTimer = setTimeout(() => showTD(offense ? POSSESSIONS.offense : POSSESSIONS.defense), 900);
     return;
   }
   if (outcome === 'turnoverOnDowns') {
@@ -3679,7 +3712,7 @@ function handleInvalidCommittedPlay(error, activePlay) {
   }
   if (!error.recoverySpec) error.activePlay = activePlay;
   handleInvalidSpecialPlay(error,
-    activePlay.playType === 'conversion' ? 'conversion-decision' : 'fourth-down-decision',
+    activePlay.playType === 'conversion' ? PHASES.conversionDecision : PHASES.fourthDownDecision,
     activePlay.playType === 'conversion' ? activePlay.context.attemptType : activePlay.playType,
     state.opponentDecisionSnapshot);
 }
@@ -3701,10 +3734,10 @@ function settleSeasonGameOnce() {
   });
   seasonSettlementPromise = FOOTBALL_SEASON.settleGame(activeSeasonBinding, finalScores)
     .then(result => {
-      if (state.phase === 'final') renderEndSeason();
+      if (state.phase === PHASES.final) renderEndSeason();
       return result;
     }, () => {
-      if (state.phase === 'final') renderEndSeason();
+      if (state.phase === PHASES.final) renderEndSeason();
       return { status: 'pending' };
     });
   return seasonSettlementPromise;
@@ -3933,19 +3966,19 @@ const FW_PALETTES = {
 };
 
 function fireworkPalette(side) {
-  return side === 'defense'
+  return side === POSSESSIONS.defense
     ? rivalForMatch(state.match).presentation.fireworks
     : FW_PALETTES.offense;
 }
 
-function spawnFireworks(containerId, side = 'offense') {
+function spawnFireworks(containerId, side = POSSESSIONS.offense) {
   if (reducedMotionPreferred()) return;
   const container = document.getElementById(containerId);
   if (!container) return;
   const colors = fireworkPalette(side);
   const runId = (fireworkEpochs.get(container) || 0) + 1;
   fireworkEpochs.set(container, runId);
-  const bursts = side === 'defense' ? 2 : 5;
+  const bursts = side === POSSESSIONS.defense ? 2 : 5;
   for (let b = 0; b < bursts; b++) {
     const delay = b * 260 + Math.random() * 160;
     setTimeout(() => {
@@ -4390,7 +4423,7 @@ function renderTimeLabSession(focusTarget = null) {
 
 function openTimeLab() {
   const start = timeLabElement('ov-start');
-  if (state.phase !== 'start'
+  if (state.phase !== PHASES.start
     || sessionInitialized
     || seasonActionBusy
     || !start?.classList.contains('show')) return false;
@@ -4683,7 +4716,7 @@ function hideOverlays() {
 }
 
 document.addEventListener('keydown', function(event) {
-  if (event.key === 'Escape' && state.phase === 'explanation' && state.questionUi?.reviewExpanded) {
+  if (event.key === 'Escape' && state.phase === PHASES.explanation && state.questionUi?.reviewExpanded) {
     event.preventDefault();
     collapseWorkedReview();
     return;
@@ -4728,7 +4761,7 @@ function showStart() {
   clearTimeout(advTimer);
   hideOverlays();
   resetPlayerAnimations();
-  state.phase = 'start';
+  state.phase = PHASES.start;
   renderStartMode();
   activateOverlay('ov-start');
   if (selectedPlayMode === 'quick') updateRivalPreview(state.match);
@@ -4751,7 +4784,7 @@ function startQuickGame() {
   state = createGameState(match);
   applyMatchPresentation(match);
   hideOverlays();
-  startDrive('offense');
+  startDrive(POSSESSIONS.offense);
   return true;
 }
 
@@ -4773,7 +4806,7 @@ async function startSeasonGame() {
     const start = timeLabElement('ov-start');
     if (sessionInitialized
       || selectedPlayMode !== 'season'
-      || state.phase !== 'start'
+      || state.phase !== PHASES.start
       || !start?.classList.contains('show')
       || timeLabIsOpen()) return false;
 
@@ -4789,11 +4822,11 @@ async function startSeasonGame() {
     state = createGameState(match);
     applyMatchPresentation(match);
     hideOverlays();
-    startDrive('offense');
+    startDrive(POSSESSIONS.offense);
     return true;
   } finally {
     seasonActionBusy = false;
-    if (state.phase === 'start') renderStartMode();
+    if (state.phase === PHASES.start) renderStartMode();
   }
 }
 
@@ -4803,22 +4836,22 @@ async function startGame() {
   try{
     const mode=selectedPlayMode;
     const progress=await CURRICULUM_UI.ask();
-    if(!progress||selectedPlayMode!==mode||state.phase!=='start'||timeLabIsOpen())return false;
+    if(!progress||selectedPlayMode!==mode||state.phase!==PHASES.start||timeLabIsOpen())return false;
     curriculumSession=progress;
     return selectedPlayMode === 'season' ? startSeasonGame() : startQuickGame();
   }finally{curriculumStartBusy=false;}
 }
 
-function showTD(side = 'offense') {
-  Object.assign(state, blankPlayState(), { phase: 'touchdown', touchdownSide: side });
+function showTD(side = POSSESSIONS.offense) {
+  Object.assign(state, blankPlayState(), { phase: PHASES.touchdown, touchdownSide: side });
   syncUiState();
   const opponent = state.match.opponent.shortName;
   populateOverlay(document.getElementById('ov-td'), {
     root: { dataset: { side } },
     slots: {
-      badge: side === 'defense' ? `${opponent} TD` : 'TOUCHDOWN',
-      title: side === 'defense' ? `${opponent} Scores` : 'Touchdown!',
-      sub: side === 'defense'
+      badge: side === POSSESSIONS.defense ? `${opponent} TD` : 'TOUCHDOWN',
+      title: side === POSSESSIONS.defense ? `${opponent} Scores` : 'Touchdown!',
+      sub: side === POSSESSIONS.defense
         ? `Score: ${state.playerScore} - ${state.opponentScore}. ${opponent} has ${state.opponentTds} TD${state.opponentTds === 1 ? '' : 's'} — get it back!`
         : `Score: ${state.playerScore} - ${state.opponentScore}. ${state.tds} player TD${state.tds === 1 ? '' : 's'}!`,
       action: touchdownContinueLabel(side),
@@ -4826,7 +4859,7 @@ function showTD(side = 'offense') {
   });
   activateOverlay('ov-td');
   clearConfetti('ov-td-confetti');
-  if (side !== 'defense') {
+  if (side !== POSSESSIONS.defense) {
     spawnConfetti('ov-td-confetti', 40);
     playTouchdown();
   }
@@ -4834,8 +4867,8 @@ function showTD(side = 'offense') {
 }
 
 function afterTouchdown() {
-  const expectedSide = state.possession === 'defense' ? 'defense' : 'offense';
-  if (state.phase !== 'touchdown' || state.touchdownSide !== expectedSide) return false;
+  const expectedSide = state.possession === POSSESSIONS.defense ? POSSESSIONS.defense : POSSESSIONS.offense;
+  if (state.phase !== PHASES.touchdown || state.touchdownSide !== expectedSide) return false;
   hideOverlays();
   showConversionDecision();
   return true;
@@ -4857,14 +4890,14 @@ function showConversionDecision(recovery = null, decision = null) {
   hideOverlays();
   const recoveryAction = recovery?.context?.attemptType || recovery?.attemptType || null;
   Object.assign(state, blankPlayState(), {
-    phase: 'conversion-decision',
+    phase: PHASES.conversionDecision,
     opponentDecisionSnapshot: decision,
-    publicSpecialAction: state.possession === 'defense' ? recoveryAction : null,
+    publicSpecialAction: state.possession === POSSESSIONS.defense ? recoveryAction : null,
     specialRecoveryPlay: recovery,
   });
   updateStatus();
   document.getElementById('play-label').textContent = 'Conversion Try';
-  if (state.possession === 'offense') {
+  if (state.possession === POSSESSIONS.offense) {
     const actions = recoveryAction ? [{
       key: recoveryAction,
       eyebrow: 'Same try',
@@ -4921,14 +4954,14 @@ function showConversionDecision(recovery = null, decision = null) {
   try {
     activePlay = buildSpecialPlay(frozenDecision.action, recovery);
   } catch (error) {
-    handleInvalidSpecialPlay(error, 'conversion-decision', frozenDecision.action, frozenDecision);
+    handleInvalidSpecialPlay(error, PHASES.conversionDecision, frozenDecision.action, frozenDecision);
     return;
   }
   startSpecialPlay(activePlay, opponentSpecialActionLabel(frozenDecision.action));
 }
 
 function selectConversionAction(action) {
-  if (state.phase !== 'conversion-decision' || state.possession !== 'offense'
+  if (state.phase !== PHASES.conversionDecision || state.possession !== POSSESSIONS.offense
     || !['pat', 'twoPoint'].includes(action)) return false;
   const recoveryAction = state.specialRecoveryPlay?.context?.attemptType
     || state.specialRecoveryPlay?.attemptType;
@@ -4937,7 +4970,7 @@ function selectConversionAction(action) {
   try {
     activePlay = buildSpecialPlay(action, state.specialRecoveryPlay);
   } catch (error) {
-    handleInvalidSpecialPlay(error, 'conversion-decision', action);
+    handleInvalidSpecialPlay(error, PHASES.conversionDecision, action);
     return false;
   }
   startSpecialPlay(activePlay, action === 'twoPoint' ? 'You choose a two-point try.' : 'You choose a PAT.');
@@ -4968,7 +5001,7 @@ function showDefenseTransition(message, intent = null) {
 }
 
 function startDefense(expectedSource = null) {
-  const plan = FOOTBALL_DOMAIN.planTransitionAdvance(transitionSnapshot(), { side: 'defense', expectedSource });
+  const plan = FOOTBALL_DOMAIN.planTransitionAdvance(transitionSnapshot(), { side: POSSESSIONS.defense, expectedSource });
   if (!plan.accepted) return false;
   hideOverlays();
   startDrive(plan.drive.possession);
@@ -4988,7 +5021,7 @@ function showOffenseTransition(message, intent = null) {
 }
 
 function startOffense(expectedSource = null) {
-  const plan = FOOTBALL_DOMAIN.planTransitionAdvance(transitionSnapshot(), { side: 'offense', expectedSource });
+  const plan = FOOTBALL_DOMAIN.planTransitionAdvance(transitionSnapshot(), { side: POSSESSIONS.offense, expectedSource });
   if (!plan.accepted) return false;
   hideOverlays();
   startDrive(plan.drive.possession);
@@ -5237,14 +5270,14 @@ async function handleEndPrimaryAction() {
   try {
     if (activeSeasonBinding && FOOTBALL_SEASON.pendingKind() === 'result') {
       await FOOTBALL_SEASON.retryPending();
-      if (state.phase === 'final') renderEndSeason();
+      if (state.phase === PHASES.final) renderEndSeason();
       if (FOOTBALL_SEASON.pendingKind() === 'result') return false;
     }
     restart(activeSeasonBinding ? 'season' : null);
     return true;
   } finally {
     seasonEndActionBusy = false;
-    if (state.phase === 'final') renderEndSeason();
+    if (state.phase === PHASES.final) renderEndSeason();
   }
 }
 
@@ -5287,7 +5320,7 @@ function showGameOver(intent = null) {
   activateOverlay('ov-end');
   if (diff > 0) {
     spawnConfetti('ov-end-confetti', 40);
-    spawnFireworks('ov-end-confetti', 'offense');
+    spawnFireworks('ov-end-confetti', POSSESSIONS.offense);
   }
 }
 
@@ -5330,7 +5363,7 @@ function conversionRenderState() {
   const activeConversion = state.activePlay?.playType === 'conversion'
     ? state.activePlay
     : null;
-  if (state.phase !== 'conversion-decision' && !activeConversion) return null;
+  if (state.phase !== PHASES.conversionDecision && !activeConversion) return null;
   const recoveryAttempt = state.specialRecoveryPlay?.context?.attemptType
     || state.specialRecoveryPlay?.attemptType;
   const publicAttempt = ['pat', 'twoPoint'].includes(state.publicSpecialAction)
@@ -5471,7 +5504,7 @@ function renderGameToText() {
     attempt: state.questionInstance ? state.questionUi.attempt : null,
     missedChoiceIds: state.questionUi?.missedChoiceIds || [],
     missedChoiceIndexes: state.missedChoiceIndexes || [],
-    retryAvailable: state.phase === 'question' && state.questionUi?.attempt === 2,
+    retryAvailable: state.phase === PHASES.question && state.questionUi?.attempt === 2,
     reviewAvailable: reviewAvailable(),
     reviewExpanded: Boolean(state.questionUi?.reviewExpanded),
     reviewSatisfied: Boolean(state.questionUi?.reviewSatisfied),
@@ -5516,7 +5549,7 @@ function seedDriveStateForTest(overrides = {}) {
     : Object.prototype.hasOwnProperty.call(overrides, 'rivalId')
       ? FOOTBALL_OPPONENT.createMatch(overrides.rivalId)
       : state.match || FOOTBALL_OPPONENT.createMatch();
-  const possession = overrides.possession === 'defense' ? 'defense' : 'offense';
+  const possession = overrides.possession === POSSESSIONS.defense ? POSSESSIONS.defense : POSSESSIONS.offense;
   const direction = overrides.direction ?? directionFor(possession);
   const yardLine = overrides.yardLine ?? overrides.yd ?? startingYardFor(possession);
   const yardsToGo = overrides.yardsToGo ?? overrides.ytg ?? 10;
@@ -5579,7 +5612,7 @@ function seedDriveStateForTest(overrides = {}) {
     drivePlays: context.drivePlays,
     animYd: context.yardLine,
     ...blankPlayState(),
-    phase: 'call',
+    phase: PHASES.call,
   };
   if (overrides.opponentSnapshot) {
     state.opponentSnapshot = FOOTBALL_DOMAIN.deepFreeze(FOOTBALL_DOMAIN.clone(overrides.opponentSnapshot));
@@ -5587,12 +5620,12 @@ function seedDriveStateForTest(overrides = {}) {
   hideOverlays();
   updateField(false);
   updateStatus();
-  showCallPrompt({ preserveOpponentSnapshot: possession === 'defense' && Boolean(state.opponentSnapshot) });
+  showCallPrompt({ preserveOpponentSnapshot: possession === POSSESSIONS.defense && Boolean(state.opponentSnapshot) });
   return JSON.parse(renderGameToText());
 }
 
 function answerChoiceForTest(choiceId) {
-  if (state.phase !== 'question' || !state.questionInstance) return false;
+  if (state.phase !== PHASES.question || !state.questionInstance) return false;
   let resolvedId = choiceId;
   if (choiceId === 'correct') resolvedId = state.questionInstance.correctChoiceId;
   if (choiceId === 'wrong') {
@@ -5678,20 +5711,20 @@ window.__footballTest = {
     return answerChoiceForTest(choiceId);
   },
   selectDecision(action) {
-    if (state.phase === 'fourth-down-decision') {
-      return state.possession === 'offense'
+    if (state.phase === PHASES.fourthDownDecision) {
+      return state.possession === POSSESSIONS.offense
         ? selectFourthDownAction(action)
         : retryOpponentSpecialAction(action);
     }
-    if (state.phase === 'conversion-decision') {
-      return state.possession === 'offense'
+    if (state.phase === PHASES.conversionDecision) {
+      return state.possession === POSSESSIONS.offense
         ? selectConversionAction(action)
         : retryOpponentConversionAction(action);
     }
     return false;
   },
   continueAfterTouchdown() {
-    if (state.phase !== 'touchdown') return false;
+    if (state.phase !== PHASES.touchdown) return false;
     afterTouchdown();
     return activeContractsSnapshot();
   },
@@ -5766,7 +5799,7 @@ function applyBootMode() {
     state = createGameState(match);
     applyMatchPresentation(match);
     hideOverlays();
-    startDrive('defense');
+    startDrive(POSSESSIONS.defense);
     return true;
   }
   return false;
@@ -5775,8 +5808,8 @@ function applyBootMode() {
 const initialSeasonSnapshot = FOOTBALL_SEASON.snapshot();
 if (!['missing', 'unavailable'].includes(initialSeasonSnapshot.status)) selectedPlayMode = 'season';
 FOOTBALL_SEASON.subscribe(() => {
-  if (state.phase === 'start') renderStartMode();
-  else if (state.phase === 'final') renderEndSeason();
+  if (state.phase === PHASES.start) renderStartMode();
+  else if (state.phase === PHASES.final) renderEndSeason();
 });
 
 if (!applyBootMode()) showStart();
