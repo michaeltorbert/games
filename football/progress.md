@@ -1504,3 +1504,64 @@ Implementation author: Claude (Opus 5.5, medium), a new session separate from bo
   - fresh independent review.
 
   No result is claimed here.
+
+
+## 2026-10-14 — Football v1.34.7 (#51 simple play cards, partial, superseding release entry)
+
+Implementation author: Claude (Opus 5.5, medium), a native session separate from both planning seats, from exact base `0def194` (Football 1.34.6). This delivers only the play-call cards from the larger #51 redesign request. #51 stays open, and nothing here claims the whole redesign.
+
+### #51 — the user-approved simple cards (mockup V5)
+
+- `football.css` is the 1.34.6 file, byte for byte, followed by one appended block. That block holds the approved V5 rules, unchanged except for the first header-comment line. Every selector starts with `#call-grid`.
+- Being last in the file, the block wins the cascade exactly as the approved injected preview did. Overridden legacy rules are left in place rather than cleaned up.
+- **What the cards look like:**
+  - one flat card colour: navy `#0d1f44` on offense, brown `#2b1a0b` on defense;
+  - the existing play diagram drawn straight on the card, with no box;
+  - left-aligned names and descriptions in the existing white/warm colours;
+  - 14px rounded corners;
+  - the larger primary-iPad type, and the full 38px phone diagram;
+  - no header band, chip fill, strip, sheen, gradient or texture;
+  - the same outer size and placement.
+- The resting card shadow is suppressed, because removing the cut corner would otherwise reveal it. The existing hover, focus and press shadow, outline and transform rules are unchanged; their now-unclipped reach was reviewed with V5.
+- **Superseded directions:** the earlier darker diagram band and opaque risk chip were replaced by the user's "just something simple" instruction. They were not dropped silently.
+- **Unchanged:** markup, copy, call definitions, gameplay, curriculum, RNG, answer buttons, overlays, audio and saved preferences.
+
+### Pixel-isolation diagnosis (bounded disposition, not a fix)
+
+- **Original failure:** the approved V5 capture failed one strict check. Seven device pixels outside the call grid changed on Chromium iPhone 15 defense. That failure is kept as a failure.
+- **Diagnostic runs:**
+  - The preregistered phase A batch is class K.
+  - Both static deployment-mode runs are NOT clean.
+  - The state-conditioned question never ran, because its guard was not met.
+  - All of these records are retained under `output/issue-51/integration/`.
+- **Exceptions E1/E2 (accepted by independent review):** integration may proceed on affirmative controls with the cause unknown, not as a pass. The controls are:
+  - a stylesheet that matches nothing reproduced the exact seven historical transitions;
+  - in static runs, loads of the same stylesheet differed at exactly the signatures that the base/candidate comparisons flagged, in the base alone as well;
+  - WebKit's `maxTouchPoints` 0 alongside working tap-driven transitions;
+  - time-varying samples of the existing infinite animations.
+- **Not changed:** no assertion, threshold, mask, retry or deadline.
+- **Not established:** a browser mechanism, whether a stylesheet change is needed for the flip, and which layer paints the seventh pixel.
+- Issue #161 is unaffected and unresolved.
+
+### Tooling and release metadata
+
+- `scripts/serve-root.mjs` binds explicitly to `127.0.0.1`.
+- `scripts/football-release.config.mjs` gives WebKit release projects the iOS Safari user agent (iPhone or iPad). Viewport, DPR, `isMobile`, `hasTouch`, retries, workers, deadlines and specs are unchanged.
+- `GAME_VERSION`, all 18 Football asset query strings, the Football registry descriptor and `version.json` are `1.34.7`. Kayak 1.1.38, Prague 1.4.0 and Place by Place 1.9.0 are unchanged.
+
+### Verification scope (pending; nothing claimed here)
+
+The author had no shell tools and ran nothing. Required at the exact final artifact, with every failure retained:
+
+- `football.css` byte identity with the reviewed `diag/experimental.css`, and a review of the bounded source diff;
+- syntax, the registry gate at base `0def194`, and focused Football checks;
+- the frozen, independently reviewed production capture (`output/issue-51/integration/diag/production-capture.mjs`). For Chromium and WebKit, six viewports and both sides, it covers:
+  - full screenshots;
+  - exact same-engine V5 grid, focus and press crop parity;
+  - real taps from call to question to feedback;
+  - mute proven before input;
+  - the `v1.34.7` version label;
+- the full Chromium and WebKit release matrices, run serially;
+- a fresh independent functional, accessibility and visual review of the exact head, including actual pixels.
+
+This is engine emulation, not native Safari, Simulator or device evidence.

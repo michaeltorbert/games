@@ -5977,3 +5977,127 @@ body::after {
     transform: none !important;
   }
 }
+
+/* Issue 51: simple play cards, the user-approved mockup V5 rules. Kept last in
+   the file so they win the cascade exactly as the approved injected preview did.
+   One plain dark Football surface per card (offense #0d1f44, defense #2b1a0b),
+   the play diagram drawn straight on it with no box, existing left-aligned
+   white/warm name and muted description. No band, header, chip fill, strip,
+   sheen, gradient or texture. Every selector starts with #call-grid.
+
+   Outer footprint is untouched: no card padding, gap, min-height, border width
+   or border colour is declared. Rows and type are V3's. The card colour is the
+   same navy/brown V3 put under the border box, so the translucent risk borders
+   composite exactly as in V3. */
+
+#call-grid .call-btn {
+  clip-path: none;
+  border-radius: 14px;
+  background: #0d1f44;
+  grid-template-rows: auto minmax(72px, 1fr) auto auto;
+}
+
+#call-grid .call-btn::before,
+#call-grid .call-btn::after {
+  content: none;
+}
+
+/* The resting shadow was always clipped by the cut corner; removing the cut
+   would newly reveal it outside the grid and over neighbouring cards. Hover,
+   focus-visible and the coarse-pointer hover shadow keep their existing rules. */
+#call-grid .call-btn:not(:hover):not(:focus-visible) {
+  box-shadow: none;
+}
+
+#call-grid .call-diagram {
+  height: auto;
+  background: transparent;
+}
+
+/* Out of flow so the SVG's aspect ratio never feeds the row's intrinsic size. */
+#call-grid .call-diagram svg {
+  position: absolute;
+  left: 6px;
+  top: 4px;
+  width: calc(100% - 12px);
+  height: calc(100% - 8px);
+}
+
+#call-grid .call-meta {
+  color: var(--muted-soft);
+}
+
+/* Risk text stays; its pill is removed. */
+#call-grid .call-risk {
+  border-color: transparent;
+  background: transparent;
+  color: var(--muted-soft);
+}
+
+#call-grid .call-label {
+  color: var(--white);
+  text-align: left;
+}
+
+#call-grid .call-desc {
+  color: var(--muted-soft);
+  text-align: left;
+}
+
+#call-grid[data-possession="defense"] .call-btn {
+  background: #2b1a0b;
+}
+
+#call-grid[data-possession="defense"] .call-meta,
+#call-grid[data-possession="defense"] .call-risk,
+#call-grid[data-possession="defense"] .call-desc {
+  color: #f0d5b4;
+}
+
+#call-grid[data-possession="defense"] .call-label {
+  color: #ffd4a1;
+}
+
+/* iPad portrait: card height follows content, so only the diagram row minimum
+   is restated; type keeps its source size and line height. */
+@media (min-width: 768px) and (max-width: 1079px) and (orientation: portrait) {
+  #call-grid .call-btn {
+    grid-template-rows: auto minmax(48px, 1fr) auto auto;
+  }
+}
+
+/* Phones: meta is hidden, so three rows, restated unchanged. The SVG gets the
+   full source 38px row height; only the horizontal clearance remains. */
+@media (max-width: 760px) {
+  #call-grid .call-btn {
+    grid-template-rows: 38px auto auto;
+  }
+
+  #call-grid .call-diagram svg {
+    top: 0;
+    height: 100%;
+  }
+}
+
+/* Touch iPad landscape: the doubled id matches the source
+   #ui-desk[data-phase="call"] #call-grid ... specificity while staying scoped.
+   Larger primary-iPad name and description, as in V3. */
+@media (hover: none) and (pointer: coarse) and (min-width: 1024px) and (orientation: landscape) {
+  #call-grid#call-grid[data-count] .call-btn[data-risk] {
+    grid-template-rows: minmax(34px, 1fr) auto auto;
+  }
+
+  #call-grid#call-grid[data-count] .call-diagram {
+    height: auto;
+  }
+
+  #call-grid#call-grid[data-count] .call-label {
+    font-size: 24px;
+    line-height: 21px;
+  }
+
+  #call-grid#call-grid[data-count] .call-desc {
+    font-size: 12px;
+    line-height: 14px;
+  }
+}

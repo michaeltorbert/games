@@ -51,6 +51,6 @@ const server = createServer(async (req, res) => {
   }
 });
 
-server.listen(PORT, () => {
+server.listen(PORT, '127.0.0.1', () => {
   console.log(`serve-root listening on http://127.0.0.1:${PORT} (root=${ROOT})`);
 });
