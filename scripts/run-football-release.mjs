@@ -45,6 +45,7 @@ const BROWSER = [
   'tests/football-marker-layout.spec.mjs',
   'tests/football-audio.spec.mjs',
   'tests/football-particles.spec.mjs',
+  'tests/football-tackle.spec.mjs',
   'tests/football-copy-contract.spec.mjs',
   'tests/football-fireworks.spec.mjs',
   'tests/football-overlay-accessibility.spec.mjs',
