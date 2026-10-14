@@ -1468,6 +1468,119 @@ body::after {
   30%, 60% { transform: rotate(-125deg); }
 }
 
+/* Issue #169: after a tackled first down the same celebration runs in 350 ms. */
+#player.player-celebrating.player-celebrate-quick,
+#player.player-celebrating.player-celebrate-quick .pl-arm-l,
+#player.player-celebrating.player-celebrate-quick .pl-arm-r {
+  animation-duration: 350ms;
+}
+
+/* Issue #169: the opposing defender who brings the Duke ball carrier down. It
+   reuses the carrier's sprite in the visiting rival's live colors, faces the
+   carrier from downfield, and never takes input. Leaning in, its shoulder meets
+   the carrier's hip and its arms wrap his waist, below the ball. */
+#tackler {
+  --tackle-shift: 0px;
+  --tackle-approach: 0px;
+  position: absolute;
+  top: 54%;
+  width: 30px;
+  height: 42px;
+  margin-left: -6px;
+  z-index: 5;
+  transform: translate(-50%, -50%) translateX(var(--tackle-shift)) scaleX(-1);
+  pointer-events: none;
+}
+
+#tackler.tackler-hidden {
+  display: none;
+}
+
+/* The lean pivots at the cleats (viewBox 10, 29.6). */
+#tackler svg {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  transform-origin: 50% 92.5%;
+  transform: rotate(12deg);
+  transition: transform 100ms ease-out;
+}
+
+#tackler .pl-arm-l,
+#tackler .pl-arm-r {
+  transition: transform 100ms ease-out;
+}
+
+#tackler .pl-jersey {
+  fill: var(--opponent-accent);
+}
+
+#tackler .pl-pads {
+  fill: var(--opponent-accent);
+  stroke: var(--opponent-accent-dark);
+}
+
+#tackler .pl-sleeve {
+  stroke: var(--opponent-accent);
+}
+
+#tackler .pl-sock,
+#tackler .pl-belt {
+  stroke: var(--opponent-accent-dark);
+}
+
+#tackler .pl-helmet {
+  fill: var(--opponent-accent-dark);
+  stroke: var(--opponent-accent-ink);
+}
+
+#tackler .pl-ear {
+  fill: var(--opponent-accent-ink);
+}
+
+/* The markup's transform attribute counters the sprite's mirror so the number reads. */
+#tackler .pl-number {
+  fill: var(--opponent-accent-ink);
+}
+
+/* Runs in on the carrier's own movement curve and duration. */
+#tackler[data-tackle-phase="approach"] {
+  animation: tackler-approach 750ms cubic-bezier(0.25, 0.46, 0.45, 0.94) both;
+}
+
+@keyframes tackler-approach {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) translateX(calc(var(--tackle-shift) + var(--tackle-approach))) scaleX(-1);
+  }
+  20% { opacity: 1; }
+  100% {
+    opacity: 1;
+    transform: translate(-50%, -50%) translateX(var(--tackle-shift)) scaleX(-1);
+  }
+}
+
+#tackler[data-tackle-phase="approach"] .pl-leg-l {
+  animation: leg-swing 250ms ease-in-out infinite;
+}
+
+#tackler[data-tackle-phase="approach"] .pl-leg-r {
+  animation: leg-swing 250ms ease-in-out infinite 125ms;
+}
+
+#tackler:is([data-tackle-phase="contact"], [data-tackle-phase="settled"]) svg {
+  transform: rotate(40deg);
+}
+
+/* Both arms swing forward under the shoulder to wrap the carrier. */
+#tackler:is([data-tackle-phase="contact"], [data-tackle-phase="settled"]) .pl-arm-r {
+  transform: rotate(-96deg);
+}
+
+#tackler:is([data-tackle-phase="contact"], [data-tackle-phase="settled"]) .pl-arm-l {
+  transform: rotate(-149deg);
+}
+
 /* Grass & dust specks kicked up as the ball-carrier advances. */
 .field-particle {
   position: absolute;
@@ -4073,6 +4186,12 @@ body::after {
     margin-left: -28px;
   }
 
+  #tackler {
+    width: 24px;
+    height: 34px;
+    margin-left: -5px;
+  }
+
   .fd-chain-link {
     width: 3px;
     height: 28px;
@@ -4857,6 +4976,17 @@ body::after {
   #player.player-celebrating .pl-arm-l,
   #player.player-celebrating .pl-arm-r {
     animation: none !important;
+  }
+
+  /* The tackler appears only as a static contact pose at the settled spot. */
+  #tackler,
+  #tackler svg,
+  #tackler .pl-arm-l,
+  #tackler .pl-arm-r,
+  #tackler .pl-leg-l,
+  #tackler .pl-leg-r {
+    animation: none !important;
+    transition: none !important;
   }
 
   /* Freeze the ambient stadium background to its static silhouette. */

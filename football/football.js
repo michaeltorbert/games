@@ -1,4 +1,4 @@
-const GAME_VERSION = '1.34.7';
+const GAME_VERSION = '1.34.8';
 let prevPlayerScore = -1, prevOpponentScore = -1;
 let playerRunTimer = 0, playerCelebrateTimer = 0, playerCelebrateDelayTimer = 0;
 const EZ = 5;
@@ -1704,6 +1704,21 @@ window.addEventListener('resize', () => {
   }
 });
 
+// Issue #169: the tackler is corrected by its own listener, registered after the
+// carrier's, so it runs even when that handler leaves a running movement alone
+// and it reads the carrier's already-corrected spot. A resize during the approach
+// skips straight to the endpoint; contact still waits for the carrier to settle.
+window.addEventListener('resize', () => {
+  if (!tackle) return;
+  const tackler = document.getElementById('tackler');
+  const player = document.getElementById('player');
+  const field = document.getElementById('field-wrap');
+  if (!tackler || !player || !field) return;
+  tackler.style.left = player.style.left;
+  if (tackler.dataset.tacklePhase === 'approach') tacklerApproachAnimations(tackler).forEach(animation => animation.finish());
+  clampTacklerToField(tackler, field);
+});
+
 function updateStatus(view) {
   requireRenderSnapshot(view);
   applyMatchPresentation(view.match);
@@ -2523,6 +2538,7 @@ function announceSpecialAction(text) {
 }
 
 function renderOrdinaryCallPrompt({ focusFirstCall = false } = {}) {
+  resetTackle();
   state.phase = PHASES.call;
   const view = captureLiveRender();
   updateStatus(view);
@@ -2563,6 +2579,7 @@ function taggedOpponentDecision(decision) {
 }
 
 function showPlayerFourthDownDecision(recovery = null) {
+  resetTackle();
   state.phase = PHASES.fourthDownDecision;
   state.specialRecoveryPlay = recovery;
   updateStatus(captureLiveRender());
@@ -2769,6 +2786,7 @@ function beginOpponentFourthDown(decision = null, recovery = null) {
 
 function showCallPrompt({ preserveOpponentSnapshot = false, forceScrimmage = false, focusFirstCall = false } = {}) {
   clearTimeout(advTimer);
+  resetTackle();
   const opponentSnapshot = preserveOpponentSnapshot ? state.opponentSnapshot : null;
   const decision = state.down === 4 ? state.opponentDecisionSnapshot : null;
   const recovery = state.down === 4 ? state.specialRecoveryPlay : null;
@@ -3603,6 +3621,8 @@ function routePossessionPresentation(message, expectedSource = null) {
     });
     return false;
   }
+  // The play's feedback ends here; no tackle may outlast it behind a break overlay.
+  resetTackle();
   if (intent.kind === 'final') showGameOver(intent);
   else if (intent.kind === 'halftime') showHalftime(message, intent);
   else if (intent.kind === 'quarterEnd') showQuarterEnd(message, intent);
@@ -3746,6 +3766,8 @@ function finishCommittedTransition(activePlay, transition, policy, outcome, {
   }
 
   const gain = transition.appliedGain;
+  const tackled = tackleEligible(activePlay, transition);
+  if (tackled) startTackle(activePlay);
   if (outcome === 'turnover') showFieldFloat(transition.resultReason === 'fumble' ? 'FUMBLE!' : 'INTERCEPTED!', 'negative');
   else if (offense && gain > 0) startPlayerRun(transition.resultKind === 'touchdown' || transition.resultKind === 'firstDown' || gain >= 8);
   else if (!offense && gain === 0) { showFieldFloat('STOPPED', 'negative'); flashDefenseStop(); }
@@ -3782,7 +3804,11 @@ function finishCommittedTransition(activePlay, transition, policy, outcome, {
       setFeedback('First down!', 'positive');
       playFirstDown();
       clearTimeout(playerCelebrateDelayTimer);
-      playerCelebrateDelayTimer = setTimeout(startPlayerCelebrate, 700);
+      // Issue #169: after a tackle the celebration waits for the held contact and
+      // runs shorter, so both fit before the unchanged next-play timer.
+      playerCelebrateDelayTimer = tackled
+        ? setTimeout(startTackledCelebrate, TACKLED_CELEBRATE_DELAY_MS)
+        : setTimeout(startPlayerCelebrate, 700);
     }
     advTimer = setTimeout(() => showCallPrompt({ focusFirstCall: focusNextCall }), offense ? 1400 : 1600);
     return;
@@ -3981,24 +4007,181 @@ function spawnFieldParticles(leftPct) {
   }
 }
 
-function startPlayerCelebrate() {
+// The quick variant is the same celebration in 350 ms, used only after a tackled
+// first down; its class comes off at 380 ms, ahead of the 1400 ms next play.
+function startPlayerCelebrate(quick = false) {
   const player = document.getElementById('player');
   if (!player || player.classList.contains('player-hidden')) return;
   clearTimeout(playerRunTimer);
   clearTimeout(playerCelebrateTimer);
-  player.classList.remove('player-running');
+  player.classList.remove('player-running', 'player-celebrate-quick');
   void player.offsetWidth;
+  if (quick === true) player.classList.add('player-celebrate-quick');
   player.classList.add('player-celebrating');
-  playerCelebrateTimer = setTimeout(() => player.classList.remove('player-celebrating'), 550);
+  playerCelebrateTimer = setTimeout(
+    () => player.classList.remove('player-celebrating', 'player-celebrate-quick'),
+    quick === true ? 380 : 550,
+  );
 }
 
 function resetPlayerAnimations() {
   clearTimeout(playerRunTimer);
   clearTimeout(playerCelebrateTimer);
   clearTimeout(playerCelebrateDelayTimer);
+  resetTackle();
   const player = document.getElementById('player');
   if (!player) return;
-  player.classList.remove('player-running', 'player-celebrating');
+  player.classList.remove('player-running', 'player-celebrating', 'player-celebrate-quick');
+}
+
+// ── Tackle presentation (issue #169) ─────────────────────────────────────────
+// When a Duke ball carrier is brought down, a decorative defender in the
+// visiting rival's colors runs in and wraps him at his final spot. It is
+// presentation only: it reads the committed play's public facts, draws no RNG,
+// and never touches game state. One generation-tagged record lives outside game
+// state; every asynchronous step checks the generation before touching the DOM.
+const TACKLED_CELEBRATE_DELAY_MS = 1000;
+const TACKLE_APPROACH_MAX_PX = 56;
+const TACKLE_EDGE_CLEARANCE = 3;
+let tackle = null;
+let tackleGeneration = 0;
+
+// Fixed-order rules over the committed transition. Only player offense has a
+// carrier sprite, so opponent possessions keep their existing endings. A fumble
+// is a lost ball recovered by the defense, not a hit, so it keeps FUMBLE!.
+function tackleEligible(activePlay, transition) {
+  if (activePlay?.playType !== 'scrimmage' || activePlay.context?.possession !== POSSESSIONS.offense) return false;
+  if (!transition) return false;
+  if (transition.resultKind === 'touchdown' || transition.resultKind === 'turnover') return false;
+  if (['incompletion', 'interception', 'fumble'].includes(transition.resultReason)) return false;
+  if (transition.resultReason === 'stuff' || transition.resultReason === 'sack') return true;
+  return Number.isFinite(transition.appliedGain) && transition.appliedGain > 0;
+}
+
+function settledPromises(animations) {
+  return animations.map(animation => animation.finished);
+}
+
+function carrierArrivals(player) {
+  if (typeof player.getAnimations !== 'function') return [];
+  return player.getAnimations().filter(animation => animation.transitionProperty === 'left');
+}
+
+function tacklerApproachAnimations(tackler) {
+  if (typeof tackler.getAnimations !== 'function') return [];
+  return tackler.getAnimations().filter(animation => animation.animationName === 'tackler-approach');
+}
+
+function tacklerPoseTransitions(tackler) {
+  if (typeof tackler.getAnimations !== 'function') return [];
+  return tackler.getAnimations({ subtree: true }).filter(animation => animation.transitionProperty === 'transform');
+}
+
+function resetTackle() {
+  tackleGeneration++;
+  tackle = null;
+  // A late timer must not carry the quick tackled celebration into the next prompt.
+  const player = document.getElementById('player');
+  if (player?.classList.contains('player-celebrate-quick')) {
+    clearTimeout(playerCelebrateTimer);
+    player.classList.remove('player-celebrating', 'player-celebrate-quick');
+  }
+  const tackler = document.getElementById('tackler');
+  if (!tackler) return;
+  tackler.classList.add('tackler-hidden');
+  delete tackler.dataset.tacklePhase;
+  tackler.style.removeProperty('--tackle-approach');
+  tackler.style.removeProperty('--tackle-shift');
+}
+
+// Drawn extent of every SVG part, and the field's usable interior.
+function tacklerExtent(tackler, field) {
+  const parts = [...tackler.querySelectorAll('svg *')].map(node => node.getBoundingClientRect())
+    .filter(rect => rect.width > 0 || rect.height > 0);
+  if (!parts.length) return null;
+  const box = field.getBoundingClientRect();
+  return {
+    left: Math.min(...parts.map(rect => rect.left)),
+    right: Math.max(...parts.map(rect => rect.right)),
+    minX: box.left + field.clientLeft + TACKLE_EDGE_CLEARANCE,
+    maxX: box.left + field.clientLeft + field.clientWidth - TACKLE_EDGE_CLEARANCE,
+  };
+}
+
+// The running legs swing about the hips and can reach a little past the
+// measured standing pose; keep that much extra room behind the defender.
+const TACKLE_SWING_ALLOWANCE_PX = 4;
+
+// The approach starts downfield of the carrier's final spot, never from beyond
+// the field's right edge. Room is measured from the drawn parts of the leaning
+// run pose at the endpoint (the approach's own first frame minus its offset),
+// not from the wrapper box, because the lean and limbs reach past it.
+function tackleApproachPx(tackler, field) {
+  const extent = tacklerExtent(tackler, field);
+  if (!extent) return 0;
+  const room = extent.maxX - extent.right - TACKLE_SWING_ALLOWANCE_PX;
+  return Math.max(0, Math.min(TACKLE_APPROACH_MAX_PX, Math.floor(room)));
+}
+
+// Keep every drawn part of the defender inside the field's clipped interior.
+function clampTacklerToField(tackler, field) {
+  if (tackler.classList.contains('tackler-hidden')) return;
+  const extent = tacklerExtent(tackler, field);
+  if (!extent) return;
+  const { left, right, minX, maxX } = extent;
+  const shift = parseFloat(tackler.style.getPropertyValue('--tackle-shift')) || 0;
+  const correction = right > maxX ? maxX - right : left < minX ? minX - left : 0;
+  if (Math.abs(correction) >= 0.5) tackler.style.setProperty('--tackle-shift', `${(shift + correction).toFixed(1)}px`);
+}
+
+function startTackle(activePlay) {
+  resetTackle();
+  const tackler = document.getElementById('tackler');
+  const player = document.getElementById('player');
+  const field = document.getElementById('field-wrap');
+  if (!tackler || !player || !field || player.classList.contains('player-hidden')) return;
+  const generation = tackleGeneration;
+  tackle = { generation, gameId: activePlay.gameId, playId: activePlay.playId };
+  // The carrier's committed spot; its left transition is already running.
+  tackler.style.left = player.style.left;
+  const arrivals = settledPromises(carrierArrivals(player));
+  if (reducedMotionPreferred()) {
+    // No moving approach: the static contact appears once the carrier settles.
+    Promise.allSettled(arrivals).then(() => showTackleContact(generation));
+    return;
+  }
+  // Shown in its run pose at the endpoint, edge-clamped and measured, all in
+  // this task: the approach starts only after its offset is known, so its first
+  // painted frame is already inside the field.
+  tackler.classList.remove('tackler-hidden');
+  clampTacklerToField(tackler, field);
+  tackler.style.setProperty('--tackle-approach', `${tackleApproachPx(tackler, field)}px`);
+  tackler.dataset.tacklePhase = 'approach';
+  const approach = settledPromises(tacklerApproachAnimations(tackler));
+  Promise.allSettled([...arrivals, ...approach]).then(() => showTackleContact(generation));
+}
+
+function showTackleContact(generation) {
+  if (generation !== tackleGeneration || !tackle) return;
+  const tackler = document.getElementById('tackler');
+  const field = document.getElementById('field-wrap');
+  if (!tackler || !field) return;
+  tackler.dataset.tacklePhase = 'contact';
+  tackler.classList.remove('tackler-hidden');
+  const wrap = settledPromises(tacklerPoseTransitions(tackler));
+  Promise.allSettled(wrap).then(() => {
+    if (generation !== tackleGeneration || !tackle) return;
+    tackler.dataset.tacklePhase = 'settled';
+    clampTacklerToField(tackler, field);
+  });
+}
+
+// Normal motion removes the defender before the quick celebration. Reduced
+// motion has no celebration movement, so its static contact holds until the
+// next prompt.
+function startTackledCelebrate() {
+  if (!reducedMotionPreferred()) resetTackle();
+  startPlayerCelebrate(true);
 }
 
 // ── Field outcome floats & confetti ──────────────────────────────────────────

@@ -1565,3 +1565,41 @@ The author had no shell tools and ran nothing. Required at the exact final artif
 - a fresh independent functional, accessibility and visual review of the exact head, including actual pixels.
 
 This is engine emulation, not native Safari, Simulator or device evidence.
+
+## 2026-10-14 — Issue #169 tackle preview (unreleased; appearance approval pending)
+
+Preview candidate only. There is no version bump, registry change, merge or deployment; Football stays at 1.34.7 until the user approves the appearance. The author had no shell tools and ran nothing.
+
+- A decorative `#tackler` (the carrier sprite, recolored from the live public rival palette) runs in from downfield and wraps the Duke ball carrier at his committed spot. Contact begins only after the carrier's `left` transition actually finishes.
+- Shown for player-offense scrimmage plays that end with a positive gain, first down or turnover on downs, or an explicit stuff or sack (including the zero-yard stuff at the own 1). Never for touchdowns, fumbles, interceptions, incompletions, special teams or opponent possessions. Fumbles keep their FUMBLE! ending because the source describes a lost ball, not a hit.
+- Presentation only: no game state, RNG draws, storage, audio, question or outcome changes. A generation token cancels stale callbacks. It is cleared before each call prompt and fourth-down decision, before an accepted possession route opens a break overlay, and on drive start, Start and restart. A separate resize listener re-anchors and edge-clamps it.
+- Reduced motion: no approach or wrap movement; static contact appears once the carrier settles and holds until the next prompt.
+- **Narrow O3 exception, for review:** after a *tackled* first down only, the celebration starts at 1000 ms instead of 700 ms and runs 350 ms instead of 500 ms (cleanup at 1380 ms). The 1400 ms next-play timer, 750 ms ball/carrier movement, 800 ms run cleanup, touchdown celebration and every other timing are unchanged.
+- `tests/football-tackle.spec.mjs` is new and listed in the release `BROWSER` set. Capture runner and preview page: `output/issue-169/author-new/`. All checks, captures and review are pending.
+- R1 correction (after the first WebKit feature run failed at opponent 99): the approach start is now measured from the defender's drawn parts at the endpoint, after an edge clamp, instead of assuming the wrapper's half-width. The jersey number's counter-mirror moved from a CSS `transform-box: fill-box` transform to an SVG `transform` attribute. Unverified until rerun.
+
+## 2026-10-14 — Football v1.34.8 (#169 opponent-colored tackle, superseding release entry)
+
+Supersedes the preview entry above, including its "unverified" and "approval pending" notes. This is release preparation; nothing below claims the release gates, the final review, the merge or the live deployment.
+
+### #169 — the defender who makes the tackle
+- Implemented as described in the preview entry above: a decorative defender in the live public rival colors makes contact when a player-offense scrimmage play ends with the ball carrier brought down. Opponent possessions, touchdowns, fumbles, interceptions, incompletions and special-teams plays keep their existing endings. No opponent carrier and no Duke defender were added; no follow-up issue was opened.
+- **User appearance approval:** the user watched the local preview of candidate `90ecc79+af61acfd…` and approved its appearance ("I like what you've done. Carry on"). The tackle code, geometry and spec are unchanged since that candidate; this release adds only version metadata.
+- **Narrow timing exception, reviewed and kept:** after a *tackled* first down only, the celebration starts at 1000 ms instead of 700 ms and runs 350 ms instead of 500 ms, with cleanup at 1380 ms. The 1400 ms next play and every other timing are unchanged. Every positive player-offense first down that is not a touchdown is now a tackled first down, so the 700/500 path no longer runs for those plays.
+- **Measured timing, not nominal:** the planned figures (about 250 ms of contact, 150 ms settled) were not measured. In the accepted preview capture, first-down sampled contact spans were 117–206 ms, settled spans 50–117 ms and the maximum per-case sample gap 81 ms. The primary WebKit case first touched at 886 ms with a sampled contact span of 136 ms. These are observed lower bounds from frame sampling, not exact durations, and not device smoothness.
+- **R1 edge correction:** the first WebKit feature run failed because the run-in's first frame drew past the field edge at opponent 99. The source-confirmed cause is that the run-in room was computed from the wrapper's half-width rather than the leaning pose's drawn parts. The run-in now starts from the measured drawn extent at the endpoint, after an edge clamp, with a 4 px leg-swing allowance. The jersey number's mirror moved to an SVG attribute. That the number's CSS transform-origin was the exclusive WebKit cause is an inference and was not proven. The failed run and its evidence are kept.
+
+### Preview verification (local, bounded; run by the coordinator, not the author)
+- The exact af61 candidate passed the tackle, call-layout, marker-layout and particles specs on Chromium and WebKit with no unexpected or flaky cases. Skips are declared viewport-independent or scope skips.
+- A complete gated candidate capture (124 steps, 0 failures, 0 gate failures) covered six viewports × two engines, compared against the retained immutable 90ecc79 baseline (120 hash-checked pairs). Placements were identical. The only remaining differences were real-time elapsed and session clock values.
+- A fresh independent Sol review approved the bounded preview for function, accessibility and visuals.
+- This is Playwright engine emulation, not native Safari, Simulator or device evidence.
+
+### Release metadata and pending checks
+- `GAME_VERSION`, all 18 Football asset query strings, the Football registry descriptor and `version.json` are `1.34.8`. Kayak 1.1.38, Prague 1.4.0 and Place by Place 1.9.0 are unchanged.
+- The author had no shell and ran nothing for this metadata change. Still pending, with every failure retained:
+  - the registry gate at the declared exact base;
+  - the full Chromium and WebKit release matrices, run serially, which now include `tests/football-tackle.spec.mjs`;
+  - current exact-head pixel evidence;
+  - a fresh independent review of the exact release head;
+  - the PR, merge, Pages deployment and live version verification.
