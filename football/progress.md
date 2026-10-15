@@ -1624,4 +1624,12 @@ Candidate only, on base `412d976`. There is no version bump, cache-key, registry
 - **Review 2 corrections:**
   - R5 (accessibility defect): the overlay focus trap now drops controls that are effectively `:disabled`, including the team radios inside the locked Season fieldset. Before, a disabled team radio could become the trap's first stop. The locked-Season Tab and Shift+Tab wrap test is unchanged.
   - R2: the start overlay's exact scoped-slot inventory lists `team-picker`, `team-options` and `team-status` in DOM order.
+- **Review 3 correction R6 (layout fit; CSS only):** the final WebKit matrix showed two long-name states past the fold. Both failed runs are retained.
+  - iPad 11 portrait, Virginia Tech vs Wake Forest defense question: the answer row reached 1215 px against 1181. The 10ch title and 12ch question wrapped into many lines, and the answer rows stretched to match.
+    - Fix: in the 768–1079 px portrait tier only, the question and feedback title and prompt drop their ch caps and use compact sizes (title `clamp(42px, 5vw, 54px)`, prompt `clamp(26px, 3vw, 32px)`). This mirrors the existing coarse-landscape tier.
+  - iPhone 15 punt feedback: the answered row ended at 854.1 px against 853.
+    - Fix: at 480 px wide and below, answered choices in the feedback phase are 72 px tall instead of 90. That is still above 44, with no copy hidden or truncated.
+  - Nothing else changed: no copy, fixture, tolerance, retry or deadline changes, and landscape and unrelated screens are untouched.
+  - Pending: targeted six-view runs in both engines, then the full gates and a fresh review.
+- **Network question (record only):** one observer run on the unchanged candidate passed all 108 cases with 42 strictly parsed worker NetLogs. `ERR_SOCKET_NOT_CONNECTED` did not recur, so the original endpoint and cause remain unknown. No product network change was made.
 - Pending: every focused suite, both full release matrices, pixel comparison against `output/issue-173/before/`, a playable preview and recording, a fresh independent review, and the user's appearance approval. This would be Playwright engine emulation, not native Safari, Simulator or device evidence.

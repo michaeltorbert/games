@@ -3964,6 +3964,24 @@ body::after {
   #btn-row[data-choice-type="down"] .ans-btn {
     font-size: clamp(44px, 4.8vw, 62px);
   }
+
+  /* Long school names wrapped the narrow 10ch/12ch prompt into many lines, and
+     the answer rows stretched to match it past the fold. As in the coarse
+     landscape tier, the prompt uses its full column at a compact size. */
+  #ui-desk[data-phase="question"] #play-label,
+  #ui-desk[data-phase="feedback"] #play-label {
+    max-width: none;
+    font-size: clamp(42px, 5vw, 54px);
+  }
+
+  #ui-desk[data-phase="question"] #question,
+  #ui-desk[data-phase="feedback"] #question {
+    max-width: none;
+    margin-top: 12px;
+    padding-top: 14px;
+    font-size: clamp(26px, 3vw, 32px);
+    line-height: 1.04;
+  }
 }
 
 @media (hover: none) and (pointer: coarse) and (min-width: 1080px) {
@@ -4821,6 +4839,13 @@ body::after {
   .ans-btn {
     min-height: 90px;
     font-size: 38px;
+  }
+
+  /* A full punt preview and result with long school names pushed the answered
+     row just past the phone fold. Answered choices keep readable numbers and
+     44px+ targets at a shorter height. */
+  #ui-desk[data-phase="feedback"] .ans-btn {
+    min-height: 72px;
   }
 
   .decision-btn {
