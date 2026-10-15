@@ -22,7 +22,7 @@
         <span id="status-ribbon-text">DUKE BALL - OFFENSE</span>
       </div>
       <div id="status">
-        <div class="sb-team sb-duke"><span class="sb-name">DUKE</span><span class="sb-score" id="s-pscore">0</span></div>
+        <div class="sb-team sb-duke"><span class="sb-name" id="s-player-name">DUKE</span><span class="sb-score" id="s-pscore">0</span></div>
         <div class="sb-team sb-opponent"><span class="sb-name" id="s-opponent-name">UNC</span><span class="sb-score" id="s-oscore">0</span></div>
         <div class="sb-divider"></div>
         <div class="sb-info">
@@ -51,7 +51,7 @@
         <button id="mute-toggle" type="button" aria-pressed="false" aria-label="Mute sound effects" onclick="toggleMute()">
           <span id="mute-icon" aria-hidden="true">&#128266;</span>
         </button>
-        <div class="ez-text ez-left" style="color:#003087">DUKE</div>
+        <div class="ez-text ez-left" id="player-end-zone">DUKE</div>
         <div class="ez-text ez-right ez-opponent" id="opponent-end-zone">CAROLINA</div>
         <div id="fd-line"></div>
         <div id="fd-chain" aria-hidden="true">
@@ -199,6 +199,11 @@
     <span class="ov-broadcast-badge ov-badge-info" data-slot="badge">KICKOFF</span>
     <div class="ov-title" id="ov-start-title" data-slot="title">Football Math!</div>
     <div class="ov-sub" id="ov-start-sub" data-slot="sub">Call plays, answer math, and win the rivalry over 4 quarters.</div>
+    <fieldset class="team-picker" id="team-picker" data-slot="team-picker">
+      <legend>Choose your team</legend>
+      <div class="team-options" id="team-options" data-slot="team-options"></div>
+      <div class="team-status" id="team-status" data-slot="team-status" role="status" aria-live="polite" aria-atomic="true" hidden></div>
+    </fieldset>
     <fieldset class="play-mode-picker" id="play-mode-picker" data-slot="mode-picker">
       <legend>Choose how to play</legend>
       <div class="play-mode-options">

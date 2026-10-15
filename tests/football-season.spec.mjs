@@ -1,4 +1,4 @@
-import { test, expect } from './curriculum-fixture.mjs';
+import { test, expect, footballMuteTest } from './curriculum-fixture.mjs';
 import { expectFootballTestMuted } from './football-test-mute.mjs';
 
 const STORAGE_KEY = 'footballMathSeason:v1';
@@ -71,6 +71,35 @@ async function storedResults(page) {
 async function answerCorrect(page) {
   const result = await page.evaluate(() => window.__footballTest.answerChoice('correct'));
   expect(result).not.toBe(false);
+}
+
+function rawTeamSeason(playerId, results = [], seasonId = 'team-season-browser-fixture') {
+  return JSON.stringify({
+    schemaVersion: 2,
+    currentSeason: {
+      seasonId,
+      formatId: 'three-rival-team-schedule-v2',
+      playerId,
+      createdAt: '2026-07-19T12:00:00.000Z',
+      schedule: SCHEDULE,
+      results,
+    },
+  });
+}
+
+function teamRadio(page, name) {
+  return page.getByRole('group', { name: 'Choose your team' }).getByRole('radio', { name });
+}
+
+async function teamPickerState(page) {
+  return page.evaluate(() => ({
+    checked: document.querySelector('input[name="player-team"]:checked')?.value || null,
+    disabled: document.getElementById('team-picker').disabled,
+    status: document.getElementById('team-status').hidden ? null : document.getElementById('team-status').textContent,
+    selected: window.__footballTest.selectedPlayerTeamId(),
+    matchPlayer: state.match.player.id,
+    scorebug: document.getElementById('s-player-name').textContent,
+  }));
 }
 
 test('Quick Game preserves exact season bytes while start controls and semantic output stay public', async ({ page }, testInfo) => {
@@ -864,4 +893,338 @@ test('a competing final cannot confirm the local result after transient conflict
     .toBe(newSeason.seasonId);
   expect(await page.evaluate((key) => localStorage.getItem(key), STORAGE_KEY)).not.toBe(completedRaw);
   await other.close();
+});
+
+test('a legacy Duke Season keeps its locked team while the independent Quick team never touches it', async ({ page }, testInfo) => {
+  primaryOnly(testInfo);
+  await page.goto('/football/');
+  const original = rawSeason([rawResult(1, 7, 7)]);
+  await replaceSeasonStorage(page, original);
+  await expect(page.getByRole('radio', { name: /3-Game Season/ })).toBeChecked();
+  await expect(page.getByRole('group', { name: 'Choose your team' }).getByRole('radio')).toHaveCount(4);
+  expect(await teamPickerState(page)).toEqual({
+    checked: 'duke',
+    disabled: true,
+    status: 'Season team: Duke. Finish this Season to choose a new team.',
+    selected: 'duke',
+    matchPlayer: 'duke',
+    scorebug: 'DUKE',
+  });
+  expect(await page.evaluate(() => window.__footballTest.selectPlayerTeam('texas'))).toBe(false);
+  expect(await page.evaluate(() => window.__footballTest.selectedPlayerTeamId())).toBe('duke');
+
+  await page.evaluate(() => {
+    window.__teamPreviewDraws = { football: 0, scheduler: 0, presentation: 0 };
+    window.__footballTest.setRngStreams({
+      football: () => { window.__teamPreviewDraws.football++; return 0.2; },
+      scheduler: () => { window.__teamPreviewDraws.scheduler++; return 0.3; },
+      presentation: () => { window.__teamPreviewDraws.presentation++; return 0.4; },
+    });
+  });
+  await page.getByRole('radio', { name: /Quick Game/ }).check();
+  expect((await teamPickerState(page)).disabled).toBe(false);
+  await teamRadio(page, 'Texas').check();
+  await expect(page.locator('#rival-preview-matchup')).toHaveText('TEXAS VS UNC');
+  expect(await teamPickerState(page)).toEqual({
+    checked: 'texas', disabled: false, status: null, selected: 'texas', matchPlayer: 'texas', scorebug: 'TEXAS',
+  });
+  await page.getByRole('radio', { name: /3-Game Season/ }).check();
+  expect(await teamPickerState(page)).toMatchObject({
+    checked: 'duke', disabled: true, selected: 'texas', matchPlayer: 'duke', scorebug: 'DUKE',
+  });
+  await page.getByRole('radio', { name: /Quick Game/ }).check();
+  expect(await teamPickerState(page)).toMatchObject({ checked: 'texas', selected: 'texas', matchPlayer: 'texas' });
+  expect(await page.evaluate(() => window.__teamPreviewDraws)).toEqual({ football: 0, scheduler: 0, presentation: 0 });
+  expect(await page.evaluate((key) => localStorage.getItem(key), STORAGE_KEY)).toBe(original);
+
+  await page.locator('#start-game-btn').click();
+  await expect.poll(() => page.evaluate(() => sessionInitialized)).toBe(true);
+  expect(await page.evaluate(() => JSON.parse(render_game_to_text()).match.player.id)).toBe('texas');
+  await page.evaluate(() => window.__footballTest.seedDriveState({
+    possession: 'offense', direction: 1, quarter: 4,
+    down: 4, yardsToGo: 10, yardLine: 28, firstDownLine: 38, driveStart: 20,
+    scores: { player: 3, opponent: 7 }, quarterPossessions: 3,
+  }));
+  await page.locator('#decision-grid .decision-btn[data-action="punt"]').click();
+  await answerCorrect(page);
+  await expect(page.locator('#ov-end')).toHaveClass(/show/);
+  await expect(page.locator('#ov-end-score')).toHaveAttribute('aria-label', /^Texas 3, /);
+  await page.locator('#ov-end-btn').click();
+  expect(await page.evaluate((key) => localStorage.getItem(key), STORAGE_KEY)).toBe(original);
+  expect(await teamPickerState(page)).toMatchObject({ checked: 'texas', selected: 'texas', matchPlayer: 'texas' });
+
+  // Season play uses the saved Duke team, never the Quick choice.
+  await page.getByRole('radio', { name: /3-Game Season/ }).check();
+  await page.locator('#start-game-btn').click();
+  await expect(page.locator('#ui-desk')).toHaveAttribute('data-phase', 'call');
+  expect(await page.evaluate(() => window.__footballTest.activeSeasonGame())).toMatchObject({
+    gameNumber: 2, rivalId: 'nc-state', playerId: 'duke',
+  });
+  expect(await page.evaluate(() => JSON.parse(render_game_to_text()).match.player.id)).toBe('duke');
+  await expect(page.locator('#s-player-name')).toHaveText('DUKE');
+  expect(await page.evaluate(() => window.__footballTest.selectedPlayerTeamId())).toBe('texas');
+  expect(await page.evaluate(async () => (
+    await FOOTBALL_SEASON.settleGame(activeSeasonBinding, { playerScore: 7, opponentScore: 3 })
+  ).status)).toBe('saved');
+  const appended = JSON.parse(await page.evaluate((key) => localStorage.getItem(key), STORAGE_KEY));
+  const before = JSON.parse(original);
+  expect(appended.schemaVersion).toBe(1);
+  expect(appended.currentSeason).toMatchObject({
+    seasonId: before.currentSeason.seasonId,
+    formatId: 'three-rival-schedule-v1',
+    playerId: 'duke',
+    createdAt: before.currentSeason.createdAt,
+  });
+  expect(appended.currentSeason.results[0]).toEqual(before.currentSeason.results[0]);
+  expect(appended.currentSeason.results).toHaveLength(2);
+  await page.evaluate(() => restart('season'));
+  expect(await teamPickerState(page)).toMatchObject({ checked: 'duke', disabled: true, selected: 'texas' });
+});
+
+test('a new Season saves the chosen team in schema 2 and reload keeps that team locked', async ({ page }, testInfo) => {
+  primaryOnly(testInfo);
+  await page.goto('/football/');
+  await replaceSeasonStorage(page, null);
+  await page.getByRole('radio', { name: /3-Game Season/ }).check();
+  expect(await teamPickerState(page)).toMatchObject({ checked: 'duke', disabled: false, status: null });
+  await teamRadio(page, 'Georgia Tech').check();
+  expect(await teamPickerState(page)).toEqual({
+    checked: 'georgia-tech', disabled: false, status: null,
+    selected: 'georgia-tech', matchPlayer: 'georgia-tech', scorebug: 'GA TECH',
+  });
+  await page.locator('#start-game-btn').click();
+  await expect(page.locator('#ui-desk')).toHaveAttribute('data-phase', 'call');
+  expect(await page.evaluate(() => window.__footballTest.activeSeasonGame())).toMatchObject({
+    gameNumber: 1, rivalId: 'unc', playerId: 'georgia-tech',
+  });
+  const stored = JSON.parse(await page.evaluate((key) => localStorage.getItem(key), STORAGE_KEY));
+  expect(stored.schemaVersion).toBe(2);
+  expect(stored.currentSeason).toMatchObject({
+    formatId: 'three-rival-team-schedule-v2', playerId: 'georgia-tech', schedule: SCHEDULE, results: [],
+  });
+  const semantic = await page.evaluate(() => JSON.parse(render_game_to_text()));
+  expect(semantic.match.player).toEqual({
+    id: 'georgia-tech', displayName: 'Georgia Tech', shortName: 'GA TECH', endZoneName: 'GA TECH',
+  });
+  // Public semantic Season output keeps its existing closed field list.
+  expect(Object.keys(semantic.season).sort()).toEqual([
+    'complete', 'gameNumber', 'mode', 'nextRivalId', 'record', 'rungStatuses', 'saveState',
+  ]);
+  expect(JSON.stringify(semantic)).not.toContain(stored.currentSeason.seasonId);
+
+  await page.reload();
+  await expect(page.getByRole('radio', { name: /3-Game Season/ })).toBeChecked();
+  await expect(page.locator('#start-game-btn')).toHaveText('Play Game 1');
+  expect(await teamPickerState(page)).toEqual({
+    checked: 'georgia-tech',
+    disabled: true,
+    status: 'Season team: Georgia Tech. Finish this Season to choose a new team.',
+    selected: 'duke',
+    matchPlayer: 'georgia-tech',
+    scorebug: 'GA TECH',
+  });
+  await page.getByRole('radio', { name: /Quick Game/ }).check();
+  expect(await teamPickerState(page)).toMatchObject({ checked: 'duke', disabled: false, status: null, matchPlayer: 'duke' });
+  expect(JSON.parse(await page.evaluate((key) => localStorage.getItem(key), STORAGE_KEY))).toEqual(stored);
+});
+
+test('a different team winning Season creation in another tab is shown locked and needs another tap', async ({ page }, testInfo) => {
+  primaryOnly(testInfo);
+  const pageErrors = [];
+  page.on('pageerror', error => pageErrors.push(error.message));
+  await page.goto('/football/');
+  await replaceSeasonStorage(page, null);
+  const lockName = await page.evaluate(() => FOOTBALL_SEASON.STORAGE_LOCK_NAME);
+  const winner = rawTeamSeason('virginia-tech', [], 'other-tab-first-writer');
+
+  // Stand in for another tab: hold the real lock, then write first under it.
+  await page.evaluate(({ name, key }) => {
+    let release;
+    const held = new Promise(resolve => { release = resolve; });
+    window.__releaseWithWinner = (raw) => {
+      localStorage.setItem(key, raw);
+      release();
+    };
+    window.__heldTeamCreateLock = navigator.locks.request(name, { mode: 'exclusive' }, async () => {
+      window.__teamCreateLockHeld = true;
+      await held;
+    });
+  }, { name: lockName, key: STORAGE_KEY });
+  await expect.poll(() => page.evaluate(() => window.__teamCreateLockHeld === true)).toBe(true);
+
+  await page.getByRole('radio', { name: /3-Game Season/ }).check();
+  await teamRadio(page, 'Texas').check();
+  await page.locator('#start-game-btn').click();
+  await expect.poll(() => page.evaluate(() => FOOTBALL_SEASON.pendingKind())).toBe('create');
+  expect(await teamPickerState(page)).toMatchObject({ checked: 'texas', disabled: true, selected: 'texas' });
+  expect(await page.evaluate(() => window.__footballTest.selectPlayerTeam('duke'))).toBe(false);
+
+  // Quick intent stays independent of the captured Season request.
+  await page.getByRole('radio', { name: /Quick Game/ }).check();
+  await teamRadio(page, 'Georgia Tech').check();
+  expect(await teamPickerState(page)).toMatchObject({ checked: 'georgia-tech', selected: 'georgia-tech' });
+  await page.getByRole('radio', { name: /3-Game Season/ }).check();
+  expect(await teamPickerState(page)).toMatchObject({
+    checked: 'texas', disabled: true, status: 'Season team: Texas. Finish this Season to choose a new team.',
+  });
+
+  await page.evaluate((raw) => window.__releaseWithWinner(raw), winner);
+  await expect.poll(() => page.evaluate(() => FOOTBALL_SEASON.pendingKind())).toBeNull();
+  await page.evaluate(() => window.__heldTeamCreateLock);
+  await expect.poll(() => teamPickerState(page)).toEqual({
+    checked: 'virginia-tech',
+    disabled: true,
+    status: 'Another tab started this Season as Virginia Tech. Tap again to play as Virginia Tech.',
+    selected: 'georgia-tech',
+    matchPlayer: 'virginia-tech',
+    scorebug: 'VA TECH',
+  });
+  expect(await page.evaluate(() => ({
+    initialized: sessionInitialized,
+    phase: state.phase,
+    binding: window.__footballTest.activeSeasonGame(),
+  }))).toEqual({ initialized: false, phase: 'start', binding: null });
+  await expect(page.locator('#ov-start')).toHaveClass(/show/);
+  await expect(page.locator('#start-game-btn')).toHaveText('Play Game 1');
+  expect(await page.evaluate((key) => localStorage.getItem(key), STORAGE_KEY)).toBe(winner);
+
+  await page.locator('#start-game-btn').click();
+  await expect(page.locator('#ui-desk')).toHaveAttribute('data-phase', 'call');
+  expect(await page.evaluate(() => window.__footballTest.activeSeasonGame())).toMatchObject({
+    gameNumber: 1, rivalId: 'unc', playerId: 'virginia-tech',
+  });
+  expect(await page.evaluate(() => JSON.parse(render_game_to_text()).match.player.id)).toBe('virginia-tech');
+  expect(await page.evaluate((key) => localStorage.getItem(key), STORAGE_KEY)).toBe(winner);
+  expect(await page.evaluate(() => window.__footballTest.selectedPlayerTeamId())).toBe('georgia-tech');
+  expect(pageErrors).toEqual([]);
+});
+
+test('completed and damaged Seasons preview a newly chosen team without changing saved progress', async ({ page }, testInfo) => {
+  primaryOnly(testInfo);
+  await page.goto('/football/');
+  const complete = rawSeason([rawResult(1, 7, 0), rawResult(2, 0, 7), rawResult(3, 3, 3)], 'completed-team-preview');
+  await replaceSeasonStorage(page, complete);
+  await expect(page.getByRole('radio', { name: /3-Game Season/ })).toBeChecked();
+  await expect(page.locator('#start-game-btn')).toHaveText('Start New Season');
+  expect(await teamPickerState(page)).toMatchObject({ disabled: false, status: null });
+  await teamRadio(page, 'Virginia Tech').check();
+  expect(await teamPickerState(page)).toEqual({
+    checked: 'virginia-tech', disabled: false, status: null,
+    selected: 'virginia-tech', matchPlayer: 'virginia-tech', scorebug: 'VA TECH',
+  });
+  // The prospective first game is previewed; the durable record is not.
+  expect(await page.evaluate(() => ({
+    opponent: state.match.opponent.id,
+    ribbon: document.getElementById('status-ribbon-text').textContent,
+    ballOn: document.getElementById('s-yd').textContent,
+  }))).toMatchObject({ opponent: 'unc', ribbon: 'VA TECH BALL - OFFENSE' });
+  await expect(page.locator('#s-yd')).toContainText('VA TECH');
+  await expect(page.locator('#season-progress')).toHaveText('Season complete');
+  await expect(page.locator('#season-record')).toHaveText('1 win · 1 loss · 1 tie');
+  expect(await page.evaluate(() => JSON.parse(render_game_to_text()).season)).toMatchObject({
+    rungStatuses: ['win', 'loss', 'tie'], complete: true, nextRivalId: null,
+  });
+  expect(await page.evaluate((key) => localStorage.getItem(key), STORAGE_KEY)).toBe(complete);
+  await page.locator('#start-game-btn').click();
+  await expect(page.locator('#ui-desk')).toHaveAttribute('data-phase', 'call');
+  expect(await page.evaluate(() => window.__footballTest.activeSeasonGame())).toMatchObject({
+    gameNumber: 1, rivalId: 'unc', playerId: 'virginia-tech',
+  });
+  const renewed = JSON.parse(await page.evaluate((key) => localStorage.getItem(key), STORAGE_KEY));
+  expect(renewed.schemaVersion).toBe(2);
+  expect(renewed.currentSeason).toMatchObject({ playerId: 'virginia-tech', results: [] });
+
+  const damaged = '{"schemaVersion":1,"currentSeason":{"broken":true}}';
+  await replaceSeasonStorage(page, damaged);
+  await expect(page.locator('#start-game-btn')).toHaveText('Start Fresh Season');
+  await teamRadio(page, 'Georgia Tech').check();
+  expect(await teamPickerState(page)).toMatchObject({
+    checked: 'georgia-tech', disabled: false, status: null, matchPlayer: 'georgia-tech', scorebug: 'GA TECH',
+  });
+  await expect(page.locator('#status-ribbon-text')).toHaveText('GA TECH BALL - OFFENSE');
+  await expect(page.locator('#season-progress')).toHaveText('Season unavailable');
+  expect(await page.evaluate(() => state.match.opponent.id)).toBe('unc');
+  expect(await page.evaluate((key) => localStorage.getItem(key), STORAGE_KEY)).toBe(damaged);
+  await page.locator('#start-game-btn').click();
+  await expect(page.locator('#ui-desk')).toHaveAttribute('data-phase', 'call');
+  const fresh = JSON.parse(await page.evaluate((key) => localStorage.getItem(key), STORAGE_KEY));
+  expect(fresh.schemaVersion).toBe(2);
+  expect(fresh.currentSeason).toMatchObject({ playerId: 'georgia-tech', results: [] });
+});
+
+// Uses the mute-only fixture so the real curriculum prompt stays open until
+// this test answers it the same way the auto-answer fixture does.
+async function answerHeldCurriculumPrompt(page) {
+  await page.evaluate(() => {
+    const dialog = document.querySelector('.curriculum-dialog');
+    dialog.querySelector('form').requestSubmit();
+    if (dialog.querySelector('[type=submit]').textContent === 'Confirm page') dialog.querySelector('form').requestSubmit();
+  });
+  // As the fixture does, a remembered page is confirmed by its memory control.
+  await expect.poll(() => page.evaluate(() => {
+    const dialog = document.querySelector('.curriculum-dialog');
+    if (!dialog) return 0;
+    const memory = dialog.querySelector('#curriculum-memory');
+    if (memory && !memory.hidden) memory.click();
+    return 1;
+  })).toBe(0);
+}
+
+footballMuteTest('a team changed while the real curriculum prompt is open does not start that game', async ({ page }, testInfo) => {
+  primaryOnly(testInfo);
+  await page.goto('/football/');
+  await page.evaluate((key) => localStorage.removeItem(key), STORAGE_KEY);
+  await page.reload();
+  await teamRadio(page, 'Texas').check();
+  await page.locator('#start-game-btn').click();
+  await expect(page.locator('.curriculum-dialog')).toBeVisible();
+  expect(await page.evaluate(() => ({
+    busy: curriculumStartBusy,
+    rejected: window.__footballTest.selectPlayerTeam('duke'),
+    selected: window.__footballTest.selectedPlayerTeamId(),
+  }))).toEqual({ busy: true, rejected: false, selected: 'texas' });
+
+  // Stand in for any writer that changes the intent behind the open prompt.
+  await page.evaluate(() => { selectedPlayerTeamId = 'georgia-tech'; });
+  await answerHeldCurriculumPrompt(page);
+  await expect.poll(() => page.evaluate(() => curriculumStartBusy)).toBe(false);
+  expect(await page.evaluate(() => ({ initialized: sessionInitialized, phase: state.phase })))
+    .toEqual({ initialized: false, phase: 'start' });
+  await expect(page.locator('#ov-start')).toHaveClass(/show/);
+
+  // An unchanged intent through the same real prompt starts that team.
+  await page.evaluate(() => renderStartMode());
+  await expect(page.locator('input[name="player-team"][value="georgia-tech"]')).toBeChecked();
+  await page.locator('#start-game-btn').click();
+  await expect(page.locator('.curriculum-dialog')).toBeVisible();
+  await answerHeldCurriculumPrompt(page);
+  await expect.poll(() => page.evaluate(() => sessionInitialized)).toBe(true);
+  expect(await page.evaluate(() => state.match.player.id)).toBe('georgia-tech');
+  expect(await page.evaluate((key) => localStorage.getItem(key), STORAGE_KEY)).toBeNull();
+});
+
+test('team choice is rejected while a start is awaiting curriculum and outside the catalog', async ({ page }, testInfo) => {
+  primaryOnly(testInfo);
+  await page.goto('/football/');
+  await replaceSeasonStorage(page, null);
+  const result = await page.evaluate(() => {
+    curriculumStartBusy = true;
+    const rejected = window.__footballTest.selectPlayerTeam('texas');
+    const checkedWhileBusy = document.querySelector('input[name="player-team"]:checked').value;
+    curriculumStartBusy = false;
+    const invalid = window.__footballTest.selectPlayerTeam('unc');
+    const accepted = window.__footballTest.selectPlayerTeam('texas');
+    return {
+      rejected,
+      checkedWhileBusy,
+      invalid,
+      accepted,
+      selected: window.__footballTest.selectedPlayerTeamId(),
+      matchPlayer: state.match.player.id,
+    };
+  });
+  expect(result).toEqual({
+    rejected: false, checkedWhileBusy: 'duke', invalid: false, accepted: true, selected: 'texas', matchPlayer: 'texas',
+  });
+  expect(await page.evaluate((key) => localStorage.getItem(key), STORAGE_KEY)).toBeNull();
 });

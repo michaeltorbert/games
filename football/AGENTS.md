@@ -177,12 +177,21 @@ repository-level `AGENTS.md`.
 
 ## Three-Game Season
 
-- `season.js` is the sole authority for `footballMathSeason:v1` (inner schema
-  1). It snapshots the three public rivals in `FOOTBALL_OPPONENT.RIVAL_ORDER`
-  and stores one current season plus only the contiguous raw score results.
-  Outcome labels, record, next rival, and completion are derived views.
-- Changing rival IDs, `FOOTBALL_OPPONENT.RIVAL_ORDER`, or the three-game Season
-  schedule is a persistence migration. Make an intentional schema/format
+- `season.js` is the sole authority for `footballMathSeason:v1`. It snapshots
+  the three public rivals in `FOOTBALL_OPPONENT.RIVAL_ORDER` and stores one
+  current season plus only the contiguous raw score results. Outcome labels,
+  record, next rival, and completion are derived views.
+- It reads two inner schemas. Schema 1 (`three-rival-schedule-v1`) is the
+  legacy Duke-only format: it is never migrated, and its result appends stay
+  schema 1. Every create, fresh, or new-season write is schema 2
+  (`three-rival-team-schedule-v2`), whose `playerId` is one
+  `FOOTBALL_OPPONENT.PLAYER_TEAM_ORDER` ID; a schema-1 reader treats it as a
+  future schema. A season's team is fixed when it is created; an active or
+  pending season always plays its saved team, and Quick Game team choice never
+  changes it. If another tab creates a season with a different team first,
+  keep that season and require another tap rather than starting it silently.
+- Changing rival IDs, `FOOTBALL_OPPONENT.RIVAL_ORDER`, playable team IDs, or
+  the three-game Season schedule is a persistence migration. Make an intentional schema/format
   migration decision; never silently invalidate or remap existing saved
   seasons.
 - Reads never initialize, repair, migrate, or otherwise write. Malformed
@@ -196,9 +205,11 @@ repository-level `AGENTS.md`.
   save before a scheduled game starts. A failed final result blocks the next
   season game and offers Retry Saving or Quick Game; reload intentionally loses
   that pending memory and reopens the durable rung with a new live game ID.
-- Keep the frozen live binding `{seasonId, gameNumber, rivalId, gameId}` outside
-  `createGameState()`, learning, stats, opponent planning, and football-domain
-  state. Quick Games must never write, replace, or clear the season.
+- Keep the frozen live binding `{seasonId, gameNumber, rivalId, playerId,
+  gameId}` outside `createGameState()`, learning, stats, opponent planning, and
+  football-domain state. Settlement and saved-result attestation require its
+  `playerId` to match the durable season. Quick Games must never write,
+  replace, or clear the season.
 - Only `commitPendingResolution()` may originate settlement, after it newly
   closes the last Q4 possession, finalizes stats, and dispatches the result
   event, but before delayed final presentation. A touchdown waits for its
@@ -207,7 +218,9 @@ repository-level `AGENTS.md`.
 - Public semantic output may expose only play mode, game number, rung statuses,
   worded W-L-T counts, next public rival ID, completion, and save state. Do not
   expose season IDs, pending payloads, raw storage/errors, prompts/answers,
-  private opponent plans, or scheduler state.
+  private opponent plans, or scheduler state. `FOOTBALL_SEASON.snapshot()` adds
+  only the season's public team ID (`playerId`) for the start screen's team
+  lock.
 
 ## Play-History Semantics
 

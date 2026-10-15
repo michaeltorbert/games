@@ -4,6 +4,30 @@ function primaryOnly(testInfo) {
   test.skip(testInfo.project.name !== 'ipad-11-landscape', 'Rival engine contracts run once on the primary target.');
 }
 
+const PLAYER_TEAMS = ['duke', 'virginia-tech', 'texas', 'georgia-tech'];
+
+// WCAG 2.x relative luminance and contrast ratio for #rrggbb or rgb()/rgba().
+function channels(color) {
+  const hex = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(color);
+  if (hex) return hex.slice(1).map(part => Number.parseInt(part, 16));
+  const rgb = /^rgba?\((\d+),\s*(\d+),\s*(\d+)/.exec(color);
+  if (rgb) return rgb.slice(1).map(Number);
+  throw new Error(`Unparsed color ${color}`);
+}
+
+function luminance(color) {
+  const [r, g, b] = channels(color).map((value) => {
+    const srgb = value / 255;
+    return srgb <= 0.04045 ? srgb / 12.92 : ((srgb + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+function contrast(foreground, background) {
+  const [light, dark] = [luminance(foreground), luminance(background)].sort((a, b) => b - a);
+  return (light + 0.05) / (dark + 0.05);
+}
+
 test('catalog, profiles, and default UNC sampling form one deeply frozen closed contract', async ({ page }, testInfo) => {
   primaryOnly(testInfo);
   await page.goto('/football/');
@@ -130,6 +154,249 @@ test('catalog, profiles, and default UNC sampling form one deeply frozen closed 
   });
   expect(result.draws).toBe(1);
   expect(result.plan).toMatchObject({ opponentId: 'unc', profileKey: 'balanced', plannedCallKey: 'mediumPass' });
+});
+
+test('playable teams form a frozen closed catalog that changes only public identity', async ({ page }, testInfo) => {
+  primaryOnly(testInfo);
+  await page.goto('/football/');
+  const result = await page.evaluate(() => {
+    const deepFrozen = (value, seen = new Set()) => {
+      if (!value || typeof value !== 'object' || seen.has(value)) return true;
+      seen.add(value);
+      return Object.isFrozen(value) && Object.values(value).every(child => deepFrozen(child, seen));
+    };
+    const rejects = (...args) => {
+      try { FOOTBALL_OPPONENT.createMatch(...args); return null; } catch (error) { return error.name; }
+    };
+    const matches = {};
+    for (const teamId of FOOTBALL_OPPONENT.PLAYER_TEAM_ORDER) {
+      for (const rivalId of FOOTBALL_OPPONENT.RIVAL_ORDER) {
+        const match = FOOTBALL_OPPONENT.createMatch(rivalId, teamId);
+        matches[`${teamId}:${rivalId}`] = {
+          match,
+          frozen: deepFrozen(match),
+          domainOk: FOOTBALL_DOMAIN.validateContext({
+            contextId: `catalog-${teamId}-${rivalId}`, match, possession: 'offense', direction: 1,
+            quarter: 1, down: 1, yardsToGo: 10, yardLine: 20, firstDownLine: 30,
+            driveStart: 20, scores: { player: 0, opponent: 0 }, totalYards: { player: 0, opponent: 0 },
+            plays: 0, drivePlays: 0, calls: { offense: 'shortRun', defense: null, matchup: null },
+            privateOpponentSnapshot: null,
+          }).ok,
+          rivalryLabel: FOOTBALL_OPPONENT.rivalryLabelFor(match),
+        };
+      }
+    }
+    return {
+      order: FOOTBALL_OPPONENT.PLAYER_TEAM_ORDER,
+      defaultTeam: FOOTBALL_OPPONENT.DEFAULT_PLAYER_TEAM_ID,
+      keys: Object.keys(FOOTBALL_OPPONENT.PLAYER_TEAMS),
+      catalogFrozen: deepFrozen(FOOTBALL_OPPONENT.PLAYER_TEAMS),
+      listFrozen: deepFrozen(FOOTBALL_OPPONENT.listPlayerTeams()),
+      identities: FOOTBALL_OPPONENT.listPlayerTeams().map(team => ({
+        id: team.id, displayName: team.displayName, shortName: team.shortName, endZoneName: team.endZoneName,
+      })),
+      presentations: Object.fromEntries(FOOTBALL_OPPONENT.listPlayerTeams().map(team => [team.id, team.presentation])),
+      rivalOrder: FOOTBALL_OPPONENT.RIVAL_ORDER,
+      seasonPlayers: FOOTBALL_SEASON.PLAYER_IDS,
+      defaultMatch: FOOTBALL_OPPONENT.createMatch(),
+      oneArgMatch: FOOTBALL_OPPONENT.createMatch('nc-state'),
+      explicitDukeMatch: FOOTBALL_OPPONENT.createMatch('nc-state', 'duke'),
+      hookDefault: window.__footballTest.createMatch(),
+      hookTexas: window.__footballTest.createMatch('wake-forest', 'texas'),
+      invalid: {
+        undefinedTeam: rejects('unc', undefined),
+        nullTeam: rejects('unc', null),
+        rivalAsTeam: rejects('unc', 'unc'),
+        displayName: rejects('unc', 'Duke'),
+        unknown: rejects('unc', 'clemson'),
+        badRivalGoodTeam: rejects('clemson', 'texas'),
+        resolve: (() => { try { FOOTBALL_OPPONENT.resolvePlayerTeam('texas '); return null; } catch (error) { return error.name; } })(),
+      },
+      matches,
+    };
+  });
+
+  expect(result.order).toEqual(PLAYER_TEAMS);
+  expect(result.keys).toEqual(PLAYER_TEAMS);
+  expect(result.defaultTeam).toBe('duke');
+  expect(result.seasonPlayers).toEqual(PLAYER_TEAMS);
+  expect(result.order.some(teamId => result.rivalOrder.includes(teamId))).toBe(false);
+  expect(result.catalogFrozen).toBe(true);
+  expect(result.listFrozen).toBe(true);
+  expect(result.identities).toEqual([
+    { id: 'duke', displayName: 'Duke', shortName: 'DUKE', endZoneName: 'DUKE' },
+    { id: 'virginia-tech', displayName: 'Virginia Tech', shortName: 'VA TECH', endZoneName: 'VA TECH' },
+    { id: 'texas', displayName: 'Texas', shortName: 'TEXAS', endZoneName: 'TEXAS' },
+    { id: 'georgia-tech', displayName: 'Georgia Tech', shortName: 'GA TECH', endZoneName: 'GA TECH' },
+  ]);
+  // Duke keeps the exact original literals.
+  expect(result.presentations.duke).toEqual({
+    token: 'duke', primary: '#003087', pads: '#0a3fa6', dark: '#001f5c', trim: '#ffffff', ink: '#ffffff',
+    scorebugTop: '#003087', scorebugBottom: '#001a54', fireworks: ['#ffd337', '#003087', '#7bafd4', '#ffffff'],
+  });
+  expect(result.presentations['georgia-tech'].primary).toBe('#003057');
+  expect(result.presentations['georgia-tech'].trim).toBe('#b3a369');
+  expect(result.presentations.texas.primary).toBe('#bf5700');
+  expect(result.presentations['virginia-tech'].primary).toBe('#861f41');
+  expect(result.presentations['virginia-tech'].trim).toBe('#e5751f');
+  // Text drawn on team colors meets WCAG AA for normal-size text.
+  for (const [teamId, presentation] of Object.entries(result.presentations)) {
+    for (const surface of ['primary', 'scorebugTop', 'scorebugBottom']) {
+      expect(contrast(presentation.ink, presentation[surface]), `${teamId} ink on ${surface}`).toBeGreaterThanOrEqual(4.5);
+      expect(contrast('#ffffff', presentation[surface]), `${teamId} white on ${surface}`).toBeGreaterThanOrEqual(4.5);
+    }
+  }
+
+  const dukeUnc = {
+    schemaVersion: 1,
+    player: { id: 'duke', displayName: 'Duke', shortName: 'DUKE', endZoneName: 'DUKE' },
+    opponent: { id: 'unc', displayName: 'North Carolina', shortName: 'UNC', endZoneName: 'CAROLINA' },
+  };
+  expect(result.defaultMatch).toEqual(dukeUnc);
+  expect(result.hookDefault).toEqual(dukeUnc);
+  expect(result.explicitDukeMatch).toEqual(result.oneArgMatch);
+  expect(result.hookTexas.player.id).toBe('texas');
+  expect(result.invalid).toEqual({
+    undefinedTeam: 'RangeError', nullTeam: 'RangeError', rivalAsTeam: 'RangeError', displayName: 'RangeError',
+    unknown: 'RangeError', badRivalGoodTeam: 'RangeError', resolve: 'RangeError',
+  });
+  for (const teamId of PLAYER_TEAMS) {
+    for (const rivalId of result.rivalOrder) {
+      const entry = result.matches[`${teamId}:${rivalId}`];
+      expect(entry.frozen).toBe(true);
+      expect(entry.domainOk, `${teamId} vs ${rivalId} domain context`).toBe(true);
+      expect(Object.keys(entry.match)).toEqual(['schemaVersion', 'player', 'opponent']);
+      expect(entry.match.player).toEqual(result.identities.find(identity => identity.id === teamId));
+      expect(entry.match.opponent).toEqual(result.defaultMatch.opponent.id === rivalId
+        ? result.defaultMatch.opponent
+        : result.matches[`duke:${rivalId}`].match.opponent);
+      expect(entry.rivalryLabel).toBe(teamId === 'duke'
+        ? { unc: 'Tobacco Road', 'nc-state': 'Triangle Showdown', 'wake-forest': 'Piedmont Matchup' }[rivalId]
+        : 'Game Day');
+    }
+  }
+});
+
+test('team picker previews by tap without RNG, fits every target, and colors only the player side', async ({ page }) => {
+  await page.goto('/football/');
+  const group = page.getByRole('group', { name: 'Choose your team' });
+  const teams = group.getByRole('radio');
+  await expect(teams).toHaveCount(4);
+  await expect(group.getByRole('radio', { name: 'Duke' })).toBeChecked();
+  // Initial focus stays on the existing rival choice.
+  await expect(page.getByRole('group', { name: 'Choose the visiting rival' }).getByRole('radio').nth(0)).toBeFocused();
+  expect(await teams.evaluateAll(inputs => inputs.map(input => input.closest('label').textContent.trim())))
+    .toEqual(['Duke', 'Virginia Tech', 'Texas', 'Georgia Tech']);
+
+  await page.evaluate(() => {
+    window.__teamDraws = { football: 0, scheduler: 0, presentation: 0 };
+    window.__footballTest.setRngStreams({
+      football: () => { window.__teamDraws.football++; return 0.25; },
+      scheduler: () => { window.__teamDraws.scheduler++; return 0.25; },
+      presentation: () => { window.__teamDraws.presentation++; return 0.25; },
+    });
+  });
+  const expected = {
+    duke: { short: 'DUKE', jersey: 'rgb(0, 48, 135)' },
+    'virginia-tech': { short: 'VA TECH', jersey: 'rgb(134, 31, 65)' },
+    texas: { short: 'TEXAS', jersey: 'rgb(191, 87, 0)' },
+    'georgia-tech': { short: 'GA TECH', jersey: 'rgb(0, 48, 87)' },
+  };
+  for (const [teamId, team] of Object.entries(expected).reverse()) {
+    await page.locator(`.team-option[data-team-id="${teamId}"]`).tap();
+    await expect(page.locator(`input[name="player-team"][value="${teamId}"]`)).toBeChecked();
+    await expect(page.locator('#rival-preview-matchup')).toHaveText(`${team.short} VS UNC`);
+    const presented = await page.evaluate(() => ({
+      root: document.documentElement.dataset.player,
+      scorebug: document.getElementById('s-player-name').textContent,
+      endZone: document.getElementById('player-end-zone').textContent,
+      ribbon: document.getElementById('status-ribbon-text').textContent,
+      ballOn: document.getElementById('s-yd').textContent,
+      jersey: getComputedStyle(document.querySelector('#player .pl-jersey')).fill,
+      tacklerJersey: getComputedStyle(document.querySelector('#tackler .pl-jersey')).fill,
+      tacklerStripe: getComputedStyle(document.querySelector('#tackler .pl-stripe')).stroke,
+      stateMatch: state.match.player.id,
+      renderMatch: JSON.parse(render_game_to_text()).match.player.id,
+      opponent: document.documentElement.dataset.opponent,
+      chromeBadge: getComputedStyle(document.querySelector('#ov-start .ov-broadcast-badge')).backgroundImage,
+    }));
+    // Background labels follow the provisional choice too (no game starts).
+    expect(presented.ballOn).toContain(team.short);
+    expect(presented).toMatchObject({
+      root: teamId, scorebug: team.short, endZone: team.short, ribbon: `${team.short} BALL - OFFENSE`, jersey: team.jersey,
+      tacklerJersey: 'rgb(123, 175, 212)', tacklerStripe: 'rgb(255, 255, 255)',
+      stateMatch: teamId, renderMatch: teamId, opponent: 'unc',
+    });
+    expect(presented.chromeBadge).toContain('rgb(26, 90, 204)');
+  }
+  expect(await page.evaluate(() => window.__teamDraws)).toEqual({ football: 0, scheduler: 0, presentation: 0 });
+  expect(await page.evaluate(() => ({ phase: state.phase, initialized: sessionInitialized })))
+    .toEqual({ phase: 'start', initialized: false });
+
+  // The longest team name with the longest rival matchup must fit every target.
+  await page.locator('.team-option[data-team-id="virginia-tech"]').tap();
+  await page.locator('[data-rival-id="wake-forest"]').tap();
+  await expect(page.locator('#rival-preview-matchup')).toHaveText('VA TECH VS WAKE FOREST');
+  const metrics = await page.evaluate(() => {
+    const box = element => {
+      const rect = element.getBoundingClientRect();
+      return { width: rect.width, height: rect.height, top: rect.top, bottom: rect.bottom, left: rect.left, right: rect.right };
+    };
+    const card = document.querySelector('#ov-start .overlay-card');
+    return {
+      options: [...document.querySelectorAll('.team-option')].map(label => ({
+        id: label.dataset.teamId,
+        ...box(label),
+        nameOverflow: label.querySelector('.team-option-name').scrollWidth - label.querySelector('.team-option-name').clientWidth,
+      })),
+      start: box(document.getElementById('start-game-btn')),
+      card: { ...box(card), scrollHeight: card.scrollHeight, clientHeight: card.clientHeight },
+      viewportWidth: innerWidth,
+      viewportHeight: innerHeight,
+      scrollWidth: document.documentElement.scrollWidth,
+    };
+  });
+  for (const option of metrics.options) {
+    expect(option.width, `${option.id} width`).toBeGreaterThanOrEqual(44);
+    expect(option.height, `${option.id} height`).toBeGreaterThanOrEqual(44);
+    expect(option.top, `${option.id} top`).toBeGreaterThanOrEqual(0);
+    expect(option.bottom, `${option.id} bottom`).toBeLessThanOrEqual(metrics.viewportHeight);
+    expect(option.left, `${option.id} left`).toBeGreaterThanOrEqual(0);
+    expect(option.right, `${option.id} right`).toBeLessThanOrEqual(metrics.viewportWidth);
+    expect(option.nameOverflow, `${option.id} name clipped`).toBeLessThanOrEqual(0);
+  }
+  expect(metrics.start.bottom).toBeLessThanOrEqual(metrics.viewportHeight);
+  expect(metrics.card.top).toBeGreaterThanOrEqual(0);
+  expect(metrics.card.bottom).toBeLessThanOrEqual(metrics.viewportHeight);
+  expect(metrics.card.scrollHeight).toBeLessThanOrEqual(metrics.card.clientHeight + 1);
+  expect(metrics.scrollWidth).toBeLessThanOrEqual(metrics.viewportWidth + 1);
+
+  await page.locator('#start-game-btn').tap();
+  await expect.poll(() => page.evaluate(() => sessionInitialized)).toBe(true);
+  const committed = await page.evaluate(() => ({
+    match: state.match,
+    rejected: window.__footballTest.selectPlayerTeam('duke'),
+    after: state.match,
+  }));
+  expect(committed.match.player.id).toBe('virginia-tech');
+  expect(committed.match.opponent.id).toBe('wake-forest');
+  expect(committed.rejected).toBe(false);
+  expect(committed.after).toEqual(committed.match);
+  const endZone = await page.evaluate(() => {
+    const zone = document.getElementById('player-end-zone').getBoundingClientRect();
+    const field = document.getElementById('field-wrap').getBoundingClientRect();
+    return {
+      long: document.getElementById('player-end-zone').classList.contains('ez-long'),
+      inside: zone.top >= field.top && zone.bottom <= field.bottom && zone.left >= field.left,
+    };
+  });
+  expect(endZone).toEqual({ long: true, inside: true });
+
+  await page.evaluate(() => showGameOver());
+  await page.locator('#ov-end-btn').tap();
+  await expect(page.locator('#ov-start')).toHaveClass(/show/);
+  await expect(page.locator('input[name="player-team"][value="virginia-tech"]')).toBeChecked();
+  expect(await page.evaluate(() => JSON.parse(render_game_to_text()).match.player.id)).toBe('virginia-tech');
 });
 
 test('picker previews without RNG, commits only on Start, and rematches the selected rival', async ({ page }) => {
@@ -463,6 +730,204 @@ test('Wake Forest presentation and contextual copy cover every public opponent p
     scorebugTop: '#80652e',
     opponent: 'wake-forest',
   });
+});
+
+test('a Texas game keeps Texas identity on every public player path, palette, and transition', async ({ page }, testInfo) => {
+  primaryOnly(testInfo);
+  await page.goto('/football/?boot=offense-call&rival=nc-state&team=texas');
+  await expect(page.locator('html')).toHaveAttribute('data-player', 'texas');
+  await expect(page.locator('#s-player-name')).toHaveText('TEXAS');
+  await expect(page.locator('#player-end-zone')).toHaveText('TEXAS');
+  await expect(page.locator('#status-ribbon-text')).toHaveText('TEXAS BALL - OFFENSE');
+  await expect(page.locator('#stage-possession')).toHaveText('Texas on offense');
+  await expect(page.locator('#stage-rivalry-label')).toHaveText('Game Day');
+  await expect(page.locator('#desk-kicker')).toHaveText('Set the Texas offense.');
+  await expect(page.locator('#play-context')).toContainText('TEXAS BALL');
+  const colors = await page.evaluate(() => {
+    const style = selector => getComputedStyle(document.querySelector(selector));
+    return {
+      scorebug: style('.sb-duke').backgroundImage,
+      field: style('#field-wrap').backgroundImage,
+      helmet: style('#player .pl-helmet').fill,
+      stripe: style('#player .pl-stripe').stroke,
+      tacklerJersey: style('#tackler .pl-jersey').fill,
+      offenseFireworks: fireworkPalette('offense'),
+      defenseFireworks: fireworkPalette('defense'),
+    };
+  });
+  expect(colors.scorebug).toContain('rgb(191, 87, 0)');
+  expect(colors.scorebug).toContain('rgb(138, 63, 0)');
+  expect(colors.field).toContain('rgb(191, 87, 0)');
+  expect(colors.helmet).toBe('rgb(191, 87, 0)');
+  expect(colors.stripe).toBe('rgb(255, 255, 255)');
+  expect(colors.tacklerJersey).toBe('rgb(204, 0, 0)');
+  expect(colors.offenseFireworks).toEqual(['#bf5700', '#ffffff', '#333f48', '#ffd337']);
+  expect(colors.defenseFireworks).toEqual(['#cc0000', '#ffffff', '#7f1010', '#ffd337']);
+
+  await page.evaluate(() => window.__footballTest.seedDriveState({
+    possession: 'defense', direction: -1,
+    quarter: 3, down: 2, yardsToGo: 6, yardLine: 70, firstDownLine: 64,
+    driveStart: 80, scores: { player: 3, opponent: 4 },
+    totalYards: { player: 83, opponent: 99 }, plays: 8, drivePlays: 2,
+  }));
+  expect(await page.evaluate(() => state.match.player.id)).toBe('texas');
+  await expect(page.locator('#desk-kicker')).toHaveText('Set the Texas defense.');
+  await expect(page.locator('#status-ribbon-text')).toHaveText('NC STATE BALL - DEFENSE');
+
+  const contextual = await page.evaluate(() => {
+    const context = {
+      contextId: 'texas-copy', match: state.match, possession: 'offense', direction: 1,
+      quarter: 3, down: 2, yardsToGo: 6, yardLine: 34, firstDownLine: 40, driveStart: 27,
+      scores: { player: 13, opponent: 4 }, totalYards: { player: 83, opponent: 99 },
+      plays: 8, drivePlays: 2, calls: { offense: 'shortRun', defense: null, matchup: null },
+      privateOpponentSnapshot: null,
+    };
+    // The two-digit player score supplies the ones-place family; the total
+    // family is eligible only when both scores and their sum stay within 10.
+    const onesSnap = FOOTBALL_DOMAIN.createSnap(context, { gain: 4, callKey: 'shortRun' });
+    const ones = FOOTBALL_CONTEXTUAL_QUESTIONS.build(onesSnap, 'committed-score-ones');
+    const snap = FOOTBALL_DOMAIN.createSnap({
+      ...context, contextId: 'texas-total', scores: { player: 3, opponent: 4 },
+    }, { gain: 4, callKey: 'shortRun' });
+    const total = FOOTBALL_CONTEXTUAL_QUESTIONS.build(snap, 'committed-score-total');
+    state.activeSnap = snap;
+    state.questionInstance = FOOTBALL_DOMAIN.deepFreeze(FOOTBALL_DOMAIN.clone({
+      ...total, contextId: snap.contextId, questionInstanceId: 'texas-render',
+    }));
+    state.questionUi = makeQuestionUiState();
+    state.phase = 'question';
+    syncQuestionMirrors();
+    renderMathVisual();
+    const token = document.querySelector('#math-overlay [data-team="player"]');
+    return {
+      team: ones.visuals.initial.data.team,
+      onesPath: ones.bindings[0].source.path,
+      totalPaths: total.bindings.map(binding => binding.source.path),
+      visualText: document.getElementById('math-overlay').textContent,
+      visualAria: document.getElementById('math-overlay').getAttribute('aria-label'),
+      tokenBackground: token ? getComputedStyle(token).backgroundColor : null,
+      tokenColor: token ? getComputedStyle(token).color : null,
+    };
+  });
+  // Contextual questions label the player by display name.
+  expect(contextual.team).toBe('Texas');
+  expect(contextual.onesPath).toBe('/context/scores/player');
+  expect(contextual.totalPaths).toEqual(['/context/scores/player', '/context/scores/opponent']);
+  expect(contextual.visualText).toContain('TEXAS');
+  expect(contextual.visualAria).toMatch(/Texas/i);
+  expect(contextual.visualAria).not.toMatch(/Duke/i);
+  expect(contextual.tokenBackground).toBe('rgb(191, 87, 0)');
+  expect(contextual.tokenColor).toBe('rgb(255, 255, 255)');
+  expect(contrast(contextual.tokenColor, contextual.tokenBackground)).toBeGreaterThanOrEqual(4.5);
+
+  await page.evaluate(() => showTD('offense'));
+  await expect(page.locator('#play-context')).toContainText('TEXAS TOUCHDOWN');
+  await page.evaluate(() => showQuarterEnd('Quarter complete.'));
+  await expect(page.locator('#ov-quarter-scorebug')).toContainText('TEXAS');
+  await page.evaluate(() => showHalftime('Half complete.'));
+  await expect(page.locator('#ov-halftime-scorebug')).toContainText('TEXAS');
+  await page.evaluate(() => showGameOver());
+  await expect(page.locator('#ov-end-score')).toHaveAttribute('aria-label', /^Texas \d+, NC State \d+$/);
+  await expect(page.locator('#ov-end-sub')).toContainText('Texas vs NC State');
+  const publicText = await page.evaluate(() => [
+    render_game_to_text(),
+    document.getElementById('scorebug').textContent,
+    document.getElementById('field-stage').textContent,
+    document.getElementById('ui-desk').textContent,
+    document.getElementById('ov-end').textContent,
+  ].join('\n'));
+  expect(publicText).not.toMatch(/\bDUKE\b|\bDuke\b/);
+  await page.evaluate(() => restart());
+  await expect(page.locator('input[name="player-team"][value="texas"]')).toBeChecked();
+  expect(await page.evaluate(() => state.match.player.id)).toBe('texas');
+});
+
+test('invalid team queries render the Duke picker and suppress boot modes', async ({ page }, testInfo) => {
+  primaryOnly(testInfo);
+  const pageErrors = [];
+  page.on('pageerror', error => pageErrors.push(error.message));
+  for (const query of ['?team=clemson', '?team=', '?boot=offense-call&team=Duke', '?boot=defense-call&rival=wake-forest&team=unc']) {
+    await page.goto(`/football/${query}`);
+    expect(await page.evaluate(() => ({
+      phase: state.phase,
+      initialized: sessionInitialized,
+      checked: document.querySelector('input[name="player-team"]:checked')?.value,
+      selected: window.__footballTest.selectedPlayerTeamId(),
+      match: state.match.player.id,
+      rival: state.match.opponent.id,
+    }))).toEqual({ phase: 'start', initialized: false, checked: 'duke', selected: 'duke', match: 'duke', rival: 'unc' });
+  }
+  await page.goto('/football/?team=georgia-tech');
+  expect(await page.evaluate(() => ({
+    checked: document.querySelector('input[name="player-team"]:checked')?.value,
+    preview: document.getElementById('rival-preview-matchup').textContent,
+  }))).toEqual({ checked: 'georgia-tech', preview: 'GA TECH VS UNC' });
+  expect(pageErrors).toEqual([]);
+});
+
+test('the same seed plays identical football and questions for every team', async ({ page }, testInfo) => {
+  primaryOnly(testInfo);
+  // Only the team changes between runs; IDs are excluded and only numeric or
+  // boolean proposal facts are compared, because team labels may differ.
+  const runs = {};
+  for (const teamId of PLAYER_TEAMS) {
+    await page.goto(`/football/?boot=defense-call&rival=nc-state&team=${teamId}`);
+    const planned = await page.evaluate(() => {
+      window.__teamDraws = { football: 0, scheduler: 0, presentation: 0 };
+      const stream = (name, seed) => {
+        let value = seed >>> 0;
+        return () => {
+          window.__teamDraws[name]++;
+          value = (Math.imul(value, 1664525) + 1013904223) >>> 0;
+          return value / 0x100000000;
+        };
+      };
+      window.__footballTest.setRngStreams({
+        football: stream('football', 0x173a),
+        scheduler: stream('scheduler', 0x173b),
+        presentation: stream('presentation', 0x173c),
+      });
+      window.__footballTest.seedDriveState({
+        possession: 'defense', direction: -1,
+        quarter: 2, down: 2, yardsToGo: 8, yardLine: 70, firstDownLine: 62,
+        driveStart: 80, scores: { player: 7, opponent: 7 },
+        totalYards: { player: 31, opponent: 28 }, plays: 5, drivePlays: 1,
+      });
+      return {
+        player: state.match.player.id,
+        plan: window.__footballTest.opponentSnapshot(),
+        drawsAfterPlan: { ...window.__teamDraws },
+      };
+    });
+    await page.locator('#call-grid .call-btn').first().click();
+    const snapped = await page.evaluate(() => {
+      const contracts = window.__footballTest.activeContracts();
+      const proposal = contracts.activeSnap?.proposal || {};
+      return {
+        phase: contracts.render.mode,
+        familyId: contracts.questionInstance?.familyId || null,
+        evidenceClass: contracts.questionInstance?.evidenceClass || null,
+        choiceCount: contracts.questionInstance?.choices?.length || 0,
+        proposalFacts: Object.fromEntries(Object.entries(proposal)
+          .filter(([, value]) => value === null || ['number', 'boolean'].includes(typeof value))),
+        matchup: contracts.render.matchup,
+        defenseCall: contracts.render.defenseCall,
+        gain: contracts.render.gain,
+        draws: { ...window.__teamDraws },
+      };
+    });
+    runs[teamId] = { ...planned, ...snapped };
+  }
+  for (const teamId of PLAYER_TEAMS) expect(runs[teamId].player).toBe(teamId);
+  const comparable = ({ player, ...facts }) => facts;
+  for (const teamId of PLAYER_TEAMS.slice(1)) {
+    expect(comparable(runs[teamId]), `${teamId} matches Duke`).toEqual(comparable(runs.duke));
+  }
+  expect(runs.duke.phase).toBe('question');
+  expect(runs.duke.familyId).toEqual(expect.any(String));
+  expect(Object.keys(runs.duke.proposalFacts).length).toBeGreaterThan(0);
+  expect(runs.duke.drawsAfterPlan.football).toBe(1);
+  expect(runs.duke.plan).toMatchObject({ opponentId: 'nc-state', profileKey: 'powerRun' });
 });
 
 test('domain rejects cross-rival and cross-profile private snapshots in the browser realm', async ({ page }, testInfo) => {

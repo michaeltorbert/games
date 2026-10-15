@@ -10,6 +10,15 @@
   --panel-ink: #09142c;
   --duke: #003087;
   --duke-dark: #001a55;
+  /* The selected player team's palette (Duke defaults), applied only to the
+     player's scorebug, end zone, uniform, and math token. */
+  --player-primary: #003087;
+  --player-pads: #0a3fa6;
+  --player-dark: #001f5c;
+  --player-trim: #ffffff;
+  --player-ink: #ffffff;
+  --player-scorebug-top: #003087;
+  --player-scorebug-bottom: #001a54;
   --opponent-accent: #7bafd4;
   --opponent-accent-dark: #4e7ba2;
   --opponent-accent-ink: #0c2950;
@@ -209,7 +218,7 @@ body::after {
 }
 
 .sb-duke {
-  background: linear-gradient(180deg, rgba(0, 48, 135, 1), rgba(0, 26, 84, 1));
+  background: linear-gradient(180deg, var(--player-scorebug-top), var(--player-scorebug-bottom));
 }
 
 .sb-opponent {
@@ -443,7 +452,7 @@ body::after {
   border-radius: 30px;
   border: 6px solid rgba(246, 255, 246, 0.95);
   background:
-    linear-gradient(90deg, #003087 0 5%, transparent 5% 95%, var(--opponent-accent) 95% 100%),
+    linear-gradient(90deg, var(--player-primary) 0 5%, transparent 5% 95%, var(--opponent-accent) 95% 100%),
     repeating-linear-gradient(90deg, #37aa49 0 8%, #2e8f3c 8% 16%),
     linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(0, 0, 0, 0.12));
   box-shadow:
@@ -543,6 +552,13 @@ body::after {
   font-size: 18px;
   letter-spacing: 2px;
   color: var(--opponent-accent-ink) !important;
+}
+
+/* Player end-zone names longer than DUKE use the opponent end zone's size so
+   they fit the shortest field. */
+.ez-text.ez-left.ez-long {
+  font-size: 18px;
+  letter-spacing: 2px;
 }
 
 /* Broadcast sound toggle — overlays the field so it stays reachable on every
@@ -715,8 +731,8 @@ body::after {
 }
 
 .math-context-token[data-team="player"] {
-  background: var(--duke);
-  color: #fff;
+  background: var(--player-primary);
+  color: var(--player-ink);
 }
 
 .math-context-token[data-team="opponent"] {
@@ -1316,8 +1332,10 @@ body::after {
   stroke-width: 2.7;
 }
 
+/* Uniform colors follow the selected player team; #tackler overrides them
+   with the visiting rival's palette. */
 .pl-sock {
-  stroke: #003087;
+  stroke: var(--player-primary);
   stroke-width: 2.2;
 }
 
@@ -1332,33 +1350,33 @@ body::after {
 }
 
 .pl-belt {
-  stroke: #003087;
+  stroke: var(--player-primary);
   stroke-width: 0.7;
 }
 
 .pl-jersey {
-  fill: #003087;
+  fill: var(--player-primary);
 }
 
 .pl-pads {
-  fill: #0a3fa6;
-  stroke: #001f5c;
+  fill: var(--player-pads);
+  stroke: var(--player-dark);
   stroke-width: 0.35;
 }
 
 .pl-stripe {
-  stroke: #fff;
+  stroke: var(--player-trim);
   stroke-width: 0.7;
 }
 
 .pl-number {
-  fill: #fff;
+  fill: var(--player-ink);
   font: 800 6.4px 'Barlow Condensed', 'Nunito', sans-serif;
   text-anchor: middle;
 }
 
 .pl-sleeve {
-  stroke: #003087;
+  stroke: var(--player-primary);
   stroke-width: 2.8;
 }
 
@@ -1374,18 +1392,18 @@ body::after {
 }
 
 .pl-helmet {
-  fill: #003087;
-  stroke: #001f5c;
+  fill: var(--player-primary);
+  stroke: var(--player-dark);
   stroke-width: 0.4;
 }
 
 .pl-helmet-stripe {
-  stroke: #fff;
+  stroke: var(--player-trim);
   stroke-width: 1.1;
 }
 
 .pl-ear {
-  fill: #001f5c;
+  fill: var(--player-dark);
 }
 
 .pl-mask {
@@ -1475,7 +1493,7 @@ body::after {
   animation-duration: 350ms;
 }
 
-/* Issue #169: the opposing defender who brings the Duke ball carrier down. It
+/* Issue #169: the opposing defender who brings the player's ball carrier down. It
    reuses the carrier's sprite in the visiting rival's live colors, faces the
    carrier from downfield, and never takes input. Leaning in, its shoulder meets
    the carrier's hip and its arms wrap his waist, below the ball. */
@@ -1536,6 +1554,12 @@ body::after {
 
 #tackler .pl-ear {
   fill: var(--opponent-accent-ink);
+}
+
+/* The defender keeps its original white trim whatever the player's team. */
+#tackler .pl-stripe,
+#tackler .pl-helmet-stripe {
+  stroke: #fff;
 }
 
 /* The markup's transform attribute counters the sprite's mirror so the number reads. */
@@ -2649,6 +2673,7 @@ body::after {
   max-width: 38ch;
 }
 
+.team-picker,
 .play-mode-picker,
 .rival-picker {
   width: 100%;
@@ -2657,6 +2682,7 @@ body::after {
   border: 0;
 }
 
+.team-picker legend,
 .play-mode-picker legend,
 .rival-picker legend {
   margin-bottom: 10px;
@@ -2727,6 +2753,85 @@ body::after {
   font-size: 13px;
   font-weight: 700;
   line-height: 1;
+}
+
+/* Team choice: the same gold-on-navy radio idiom as the mode picker. Each
+   label carries its team's colors only in a small decorative swatch. */
+.team-options {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.team-option {
+  min-width: 0;
+  min-height: 52px;
+  display: grid;
+  grid-template-columns: 22px 12px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border: 2px solid rgba(255, 255, 255, 0.18);
+  border-radius: 15px;
+  background: rgba(255, 255, 255, 0.055);
+  cursor: pointer;
+  font-family: 'Barlow Condensed', 'Nunito', sans-serif;
+}
+
+.team-option:has(input:checked) {
+  border-color: var(--gold);
+  background: rgba(255, 215, 0, 0.12);
+  box-shadow: inset 5px 0 0 var(--gold);
+}
+
+.team-option:focus-within {
+  outline: 3px solid #fff;
+  outline-offset: 2px;
+}
+
+.team-option input {
+  width: 22px;
+  height: 22px;
+  margin: 0;
+  accent-color: var(--gold);
+}
+
+.team-swatch {
+  width: 12px;
+  height: 28px;
+  border-radius: 4px;
+  background: linear-gradient(90deg, var(--team-primary) 0 62%, var(--team-trim) 62% 100%);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.55);
+}
+
+.team-option-name {
+  min-width: 0;
+  color: #fff;
+  font-size: 19px;
+  font-weight: 800;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.team-picker:disabled .team-option {
+  cursor: default;
+}
+
+.team-picker:disabled .team-option:not(:has(input:checked)) {
+  opacity: 0.55;
+}
+
+.team-status {
+  margin-top: 7px;
+  color: #ffd98a;
+  font-family: 'Barlow Condensed', 'Nunito', sans-serif;
+  font-size: 16px;
+  font-weight: 800;
+  line-height: 1.1;
+}
+
+.team-status[hidden] {
+  display: none;
 }
 
 #quick-game-panel[hidden],
@@ -3149,6 +3254,46 @@ body::after {
   #ov-end:not([data-special-result]) .ov-end-actions .ov-btn { margin-top: 14px; }
 }
 
+/* Start fit with the team picker at the primary iPad 11 landscape height:
+   a one-line title and tighter spacing make room for the added row. */
+@media (min-width: 700px) and (min-height: 761px) and (max-height: 900px) {
+  #ov-start .overlay-card {
+    padding-top: 30px;
+    padding-bottom: 26px;
+  }
+
+  #ov-start .ov-title {
+    max-width: none;
+    margin-top: 14px;
+    font-size: clamp(64px, 6.6vw, 84px);
+  }
+
+  #ov-start .ov-sub {
+    margin-top: 8px;
+    font-size: 25px;
+  }
+
+  #ov-start .team-picker,
+  #ov-start .play-mode-picker,
+  #ov-start .rival-picker {
+    margin-top: 14px;
+  }
+
+  #ov-start .team-picker legend,
+  #ov-start .play-mode-picker legend,
+  #ov-start .rival-picker legend {
+    margin-bottom: 7px;
+  }
+
+  #ov-start .rival-option {
+    min-height: 84px;
+    padding: 10px 14px;
+  }
+
+  #ov-start .rival-preview { margin-top: 10px; }
+  #ov-start .ov-btn { margin-top: 16px; }
+}
+
 @media (max-height: 760px) and (min-width: 700px) {
   #ov-start .overlay-card {
     min-height: 0;
@@ -3165,16 +3310,22 @@ body::after {
     font-size: 22px;
   }
 
+  #ov-start .team-picker,
   #ov-start .play-mode-picker,
   #ov-start .rival-picker {
     margin-top: 10px;
   }
 
+  #ov-start .team-picker legend,
   #ov-start .play-mode-picker legend,
   #ov-start .rival-picker legend {
     margin-bottom: 5px;
     font-size: 14px;
   }
+
+  #ov-start .team-option { min-height: 44px; padding: 4px 9px; }
+  #ov-start .team-option-name { font-size: 17px; }
+  #ov-start .team-status { margin-top: 5px; font-size: 14px; }
 
   #ov-start .play-mode-option {
     min-height: 48px;
@@ -3628,6 +3779,15 @@ body::after {
   .rival-options {
     grid-template-columns: 1fr;
   }
+
+  /* Four team choices still fit one row at 820 px wide. */
+  .team-option {
+    grid-template-columns: 20px 10px minmax(0, 1fr);
+    gap: 7px;
+    padding: 6px 8px;
+  }
+
+  .team-option-name { font-size: 17px; }
 
   #status-ribbon {
     min-width: min(92%, 720px);
@@ -4161,7 +4321,8 @@ body::after {
     letter-spacing: 3px;
   }
 
-  .ez-text.ez-right {
+  .ez-text.ez-right,
+  .ez-text.ez-left.ez-long {
     font-size: 12px;
   }
 
@@ -4390,16 +4551,36 @@ body::after {
     font-size: 17px;
   }
 
+  .team-picker,
   .play-mode-picker,
   .rival-picker {
     margin-top: 12px;
   }
 
+  .team-picker legend,
   .play-mode-picker legend,
   .rival-picker legend {
     margin-bottom: 6px;
     font-size: 13px;
   }
+
+  .team-options {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  .team-option {
+    min-height: 44px;
+    grid-template-columns: 20px 10px minmax(0, 1fr);
+    gap: 7px;
+    padding: 4px 8px;
+    border-radius: 13px;
+  }
+
+  .team-option input { width: 20px; height: 20px; }
+  .team-swatch { width: 10px; height: 24px; }
+  .team-option-name { font-size: 16px; }
+  .team-status { margin-top: 6px; font-size: 14px; }
 
   .play-mode-option {
     min-height: 48px;
@@ -4595,6 +4776,10 @@ body::after {
 
   .ez-text.ez-right {
     right: 4.2%;
+    font-size: 10px;
+  }
+
+  .ez-text.ez-left.ez-long {
     font-size: 10px;
   }
 
