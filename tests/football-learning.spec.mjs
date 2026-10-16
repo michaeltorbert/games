@@ -1,4 +1,5 @@
 import { test, expect } from './curriculum-fixture.mjs';
+import { pauseLiveClockAfterLead, waitOnHost } from './football-route-clock.mjs';
 
 function primaryOnly(testInfo) {
   test.skip(testInfo.project.name !== 'ipad-11-landscape', 'Learning contract checks run once on the primary target.');
@@ -993,7 +994,7 @@ test('Coach Replay queued focus respects Back and a closed review', async ({ pag
   await answerChoice(page, wrongIds[1]);
   await expect(page.locator('#question-learn-why')).toBeVisible();
 
-  await page.clock.pauseAt(new Date((await page.evaluate(() => Date.now())) + 1000));
+  await pauseLiveClockAfterLead(page, 1000);
   await page.locator('#question-learn-why').click();
   await expect(page.locator('#worked-review')).toBeVisible();
   // Arrange focus on a review control before the queued frame runs.
@@ -1018,6 +1019,55 @@ test('Coach Replay queued focus respects Back and a closed review', async ({ pag
   await page.clock.runFor(32);
   await expect(page.locator('#worked-review-heading')).not.toBeFocused();
   await expect(page.locator('#question-learn-why')).toBeFocused();
+});
+
+test('a live clock pause that lands past its lead holds Date only until the pause, then advances only through runFor', async ({ page }, testInfo) => {
+  primaryOnly(testInfo);
+  await page.clock.install();
+  await page.goto('/football/?boot=defense-call');
+  const browserTime = () => page.evaluate(() => ({ date: Date.now(), performance: performance.now() }));
+
+  // Land pauseAt well after the running clock has passed the 100 ms lead.
+  const held = [];
+  let lateGap = 0;
+  const clock = {
+    setFixedTime: time => page.clock.setFixedTime(time),
+    pauseAt: async (time) => {
+      held.push(await browserTime());
+      lateGap = await waitOnHost(250);
+      held.push(await browserTime());
+      await page.clock.pauseAt(time);
+    },
+    setSystemTime: time => page.clock.setSystemTime(time),
+    fastForward: ticks => page.clock.fastForward(ticks),
+  };
+  const pause = await pauseLiveClockAfterLead(page, 100, { clock });
+  expect(lateGap).toBeGreaterThan(100);
+  expect(held.map(time => time.date)).toEqual([pause.sample.date, pause.sample.date]);
+  expect(held[1].performance - held[0].performance).toBeGreaterThan(100);
+  expect(pause.alreadyPaused).toBe(false);
+  expect(pause.elapsed).toBeGreaterThan(100);
+  expect(pause.remaining).toBe(0);
+
+  // Paused, not fixed: Date resumes at the sample plus the ticks actually run.
+  const paused = await browserTime();
+  expect(paused).toEqual({ date: pause.sample.date + pause.elapsed, performance: pause.pausedTicks });
+  expect(await waitOnHost(250)).toBeGreaterThan(100);
+  expect(await browserTime()).toEqual(paused);
+  await page.clock.runFor(250);
+  const advanced = await browserTime();
+  expect(advanced.date - paused.date).toBe(250);
+  expect(advanced.performance - paused.performance).toBe(250);
+
+  // Already paused: a repeated call is the original absolute pause, so even a
+  // timer already due at the paused tick runs at the end of the lead.
+  await page.evaluate(() => {
+    window.__dueNowRanAt = null;
+    setTimeout(() => { window.__dueNowRanAt = performance.now(); }, 0);
+  });
+  expect((await pauseLiveClockAfterLead(page, 100)).alreadyPaused).toBe(true);
+  expect(await browserTime()).toEqual({ date: advanced.date + 100, performance: advanced.performance + 100 });
+  expect(await page.evaluate(() => window.__dueNowRanAt)).toBe(advanced.performance + 100);
 });
 
 test('Coach Replay rendering failure rolls back to the concise frozen Continue path without prose leakage', async ({ page }, testInfo) => {
