@@ -1631,5 +1631,12 @@ Candidate only, on base `412d976`. There is no version bump, cache-key, registry
     - Fix: at 480 px wide and below, answered choices in the feedback phase are 72 px tall instead of 90. That is still above 44, with no copy hidden or truncated.
   - Nothing else changed: no copy, fixture, tolerance, retry or deadline changes, and landscape and unrelated screens are untouched.
   - Pending: targeted six-view runs in both engines, then the full gates and a fresh review.
+- **Picker appearance — user selected option C (letter badge):** the user rejected the split two-color swatch. From three rendered mockups (`output/issue-173/picker-mockups/`), the user chose C.
+  - The hidden decorative swatch is now a `.team-badge`: plain-text initials derived from the display name (D, VT, T, GT), white on the team's primary color, with a faint ring.
+  - Sizes match the approved mockup: 30×24 px badge with 13 px text (28×22 px with 12 px text on phones), and badge columns of 30 px (28 px on phones).
+  - The badge stays `aria-hidden`, so the radio's accessible name is still exactly the full school name. Names keep their size and wrap naturally on phones.
+  - Unchanged: gold selection, focus, the locked-Season styling, 44 px+ cards, the grids, the catalog, Season data and every other screen.
+  - The rivals picker test now checks the exact accessible names, badge text, hidden state and colors, and that the name and badge sit inside each card.
+  - Pending: focused and full checks in both engines, before/after pixels, a recording and a fresh review.
 - **Network question (record only):** one observer run on the unchanged candidate passed all 108 cases with 42 strictly parsed worker NetLogs. `ERR_SOCKET_NOT_CONNECTED` did not recur, so the original endpoint and cause remain unknown. No product network change was made.
 - Pending: every focused suite, both full release matrices, pixel comparison against `output/issue-173/before/`, a playable preview and recording, a fresh independent review, and the user's appearance approval. This would be Playwright engine emulation, not native Safari, Simulator or device evidence.

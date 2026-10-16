@@ -2756,7 +2756,7 @@ body::after {
 }
 
 /* Team choice: the same gold-on-navy radio idiom as the mode picker. Each
-   label carries its team's colors only in a small decorative swatch. */
+   label carries its team's color only in a small decorative letter badge. */
 .team-options {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -2767,7 +2767,7 @@ body::after {
   min-width: 0;
   min-height: 52px;
   display: grid;
-  grid-template-columns: 22px 12px minmax(0, 1fr);
+  grid-template-columns: 22px 30px minmax(0, 1fr);
   align-items: center;
   gap: 8px;
   padding: 6px 10px;
@@ -2796,12 +2796,22 @@ body::after {
   accent-color: var(--gold);
 }
 
-.team-swatch {
-  width: 12px;
-  height: 28px;
-  border-radius: 4px;
-  background: linear-gradient(90deg, var(--team-primary) 0 62%, var(--team-trim) 62% 100%);
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.55);
+/* Plain text initials, not a logo. A faint ring keeps the dark-navy badges
+   (Duke, Georgia Tech) visible as shapes on the navy card. */
+.team-badge {
+  width: 30px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  background: var(--team-primary);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.3);
+  color: #fff;
+  font-family: 'Barlow Condensed', 'Nunito', sans-serif;
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: 0.02em;
 }
 
 .team-option-name {
@@ -3782,7 +3792,7 @@ body::after {
 
   /* Four team choices still fit one row at 820 px wide. */
   .team-option {
-    grid-template-columns: 20px 10px minmax(0, 1fr);
+    grid-template-columns: 20px 30px minmax(0, 1fr);
     gap: 7px;
     padding: 6px 8px;
   }
@@ -4589,14 +4599,14 @@ body::after {
 
   .team-option {
     min-height: 44px;
-    grid-template-columns: 20px 10px minmax(0, 1fr);
+    grid-template-columns: 20px 28px minmax(0, 1fr);
     gap: 7px;
     padding: 4px 8px;
     border-radius: 13px;
   }
 
   .team-option input { width: 20px; height: 20px; }
-  .team-swatch { width: 10px; height: 24px; }
+  .team-badge { width: 28px; height: 22px; font-size: 12px; }
   .team-option-name { font-size: 16px; }
   .team-status { margin-top: 6px; font-size: 14px; }
 

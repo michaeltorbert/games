@@ -521,6 +521,10 @@ function renderRivalPicker() {
   updateRivalPreview(match);
 }
 
+function teamBadgeText(displayName) {
+  return displayName.split(/\s+/).filter(Boolean).map(word => word[0]).join('').toUpperCase();
+}
+
 // Team radios are built once and then only re-checked or locked, so a Season
 // refresh never drops keyboard focus from the group.
 function renderTeamPicker(checkedTeamId, locked) {
@@ -533,7 +537,6 @@ function renderTeamPicker(checkedTeamId, locked) {
       label.className = 'team-option';
       label.dataset.teamId = team.id;
       label.style.setProperty('--team-primary', team.presentation.primary);
-      label.style.setProperty('--team-trim', team.presentation.trim);
       const input = document.createElement('input');
       input.type = 'radio';
       input.name = 'player-team';
@@ -541,13 +544,16 @@ function renderTeamPicker(checkedTeamId, locked) {
       input.addEventListener('change', () => {
         if (input.checked) selectPlayerTeamPreview(team.id);
       });
-      const swatch = document.createElement('span');
-      swatch.className = 'team-swatch';
-      swatch.setAttribute('aria-hidden', 'true');
+      // A decorative plain-text badge of the name's initials (D, VT, T, GT); the
+      // full name beside it stays the radio's only accessible label.
+      const badge = document.createElement('span');
+      badge.className = 'team-badge';
+      badge.setAttribute('aria-hidden', 'true');
+      badge.textContent = teamBadgeText(team.displayName);
       const name = document.createElement('span');
       name.className = 'team-option-name';
       name.textContent = team.displayName;
-      label.append(input, swatch, name);
+      label.append(input, badge, name);
       options.appendChild(label);
     }
   }

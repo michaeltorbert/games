@@ -285,8 +285,43 @@ test('team picker previews by tap without RNG, fits every target, and colors onl
   await expect(group.getByRole('radio', { name: 'Duke' })).toBeChecked();
   // Initial focus stays on the existing rival choice.
   await expect(page.getByRole('group', { name: 'Choose the visiting rival' }).getByRole('radio').nth(0)).toBeFocused();
-  expect(await teams.evaluateAll(inputs => inputs.map(input => input.closest('label').textContent.trim())))
-    .toEqual(['Duke', 'Virginia Tech', 'Texas', 'Georgia Tech']);
+  // Each card shows the full name plus a decorative, hidden letter badge; the
+  // radio's accessible name is exactly the full school name.
+  const fullNames = ['Duke', 'Virginia Tech', 'Texas', 'Georgia Tech'];
+  for (const fullName of fullNames) {
+    await expect(group.getByRole('radio', { name: fullName, exact: true })).toHaveCount(1);
+  }
+  expect(await teams.evaluateAll(inputs => inputs.map((input) => {
+    const label = input.closest('label');
+    const badge = label.querySelector('.team-badge');
+    const name = label.querySelector('.team-option-name');
+    const nameStyle = getComputedStyle(name);
+    const badgeStyle = getComputedStyle(badge);
+    return {
+      name: name.textContent,
+      badge: badge.textContent,
+      badgeHidden: badge.getAttribute('aria-hidden'),
+      badgeBackground: badgeStyle.backgroundColor,
+      badgeColor: badgeStyle.color,
+      badgeBeforeName: Boolean(badge.compareDocumentPosition(name) & Node.DOCUMENT_POSITION_FOLLOWING),
+      nameWhiteSpace: nameStyle.whiteSpace,
+      nameTextOverflow: nameStyle.textOverflow,
+    };
+  }))).toEqual([
+    ['Duke', 'D', 'rgb(0, 48, 135)'],
+    ['Virginia Tech', 'VT', 'rgb(134, 31, 65)'],
+    ['Texas', 'T', 'rgb(191, 87, 0)'],
+    ['Georgia Tech', 'GT', 'rgb(0, 48, 87)'],
+  ].map(([name, badge, badgeBackground]) => ({
+    name,
+    badge,
+    badgeHidden: 'true',
+    badgeBackground,
+    badgeColor: 'rgb(255, 255, 255)',
+    badgeBeforeName: true,
+    nameWhiteSpace: 'normal',
+    nameTextOverflow: 'clip',
+  })));
 
   await page.evaluate(() => {
     window.__teamDraws = { football: 0, scheduler: 0, presentation: 0 };
@@ -348,6 +383,12 @@ test('team picker previews by tap without RNG, fits every target, and colors onl
         id: label.dataset.teamId,
         ...box(label),
         nameOverflow: label.querySelector('.team-option-name').scrollWidth - label.querySelector('.team-option-name').clientWidth,
+        nameOverflowY: label.querySelector('.team-option-name').scrollHeight - label.querySelector('.team-option-name').clientHeight,
+        partsInside: ['.team-badge', '.team-option-name'].every((selector) => {
+          const part = label.querySelector(selector).getBoundingClientRect();
+          const card = label.getBoundingClientRect();
+          return part.left >= card.left && part.right <= card.right && part.top >= card.top && part.bottom <= card.bottom;
+        }),
       })),
       start: box(document.getElementById('start-game-btn')),
       card: { ...box(card), scrollHeight: card.scrollHeight, clientHeight: card.clientHeight },
@@ -364,6 +405,8 @@ test('team picker previews by tap without RNG, fits every target, and colors onl
     expect(option.left, `${option.id} left`).toBeGreaterThanOrEqual(0);
     expect(option.right, `${option.id} right`).toBeLessThanOrEqual(metrics.viewportWidth);
     expect(option.nameOverflow, `${option.id} name clipped`).toBeLessThanOrEqual(0);
+    expect(option.nameOverflowY, `${option.id} name clipped vertically`).toBeLessThanOrEqual(1);
+    expect(option.partsInside, `${option.id} badge and name inside the card`).toBe(true);
   }
   expect(metrics.start.bottom).toBeLessThanOrEqual(metrics.viewportHeight);
   expect(metrics.card.top).toBeGreaterThanOrEqual(0);
