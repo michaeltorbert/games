@@ -1,4 +1,5 @@
 import { test, expect } from './curriculum-fixture.mjs';
+import { pauseLiveClockAfterLead } from './football-route-clock.mjs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
@@ -224,8 +225,7 @@ async function clickTimeLabAnswer(page, kind) {
 }
 
 async function pauseClockBeforeAnswer(page) {
-  const now = await page.evaluate(() => Date.now());
-  await page.clock.pauseAt(new Date(now + 100));
+  await pauseLiveClockAfterLead(page, 100);
 }
 
 async function expectQuestionPlayType(page, playType, label) {

@@ -1,4 +1,5 @@
 import { test, expect } from './curriculum-fixture.mjs';
+import { pauseLiveClockAfterLead } from './football-route-clock.mjs';
 import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -195,8 +196,7 @@ function note(testInfo, key, value) {
 }
 
 async function pauseClock(page) {
-  const now = await page.evaluate(() => Date.now());
-  await page.clock.pauseAt(new Date(now + 100));
+  await pauseLiveClockAfterLead(page, 100);
   pausedClocks.add(page);
 }
 
