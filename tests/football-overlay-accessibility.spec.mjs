@@ -85,6 +85,7 @@ test('start overlay traps focus across the selected mode and visible rival radio
   await page.goto('/football/');
   const quickMode = page.getByRole('radio', { name: /Quick Game/ });
   const seasonMode = page.getByRole('radio', { name: /3-Game Season/ });
+  const team = page.getByRole('group', { name: 'Choose your team' }).getByRole('radio', { name: 'Duke' });
   const wakeForest = page.locator('input[name="rival"][value="wake-forest"]');
   const start = page.locator('#start-game-btn');
   const timeLab = page.locator('#tl-open-button');
@@ -96,11 +97,15 @@ test('start overlay traps focus across the selected mode and visible rival radio
   await page.keyboard.press(keys.previous);
   await expect(quickMode).toBeFocused();
   await page.keyboard.press(keys.previous);
+  await expect(team).toBeFocused();
+  await page.keyboard.press(keys.previous);
   await expect(timeLab).toBeFocused();
   await page.keyboard.press(keys.previous);
   await expect(start).toBeFocused();
   await page.keyboard.press(keys.next);
   await expect(timeLab).toBeFocused();
+  await page.keyboard.press(keys.next);
+  await expect(team).toBeFocused();
   await page.keyboard.press(keys.next);
   await expect(quickMode).toBeFocused();
   await page.keyboard.press(keys.next);
@@ -115,7 +120,53 @@ test('start overlay traps focus across the selected mode and visible rival radio
   await page.keyboard.press(keys.next);
   await expect(timeLab).toBeFocused();
   await page.keyboard.press(keys.next);
+  await expect(team).toBeFocused();
+  await page.keyboard.press(keys.next);
   await expect(seasonMode).toBeFocused();
+});
+
+test('a saved Season locks the team group out of the start overlay tab cycle', async ({ page, browserName }, testInfo) => {
+  primaryOnly(testInfo);
+  const keys = tabKeys(browserName);
+  await page.goto('/football/');
+  await page.evaluate(key => localStorage.setItem(key, JSON.stringify({
+    schemaVersion: 2,
+    currentSeason: {
+      seasonId: 'focus-locked-season',
+      formatId: 'three-rival-team-schedule-v2',
+      playerId: 'texas',
+      createdAt: '2026-07-19T12:00:00.000Z',
+      schedule: ['unc', 'nc-state', 'wake-forest'],
+      results: [],
+    },
+  })), 'footballMathSeason:v1');
+  await page.reload();
+  const seasonMode = page.getByRole('radio', { name: /3-Game Season/ });
+  const group = page.getByRole('group', { name: 'Choose your team' });
+  const start = page.locator('#start-game-btn');
+  const timeLab = page.locator('#tl-open-button');
+  await expect(seasonMode).toBeChecked();
+  await expect(seasonMode).toBeFocused();
+  await expect(page.locator('#team-picker')).toHaveAttribute('disabled', '');
+  await expect(group.getByRole('radio', { name: 'Texas' })).toBeChecked();
+  await expect(group.getByRole('radio', { name: 'Texas' })).toBeDisabled();
+  await expect(page.locator('#team-status')).toHaveText('Season team: Texas. Finish this Season to choose a new team.');
+
+  const focusedTeamRadio = () => page.evaluate(() => document.activeElement?.name === 'player-team');
+  await page.keyboard.press(keys.next);
+  await expect(start).toBeFocused();
+  await page.keyboard.press(keys.next);
+  await expect(timeLab).toBeFocused();
+  await page.keyboard.press(keys.next);
+  await expect(seasonMode).toBeFocused();
+  expect(await focusedTeamRadio()).toBe(false);
+  await page.keyboard.press(keys.previous);
+  await expect(timeLab).toBeFocused();
+  await page.keyboard.press(keys.previous);
+  await expect(start).toBeFocused();
+  await page.keyboard.press(keys.previous);
+  await expect(seasonMode).toBeFocused();
+  expect(await focusedTeamRadio()).toBe(false);
 });
 
 test('closing an overlay restores the game UI and focuses the next control', async ({ page }) => {

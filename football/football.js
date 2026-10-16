@@ -1,4 +1,4 @@
-const GAME_VERSION = '1.34.8';
+const GAME_VERSION = '1.34.9';
 let prevPlayerScore = -1, prevOpponentScore = -1;
 let playerRunTimer = 0, playerCelebrateTimer = 0, playerCelebrateDelayTimer = 0;
 const EZ = 5;
@@ -201,6 +201,11 @@ let possessionSequence = 1;
 let playSequence = 1;
 let questionFaultMode = null;
 let selectedRivalId = FOOTBALL_OPPONENT.DEFAULT_RIVAL_ID;
+// The player's own team choice: Quick Game intent and the team for a new
+// Season. An active or pending Season always plays its saved team instead.
+let selectedPlayerTeamId = FOOTBALL_OPPONENT.DEFAULT_PLAYER_TEAM_ID;
+// Public team ID of a Season another tab created first with a different team.
+let seasonTeamNoticeId = null;
 let selectedPlayMode = 'quick';
 let activeSeasonBinding = null;
 let seasonSettlementPromise = null;
@@ -391,8 +396,38 @@ function rivalForMatch(match) {
   return FOOTBALL_OPPONENT.resolveRival(match.opponent.id);
 }
 
+function playerTeamForMatch(match) {
+  return FOOTBALL_OPPONENT.resolvePlayerTeam(match.player.id);
+}
+
+// Team colors are scoped to the player's scorebug, end zone, uniform, math
+// token, and fireworks; the surrounding app chrome keeps its own palette.
+function applyPlayerPresentation(match) {
+  const team = playerTeamForMatch(match);
+  const root = document.documentElement;
+  root.dataset.player = team.id;
+  root.style.setProperty('--player-primary', team.presentation.primary);
+  root.style.setProperty('--player-pads', team.presentation.pads);
+  root.style.setProperty('--player-dark', team.presentation.dark);
+  root.style.setProperty('--player-trim', team.presentation.trim);
+  root.style.setProperty('--player-ink', team.presentation.ink);
+  root.style.setProperty('--player-scorebug-top', team.presentation.scorebugTop);
+  root.style.setProperty('--player-scorebug-bottom', team.presentation.scorebugBottom);
+  const wrap = document.getElementById('wrap');
+  if (wrap) wrap.dataset.player = team.id;
+  const scorebugName = document.getElementById('s-player-name');
+  if (scorebugName) scorebugName.textContent = match.player.shortName;
+  const endZone = document.getElementById('player-end-zone');
+  if (endZone) {
+    endZone.textContent = match.player.endZoneName;
+    endZone.classList.toggle('ez-long', match.player.endZoneName.length > 4);
+  }
+  return team;
+}
+
 function applyMatchPresentation(match) {
   const rival = rivalForMatch(match);
+  applyPlayerPresentation(match);
   const root = document.documentElement;
   root.dataset.opponent = rival.id;
   root.style.setProperty('--opponent-accent', rival.presentation.accent);
@@ -408,7 +443,7 @@ function applyMatchPresentation(match) {
   const endZone = document.getElementById('opponent-end-zone');
   if (endZone) endZone.textContent = match.opponent.endZoneName;
   const rivalryLabel = document.getElementById('stage-rivalry-label');
-  if (rivalryLabel) rivalryLabel.textContent = rival.rivalryLabel;
+  if (rivalryLabel) rivalryLabel.textContent = FOOTBALL_OPPONENT.rivalryLabelFor(match);
   return rival;
 }
 
@@ -431,11 +466,20 @@ function updateRivalPreview(match) {
 
 function selectRivalPreview(rivalId) {
   if (state.phase !== PHASES.start || selectedPlayMode !== 'quick') return false;
-  const match = FOOTBALL_OPPONENT.createMatch(rivalId);
+  const match = FOOTBALL_OPPONENT.createMatch(rivalId, selectedPlayerTeamId);
   selectedRivalId = rivalId;
   state = { ...state, match };
   updateRivalPreview(match);
+  refreshStartPresentation();
   return true;
+}
+
+// Start choices change only the provisional public match. Refresh every
+// background label that names a team (scorebug, ribbon, ball-on, possession)
+// without initializing a game or touching stats or RNG.
+function refreshStartPresentation() {
+  if (state.phase !== PHASES.start || sessionInitialized) return;
+  updateStatus(captureLiveRender());
 }
 
 function renderRivalPicker() {
@@ -471,7 +515,84 @@ function renderRivalPicker() {
     label.append(input, copy);
     options.appendChild(label);
   }
-  updateRivalPreview(FOOTBALL_OPPONENT.createMatch(selectedRivalId));
+  // The provisional Quick match always reflects both current choices.
+  const match = FOOTBALL_OPPONENT.createMatch(selectedRivalId, selectedPlayerTeamId);
+  if (state.phase === PHASES.start && !sessionInitialized) state = { ...state, match };
+  updateRivalPreview(match);
+}
+
+function teamBadgeText(displayName) {
+  return displayName.split(/\s+/).filter(Boolean).map(word => word[0]).join('').toUpperCase();
+}
+
+// Team radios are built once and then only re-checked or locked, so a Season
+// refresh never drops keyboard focus from the group.
+function renderTeamPicker(checkedTeamId, locked) {
+  const start = startOverlay();
+  const options = overlaySlot(start, 'team-options');
+  if (!options) return;
+  if (!options.querySelector('input[name="player-team"]')) {
+    for (const team of FOOTBALL_OPPONENT.listPlayerTeams()) {
+      const label = document.createElement('label');
+      label.className = 'team-option';
+      label.dataset.teamId = team.id;
+      label.style.setProperty('--team-primary', team.presentation.primary);
+      const input = document.createElement('input');
+      input.type = 'radio';
+      input.name = 'player-team';
+      input.value = team.id;
+      input.addEventListener('change', () => {
+        if (input.checked) selectPlayerTeamPreview(team.id);
+      });
+      // A decorative plain-text badge of the name's initials (D, VT, T, GT); the
+      // full name beside it stays the radio's only accessible label.
+      const badge = document.createElement('span');
+      badge.className = 'team-badge';
+      badge.setAttribute('aria-hidden', 'true');
+      badge.textContent = teamBadgeText(team.displayName);
+      const name = document.createElement('span');
+      name.className = 'team-option-name';
+      name.textContent = team.displayName;
+      label.append(input, badge, name);
+      options.appendChild(label);
+    }
+  }
+  for (const input of options.querySelectorAll('input[name="player-team"]')) {
+    input.checked = input.value === checkedTeamId;
+  }
+  populateOverlay(start, { slots: { 'team-picker': { disabled: locked } } });
+}
+
+// A saved Season that is active or waiting to save owns its team.
+function seasonLockedTeamId(snapshot) {
+  return ['play', 'retry'].includes(snapshot.action) && snapshot.playerId ? snapshot.playerId : null;
+}
+
+function seasonTeamStatusText(lockedTeamId) {
+  if (!lockedTeamId) return '';
+  const team = FOOTBALL_OPPONENT.resolvePlayerTeam(lockedTeamId);
+  if (seasonTeamNoticeId === lockedTeamId) {
+    return `Another tab started this Season as ${team.displayName}. Tap again to play as ${team.displayName}.`;
+  }
+  return `Season team: ${team.displayName}. Finish this Season to choose a new team.`;
+}
+
+function selectPlayerTeamPreview(teamId) {
+  // A Season start in flight already captured its team; Quick intent stays
+  // independent of it.
+  const allowed = state.phase === PHASES.start
+    && !sessionInitialized
+    && !curriculumStartBusy
+    && FOOTBALL_OPPONENT.PLAYER_TEAM_ORDER.includes(teamId)
+    && !(selectedPlayMode === 'season'
+      && (seasonActionBusy || seasonLockedTeamId(FOOTBALL_SEASON.snapshot())));
+  if (allowed) {
+    selectedPlayerTeamId = teamId;
+    seasonTeamNoticeId = null;
+  }
+  // Rejected choices re-render too, so the radios never show unapplied intent.
+  if (state.phase === PHASES.start) renderStartMode();
+  return allowed;
 }
 
 function countLabel(count, singular, plural = `${singular}s`) {
@@ -605,7 +726,10 @@ function renderStartMode() {
   });
 
   if (selectedPlayMode === 'quick') {
+    renderTeamPicker(selectedPlayerTeamId, Boolean(sessionInitialized));
+    populateOverlay(start, { slots: { 'team-status': { hidden: true, text: '' } } });
     renderRivalPicker();
+    refreshStartPresentation();
     populateOverlay(start, {
       slots: { action: { text: 'Start Game', disabled: Boolean(sessionInitialized) } },
     });
@@ -613,11 +737,22 @@ function renderStartMode() {
   }
 
   const snapshot = FOOTBALL_SEASON.snapshot();
+  const lockedTeamId = seasonLockedTeamId(snapshot);
+  const seasonTeamId = lockedTeamId || selectedPlayerTeamId;
+  renderTeamPicker(seasonTeamId, Boolean(lockedTeamId) || seasonActionBusy || Boolean(sessionInitialized));
+  populateOverlay(start, {
+    slots: { 'team-status': { hidden: !lockedTeamId, text: seasonTeamStatusText(lockedTeamId) } },
+  });
   renderSeasonPanel(snapshot);
-  if (snapshot.nextRivalId) {
-    const match = FOOTBALL_OPPONENT.createMatch(snapshot.nextRivalId);
+  // A completed or damaged Season keeps its durable panel; the team preview
+  // shows the prospective first game a New or Fresh Season would start.
+  const previewRivalId = snapshot.nextRivalId
+    || (['new', 'fresh'].includes(snapshot.action) ? FOOTBALL_SEASON.SCHEDULE[0] : null);
+  if (previewRivalId) {
+    const match = FOOTBALL_OPPONENT.createMatch(previewRivalId, seasonTeamId);
     state = { ...state, match };
     applyMatchPresentation(match);
+    refreshStartPresentation();
     updatePromptContext(`SEASON / GAME ${snapshot.gameNumber || 1} OF 3 / NEXT ${match.opponent.shortName}`);
   }
   populateOverlay(start, {
@@ -628,6 +763,7 @@ function renderStartMode() {
 function selectPlayMode(mode) {
   if (state.phase !== PHASES.start || !['quick', 'season'].includes(mode)) return false;
   selectedPlayMode = mode;
+  seasonTeamNoticeId = null;
   renderStartMode();
   return true;
 }
@@ -805,7 +941,8 @@ function setDeskHeader(chip, kicker, actionCopy) {
 
 function applyDeskHeader(key) {
   const copy = DESK_HEADER_COPY[key];
-  setDeskHeader(copy.chip, copy.kicker, copy.action);
+  const kicker = state.match ? formatPossessionCopy(copy.kicker, state.match) : copy.kicker;
+  setDeskHeader(copy.chip, kicker, copy.action);
 }
 
 function touchdownContinueLabel(side) {
@@ -3843,7 +3980,8 @@ function handleInvalidCommittedPlay(error, activePlay) {
 function settleSeasonGameOnce() {
   if (!activeSeasonBinding || seasonSettlementPromise) return seasonSettlementPromise;
   const bindingMatches = activeSeasonBinding.gameId === state.gameId
-    && activeSeasonBinding.rivalId === state.match.opponent.id;
+    && activeSeasonBinding.rivalId === state.match.opponent.id
+    && activeSeasonBinding.playerId === state.match.player.id;
   if (!bindingMatches) {
     reportFootballDiagnostic('season-binding-mismatch', {
       message: 'The season game binding no longer matches the completed public match.',
@@ -4035,7 +4173,7 @@ function resetPlayerAnimations() {
 }
 
 // ── Tackle presentation (issue #169) ─────────────────────────────────────────
-// When a Duke ball carrier is brought down, a decorative defender in the
+// When the player's ball carrier is brought down, a decorative defender in the
 // visiting rival's colors runs in and wraps him at his final spot. It is
 // presentation only: it reads the committed play's public facts, draws no RNG,
 // and never touches game state. One generation-tagged record lives outside game
@@ -4240,16 +4378,12 @@ function clearConfetti(containerOrId) {
   }
 }
 
-// Duke stays visually stable; opponent scoring draws from the selected public
-// rival palette without changing the number or timing of visual-only bursts.
-const FW_PALETTES = {
-  offense: ['#ffd337', '#003087', '#7bafd4', '#ffffff'],
-};
-
+// Each side's scoring draws from its own public team palette without changing
+// the number or timing of visual-only bursts. Duke keeps its original colors.
 function fireworkPalette(side) {
   return side === POSSESSIONS.defense
     ? rivalForMatch(state.match).presentation.fireworks
-    : FW_PALETTES.offense;
+    : playerTeamForMatch(state.match).presentation.fireworks;
 }
 
 function spawnFireworks(containerId, side = POSSESSIONS.offense) {
@@ -4909,9 +5043,11 @@ function setGameUiInert(isInert) {
 }
 
 function overlayFocusableElements(overlay) {
+  // `:disabled` also excludes controls disabled through an ancestor fieldset,
+  // such as a saved Season's locked team group.
   const focusable = Array.from(overlay.querySelectorAll(
     'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
-  )).filter((element) => element.getClientRects().length > 0);
+  )).filter((element) => element.getClientRects().length > 0 && !element.matches(':disabled'));
   const namedRadioTargets = new Map();
   for (const element of focusable) {
     if (element.tagName !== 'INPUT' || element.type !== 'radio' || !element.name) continue;
@@ -5058,7 +5194,7 @@ function showStart() {
 function startQuickGame() {
   clearTimeout(advTimer);
   if (sessionInitialized) return false;
-  const match = FOOTBALL_OPPONENT.createMatch(selectedRivalId);
+  const match = FOOTBALL_OPPONENT.createMatch(selectedRivalId, selectedPlayerTeamId);
   activeSeasonBinding = null;
   seasonSettlementPromise = null;
   initGameSession();
@@ -5069,21 +5205,31 @@ function startQuickGame() {
   return true;
 }
 
-async function startSeasonGame() {
+async function startSeasonGame(requestedTeamId = selectedPlayerTeamId) {
   clearTimeout(advTimer);
   if (sessionInitialized || seasonActionBusy) return false;
-  seasonActionBusy = true;
-  renderStartMode();
   let snapshot = FOOTBALL_SEASON.snapshot();
   const requestedAction = snapshot.action;
+  // Capture the team once: the saved Season's own team, or the chosen team
+  // for a Season this tap creates.
+  const intendedTeamId = seasonLockedTeamId(snapshot) || requestedTeamId;
+  seasonActionBusy = true;
+  seasonTeamNoticeId = null;
+  renderStartMode();
   try {
-    if (snapshot.action === 'start') await FOOTBALL_SEASON.startSeason();
-    else if (snapshot.action === 'fresh') await FOOTBALL_SEASON.startFreshSeason();
-    else if (snapshot.action === 'new') await FOOTBALL_SEASON.startNewSeason();
+    if (snapshot.action === 'start') await FOOTBALL_SEASON.startSeason(intendedTeamId);
+    else if (snapshot.action === 'fresh') await FOOTBALL_SEASON.startFreshSeason(intendedTeamId);
+    else if (snapshot.action === 'new') await FOOTBALL_SEASON.startNewSeason(intendedTeamId);
     else if (snapshot.action === 'retry') await FOOTBALL_SEASON.retryPending();
     snapshot = FOOTBALL_SEASON.snapshot();
     if (requestedAction === 'retry') return false;
     if (snapshot.status !== 'active' || snapshot.saveState === 'pending' || !snapshot.nextRivalId) return false;
+    // Another tab may have created the durable Season first with a different
+    // team. Keep that Season, show its locked team, and wait for another tap.
+    if (snapshot.playerId !== intendedTeamId) {
+      seasonTeamNoticeId = snapshot.playerId;
+      return false;
+    }
     const start = timeLabElement('ov-start');
     if (sessionInitialized
       || selectedPlayMode !== 'season'
@@ -5091,10 +5237,10 @@ async function startSeasonGame() {
       || !start?.classList.contains('show')
       || timeLabIsOpen()) return false;
 
-    const match = FOOTBALL_OPPONENT.createMatch(snapshot.nextRivalId);
+    const match = FOOTBALL_OPPONENT.createMatch(snapshot.nextRivalId, snapshot.playerId);
     initGameSession();
     const binding = FOOTBALL_SEASON.bindNextGame(statsSession.gameId);
-    if (!binding || binding.rivalId !== match.opponent.id) {
+    if (!binding || binding.rivalId !== match.opponent.id || binding.playerId !== match.player.id) {
       clearGameSessionInitialization();
       return false;
     }
@@ -5116,10 +5262,11 @@ async function startGame() {
   curriculumStartBusy=true;
   try{
     const mode=selectedPlayMode;
+    const teamId=selectedPlayerTeamId;
     const progress=await CURRICULUM_UI.ask();
-    if(!progress||selectedPlayMode!==mode||state.phase!==PHASES.start||timeLabIsOpen())return false;
+    if(!progress||selectedPlayMode!==mode||selectedPlayerTeamId!==teamId||state.phase!==PHASES.start||timeLabIsOpen())return false;
     curriculumSession=progress;
-    return selectedPlayMode === 'season' ? startSeasonGame() : startQuickGame();
+    return selectedPlayMode === 'season' ? startSeasonGame(teamId) : startQuickGame();
   }finally{curriculumStartBusy=false;}
 }
 
@@ -5613,10 +5760,14 @@ function restart(preferredMode = null) {
   clearGameSessionInitialization();
   pendingStatsPlay = null;
   selectedRivalId = rematchRivalId;
+  // A Quick rematch keeps its team; a Season game's saved team never
+  // overwrites the independent Quick choice.
+  if (!returningFromSeason) selectedPlayerTeamId = state.match.player.id;
   selectedPlayMode = preferredMode || (returningFromSeason ? 'season' : 'quick');
+  seasonTeamNoticeId = null;
   activeSeasonBinding = null;
   seasonSettlementPromise = null;
-  state = createGameState(FOOTBALL_OPPONENT.createMatch(selectedRivalId));
+  state = createGameState(FOOTBALL_OPPONENT.createMatch(selectedRivalId, selectedPlayerTeamId));
   prevPlayerScore = -1;
   prevOpponentScore = -1;
   const view = captureLiveRender();
@@ -5826,10 +5977,15 @@ function activeContractsSnapshot() {
 function seedDriveStateForTest(overrides = {}) {
   if (!sessionInitialized) initGameSession(0x54c0de);
   clearTimeout(advTimer);
-  const match = Object.prototype.hasOwnProperty.call(overrides, 'match')
+  const has = key => Object.prototype.hasOwnProperty.call(overrides, key);
+  // A rival or team override keeps the other side of the live match.
+  const match = has('match')
     ? overrides.match
-    : Object.prototype.hasOwnProperty.call(overrides, 'rivalId')
-      ? FOOTBALL_OPPONENT.createMatch(overrides.rivalId)
+    : has('rivalId') || has('playerTeamId')
+      ? FOOTBALL_OPPONENT.createMatch(
+        has('rivalId') ? overrides.rivalId : state.match?.opponent.id ?? FOOTBALL_OPPONENT.DEFAULT_RIVAL_ID,
+        has('playerTeamId') ? overrides.playerTeamId : state.match?.player.id ?? FOOTBALL_OPPONENT.DEFAULT_PLAYER_TEAM_ID,
+      )
       : state.match || FOOTBALL_OPPONENT.createMatch();
   const possession = overrides.possession === POSSESSIONS.defense ? POSSESSIONS.defense : POSSESSIONS.offense;
   const direction = overrides.direction ?? directionFor(possession);
@@ -5962,16 +6118,18 @@ window.__footballTest = {
     return activeSeasonBinding ? FOOTBALL_DOMAIN.deepFreeze({
       gameNumber: activeSeasonBinding.gameNumber,
       rivalId: activeSeasonBinding.rivalId,
+      playerId: activeSeasonBinding.playerId,
       gameId: activeSeasonBinding.gameId,
     }) : null;
   },
-  createMatch(rivalId) {
-    return arguments.length === 0
-      ? FOOTBALL_OPPONENT.createMatch()
-      : FOOTBALL_OPPONENT.createMatch(rivalId);
+  createMatch(...args) {
+    return FOOTBALL_OPPONENT.createMatch(...args);
   },
   selectedRivalId() { return selectedRivalId; },
   selectRival(rivalId) { return selectRivalPreview(rivalId); },
+  playerTeams() { return FOOTBALL_OPPONENT.PLAYER_TEAMS; },
+  selectedPlayerTeamId() { return selectedPlayerTeamId; },
+  selectPlayerTeam(teamId) { return selectPlayerTeamPreview(teamId); },
   opponentSnapshot() { return FOOTBALL_LEARNING.snapshot(state.opponentSnapshot); },
   getOpponentTendency(overrides = {}, profile = rivalForMatch(state.match).profileKey) {
     return getOpponentTendency(overrides, profile);
@@ -6059,18 +6217,21 @@ function applyBootMode() {
   const params = new URLSearchParams(window.location.search);
   const boot = params.get('boot');
   const rivalId = params.get('rival');
-  if (rivalId !== null) {
+  const teamId = params.get('team');
+  if (rivalId !== null || teamId !== null) {
     selectedPlayMode = 'quick';
     let match;
     try {
-      match = FOOTBALL_OPPONENT.createMatch(rivalId);
+      match = FOOTBALL_OPPONENT.createMatch(rivalId ?? selectedRivalId, teamId ?? selectedPlayerTeamId);
     } catch (error) {
       if (!(error instanceof RangeError)) throw error;
       selectedRivalId = FOOTBALL_OPPONENT.DEFAULT_RIVAL_ID;
+      selectedPlayerTeamId = FOOTBALL_OPPONENT.DEFAULT_PLAYER_TEAM_ID;
       state = createGameState();
       return false;
     }
     selectedRivalId = match.opponent.id;
+    selectedPlayerTeamId = match.player.id;
     state = createGameState(match);
   }
   if (boot === 'offense-call') {
@@ -6080,7 +6241,7 @@ function applyBootMode() {
   }
   if (boot === 'defense-call') {
     selectedPlayMode = 'quick';
-    const match = FOOTBALL_OPPONENT.createMatch(selectedRivalId);
+    const match = FOOTBALL_OPPONENT.createMatch(selectedRivalId, selectedPlayerTeamId);
     initGameSession();
     state = createGameState(match);
     applyMatchPresentation(match);

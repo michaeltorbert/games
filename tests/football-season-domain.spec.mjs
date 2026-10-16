@@ -6,6 +6,9 @@ import vm from 'node:vm';
 const source = await readFile(new URL('../football/season.js', import.meta.url), 'utf8');
 const STORAGE_KEY = 'footballMathSeason:v1';
 const SCHEDULE = ['unc', 'nc-state', 'wake-forest'];
+const PLAYER_TEAMS = ['duke', 'virginia-tech', 'texas', 'georgia-tech'];
+const LEGACY_FORMAT_ID = 'three-rival-schedule-v1';
+const TEAM_FORMAT_ID = 'three-rival-team-schedule-v2';
 
 function makeStorage(seed = null, options = {}) {
   const values = new Map();
@@ -93,6 +96,8 @@ function loadSeason({
   let randomCalls = 0;
   const opponent = Object.freeze({
     RIVAL_ORDER: Object.freeze([...SCHEDULE]),
+    PLAYER_TEAM_ORDER: Object.freeze([...PLAYER_TEAMS]),
+    DEFAULT_PLAYER_TEAM_ID: 'duke',
     resolveRival(rivalId) {
       if (!SCHEDULE.includes(rivalId)) throw new RangeError('Unknown rival');
       return Object.freeze({ id: rivalId });
@@ -155,10 +160,25 @@ function rawStore(results = [], seasonId = 'season-existing') {
   });
 }
 
+function rawTeamStore(playerId, results = [], seasonId = 'team-season-existing', overrides = {}) {
+  return JSON.stringify({
+    schemaVersion: 2,
+    currentSeason: {
+      seasonId,
+      formatId: TEAM_FORMAT_ID,
+      playerId,
+      createdAt: '2026-07-19T12:00:00.000Z',
+      schedule: [...SCHEDULE],
+      results,
+      ...overrides,
+    },
+  });
+}
+
 test('missing storage reads without writing and creates the exact three-game schema under the dedicated lock', async () => {
   const tab = loadSeason();
   assert.deepEqual(plain(tab.season.snapshot()), {
-    status: 'missing', saveState: 'saved', gamesPlayed: 0, gameNumber: 1,
+    status: 'missing', saveState: 'saved', playerId: null, gamesPlayed: 0, gameNumber: 1,
     schedule: [
       { gameNumber: 1, rivalId: 'unc', status: 'next' },
       { gameNumber: 2, rivalId: 'nc-state', status: 'open' },
@@ -179,8 +199,247 @@ test('missing storage reads without writing and creates the exact three-game sch
   assert.deepEqual(stored.currentSeason.schedule, SCHEDULE);
   assert.deepEqual(stored.currentSeason.results, []);
   assert.equal(stored.currentSeason.seasonId, 'season-uuid-1');
+  // An omitted team creates the default Duke season in the new team format.
+  assert.equal(stored.schemaVersion, 2);
+  assert.equal(stored.currentSeason.formatId, TEAM_FORMAT_ID);
+  assert.equal(stored.currentSeason.playerId, 'duke');
+  assert.deepEqual(Object.keys(stored.currentSeason), [
+    'seasonId', 'formatId', 'playerId', 'createdAt', 'schedule', 'results',
+  ]);
   assert.equal(tab.season.bindNextGame('game-live-1').rivalId, 'unc');
   assert.equal(tab.randomCalls(), 0);
+});
+
+test('a legacy schema-1 Duke season resumes, binds Duke, and appends results without migrating', async () => {
+  const legacyRaw = rawStore([rawResult(1, 7, 3, 'legacy-game-1')], 'legacy-season');
+  const storage = makeStorage(legacyRaw);
+  const tab = loadSeason({ storage });
+  const view = plain(tab.season.snapshot());
+  assert.equal(view.status, 'active');
+  assert.equal(view.playerId, 'duke');
+  assert.equal(view.action, 'play');
+  assert.equal(storage.raw(), legacyRaw, 'reads never rewrite legacy bytes');
+  assert.equal(storage.setCount(), 0);
+
+  const binding = tab.season.bindNextGame('legacy-game-2');
+  assert.deepEqual(plain(binding), {
+    seasonId: 'legacy-season', gameNumber: 2, rivalId: 'nc-state', playerId: 'duke', gameId: 'legacy-game-2',
+  });
+  assert.equal(storage.raw(), legacyRaw);
+  assert.equal((await tab.season.settleGame(binding, { playerScore: 0, opponentScore: 10 })).status, 'saved');
+  assert.equal(storage.setCount(), 1);
+
+  const before = JSON.parse(legacyRaw);
+  const after = JSON.parse(storage.raw());
+  assert.equal(after.schemaVersion, 1, 'a legacy season keeps schema 1 on result appends');
+  assert.deepEqual(Object.keys(after.currentSeason), Object.keys(before.currentSeason));
+  for (const key of ['seasonId', 'formatId', 'playerId', 'createdAt', 'schedule']) {
+    assert.deepEqual(after.currentSeason[key], before.currentSeason[key], `${key} is preserved`);
+  }
+  assert.equal(after.currentSeason.formatId, LEGACY_FORMAT_ID);
+  assert.deepEqual(after.currentSeason.results[0], before.currentSeason.results[0]);
+  assert.deepEqual(Object.keys(after.currentSeason.results[1]), Object.keys(before.currentSeason.results[0]));
+  assert.equal(tab.season.hasExactSavedResult(binding, { playerScore: 0, opponentScore: 10 }), true);
+  assert.equal(tab.season.hasExactSavedResult({ ...plain(binding), playerId: 'texas' }, {
+    playerScore: 0, opponentScore: 10,
+  }), false);
+  assert.equal(tab.randomCalls(), 0);
+});
+
+test('every playable team creates, binds, completes, and replaces a schema-2 season with its locked team', async () => {
+  for (const playerId of PLAYER_TEAMS) {
+    const tab = loadSeason({ uuidPrefix: playerId });
+    assert.equal((await tab.season.startSeason(playerId)).status, 'saved');
+    const created = JSON.parse(tab.storage.raw());
+    assert.equal(created.schemaVersion, 2);
+    assert.equal(created.currentSeason.formatId, TEAM_FORMAT_ID);
+    assert.equal(created.currentSeason.playerId, playerId);
+    assert.equal(tab.season.snapshot().playerId, playerId);
+    const scores = [
+      { playerScore: 14, opponentScore: 7 },
+      { playerScore: 3, opponentScore: 10 },
+      { playerScore: 6, opponentScore: 6 },
+    ];
+    for (let index = 0; index < scores.length; index++) {
+      const binding = tab.season.bindNextGame(`${playerId}-game-${index + 1}`);
+      assert.equal(binding.playerId, playerId);
+      assert.equal((await tab.season.settleGame(binding, scores[index])).status, 'saved');
+    }
+    const completed = JSON.parse(tab.storage.raw());
+    assert.equal(completed.schemaVersion, 2);
+    assert.equal(completed.currentSeason.playerId, playerId);
+    assert.deepEqual(plain(tab.season.snapshot()).record, { wins: 1, losses: 1, ties: 1 });
+    assert.equal(tab.season.snapshot().action, 'new');
+
+    const nextTeam = PLAYER_TEAMS[(PLAYER_TEAMS.indexOf(playerId) + 1) % PLAYER_TEAMS.length];
+    assert.equal((await tab.season.startNewSeason(nextTeam)).status, 'saved');
+    const replaced = JSON.parse(tab.storage.raw());
+    assert.equal(replaced.schemaVersion, 2);
+    assert.equal(replaced.currentSeason.playerId, nextTeam);
+    assert.deepEqual(replaced.currentSeason.results, []);
+    assert.notEqual(replaced.currentSeason.seasonId, completed.currentSeason.seasonId);
+    assert.equal(tab.randomCalls(), 0);
+  }
+
+  const legacyComplete = rawStore([rawResult(1, 7, 0), rawResult(2, 0, 7), rawResult(3, 3, 3)], 'legacy-complete');
+  const legacyTab = loadSeason({ seed: legacyComplete });
+  assert.equal((await legacyTab.season.startNewSeason('texas')).status, 'saved');
+  const fromLegacy = JSON.parse(legacyTab.storage.raw());
+  assert.equal(fromLegacy.schemaVersion, 2);
+  assert.equal(fromLegacy.currentSeason.playerId, 'texas');
+
+  const malformed = '{"schemaVersion":2,"currentSeason":{"broken":true}}';
+  const freshTab = loadSeason({ seed: malformed });
+  assert.equal(freshTab.season.snapshot().status, 'corrupt');
+  assert.equal((await freshTab.season.startFreshSeason('georgia-tech')).status, 'saved');
+  assert.equal(JSON.parse(freshTab.storage.raw()).currentSeason.playerId, 'georgia-tech');
+});
+
+test('team requests outside the catalog are rejected before any pending mutation or write', async () => {
+  for (const invalid of [undefined, null, '', 'Duke', 'unc', 'wake-forest', 'virginia_tech', 7]) {
+    const tab = loadSeason();
+    assert.equal((await tab.season.startSeason(invalid)).status, 'invalid');
+    assert.equal(tab.season.pendingKind(), null);
+    assert.equal(tab.storage.setCount(), 0);
+    assert.equal(tab.locks.requests.length, 0);
+
+    const malformed = '{"schemaVersion":1,"currentSeason":{"broken":true}}';
+    const freshTab = loadSeason({ seed: malformed });
+    assert.equal((await freshTab.season.startFreshSeason(invalid)).status, 'invalid');
+    assert.equal(freshTab.storage.raw(), malformed);
+
+    const complete = rawStore([rawResult(1, 7, 0), rawResult(2, 0, 7), rawResult(3, 3, 3)]);
+    const newTab = loadSeason({ seed: complete });
+    assert.equal((await newTab.season.startNewSeason(invalid)).status, 'invalid');
+    assert.equal(newTab.storage.raw(), complete);
+    assert.equal(newTab.storage.setCount(), 0);
+  }
+});
+
+test('each schema accepts only its own format and teams while reads stay byte-for-byte read-only', async () => {
+  const supported = [
+    rawStore(),
+    ...PLAYER_TEAMS.map(playerId => rawTeamStore(playerId, [rawResult(1, 7, 0)])),
+  ];
+  for (const raw of supported) {
+    const tab = loadSeason({ seed: raw });
+    assert.equal(tab.season.snapshot().status, 'active');
+    assert.equal(tab.season.snapshot().playerId, JSON.parse(raw).currentSeason.playerId);
+    assert.equal(tab.storage.raw(), raw);
+    assert.equal(tab.storage.setCount(), 0);
+  }
+
+  const legacyTexas = JSON.parse(rawStore());
+  legacyTexas.currentSeason.playerId = 'texas';
+  const legacyWithTeamFormat = JSON.parse(rawStore());
+  legacyWithTeamFormat.currentSeason.formatId = TEAM_FORMAT_ID;
+  const malformed = [
+    JSON.stringify(legacyTexas),
+    JSON.stringify(legacyWithTeamFormat),
+    rawTeamStore('unc'),
+    rawTeamStore('Duke'),
+    rawTeamStore('texas', [], 'team-season', { formatId: LEGACY_FORMAT_ID }),
+    rawTeamStore('texas', [], 'team-season', { extra: true }),
+    rawTeamStore('texas', [rawResult(2, 7, 0)]),
+    JSON.stringify({ ...JSON.parse(rawTeamStore('texas')), schemaVersion: '2' }),
+  ];
+  for (const raw of malformed) {
+    const tab = loadSeason({ seed: raw });
+    assert.equal(tab.season.snapshot().status, 'corrupt', raw);
+    assert.equal(tab.season.snapshot().playerId, null);
+    assert.equal(tab.season.bindNextGame('must-not-bind'), null);
+    assert.equal((await tab.season.startSeason('texas')).status, 'malformed');
+    assert.equal(tab.storage.raw(), raw);
+    assert.equal(tab.storage.setCount(), 0);
+  }
+});
+
+test('schema 2 is future to a schema-1 reader while unsupported schema 3 stays untouched here', async () => {
+  const tab = loadSeason();
+  assert.equal((await tab.season.startSeason('virginia-tech')).status, 'saved');
+  const written = JSON.parse(tab.storage.raw());
+  // The base-commit reader classified every finite schema above 1 as future,
+  // preserving it byte-for-byte rather than offering a destructive fresh start.
+  assert.ok(Number.isFinite(written.schemaVersion) && written.schemaVersion > 1);
+  assert.equal(tab.season.SCHEMA_VERSION, 2);
+  assert.equal(tab.season.LEGACY_SCHEMA_VERSION, 1);
+
+  const unsupported = '{\n  "schemaVersion": 3,\n  "currentSeason": { "playerId": "texas" }\n}\n';
+  const futureTab = loadSeason({ seed: unsupported });
+  assert.equal(futureTab.season.snapshot().status, 'future');
+  assert.equal(futureTab.season.snapshot().playerId, null);
+  assert.equal((await futureTab.season.startSeason('texas')).status, 'future');
+  assert.equal((await futureTab.season.startFreshSeason('texas')).status, 'future');
+  assert.equal((await futureTab.season.startNewSeason('texas')).status, 'future');
+  assert.equal(futureTab.season.bindNextGame('must-not-bind'), null);
+  assert.equal(futureTab.storage.raw(), unsupported);
+  assert.equal(futureTab.storage.setCount(), 0);
+});
+
+test('bindings carry the durable team and a mismatched or missing team never settles or attests', async () => {
+  const raw = rawTeamStore('georgia-tech', [], 'team-binding-season');
+  const storage = makeStorage(raw);
+  const tab = loadSeason({ storage });
+  const binding = plain(tab.season.bindNextGame('team-binding-game'));
+  assert.deepEqual(binding, {
+    seasonId: 'team-binding-season', gameNumber: 1, rivalId: 'unc', playerId: 'georgia-tech', gameId: 'team-binding-game',
+  });
+  const scores = { playerScore: 10, opponentScore: 3 };
+  assert.equal((await tab.season.settleGame({ ...binding, playerId: 'texas' }, scores)).status, 'conflict');
+  assert.equal(storage.raw(), raw);
+  assert.equal(storage.setCount(), 0);
+  const { playerId: omitted, ...withoutTeam } = binding;
+  assert.equal(omitted, 'georgia-tech');
+  assert.equal((await tab.season.settleGame(withoutTeam, scores)).status, 'invalid');
+  assert.equal((await tab.season.settleGame({ ...binding, playerId: 'unc' }, scores)).status, 'invalid');
+  assert.equal(storage.raw(), raw);
+  assert.equal(storage.setCount(), 0);
+
+  assert.equal((await tab.season.settleGame(binding, scores)).status, 'saved');
+  assert.equal(tab.season.hasExactSavedResult(binding, scores), true);
+  assert.equal(tab.season.hasExactSavedResult({ ...binding, playerId: 'duke' }, scores), false);
+  assert.equal(tab.season.hasExactSavedResult(withoutTeam, scores), false);
+  const stored = JSON.parse(storage.raw());
+  assert.equal(stored.currentSeason.playerId, 'georgia-tech');
+  assert.deepEqual(Object.keys(stored.currentSeason.results[0]), [
+    'gameNumber', 'gameId', 'rivalId', 'playerScore', 'opponentScore', 'completedAt',
+  ]);
+});
+
+test('pending team mutations expose only their public team while concurrent different-team creation keeps the first writer', async () => {
+  const storage = makeStorage();
+  const locks = makeLockManager({ autoGrant: false });
+  const texasTab = loadSeason({ storage, locks, uuidPrefix: 'texas-tab' });
+  const techTab = loadSeason({ storage, locks, uuidPrefix: 'tech-tab' });
+  const texasCreate = texasTab.season.startSeason('texas');
+  const techCreate = techTab.season.startSeason('virginia-tech');
+  await Promise.resolve();
+  const pendingView = plain(texasTab.season.snapshot());
+  assert.equal(pendingView.saveState, 'pending');
+  assert.equal(pendingView.playerId, 'texas');
+  assert.ok(!JSON.stringify(pendingView).includes('season-texas-tab'));
+  assert.equal(techTab.season.snapshot().playerId, 'virginia-tech');
+
+  await locks.grantAll();
+  assert.equal((await texasCreate).status, 'saved');
+  assert.equal((await techCreate).status, 'ready');
+  assert.equal(storage.setCount(), 1);
+  const stored = JSON.parse(storage.raw()).currentSeason;
+  assert.equal(stored.playerId, 'texas');
+  assert.equal(stored.seasonId, 'season-texas-tab-1');
+  // The losing tab reports the durable winner's team, never its own request.
+  assert.equal(techTab.season.snapshot().playerId, 'texas');
+  assert.equal(techTab.season.snapshot().action, 'play');
+  assert.equal(techTab.season.bindNextGame('tech-tab-game').playerId, 'texas');
+
+  const blocked = makeStorage(rawTeamStore('virginia-tech'), { blockWrite: true });
+  const blockedTab = loadSeason({ storage: blocked });
+  const binding = blockedTab.season.bindNextGame('pending-team-game');
+  assert.equal((await blockedTab.season.settleGame(binding, { playerScore: 8, opponentScore: 7 })).status, 'pending');
+  assert.equal(blockedTab.season.snapshot().playerId, 'virginia-tech');
+  assert.equal((await blockedTab.season.settleGame({ ...plain(binding), playerId: 'texas' }, {
+    playerScore: 8, opponentScore: 7,
+  })).status, 'blocked');
 });
 
 test('exact saved-result attestation is read-only and rejects every nonmatching durable state', () => {
@@ -195,10 +454,16 @@ test('exact saved-result attestation is read-only and rejects every nonmatching 
     seasonId: 'exact-season',
     gameNumber: 3,
     rivalId: 'wake-forest',
+    playerId: 'duke',
     gameId: 'exact-game-3',
   };
   const exactScores = { playerScore: 3, opponentScore: 3 };
   assert.equal(completed.season.hasExactSavedResult(exactBinding, exactScores), true);
+  const { playerId: _legacyTeam, ...bindingWithoutTeam } = exactBinding;
+  assert.equal(completed.season.hasExactSavedResult(bindingWithoutTeam, exactScores), false);
+  assert.equal(completed.season.hasExactSavedResult({
+    ...exactBinding, playerId: 'virginia-tech',
+  }, exactScores), false);
   assert.equal(completed.season.hasExactSavedResult({
     ...exactBinding, gameId: 'different-game',
   }, exactScores), false);

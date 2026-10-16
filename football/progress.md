@@ -1603,3 +1603,71 @@ Supersedes the preview entry above, including its "unverified" and "approval pen
   - current exact-head pixel evidence;
   - a fresh independent review of the exact release head;
   - the PR, merge, Pages deployment and live version verification.
+
+## 2026-10-15 — Issue #173 choose your team (unreleased candidate; appearance approval pending)
+
+Candidate only, on base `412d976`. There is no version bump, cache-key, registry or release change; Football stays at 1.34.8. The author had no shell and ran nothing; every check below is pending for the coordinator.
+
+- **Teams:** `opponent.js` adds a frozen four-team catalog (Duke, Virginia Tech, Texas, Georgia Tech) with public identities and presentation palettes. Duke keeps its exact original literals and stays the default. `createMatch()` and `createMatch(rivalId)` are unchanged; an explicit second argument must be a catalog team ID. The match shape, rivals, profiles, decision tables and RNG streams are unchanged.
+- **Start screen:** a "Choose your team" native radio group sits above the mode picker (four across on tablets, 2×2 on phones). Picking a team updates the preview, scorebug, end zone and uniform immediately and draws no RNG. The app chrome stays navy and gold. Team colors appear only on the player's scorebug, end-zone stripe, uniform, math token and fireworks; the tackler keeps the rival's colors and its white trim. Non-Duke teams show the neutral "Game Day" chip. At 761–900 px tall the start card uses a one-line title and tighter spacing so the added row fits.
+- **Copy:** `copy.js` is unchanged. The desk kicker now passes through the existing `formatPossessionCopy`, so "Set the Duke offense." is unchanged for Duke and names the chosen team otherwise.
+- **Season:** schema-1 Duke seasons are read as before and never migrated; their result appends stay schema 1. New, fresh and next seasons are written as schema 2 (`three-rival-team-schedule-v2`) with the chosen team, which older clients treat as a future schema. The binding and `snapshot()` carry the public `playerId`; settlement and attestation reject a mismatched team. An active or pending Season locks its team ("Season team: …"). The Quick Game choice is kept separately and never changes the Season. If another tab creates a Season with a different team first, the start stops, shows the saved team with a notice, and waits for another tap.
+- **Async intent:** the curriculum start rejects a team changed while it waited. A Season start captures its team before awaiting the save and checks the durable team before binding.
+- **Boot:** `?team=<id>` mirrors `?rival=`; an invalid value falls back to Duke and suppresses boot modes.
+- **Tests (extended, not new files):** Season domain (legacy append, schema 2 for every team, invalid requests, strict per-schema validation, unsupported schema 3, binding team checks, different-team create race); Season browser (locked legacy team with independent Quick choice, schema-2 creation and reload lock, the cross-tab race through the real Web Lock, curriculum-time rejection); rivals (catalog and measured contrast, tap picker on all six targets, Texas identity paths, invalid `?team=`, cross-team determinism); release matrix (a tap-driven Virginia Tech vs Wake Forest full flow on all six targets with supplemental captures in each test's output directory, outside the canonical screenshot set). The release fixture binding gained `playerId: 'duke'`.
+- **Review 1 corrections (candidate 1 was NOT_READY):**
+  - R1: the Texas copy test builds the score-total question from an eligible 3–4 score; the two-digit score keeps the ones-place question.
+  - R2 (scope expanded by the coordinator): the overlay-contract markup and IDs include the team fieldset, and its fixture binding carries `playerId`. The accessibility Tab cycle includes the team group, and a new case shows that a locked Season's disabled group is skipped.
+  - R3: the Virginia Tech matrix check asserts the presented start choice, matchup, ribbon and ball-on directly. It scans modal copy minus only the offered school names, and still rejects stale Duke text on gameplay and visible overlays.
+  - R4: a start-screen team or rival choice refreshes the background scorebug, ribbon, ball-on and possession labels (no game, stats or RNG). In a completed or damaged Season, an enabled team choice previews the prospective first scheduled rival while the durable record and panel stay unchanged.
+  - A Season test now holds the real curriculum prompt (mute-only fixture) and shows that a team changed behind it does not start that game.
+- **Review 2 corrections:**
+  - R5 (accessibility defect): the overlay focus trap now drops controls that are effectively `:disabled`, including the team radios inside the locked Season fieldset. Before, a disabled team radio could become the trap's first stop. The locked-Season Tab and Shift+Tab wrap test is unchanged.
+  - R2: the start overlay's exact scoped-slot inventory lists `team-picker`, `team-options` and `team-status` in DOM order.
+- **Review 3 correction R6 (layout fit; CSS only):** the final WebKit matrix showed two long-name states past the fold. Both failed runs are retained.
+  - iPad 11 portrait, Virginia Tech vs Wake Forest defense question: the answer row reached 1215 px against 1181. The 10ch title and 12ch question wrapped into many lines, and the answer rows stretched to match.
+    - Fix: in the 768–1079 px portrait tier only, the question and feedback title and prompt drop their ch caps and use compact sizes (title `clamp(42px, 5vw, 54px)`, prompt `clamp(26px, 3vw, 32px)`). This mirrors the existing coarse-landscape tier.
+  - iPhone 15 punt feedback: the answered row ended at 854.1 px against 853.
+    - Fix: at 480 px wide and below, answered choices in the feedback phase are 72 px tall instead of 90. That is still above 44, with no copy hidden or truncated.
+  - Nothing else changed: no copy, fixture, tolerance, retry or deadline changes, and landscape and unrelated screens are untouched.
+  - Pending: targeted six-view runs in both engines, then the full gates and a fresh review.
+- **Picker appearance — user selected option C (letter badge):** the user rejected the split two-color swatch. From three rendered mockups (`output/issue-173/picker-mockups/`), the user chose C.
+  - The hidden decorative swatch is now a `.team-badge`: plain-text initials derived from the display name (D, VT, T, GT), white on the team's primary color, with a faint ring.
+  - Sizes match the approved mockup: 30×24 px badge with 13 px text (28×22 px with 12 px text on phones), and badge columns of 30 px (28 px on phones).
+  - The badge stays `aria-hidden`, so the radio's accessible name is still exactly the full school name. Names keep their size and wrap naturally on phones.
+  - Unchanged: gold selection, focus, the locked-Season styling, 44 px+ cards, the grids, the catalog, Season data and every other screen.
+  - The rivals picker test now checks the exact accessible names, badge text, hidden state and colors, and that the name and badge sit inside each card.
+  - Pending: focused and full checks in both engines, before/after pixels, a recording and a fresh review.
+  - Badge-fit test correction (production unchanged): the full Chromium gate on `4e60fbe` failed the new `scrollHeight - clientHeight ≤ 1` check for Duke on both landscape iPads, with 2 px received. The retained screenshots show every name complete.
+    - Cause, inferred from the source and pixels (the live probe is pending): the name has `line-height: 1` and visible overflow, so the font's content area legitimately exceeds the line box. That proxy measures the extension, not clipping.
+    - Fix: the check is replaced by a rendered-text proof. Each name's DOM Range line boxes must sit inside the card, no clipping ancestor may cut them, and names must wrap to one or two lines.
+    - The failed run is retained. Targeted rivals runs, new full gates and a fresh review are pending.
+- **Network question (record only):** one observer run on the unchanged candidate passed all 108 cases with 42 strictly parsed worker NetLogs. `ERR_SOCKET_NOT_CONNECTED` did not recur, so the original endpoint and cause remain unknown. No product network change was made.
+- Pending: every focused suite, both full release matrices, pixel comparison against `output/issue-173/before/`, a playable preview and recording, a fresh independent review, and the user's appearance approval. This would be Playwright engine emulation, not native Safari, Simulator or device evidence.
+
+## 2026-10-15 — Football v1.34.9 (#173 choose your team, #176 route-probe clock, superseding release entry)
+
+Supersedes the #173 candidate entry above, including its "unreleased" and "approval pending" notes. This is release preparation, by a native Claude (Opus 5.5) author separate from both planning seats, from HEAD `a78ab19` on exact base `412d976` (Football 1.34.8). The author had no shell and ran nothing. Nothing below claims a gate, review, merge or live result.
+
+### #173 — choose your team
+- Adds the behavior described in the entry above: four playable teams (Duke, Virginia Tech, Texas, Georgia Tech), Duke as the default, a team fixed per schema-2 Season, legacy schema-1 Duke Seasons unchanged, and the Quick Game choice kept apart from the Season.
+- The picker is the user-selected option C: plain D/VT/T/GT letter badges on each team's primary color. Full school names are the accessible names, and the cards are at least 44 px. The badges, frame colors, names and every other #173 behavior are unchanged since `a78ab19`.
+
+### #176 — route-probe clock (test fixture only)
+- The failed Chromium gate run `20261016T003117Z-chromium-c144ee` (file 22) threw `Cannot fast-forward to the past` from the old `pauseRouteClock`. That helper sampled browser `Date.now()` from a running clock and then called `pauseAt(sample + 100)`. In pinned Playwright 1.56.1 this throws whenever more than about 100 ms of browser time passes between the sample and the pause. The gap in that run was never measured, so it is not claimed as the sole cause.
+- New `tests/football-route-clock.mjs`: on a blank page, before Football loads, it calls `install(T)`, `setFixedTime(T)`, `pauseAt(T)` and then `setSystemTime(T)`. Fixed time makes the pause consume nothing however late it lands. Restoring system time lets `runFor()` advance Date again. Navigation replay of these public calls is observed 1.56.1 behavior, not a documented contract.
+- Both live-route probes now stay paused from boot. The sampled +100 ms helper, its three calls and the mid-test `resume()` are removed; no flush or wider margin replaces them. All stale, canceled, repeated, changed-source and already-presented assertions are unchanged, as are the 1399 ms no-effect and 1 ms single-effect boundaries and the ID/RNG/learning/stats equality checks.
+- A new primary-only regression delivers `pauseAt` 250 ms late on the host. It checks that Date stays at the epoch through navigation, a real tap and a host delay, then advances by exactly the `runFor` ticks.
+- Football application code is unchanged apart from the version metadata.
+- Not fixed here: three other specs use the same sampled-pause pattern. They are tracked in [#177](https://github.com/michaeltorbert/games/issues/177).
+
+### Release metadata and required checks
+- `GAME_VERSION`, all 18 Football asset query strings, the Football registry descriptor and `version.json` are `1.34.9`. Kayak 1.1.38, Prague 1.4.0 and Place by Place 1.9.0 are unchanged.
+- The results of the checks, review, merge and live verification are recorded outside this tracked file, in the `output/issue-176` completion evidence. This entry does not claim that any of them passed. Every failure is kept. The release requires:
+  - the #176 negative, positive and sensitivity controls in both engines;
+  - the focused context spec in both engines;
+  - the registry gate at base `412d976` with target `football`;
+  - `test:football`, and both complete stock release matrices;
+  - a fresh independent review covering function, accessibility and current before/after pixels against approved option C;
+  - the merge, the Pages deployment for the merge SHA, and live 1.34.9 asset and four-team checks.
+- All results would be Playwright engine emulation, not native Safari, Simulator or device evidence.

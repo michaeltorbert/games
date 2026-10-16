@@ -38,6 +38,14 @@ async function shot(page, testInfo, label) {
   await testInfo.attach(`${label}.png`, { path: artifactPath, contentType: 'image/png' });
 }
 
+// Supplemental captures stay in the test's own output directory, outside the
+// canonical release-matrix screenshot set the strict verifier checks.
+async function supplementalShot(page, testInfo, label) {
+  const artifactPath = testInfo.outputPath(`${label}.png`);
+  await page.screenshot({ path: artifactPath });
+  await testInfo.attach(`${label}.png`, { path: artifactPath, contentType: 'image/png' });
+}
+
 async function renderedState(page) {
   return page.evaluate(() => {
     const contracts = window.__footballTest.activeContracts();
@@ -695,6 +703,261 @@ test('fourth-down and special-team states preserve decision and normal-call cont
   await assertPhaseAndShot(page, testInfo, 'call', '24-defense-fourth-down-go-call');
 });
 
+async function expectVirginiaTechIdentity(page, label) {
+  const identity = await page.evaluate(() => ({
+    match: state.match.player.id,
+    rendered: JSON.parse(render_game_to_text()).match.player.id,
+    root: document.documentElement.dataset.player,
+    scorebug: document.getElementById('s-player-name').textContent,
+    endZone: document.getElementById('player-end-zone').textContent,
+    jersey: getComputedStyle(document.querySelector('#player .pl-jersey')).fill,
+    // Background game copy (refreshed on the start screen too) plus the visible
+    // modal's copy. Only the start picker's offered school names are excluded.
+    text: ['scorebug', 'field-stage', 'ui-desk']
+      .map(id => document.getElementById(id).textContent)
+      .concat((() => {
+        const overlay = document.querySelector('.overlay.show');
+        if (!overlay) return '';
+        const parts = [];
+        const walker = document.createTreeWalker(overlay, NodeFilter.SHOW_TEXT);
+        while (walker.nextNode()) {
+          if (!walker.currentNode.parentElement.closest('#team-options')) parts.push(walker.currentNode.textContent);
+        }
+        return parts.join(' ');
+      })())
+      .join('\n'),
+    start: document.getElementById('ov-start').classList.contains('show') ? {
+      checked: document.querySelector('input[name="player-team"]:checked')?.value || null,
+      matchup: document.getElementById('rival-preview-matchup').textContent,
+      ribbon: document.getElementById('status-ribbon-text').textContent,
+      ballOn: document.getElementById('s-yd').textContent,
+      possession: document.getElementById('stage-possession').textContent,
+    } : null,
+  }));
+  const { text, start, ...facts } = identity;
+  if (start) {
+    expect(start, `${label}: presented start choice`).toMatchObject({
+      checked: 'virginia-tech',
+      matchup: 'VA TECH VS WAKE FOREST',
+      ribbon: 'VA TECH BALL - OFFENSE',
+      possession: 'Virginia Tech on offense',
+    });
+    expect(start.ballOn, `${label}: provisional ball-on label`).toContain('VA TECH');
+  }
+  expect(facts, `${label}: player identity`).toEqual({
+    match: 'virginia-tech',
+    rendered: 'virginia-tech',
+    root: 'virginia-tech',
+    scorebug: 'VA TECH',
+    endZone: 'VA TECH',
+    jersey: 'rgb(134, 31, 65)',
+  });
+  expect(text, `${label}: stale Duke copy`).not.toMatch(/\bDUKE\b|\bDuke\b/);
+}
+
+async function teamPhase(page, testInfo, phase, label) {
+  await expect(page.locator('#ui-desk')).toHaveAttribute('data-phase', phase);
+  expect((await renderedState(page)).mode, `${label}: rendered phase`).toBe(phase);
+  const metrics = await assertViewport(page, label);
+  await expectVirginiaTechIdentity(page, label);
+  await supplementalShot(page, testInfo, label);
+  return metrics;
+}
+
+async function teamOverlay(page, testInfo, id, phase, label) {
+  const overlay = page.locator(`#${id}`);
+  await expect(overlay).toHaveClass(/show/);
+  await expect(overlay).toHaveAttribute('aria-hidden', 'false');
+  await expect(overlay.locator('.ov-btn:visible').first()).toBeVisible();
+  expect((await renderedState(page)).mode, `${label}: rendered phase`).toBe(phase);
+  if (id === 'ov-quarter' || id === 'ov-halftime') await page.waitForTimeout(950);
+  await assertVisibleOverlayCardBounds(page, label);
+  await expectVirginiaTechIdentity(page, label);
+  await supplementalShot(page, testInfo, label);
+}
+
+test('a non-Duke team keeps its identity through every overlay, decision, and special-team state', async ({ page }, testInfo) => {
+  // Same deliberate full-playthrough budget as the canonical state matrix.
+  test.setTimeout(60_000);
+  await page.addInitScript(() => {
+    let seed = 0x173f00d;
+    Math.random = () => {
+      seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+      return seed / 0x100000000;
+    };
+  });
+  await page.clock.install({ time: new Date('2026-01-03T12:00:00Z') });
+  await page.goto('/football/');
+
+  // The longest team and rival names, chosen by tap.
+  await page.locator('.team-option[data-team-id="virginia-tech"]').tap();
+  await page.locator('[data-rival-id="wake-forest"]').tap();
+  await expect(page.locator('input[name="player-team"][value="virginia-tech"]')).toBeChecked();
+  await expect(page.locator('#rival-preview-matchup')).toHaveText('VA TECH VS WAKE FOREST');
+  const teamOptions = await page.locator('.team-option').evaluateAll(labels => labels.map((label) => {
+    const rect = label.getBoundingClientRect();
+    return { id: label.dataset.teamId, width: rect.width, height: rect.height, bottom: rect.bottom };
+  }));
+  for (const option of teamOptions) {
+    expect(option.width, `team option ${option.id} width`).toBeGreaterThanOrEqual(44);
+    expect(option.height, `team option ${option.id} height`).toBeGreaterThanOrEqual(44);
+  }
+  await teamOverlay(page, testInfo, 'ov-start', 'start', 'team-01-start');
+
+  await page.locator('#start-game-btn').tap();
+  await expect(page.locator('#call-grid .call-btn')).toHaveCount(5);
+  await expect(page.locator('#desk-kicker')).toHaveText('Set the Virginia Tech offense.');
+  let metrics = await teamPhase(page, testInfo, 'call', 'team-02-offense-call');
+  expect(metrics.scrollY).toBe(0);
+
+  await page.evaluate(() => window.__footballTest.seedDriveState({
+    possession: 'offense', direction: 1, quarter: 1, down: 1, yardsToGo: 1,
+    yardLine: 99, firstDownLine: 100, driveStart: 99, scores: { player: 0, opponent: 0 },
+    plays: 0, drivePlays: 0, quarterPossessions: 0, tds: 0, opponentTds: 0,
+    correctAnswers: 0, gradedQuestions: 0,
+  }));
+  await page.locator('#call-grid .call-btn').first().tap();
+  expect((await renderedState(page)).playIsTouchdown, 'seeded offense play reaches the end zone').toBe(true);
+  await teamPhase(page, testInfo, 'question', 'team-03-offense-question');
+  await pauseClockBeforeAnswer(page);
+  await answerChoice(page, await liveChoiceId(page, 'correct'));
+  expect((await renderedState(page)).score).toEqual({ player: 6, opponent: 0 });
+  await teamPhase(page, testInfo, 'feedback', 'team-04-offense-feedback');
+
+  await page.clock.runFor(950);
+  await teamOverlay(page, testInfo, 'ov-td', 'touchdown', 'team-05-player-td');
+  await expect(page.locator('#play-context')).toContainText('VA TECH TOUCHDOWN');
+  await page.locator('#ov-td .ov-btn').tap();
+  await expect(page.locator('#decision-grid .decision-btn')).toHaveCount(2);
+  await teamPhase(page, testInfo, 'conversion-decision', 'team-05a-player-conversion-decision');
+  await page.locator('#decision-grid .decision-btn[data-action="pat"]').tap();
+  await expectQuestionPlayType(page, 'conversion', 'player conversion');
+  await teamPhase(page, testInfo, 'question', 'team-05b-player-conversion-question');
+  await answerChoice(page, await liveChoiceId(page, 'correct'));
+  expect((await renderedState(page)).score).toEqual({ player: 7, opponent: 0 });
+  await teamPhase(page, testInfo, 'feedback', 'team-05c-player-conversion-feedback');
+
+  await page.clock.runFor(1450);
+  await teamOverlay(page, testInfo, 'ov-defense', 'transition', 'team-06-defense-transition');
+  await page.locator('#ov-defense .ov-btn').tap();
+  await expect(page.locator('#call-grid .call-btn')).toHaveCount(4);
+  await expect(page.locator('#desk-kicker')).toHaveText('Set the Virginia Tech defense.');
+  await expect(page.locator('#defense-read')).toContainText('WAKE FOREST shows');
+  metrics = await teamPhase(page, testInfo, 'call', 'team-07-defense-call');
+  expect(metrics.scrollY).toBe(0);
+
+  await page.evaluate(() => window.__footballTest.seedDriveState({
+    possession: 'defense', direction: -1, quarter: 1, down: 1, yardsToGo: 1,
+    yardLine: 1, firstDownLine: 0, driveStart: 1, scores: { player: 7, opponent: 0 },
+    plays: 1, drivePlays: 0, quarterPossessions: 1, tds: 1, opponentTds: 0,
+    correctAnswers: 2, gradedQuestions: 2,
+  }));
+  await page.locator('#call-grid .call-btn').first().tap();
+  expect((await renderedState(page)).playIsTouchdown, 'seeded opponent play reaches the end zone').toBe(true);
+  await teamPhase(page, testInfo, 'question', 'team-08-defense-question');
+  await pauseClockBeforeAnswer(page);
+  const defenseWrong = await liveChoiceId(page, 'wrong');
+  await answerChoice(page, defenseWrong);
+  await answerChoice(page, await liveChoiceId(page, 'wrong', [defenseWrong]));
+  await teamPhase(page, testInfo, 'explanation', 'team-08c-defense-explanation');
+  await page.locator('#question-learn-why').tap();
+  await page.clock.runFor(32);
+  await expect(page.locator('#worked-review')).toBeVisible();
+  await page.locator('#question-continue').tap();
+  await page.evaluate(() => scrollTo(0, 0));
+  expect((await renderedState(page)).score).toEqual({ player: 7, opponent: 6 });
+  await teamPhase(page, testInfo, 'feedback', 'team-09-defense-feedback');
+
+  await page.clock.runFor(950);
+  await teamOverlay(page, testInfo, 'ov-td', 'touchdown', 'team-10-opponent-td');
+  await expect(page.locator('#ov-td-badge')).toHaveText('WAKE FOREST TD');
+  await page.locator('#ov-td .ov-btn').tap();
+  await expectQuestionPlayType(page, 'conversion', 'opponent conversion');
+  await teamPhase(page, testInfo, 'question', 'team-10a-opponent-conversion-question');
+  await answerChoice(page, await liveChoiceId(page, 'correct'));
+  await teamPhase(page, testInfo, 'feedback', 'team-10e-opponent-conversion-feedback');
+
+  await page.clock.runFor(1450);
+  await teamOverlay(page, testInfo, 'ov-offense', 'transition', 'team-11-offense-transition');
+  await page.locator('#ov-offense .ov-btn').tap();
+
+  await page.evaluate(() => window.__footballTest.seedDriveState({
+    possession: 'offense', direction: 1, quarter: 2, down: 4, yardsToGo: 2,
+    yardLine: 60, firstDownLine: 62, driveStart: 20, scores: { player: 7, opponent: 6 },
+  }));
+  await expect(page.locator('#decision-grid .decision-btn')).toHaveCount(3);
+  await teamPhase(page, testInfo, 'fourth-down-decision', 'team-12-offense-fourth-down-decision');
+  await page.locator('#decision-grid .decision-btn[data-action="go"]').tap();
+  await expect(page.locator('#call-grid .call-btn')).toHaveCount(5);
+  await teamPhase(page, testInfo, 'call', 'team-13-offense-fourth-down-go-call');
+
+  await page.evaluate(() => window.__footballTest.seedDriveState({
+    possession: 'offense', direction: 1, quarter: 2, down: 4, yardsToGo: 10,
+    yardLine: 50, firstDownLine: 60, driveStart: 20, scores: { player: 7, opponent: 6 },
+  }));
+  await page.locator('#decision-grid .decision-btn[data-action="punt"]').tap();
+  await expectQuestionPlayType(page, 'punt', 'player punt');
+  await teamPhase(page, testInfo, 'question', 'team-14-offense-punt-question');
+  await answerChoice(page, await liveChoiceId(page, 'correct'));
+  expect((await renderedState(page)).specialResult).toMatchObject({ playType: 'punt' });
+  await teamPhase(page, testInfo, 'feedback', 'team-14a-offense-punt-feedback');
+
+  await page.evaluate(() => window.__footballTest.seedDriveState({
+    possession: 'defense', direction: -1, quarter: 2, down: 4, yardsToGo: 10,
+    yardLine: 40, firstDownLine: 30, driveStart: 80, scores: { player: 7, opponent: 6 },
+  }));
+  await expectQuestionPlayType(page, 'fieldGoal', 'opponent field goal');
+  await expect(page.locator('#special-action-live')).toContainText('chooses a field goal');
+  await teamPhase(page, testInfo, 'question', 'team-15-defense-field-goal-question');
+  await answerChoice(page, await liveChoiceId(page, 'correct'));
+  expect((await renderedState(page)).specialResult).toMatchObject({ playType: 'fieldGoal' });
+  await teamPhase(page, testInfo, 'feedback', 'team-15a-defense-field-goal-feedback');
+
+  await page.evaluate(() => {
+    window.__footballTest.seedDriveState({
+      possession: 'offense', direction: 1, quarter: 1, down: 1, yardsToGo: 10,
+      yardLine: 20, firstDownLine: 30, driveStart: 20, scores: { player: 7, opponent: 6 },
+      plays: 2, drivePlays: 0, quarterPossessions: POSSESSIONS_PER_QUARTER - 1,
+      tds: 1, opponentTds: 1, correctAnswers: 2, gradedQuestions: 4,
+    });
+    finishPossession('Quarter complete.');
+  });
+  await teamOverlay(page, testInfo, 'ov-quarter', 'quarter', 'team-16-quarter-end');
+  await expect(page.locator('#ov-quarter-scorebug')).toContainText('VA TECH');
+  await page.locator('#ov-quarter .ov-btn').tap();
+
+  await page.evaluate(() => {
+    window.__footballTest.seedDriveState({
+      possession: 'defense', direction: -1, quarter: 2, down: 1, yardsToGo: 10,
+      yardLine: 80, firstDownLine: 70, driveStart: 80, scores: { player: 7, opponent: 6 },
+      plays: 2, drivePlays: 0, quarterPossessions: POSSESSIONS_PER_QUARTER - 1,
+      tds: 1, opponentTds: 1, correctAnswers: 2, gradedQuestions: 4,
+    });
+    finishPossession('First half complete.');
+  });
+  await teamOverlay(page, testInfo, 'ov-halftime', 'halftime', 'team-17-halftime');
+  await expect(page.locator('#ov-halftime-scorebug')).toContainText('VA TECH');
+  await page.locator('#ov-halftime .ov-btn').tap();
+
+  await page.evaluate(() => {
+    window.__footballTest.seedDriveState({
+      possession: 'defense', direction: -1, quarter: 4, down: 1, yardsToGo: 10,
+      yardLine: 80, firstDownLine: 70, driveStart: 80, scores: { player: 7, opponent: 6 },
+      plays: 2, drivePlays: 0, quarterPossessions: POSSESSIONS_PER_QUARTER - 1,
+      tds: 1, opponentTds: 1, correctAnswers: 2, gradedQuestions: 4,
+    });
+    finishPossession('Game complete.');
+  });
+  await teamOverlay(page, testInfo, 'ov-end', 'final', 'team-18-final');
+  await expect(page.locator('#ov-end-score')).toHaveAttribute('aria-label', 'Virginia Tech 7, Wake Forest 6');
+  await expect(page.locator('#ov-end-sub')).toContainText('Virginia Tech vs Wake Forest');
+
+  await page.locator('#ov-end-btn').tap();
+  await expect(page.locator('#ov-start')).toHaveClass(/show/);
+  await expect(page.locator('input[name="player-team"][value="virginia-tech"]')).toBeChecked();
+  await teamOverlay(page, testInfo, 'ov-start', 'start', 'team-19-rematch-start');
+});
+
 test('Time Lab menu, guided retry, worked explanation, and recap follow production actions', async ({ page }, testInfo) => {
   await page.addInitScript(() => {
     Object.defineProperty(window.crypto, 'getRandomValues', {
@@ -832,7 +1095,7 @@ test('season start, saved final, completed, and pending states remain compact', 
   await page.reload();
   await page.evaluate(() => {
     activeSeasonBinding = Object.freeze({
-      seasonId: 'release-saved-season', gameNumber: 1, rivalId: 'unc', gameId: 'release-season-game-1',
+      seasonId: 'release-saved-season', gameNumber: 1, rivalId: 'unc', playerId: 'duke', gameId: 'release-season-game-1',
     });
     state = {
       ...state,

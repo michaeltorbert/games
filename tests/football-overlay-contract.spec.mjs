@@ -643,11 +643,13 @@ test.describe('issue 49 overlay characterization', () => {
         rootChildren: ['div.overlay-card'],
         card: [
           'span.ov-broadcast-badge.ov-badge-info', 'div#ov-start-title.ov-title', 'div#ov-start-sub.ov-sub',
-          'fieldset#play-mode-picker.play-mode-picker', 'div#quick-game-panel', 'div#season-panel.season-panel',
+          'fieldset#team-picker.team-picker', 'fieldset#play-mode-picker.play-mode-picker',
+          'div#quick-game-panel', 'div#season-panel.season-panel',
           'div.start-action-row',
         ],
         ids: [
-          'ov-start-title', 'ov-start-sub', 'play-mode-picker', 'quick-game-panel', 'rival-picker', 'rival-options',
+          'ov-start-title', 'ov-start-sub', 'team-picker', 'team-options', 'team-status',
+          'play-mode-picker', 'quick-game-panel', 'rival-picker', 'rival-options',
           'rival-preview', 'rival-preview-matchup', 'rival-preview-style', 'season-panel', 'season-progress',
           'season-record', 'season-rungs', 'season-next', 'season-status', 'start-game-btn', 'tl-open-button',
         ],
@@ -1136,7 +1138,7 @@ test.describe('issue 49 overlay characterization', () => {
     // Same presentation-only Season binding the release matrix uses.
     const shown = await page.evaluate((seed) => {
       activeSeasonBinding = Object.freeze({
-        seasonId: 'issue49-season', gameNumber: 1, rivalId: 'unc', gameId: 'issue49-season-game-1',
+        seasonId: 'issue49-season', gameNumber: 1, rivalId: 'unc', playerId: 'duke', gameId: 'issue49-season-game-1',
       });
       window.__footballTest.seedDriveState(seed);
       finishPossession('Game complete.');
@@ -1683,6 +1685,9 @@ test.describe('issue 49 overlay contract', () => {
       ['badge', ''],
       ['title', 'ov-start-title'],
       ['sub', 'ov-start-sub'],
+      ['team-picker', 'team-picker'],
+      ['team-options', 'team-options'],
+      ['team-status', 'team-status'],
       ['mode-picker', 'play-mode-picker'],
       ['quick-panel', 'quick-game-panel'],
       ['rival-options', 'rival-options'],

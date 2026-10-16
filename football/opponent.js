@@ -129,11 +129,81 @@ const FOOTBALL_OPPONENT = (() => {
     },
   });
 
-  const PLAYER_IDENTITY = freeze({
-    id: 'duke',
-    displayName: 'Duke',
-    shortName: 'DUKE',
-    endZoneName: 'DUKE',
+  // Playable teams own identity and presentation only. Choosing one never
+  // touches rivals, profiles, RNG, or any football or instructional rule.
+  // Duke's values are the original literals and stay the default.
+  const PLAYER_TEAM_ORDER = Object.freeze(['duke', 'virginia-tech', 'texas', 'georgia-tech']);
+  const DEFAULT_PLAYER_TEAM_ID = 'duke';
+  const NEUTRAL_RIVALRY_LABEL = 'Game Day';
+  const PLAYER_TEAMS = freeze({
+    duke: {
+      id: 'duke',
+      displayName: 'Duke',
+      shortName: 'DUKE',
+      endZoneName: 'DUKE',
+      presentation: {
+        token: 'duke',
+        primary: '#003087',
+        pads: '#0a3fa6',
+        dark: '#001f5c',
+        trim: '#ffffff',
+        ink: '#ffffff',
+        scorebugTop: '#003087',
+        scorebugBottom: '#001a54',
+        fireworks: ['#ffd337', '#003087', '#7bafd4', '#ffffff'],
+      },
+    },
+    'virginia-tech': {
+      id: 'virginia-tech',
+      displayName: 'Virginia Tech',
+      shortName: 'VA TECH',
+      endZoneName: 'VA TECH',
+      presentation: {
+        token: 'virginia-tech',
+        primary: '#861f41',
+        pads: '#9b2a50',
+        dark: '#5a1029',
+        trim: '#e5751f',
+        ink: '#ffffff',
+        scorebugTop: '#861f41',
+        scorebugBottom: '#5a1029',
+        fireworks: ['#861f41', '#e5751f', '#ffffff', '#ffd337'],
+      },
+    },
+    texas: {
+      id: 'texas',
+      displayName: 'Texas',
+      shortName: 'TEXAS',
+      endZoneName: 'TEXAS',
+      presentation: {
+        token: 'texas',
+        primary: '#bf5700',
+        pads: '#c96112',
+        dark: '#7a3800',
+        trim: '#ffffff',
+        ink: '#ffffff',
+        scorebugTop: '#bf5700',
+        scorebugBottom: '#8a3f00',
+        fireworks: ['#bf5700', '#ffffff', '#333f48', '#ffd337'],
+      },
+    },
+    'georgia-tech': {
+      id: 'georgia-tech',
+      displayName: 'Georgia Tech',
+      shortName: 'GA TECH',
+      endZoneName: 'GA TECH',
+      presentation: {
+        token: 'georgia-tech',
+        primary: '#003057',
+        pads: '#0b4170',
+        dark: '#001a30',
+        trim: '#b3a369',
+        ink: '#ffffff',
+        scorebugTop: '#003057',
+        scorebugBottom: '#001a30',
+        fireworks: ['#b3a369', '#003057', '#ffffff', '#eaaa00'],
+      },
+    },
   });
 
   const RIVAL_ORDER = Object.freeze(['unc', 'nc-state', 'wake-forest']);
@@ -254,6 +324,29 @@ const FOOTBALL_OPPONENT = (() => {
         throw new TypeError(`Rival ${rivalId} must define four firework colors`);
       }
     }
+    if (PLAYER_TEAM_ORDER.length !== 4
+      || new Set(PLAYER_TEAM_ORDER).size !== 4
+      || !PLAYER_TEAM_ORDER.includes(DEFAULT_PLAYER_TEAM_ID)
+      || PLAYER_TEAM_ORDER.some(teamId => RIVAL_ORDER.includes(teamId))) {
+      throw new TypeError('Player team order must contain four unique non-rival identities including the default');
+    }
+    if (Object.keys(PLAYER_TEAMS).length !== PLAYER_TEAM_ORDER.length) throw new TypeError('Player team catalog and order differ');
+    for (const teamId of PLAYER_TEAM_ORDER) {
+      const team = PLAYER_TEAMS[teamId];
+      if (!team || team.id !== teamId) throw new TypeError(`Player team ${teamId} has an invalid identity`);
+      assertBoundedString(team.displayName, `${teamId} displayName`, 1, 24);
+      assertBoundedString(team.shortName, `${teamId} shortName`, 1, 12);
+      assertBoundedString(team.endZoneName, `${teamId} endZoneName`, 1, 12);
+      if (team.presentation?.token !== teamId) throw new TypeError(`Player team ${teamId} has an invalid presentation token`);
+      for (const colorKey of ['primary', 'pads', 'dark', 'trim', 'ink', 'scorebugTop', 'scorebugBottom']) {
+        if (!hexColor.test(team.presentation[colorKey])) throw new TypeError(`Player team ${teamId} has an invalid ${colorKey}`);
+      }
+      if (!Array.isArray(team.presentation.fireworks)
+        || team.presentation.fireworks.length !== 4
+        || team.presentation.fireworks.some(color => !hexColor.test(color))) {
+        throw new TypeError(`Player team ${teamId} must define four firework colors`);
+      }
+    }
   }
 
   validateCatalog();
@@ -290,16 +383,38 @@ const FOOTBALL_OPPONENT = (() => {
     return Object.freeze(RIVAL_ORDER.map(rivalId => RIVALS[rivalId]));
   }
 
-  function createMatch(rivalId) {
+  function resolvePlayerTeam(teamId) {
+    if (typeof teamId !== 'string' || !Object.prototype.hasOwnProperty.call(PLAYER_TEAMS, teamId)) {
+      throw new RangeError('Unknown player team ID');
+    }
+    return PLAYER_TEAMS[teamId];
+  }
+
+  function listPlayerTeams() {
+    return Object.freeze(PLAYER_TEAM_ORDER.map(teamId => PLAYER_TEAMS[teamId]));
+  }
+
+  // The rival catalog's rivalry names describe Duke's rivalries; every other
+  // playable team uses one neutral label.
+  function rivalryLabelFor(match) {
+    const team = resolvePlayerTeam(match?.player?.id);
+    const rival = resolveRival(match?.opponent?.id);
+    return team.id === DEFAULT_PLAYER_TEAM_ID ? rival.rivalryLabel : NEUTRAL_RIVALRY_LABEL;
+  }
+
+  // Omitted arguments keep the original defaults (UNC, Duke); any explicitly
+  // supplied rival or player team must be a catalog ID.
+  function createMatch(rivalId, playerTeamId) {
     const resolvedId = arguments.length === 0 ? DEFAULT_RIVAL_ID : rivalId;
     const rival = resolveRival(resolvedId);
+    const team = resolvePlayerTeam(arguments.length < 2 ? DEFAULT_PLAYER_TEAM_ID : playerTeamId);
     return freeze({
       schemaVersion: 1,
       player: {
-        id: PLAYER_IDENTITY.id,
-        displayName: PLAYER_IDENTITY.displayName,
-        shortName: PLAYER_IDENTITY.shortName,
-        endZoneName: PLAYER_IDENTITY.endZoneName,
+        id: team.id,
+        displayName: team.displayName,
+        shortName: team.shortName,
+        endZoneName: team.endZoneName,
       },
       opponent: {
         id: rival.id,
@@ -634,8 +749,15 @@ const FOOTBALL_OPPONENT = (() => {
     RIVALS,
     RIVAL_ORDER,
     DEFAULT_RIVAL_ID,
+    PLAYER_TEAMS,
+    PLAYER_TEAM_ORDER,
+    DEFAULT_PLAYER_TEAM_ID,
+    NEUTRAL_RIVALRY_LABEL,
     resolveRival,
     listRivals,
+    resolvePlayerTeam,
+    listPlayerTeams,
+    rivalryLabelFor,
     createMatch,
     getTendency,
     pickCall,

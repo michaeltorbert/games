@@ -6,9 +6,21 @@ const FOOTBALL_SEASON = (() => {
 
   const STORAGE_KEY = 'footballMathSeason:v1';
   const STORAGE_LOCK_NAME = `${STORAGE_KEY}:central-write`;
-  const SCHEMA_VERSION = 1;
-  const FORMAT_ID = 'three-rival-schedule-v1';
-  const PLAYER_ID = 'duke';
+  // Inner schema 1 is the legacy Duke-only format. It is still read and its
+  // result appends keep schema 1; it is never migrated. Every newly created
+  // season is schema 2, which carries one selectable team and which older
+  // clients classify as a future schema and leave untouched.
+  const LEGACY_SCHEMA_VERSION = 1;
+  const LEGACY_FORMAT_ID = 'three-rival-schedule-v1';
+  const LEGACY_PLAYER_ID = 'duke';
+  const SCHEMA_VERSION = 2;
+  const FORMAT_ID = 'three-rival-team-schedule-v2';
+  const PLAYER_IDS = Object.freeze([...FOOTBALL_OPPONENT.PLAYER_TEAM_ORDER]);
+  const DEFAULT_PLAYER_ID = FOOTBALL_OPPONENT.DEFAULT_PLAYER_TEAM_ID;
+  const FORMATS = Object.freeze({
+    [LEGACY_SCHEMA_VERSION]: Object.freeze({ formatId: LEGACY_FORMAT_ID, playerIds: Object.freeze([LEGACY_PLAYER_ID]) }),
+    [SCHEMA_VERSION]: Object.freeze({ formatId: FORMAT_ID, playerIds: PLAYER_IDS }),
+  });
   const MAX_ID_LENGTH = 128;
   const MAX_TIMESTAMP_LENGTH = 64;
   const MAX_SCORE = 999;
@@ -23,6 +35,12 @@ const FOOTBALL_SEASON = (() => {
     throw new TypeError('Season v1 requires exactly three unique rivals');
   }
   for (const rivalId of SCHEDULE) FOOTBALL_OPPONENT.resolveRival(rivalId);
+  if (PLAYER_IDS.length < 1
+    || new Set(PLAYER_IDS).size !== PLAYER_IDS.length
+    || !PLAYER_IDS.includes(DEFAULT_PLAYER_ID)
+    || !PLAYER_IDS.includes(LEGACY_PLAYER_ID)) {
+    throw new TypeError('Season v2 requires unique player teams including the legacy default');
+  }
 
   function isRecord(value) {
     return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -74,11 +92,11 @@ const FOOTBALL_SEASON = (() => {
     return `${prefix}-${Date.now().toString(36)}-${idSequence.toString(36)}`;
   }
 
-  function makeSeason() {
+  function makeSeason(playerId) {
     return deepFreeze({
       seasonId: makeId('season'),
       formatId: FORMAT_ID,
-      playerId: PLAYER_ID,
+      playerId,
       createdAt: new Date().toISOString(),
       schedule: [...SCHEDULE],
       results: [],
@@ -108,16 +126,19 @@ const FOOTBALL_SEASON = (() => {
   }
 
   function normalizeStore(value) {
-    if (!exactKeys(value, ['schemaVersion', 'currentSeason']) || value.schemaVersion !== SCHEMA_VERSION) {
+    if (!exactKeys(value, ['schemaVersion', 'currentSeason'])
+      || !Number.isInteger(value.schemaVersion)
+      || !Object.prototype.hasOwnProperty.call(FORMATS, value.schemaVersion)) {
       return null;
     }
+    const format = FORMATS[value.schemaVersion];
     const season = value.currentSeason;
     if (!exactKeys(season, [
       'seasonId', 'formatId', 'playerId', 'createdAt', 'schedule', 'results',
     ])
       || !boundedString(season.seasonId)
-      || season.formatId !== FORMAT_ID
-      || season.playerId !== PLAYER_ID
+      || season.formatId !== format.formatId
+      || !format.playerIds.includes(season.playerId)
       || !validTimestamp(season.createdAt)
       || !Array.isArray(season.schedule)
       || season.schedule.length !== SCHEDULE.length
@@ -133,11 +154,11 @@ const FOOTBALL_SEASON = (() => {
       results.push(result);
     }
     return {
-      schemaVersion: SCHEMA_VERSION,
+      schemaVersion: value.schemaVersion,
       currentSeason: {
         seasonId: season.seasonId,
-        formatId: FORMAT_ID,
-        playerId: PLAYER_ID,
+        formatId: format.formatId,
+        playerId: season.playerId,
         createdAt: season.createdAt,
         schedule: [...SCHEDULE],
         results,
@@ -206,12 +227,14 @@ const FOOTBALL_SEASON = (() => {
       base = {
         status: season.complete ? 'complete' : 'active',
         saveState: 'saved',
+        playerId: read.store.currentSeason.playerId,
         ...season,
       };
     } else {
       base = {
         status: read.kind === 'malformed' ? 'corrupt' : read.kind,
         saveState: read.kind === 'missing' ? 'saved' : read.kind === 'malformed' ? 'corrupt' : read.kind,
+        playerId: null,
         gamesPlayed: 0,
         gameNumber: read.kind === 'missing' ? 1 : null,
         schedule: SCHEDULE.map((rivalId, index) => ({
@@ -229,6 +252,11 @@ const FOOTBALL_SEASON = (() => {
       base.saveState = 'pending';
       base.canPlaySeason = false;
       base.action = 'retry';
+      // The one immutable pending mutation already fixes its team; only that
+      // public team ID is exposed, never the pending payload itself.
+      base.playerId = pendingMutation.kind === 'result'
+        ? pendingMutation.binding.playerId
+        : pendingMutation.season.playerId;
       if (pendingMutation.kind === 'result') {
         base.schedule = base.schedule.map(rung => (
           rung.gameNumber === pendingMutation.result.gameNumber
@@ -333,7 +361,10 @@ const FOOTBALL_SEASON = (() => {
     const season = read.store.currentSeason;
     const result = token.result;
     if (season.seasonId !== token.binding.seasonId
+      || season.playerId !== token.binding.playerId
       || season.schedule[result.gameNumber - 1] !== result.rivalId) return { status: 'conflict' };
+    // The fresh store keeps its own schema and format: a legacy schema-1
+    // season appends its result as schema 1.
     const existing = season.results[result.gameNumber - 1];
     if (existing) return { status: sameResult(existing, result) ? 'ready' : 'conflict' };
     if (season.results.length !== result.gameNumber - 1) return { status: 'conflict' };
@@ -384,15 +415,28 @@ const FOOTBALL_SEASON = (() => {
     return run;
   }
 
-  function stageSeasonMutation(kind, expectedSeasonId = null) {
+  function stageSeasonMutation(kind, playerId, expectedSeasonId = null) {
     if (pendingMutation) return Promise.resolve({ status: 'pending', snapshot: snapshot() });
     notice = null;
-    pendingMutation = deepFreeze({ kind, expectedSeasonId, season: makeSeason() });
+    pendingMutation = deepFreeze({ kind, expectedSeasonId, season: makeSeason(playerId) });
     emitChange();
     return enqueue(attemptPending);
   }
 
-  function startSeason() {
+  // Creation requests take the intended team. An omitted team is Duke; an
+  // explicitly supplied team must be a catalog player ID.
+  function requestedPlayerId(args) {
+    if (args.length === 0) return DEFAULT_PLAYER_ID;
+    return PLAYER_IDS.includes(args[0]) ? args[0] : null;
+  }
+
+  function invalidRequest() {
+    return Promise.resolve({ status: 'invalid', snapshot: snapshot() });
+  }
+
+  function startSeason(...args) {
+    const playerId = requestedPlayerId(args);
+    if (!playerId) return invalidRequest();
     const read = readStore();
     if (read.kind === 'supported' && !publicSeasonView(read.store.currentSeason).complete) {
       notice = null;
@@ -400,24 +444,28 @@ const FOOTBALL_SEASON = (() => {
       return Promise.resolve({ status: 'ready', snapshot: snapshot() });
     }
     if (read.kind !== 'missing') return Promise.resolve({ status: read.kind, snapshot: snapshot() });
-    return stageSeasonMutation('create');
+    return stageSeasonMutation('create', playerId);
   }
 
-  function startFreshSeason() {
+  function startFreshSeason(...args) {
+    const playerId = requestedPlayerId(args);
+    if (!playerId) return invalidRequest();
     const read = readStore();
     if (read.kind !== 'malformed' && read.kind !== 'missing') {
       return Promise.resolve({ status: read.kind, snapshot: snapshot() });
     }
-    return stageSeasonMutation('fresh');
+    return stageSeasonMutation('fresh', playerId);
   }
 
-  function startNewSeason() {
+  function startNewSeason(...args) {
+    const playerId = requestedPlayerId(args);
+    if (!playerId) return invalidRequest();
     const read = readStore();
     if (read.kind !== 'supported') return Promise.resolve({ status: read.kind, snapshot: snapshot() });
     if (!publicSeasonView(read.store.currentSeason).complete) {
       return Promise.resolve({ status: 'ready', snapshot: snapshot() });
     }
-    return stageSeasonMutation('new', read.store.currentSeason.seasonId);
+    return stageSeasonMutation('new', playerId, read.store.currentSeason.seasonId);
   }
 
   function retryPending() {
@@ -438,6 +486,7 @@ const FOOTBALL_SEASON = (() => {
       seasonId: season.seasonId,
       gameNumber: view.gameNumber,
       rivalId: view.nextRivalId,
+      playerId: season.playerId,
       gameId,
     });
   }
@@ -448,6 +497,7 @@ const FOOTBALL_SEASON = (() => {
       && binding.gameNumber >= 1
       && binding.gameNumber <= SCHEDULE.length
       && binding.rivalId === SCHEDULE[binding.gameNumber - 1]
+      && PLAYER_IDS.includes(binding.playerId)
       && boundedString(binding.gameId)
       && validScore(scores.playerScore)
       && validScore(scores.opponentScore);
@@ -458,7 +508,7 @@ const FOOTBALL_SEASON = (() => {
     const read = readStore();
     if (read.kind !== 'supported') return false;
     const season = read.store.currentSeason;
-    if (season.seasonId !== binding.seasonId) return false;
+    if (season.seasonId !== binding.seasonId || season.playerId !== binding.playerId) return false;
     const saved = season.results[binding.gameNumber - 1];
     return Boolean(saved) && sameResult(saved, {
       gameNumber: binding.gameNumber,
@@ -483,6 +533,7 @@ const FOOTBALL_SEASON = (() => {
     });
     if (pendingMutation) {
       const identicalPending = pendingMutation.kind === 'result'
+        && pendingMutation.binding.playerId === binding.playerId
         && sameResult(pendingMutation.result, result);
       return Promise.resolve({ status: identicalPending ? 'pending' : 'blocked', snapshot: snapshot() });
     }
@@ -511,9 +562,12 @@ const FOOTBALL_SEASON = (() => {
   return Object.freeze({
     STORAGE_KEY,
     STORAGE_LOCK_NAME,
+    LEGACY_SCHEMA_VERSION,
+    LEGACY_FORMAT_ID,
+    LEGACY_PLAYER_ID,
     SCHEMA_VERSION,
     FORMAT_ID,
-    PLAYER_ID,
+    PLAYER_IDS,
     SCHEDULE,
     snapshot,
     subscribe,

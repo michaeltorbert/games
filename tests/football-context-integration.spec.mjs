@@ -1,4 +1,5 @@
 import { test, expect } from './curriculum-fixture.mjs';
+import { ROUTE_CLOCK_EPOCH, installPausedRouteClock, waitOnHost } from './football-route-clock.mjs';
 
 function primaryOnly(testInfo) {
   test.skip(
@@ -3158,10 +3159,10 @@ test('production overlay handlers ignore repeated touchdown, transition, and per
   expect(period.after.quarter).toBe(2);
 });
 
-// Route probes run under Playwright's installed clock, paused before the
-// answer commits, so each production route timer fires only on runFor().
+// Route probes boot under Playwright's clock already paused at a fixed epoch
+// and stay paused, so each production route timer fires only on runFor().
 async function bootRouteProbe(page, seed) {
-  await page.clock.install({ time: new Date('2026-01-03T12:00:00Z') });
+  await installPausedRouteClock(page);
   await cleanBoot(page, seed);
   await page.evaluate(() => {
     window.__routeDiagnostics = [];
@@ -3198,11 +3199,6 @@ async function seedQ1Punt(page, quarterPossessions) {
   await page.locator('#decision-grid .decision-btn[data-action="punt"]').click();
 }
 
-async function pauseRouteClock(page) {
-  const now = await page.evaluate(() => Date.now());
-  await page.clock.pauseAt(new Date(now + 100));
-}
-
 async function commitRoutedPunt(page) {
   return page.evaluate(() => {
     const question = window.__footballTest.activeContracts();
@@ -3214,11 +3210,49 @@ async function commitRoutedPunt(page) {
   });
 }
 
+test('the route probe clock holds its epoch through a late pause, navigation, taps, and host delays until runFor', async ({ page }, testInfo) => {
+  primaryOnly(testInfo);
+  const epoch = ROUTE_CLOCK_EPOCH.getTime();
+  const browserTime = () => page.evaluate(() => ({ date: Date.now(), performance: performance.now() }));
+
+  // Land pauseAt well after the retired 100 ms sampled margin has elapsed.
+  const lateDates = [];
+  let lateGap = 0;
+  const clock = {
+    install: options => page.clock.install(options),
+    setFixedTime: time => page.clock.setFixedTime(time),
+    pauseAt: async time => {
+      lateDates.push((await browserTime()).date);
+      lateGap = await waitOnHost(250);
+      lateDates.push((await browserTime()).date);
+      await page.clock.pauseAt(time);
+    },
+    setSystemTime: time => page.clock.setSystemTime(time),
+  };
+  await installPausedRouteClock(page, { clock });
+  expect(lateGap).toBeGreaterThan(100);
+  expect(lateDates).toEqual([epoch, epoch]);
+
+  await cleanBoot(page, 0x5dd14);
+  const booted = await browserTime();
+  expect(booted.date).toBe(epoch);
+  expect(await waitOnHost(250)).toBeGreaterThan(100);
+  expect(await browserTime()).toEqual(booted);
+  await chooseCall(page, 'Short Run');
+  expect((await activeContracts(page)).questionInstance).not.toBeNull();
+  expect(await browserTime()).toEqual(booted);
+
+  // Paused, not fixed: runFor advances Date and performance by exactly its ticks.
+  await page.clock.runFor(250);
+  const advanced = await browserTime();
+  expect(advanced.date - booted.date).toBe(250);
+  expect(advanced.performance - booted.performance).toBe(250);
+});
+
 test('stale and repeated delayed possession routes are rejected without state, ID, or RNG effects', async ({ page }, testInfo) => {
   primaryOnly(testInfo);
   await bootRouteProbe(page, 0x5dd54);
   await seedQ1Punt(page, 0);
-  await pauseRouteClock(page);
 
   // Stale-only stage: measure the DOM before any accepted route can open it.
   const { source, committed } = await commitRoutedPunt(page);
@@ -3306,7 +3340,6 @@ test('a live scheduled possession route rejects a changed source or an already-p
   // identity advances, through the production allocator. Phase stays
   // 'feedback', so the source check alone must reject the callback.
   await seedQ1Punt(page, 3);
-  await pauseRouteClock(page);
   const changed = await commitRoutedPunt(page);
   expect(changed.committed.render).toMatchObject({
     mode: 'feedback', quarter: 1, quarterPossessions: 4, pendingNextPossession: 'defense',
@@ -3337,9 +3370,7 @@ test('a live scheduled possession route rejects a changed source or an already-p
   // Already presented: the source-free legacy hook opens the quarter break as
   // before. showQuarterEnd() keeps advTimer, so the real route still fires and
   // is rejected by phase without touching the open overlay.
-  await page.clock.resume();
   await seedQ1Punt(page, 3);
-  await pauseRouteClock(page);
   const presented = await commitRoutedPunt(page);
   expect(presented.committed.render).toMatchObject({
     mode: 'feedback', quarter: 1, quarterPossessions: 4, possessionId: presented.source.possessionId,
