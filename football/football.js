@@ -1,4 +1,4 @@
-const GAME_VERSION = '1.34.9';
+const GAME_VERSION = '1.34.10';
 let prevPlayerScore = -1, prevOpponentScore = -1;
 let playerRunTimer = 0, playerCelebrateTimer = 0, playerCelebrateDelayTimer = 0;
 const EZ = 5;
@@ -1900,6 +1900,7 @@ function updateStatus(view) {
   if (wrap) wrap.dataset.possession = view.possession;
   const poss = document.getElementById('sb-poss');
   poss.classList.toggle('poss-defense', view.possession === POSSESSIONS.defense);
+  document.getElementById('s-possession').textContent = `${view.possession === POSSESSIONS.offense ? view.match.player.shortName : view.match.opponent.shortName} ball`;
   const ribbon = document.getElementById('status-ribbon-text');
   if (ribbon) ribbon.textContent = possessionRibbonText(view.possession, view.match);
   const stagePossession = document.getElementById('stage-possession');

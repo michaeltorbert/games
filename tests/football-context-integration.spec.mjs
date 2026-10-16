@@ -4417,10 +4417,10 @@ test('#48 a detached view draws game A over a conflicting live game B without ch
     const text = id => document.getElementById(id).textContent;
     const data = (id, key) => document.getElementById(id).dataset[key] ?? null;
 
-    // Synthetic game A: another rival, defense call, Q4, other score and spot.
+    // Synthetic game A: another team and rival, defense call, Q4, other score and spot.
     const rivalA = FOOTBALL_OPPONENT.RIVAL_ORDER.find(id => id !== state.match.opponent.id);
     const sourceA = {
-      ...createGameState(FOOTBALL_OPPONENT.createMatch(rivalA)),
+      ...createGameState(FOOTBALL_OPPONENT.createMatch(rivalA, 'virginia-tech')),
       phase: PHASES.call,
       possession: POSSESSIONS.defense,
       direction: -1,
@@ -4446,6 +4446,7 @@ test('#48 a detached view draws game A over a conflicting live game B without ch
     const region = document.getElementById('worked-review');
     const call = {
       opponentName: text('s-opponent-name'),
+      possession: text('s-possession'),
       rootOpponent: document.documentElement.dataset.opponent,
       scores: [text('s-pscore'), text('s-oscore')],
       quarter: text('s-quarter'),
@@ -4510,6 +4511,8 @@ test('#48 a detached view draws game A over a conflicting live game B without ch
         down: text('s-down'),
         yard: text('s-yd'),
         labels: [text('s-down-label'), text('s-yd-label')],
+        possession: text('s-possession'),
+        quarter: text('s-quarter'),
         stage: text('stage-mode-copy'),
       };
     };
@@ -4560,6 +4563,7 @@ test('#48 a detached view draws game A over a conflicting live game B without ch
   const { names, expected, specials } = result;
   // Display A comes entirely from the supplied view.
   expect(names.opponent).not.toBe(result.liveB.opponent);
+  expect(names.player).toBe('VA TECH');
   expect(expected.yard).not.toBe(result.liveB.yard);
   // Inline CSS percentages serialize at reduced precision (55.400000000000006%
   // reads back as 55.4%), so the marker positions are compared numerically.
@@ -4568,6 +4572,7 @@ test('#48 a detached view draws game A over a conflicting live game B without ch
   expect(fdLeft).toBeCloseTo(expected.fdLeft, 4);
   expect(call).toEqual({
     opponentName: names.opponent,
+    possession: `${names.opponent} ball`,
     rootOpponent: names.rivalA,
     scores: ['21', '3'],
     quarter: '4',
@@ -4598,12 +4603,16 @@ test('#48 a detached view draws game A over a conflicting live game B without ch
     down: 'TRY',
     yard: expected.tryOffense,
     labels: ['Play', 'Try Spot'],
+    possession: `${names.player} ball`,
+    quarter: '4',
     stage: 'Broadcast view',
   });
   expect(specials.twoPoint).toMatchObject({
     context: `${names.opponent} BALL / TWO-POINT TRY / SCORE 21-3`,
     down: 'TRY',
     yard: expected.tryThree,
+    possession: `${names.opponent} ball`,
+    quarter: '4',
   });
   expect(specials.fieldGoal).toMatchObject({
     context: `${names.opponent} BALL / Q4 / BALL ON ${expected.yard} / 44-YARD FIELD GOAL`,

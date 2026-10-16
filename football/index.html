@@ -4,37 +4,37 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <title>Football Math!</title>
-<link rel="apple-touch-icon" href="apple-touch-icon.png?v=1.34.9">
-<link rel="icon" type="image/png" href="apple-touch-icon.png?v=1.34.9">
+<link rel="apple-touch-icon" href="apple-touch-icon.png?v=1.34.10">
+<link rel="icon" type="image/png" href="apple-touch-icon.png?v=1.34.10">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow+Condensed:wght@600;700;800&display=swap">
-<link rel="stylesheet" href="../shared/fonts.css?v=1.34.9">
-<link rel="stylesheet" href="../shared/reset.css?v=1.34.9">
-<link rel="stylesheet" href="football.css?v=1.34.9">
+<link rel="stylesheet" href="../shared/fonts.css?v=1.34.10">
+<link rel="stylesheet" href="../shared/reset.css?v=1.34.10">
+<link rel="stylesheet" href="football.css?v=1.34.10">
 </head>
 <body>
 <div id="broadcast-shell">
   <div id="wrap">
     <div id="scorebug" data-possession="offense">
       <div id="status-ribbon">
-        <span class="status-live">LIVE</span>
         <span id="status-ribbon-text">DUKE BALL - OFFENSE</span>
+        <span class="sb-quarter"><span class="sb-label">Quarter</span> <span id="s-quarter">1</span></span>
       </div>
       <div id="status">
         <div class="sb-team sb-duke"><span class="sb-name" id="s-player-name">DUKE</span><span class="sb-score" id="s-pscore">0</span></div>
         <div class="sb-team sb-opponent"><span class="sb-name" id="s-opponent-name">UNC</span><span class="sb-score" id="s-oscore">0</span></div>
-        <div class="sb-divider"></div>
-        <div class="sb-info">
-          <span class="sb-label">Quarter</span><span class="sb-val" id="s-quarter">1</span>
+        <div class="sb-state-group">
+          <div id="sb-poss" class="sb-info sb-poss">
+            <span class="sb-label">Possession</span><span class="sb-val" id="s-possession">DUKE ball</span>
+          </div>
+          <div class="sb-info">
+            <span class="sb-label" id="s-down-label">Down</span><span class="sb-val" id="s-down">1st &amp; 10</span>
+          </div>
+          <div class="sb-info">
+            <span class="sb-label" id="s-yd-label">Ball On</span><span class="sb-val" id="s-yd">own 20</span>
+          </div>
         </div>
-        <div class="sb-info">
-          <span class="sb-label" id="s-down-label">Down</span><span class="sb-val" id="s-down">1st &amp; 10</span>
-        </div>
-        <div class="sb-info">
-          <span class="sb-label" id="s-yd-label">Ball On</span><span class="sb-val" id="s-yd">own 20</span>
-        </div>
-        <div id="sb-poss" class="sb-poss" aria-label="Possession">&#9654;</div>
       </div>
     </div>
 
@@ -406,21 +406,21 @@
   </div>
 </div>
 
-<link rel="stylesheet" href="../shared/curriculum.css?v=1.34.9">
-<script src="../shared/curriculum.js?v=1.34.9"></script>
-<script src="../shared/curriculum-ui.js?v=1.34.9"></script>
-<script src="copy.js?v=1.34.9"></script>
-<script src="learning.js?v=1.34.9"></script>
-<script src="stats.js?v=1.34.9"></script>
-<script src="opponent.js?v=1.34.9"></script>
-<script src="season.js?v=1.34.9"></script>
-<script src="football-domain.js?v=1.34.9"></script>
-<script src="contextual-questions.js?v=1.34.9"></script>
-<script src="time-lab.js?v=1.34.9"></script>
-<script src="football.js?v=1.34.9"></script>
+<link rel="stylesheet" href="../shared/curriculum.css?v=1.34.10">
+<script src="../shared/curriculum.js?v=1.34.10"></script>
+<script src="../shared/curriculum-ui.js?v=1.34.10"></script>
+<script src="copy.js?v=1.34.10"></script>
+<script src="learning.js?v=1.34.10"></script>
+<script src="stats.js?v=1.34.10"></script>
+<script src="opponent.js?v=1.34.10"></script>
+<script src="season.js?v=1.34.10"></script>
+<script src="football-domain.js?v=1.34.10"></script>
+<script src="contextual-questions.js?v=1.34.10"></script>
+<script src="time-lab.js?v=1.34.10"></script>
+<script src="football.js?v=1.34.10"></script>
 <script>
   document.getElementById('version-display').textContent = `v${GAME_VERSION}`;
 </script>
-<script src="../shared/updater.js?v=1.34.9"></script>
+<script src="../shared/updater.js?v=1.34.10"></script>
 </body>
 </html>
