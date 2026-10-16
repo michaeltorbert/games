@@ -1638,5 +1638,9 @@ Candidate only, on base `412d976`. There is no version bump, cache-key, registry
   - Unchanged: gold selection, focus, the locked-Season styling, 44 px+ cards, the grids, the catalog, Season data and every other screen.
   - The rivals picker test now checks the exact accessible names, badge text, hidden state and colors, and that the name and badge sit inside each card.
   - Pending: focused and full checks in both engines, before/after pixels, a recording and a fresh review.
+  - Badge-fit test correction (production unchanged): the full Chromium gate on `4e60fbe` failed the new `scrollHeight - clientHeight ≤ 1` check for Duke on both landscape iPads, with 2 px received. The retained screenshots show every name complete.
+    - Cause, inferred from the source and pixels (the live probe is pending): the name has `line-height: 1` and visible overflow, so the font's content area legitimately exceeds the line box. That proxy measures the extension, not clipping.
+    - Fix: the check is replaced by a rendered-text proof. Each name's DOM Range line boxes must sit inside the card, no clipping ancestor may cut them, and names must wrap to one or two lines.
+    - The failed run is retained. Targeted rivals runs, new full gates and a fresh review are pending.
 - **Network question (record only):** one observer run on the unchanged candidate passed all 108 cases with 42 strictly parsed worker NetLogs. `ERR_SOCKET_NOT_CONNECTED` did not recur, so the original endpoint and cause remain unknown. No product network change was made.
 - Pending: every focused suite, both full release matrices, pixel comparison against `output/issue-173/before/`, a playable preview and recording, a fresh independent review, and the user's appearance approval. This would be Playwright engine emulation, not native Safari, Simulator or device evidence.

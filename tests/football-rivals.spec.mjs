@@ -383,7 +383,35 @@ test('team picker previews by tap without RNG, fits every target, and colors onl
         id: label.dataset.teamId,
         ...box(label),
         nameOverflow: label.querySelector('.team-option-name').scrollWidth - label.querySelector('.team-option-name').clientWidth,
-        nameOverflowY: label.querySelector('.team-option-name').scrollHeight - label.querySelector('.team-option-name').clientHeight,
+        // Vertical fit is proved from the rendered text itself. With
+        // `line-height: 1` and `overflow: visible`, the font's content area
+        // legitimately extends past the name's line box, so scrollHeight minus
+        // clientHeight measures that extension rather than any clipping. Each
+        // rendered line box of the name must lie inside the card, and no
+        // clipping ancestor (non-visible overflow or a clip-path) may cut it.
+        textFit: (() => {
+          const name = label.querySelector('.team-option-name');
+          const range = document.createRange();
+          range.selectNodeContents(name);
+          const lines = [...range.getClientRects()].filter(rect => rect.width > 0 && rect.height > 0);
+          const within = (rect, outer) => rect.left >= outer.left && rect.right <= outer.right
+            && rect.top >= outer.top && rect.bottom <= outer.bottom;
+          const cardBox = label.getBoundingClientRect();
+          let clippedBy = null;
+          for (let element = name; element && element !== document.documentElement; element = element.parentElement) {
+            const style = getComputedStyle(element);
+            const clips = style.overflowX !== 'visible' || style.overflowY !== 'visible' || style.clipPath !== 'none';
+            if (clips && !lines.every(rect => within(rect, element.getBoundingClientRect()))) {
+              clippedBy = element.id || element.className || element.tagName;
+              break;
+            }
+          }
+          return {
+            lineCount: new Set(lines.map(rect => Math.round(rect.top))).size,
+            insideCard: lines.length > 0 && lines.every(rect => within(rect, cardBox)),
+            clippedBy,
+          };
+        })(),
         partsInside: ['.team-badge', '.team-option-name'].every((selector) => {
           const part = label.querySelector(selector).getBoundingClientRect();
           const card = label.getBoundingClientRect();
@@ -405,7 +433,10 @@ test('team picker previews by tap without RNG, fits every target, and colors onl
     expect(option.left, `${option.id} left`).toBeGreaterThanOrEqual(0);
     expect(option.right, `${option.id} right`).toBeLessThanOrEqual(metrics.viewportWidth);
     expect(option.nameOverflow, `${option.id} name clipped`).toBeLessThanOrEqual(0);
-    expect(option.nameOverflowY, `${option.id} name clipped vertically`).toBeLessThanOrEqual(1);
+    expect(option.textFit.insideCard, `${option.id} rendered name lines inside the card`).toBe(true);
+    expect(option.textFit.clippedBy, `${option.id} rendered name clipped by an ancestor`).toBeNull();
+    expect(option.textFit.lineCount, `${option.id} name wraps to at most two lines`).toBeGreaterThanOrEqual(1);
+    expect(option.textFit.lineCount, `${option.id} name wraps to at most two lines`).toBeLessThanOrEqual(2);
     expect(option.partsInside, `${option.id} badge and name inside the card`).toBe(true);
   }
   expect(metrics.start.bottom).toBeLessThanOrEqual(metrics.viewportHeight);
