@@ -1671,3 +1671,41 @@ Supersedes the #173 candidate entry above, including its "unreleased" and "appro
   - a fresh independent review covering function, accessibility and current before/after pixels against approved option C;
   - the merge, the Pages deployment for the merge SHA, and live 1.34.9 asset and four-team checks.
 - All results would be Playwright engine emulation, not native Safari, Simulator or device evidence.
+
+
+## 2026-10-16 — Football v1.34.10 (#51 compact scoreboard, superseding release entry)
+
+Implements the user-approved compact scoreboard proposal in the real game. The
+user explicitly authorized Codex implementation with a fresh independent review
+after the native author phase stopped; that incomplete phase and its unchanged
+capture helper remain preserved in the external evidence.
+
+- The score tiles now lead a compact navy board. Quarter moves to its small
+  topline, beside the existing truthful possession/phase ribbon. Possession,
+  Down and Ball On share a natural-height three-cell strip; on phones it sits
+  below the two score tiles. The decorative LIVE pill, arrow, panel sheen and
+  dot texture are removed. The field, play cards and other screens are unchanged.
+- The new visible possession value is derived only from the owned render
+  snapshot's possession and real match identities. Existing Quarter, Down,
+  Ball On, conversion Play / TRY / Try Spot, scores and score pulse retain their
+  source and behavior. UNC's light score tile uses dark ink; all other team
+  palettes remain supplied by their existing catalogs.
+- The existing detached-snapshot regression now uses Virginia Tech against a
+  different rival while the live game remains Duke. It checks both offense and
+  defense possession values, quarter and conversion copy, alongside the existing
+  no-state-change, no-RNG and persistence assertions.
+- `GAME_VERSION`, every Football asset query string, the Football registry entry
+  and `version.json` are synchronized to 1.34.10. Kayak 1.1.38, Prague 1.4.0 and
+  Place by Place 1.9.0 retain their exact descriptors and versions from release
+  base `02ed1f0ad38412eda221d8d4c43725ff8c679ab1`.
+- Required checks and final acceptance are recorded outside this tracked file,
+  under `output/issue-51/scoreboard-production/`: registry and focused checks,
+  both stock release matrices, actual before/after/reference pixel review at
+  the six required viewports, fresh independent review, reviewed PR, merge,
+  Pages deployment and live identity verification. This entry is release
+  preparation and does not claim those checks or publication have succeeded.
+  Failed evidence is retained. Browser results are engine emulation, not
+  Simulator or physical-device proof. No further recording repair is in scope.
+- This delivers the scoreboard portion of #51; the broader redesign issue
+  remains open. Per-file browsers continue the existing #161 workaround and
+  do not resolve that investigation.
