@@ -1644,3 +1644,30 @@ Candidate only, on base `412d976`. There is no version bump, cache-key, registry
     - The failed run is retained. Targeted rivals runs, new full gates and a fresh review are pending.
 - **Network question (record only):** one observer run on the unchanged candidate passed all 108 cases with 42 strictly parsed worker NetLogs. `ERR_SOCKET_NOT_CONNECTED` did not recur, so the original endpoint and cause remain unknown. No product network change was made.
 - Pending: every focused suite, both full release matrices, pixel comparison against `output/issue-173/before/`, a playable preview and recording, a fresh independent review, and the user's appearance approval. This would be Playwright engine emulation, not native Safari, Simulator or device evidence.
+
+## 2026-10-15 — Football v1.34.9 (#173 choose your team, #176 route-probe clock, superseding release entry)
+
+Supersedes the #173 candidate entry above, including its "unreleased" and "approval pending" notes. This is release preparation, by a native Claude (Opus 5.5) author separate from both planning seats, from HEAD `a78ab19` on exact base `412d976` (Football 1.34.8). The author had no shell and ran nothing. Nothing below claims a gate, review, merge or live result.
+
+### #173 — choose your team
+- Adds the behavior described in the entry above: four playable teams (Duke, Virginia Tech, Texas, Georgia Tech), Duke as the default, a team fixed per schema-2 Season, legacy schema-1 Duke Seasons unchanged, and the Quick Game choice kept apart from the Season.
+- The picker is the user-selected option C: plain D/VT/T/GT letter badges on each team's primary color. Full school names are the accessible names, and the cards are at least 44 px. The badges, frame colors, names and every other #173 behavior are unchanged since `a78ab19`.
+
+### #176 — route-probe clock (test fixture only)
+- The failed Chromium gate run `20261016T003117Z-chromium-c144ee` (file 22) threw `Cannot fast-forward to the past` from the old `pauseRouteClock`. That helper sampled browser `Date.now()` from a running clock and then called `pauseAt(sample + 100)`. In pinned Playwright 1.56.1 this throws whenever more than about 100 ms of browser time passes between the sample and the pause. The gap in that run was never measured, so it is not claimed as the sole cause.
+- New `tests/football-route-clock.mjs`: on a blank page, before Football loads, it calls `install(T)`, `setFixedTime(T)`, `pauseAt(T)` and then `setSystemTime(T)`. Fixed time makes the pause consume nothing however late it lands. Restoring system time lets `runFor()` advance Date again. Navigation replay of these public calls is observed 1.56.1 behavior, not a documented contract.
+- Both live-route probes now stay paused from boot. The sampled +100 ms helper, its three calls and the mid-test `resume()` are removed; no flush or wider margin replaces them. All stale, canceled, repeated, changed-source and already-presented assertions are unchanged, as are the 1399 ms no-effect and 1 ms single-effect boundaries and the ID/RNG/learning/stats equality checks.
+- A new primary-only regression delivers `pauseAt` 250 ms late on the host. It checks that Date stays at the epoch through navigation, a real tap and a host delay, then advances by exactly the `runFor` ticks.
+- Football application code is unchanged apart from the version metadata.
+- Not fixed here: three other specs use the same sampled-pause pattern. They are tracked in [#177](https://github.com/michaeltorbert/games/issues/177).
+
+### Release metadata and required checks
+- `GAME_VERSION`, all 18 Football asset query strings, the Football registry descriptor and `version.json` are `1.34.9`. Kayak 1.1.38, Prague 1.4.0 and Place by Place 1.9.0 are unchanged.
+- The results of the checks, review, merge and live verification are recorded outside this tracked file, in the `output/issue-176` completion evidence. This entry does not claim that any of them passed. Every failure is kept. The release requires:
+  - the #176 negative, positive and sensitivity controls in both engines;
+  - the focused context spec in both engines;
+  - the registry gate at base `412d976` with target `football`;
+  - `test:football`, and both complete stock release matrices;
+  - a fresh independent review covering function, accessibility and current before/after pixels against approved option C;
+  - the merge, the Pages deployment for the merge SHA, and live 1.34.9 asset and four-team checks.
+- All results would be Playwright engine emulation, not native Safari, Simulator or device evidence.
