@@ -6923,3 +6923,272 @@ body::after {
     transform: none;
   }
 }
+
+/* Game overlays (#51): touchdowns, possession changes, quarter breaks,
+   halftime and the Final join the kickoff panel — flat navy under a gold top
+   rule, brown for the opponent's ball and score, a small label chip and a flat
+   gold action. The chamfer, side rail, gloss and full-width pill are gone.
+   Every rule is scoped to these six roots; Kickoff and Time Lab are untouched.
+   Effects, animations and reduced-motion rules are unchanged.
+   Cards size to their content. Each is capped to the viewport, so content
+   taller than the cap scrolls as one card instead of being clipped; ordinary
+   states fit without scrolling. The Final's tuned height tiers keep their
+   vertical spacing: only the rail's left padding is replaced in each tier. */
+:is(#ov-td, #ov-defense, #ov-offense, #ov-quarter, #ov-halftime, #ov-end) > .overlay-card {
+  justify-content: flex-start;
+  min-height: 0;
+  max-height: calc(100vh - 48px);
+  max-height: calc(100dvh - 48px);
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 40px;
+  padding-left: 40px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-top: 3px solid var(--gold);
+  border-radius: 14px;
+  background: linear-gradient(110deg, #07152c, #091b31);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.28);
+  clip-path: none;
+}
+
+:is(#ov-td, #ov-defense, #ov-offense, #ov-quarter, #ov-halftime, #ov-end) > .overlay-card::before,
+:is(#ov-td, #ov-defense, #ov-offense, #ov-quarter, #ov-halftime, #ov-end) > .overlay-card::after {
+  display: none;
+}
+
+/* Under the viewport cap, rows keep their full height and the card scrolls. */
+:is(#ov-td, #ov-defense, #ov-offense, #ov-quarter, #ov-halftime, #ov-end) > .overlay-card > * {
+  flex-shrink: 0;
+}
+
+:is(#ov-td, #ov-defense, #ov-offense, #ov-quarter, #ov-halftime) > .overlay-card {
+  width: min(100%, 760px);
+  padding-top: 28px;
+  padding-bottom: 30px;
+}
+
+#ov-end > .overlay-card {
+  width: min(100%, 920px);
+}
+
+/* The opponent's ball and score are brown; the gold rule stays. */
+#ov-defense > .overlay-card,
+#ov-td[data-side="defense"] > .overlay-card {
+  border-color: rgba(224, 164, 96, 0.24);
+  border-top-color: var(--gold);
+  background: linear-gradient(110deg, #2a190b, #1f1309);
+}
+
+/* Label chips: gold for the player's moments, brown for the opponent's,
+   quiet navy for breaks and ties. The chip text names the event. */
+:is(#ov-td, #ov-defense, #ov-offense, #ov-quarter, #ov-halftime, #ov-end) .ov-broadcast-badge {
+  align-self: flex-start;
+  padding: 5px 10px 4px;
+  border-radius: 6px;
+  background: rgba(255, 211, 55, 0.14);
+  box-shadow: inset 0 0 0 1px rgba(255, 211, 55, 0.45);
+  color: var(--gold);
+  font-size: 14px;
+  letter-spacing: 0.16em;
+}
+
+#ov-defense .ov-broadcast-badge,
+#ov-td[data-side="defense"] .ov-broadcast-badge,
+#ov-end.ov-loss .ov-broadcast-badge {
+  background: rgba(201, 132, 58, 0.22);
+  box-shadow: inset 0 0 0 1px rgba(224, 164, 96, 0.5);
+  color: #f6cf98;
+}
+
+:is(#ov-quarter, #ov-halftime) .ov-broadcast-badge,
+#ov-end.ov-tie .ov-broadcast-badge {
+  background: rgba(255, 255, 255, 0.08);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.2);
+  color: #dbe5f5;
+}
+
+:is(#ov-td, #ov-defense, #ov-offense, #ov-quarter, #ov-halftime) .ov-title {
+  max-width: none;
+  margin-top: 12px;
+  font-size: clamp(60px, 6vw, 88px);
+  line-height: 0.9;
+  overflow-wrap: break-word;
+}
+
+/* Breaks stay a step below a touchdown. */
+:is(#ov-quarter, #ov-halftime) .ov-title {
+  font-size: clamp(52px, 5.2vw, 76px);
+}
+
+:is(#ov-td, #ov-defense, #ov-offense, #ov-quarter, #ov-halftime) .ov-sub {
+  max-width: 44ch;
+  margin-top: 10px;
+  font-size: 26px;
+  line-height: 1.16;
+  overflow-wrap: break-word;
+}
+
+/* Fewer wrapped lines on the Final; type sizes stay with the height tiers. */
+#ov-end .ov-title,
+#ov-end .ov-sub {
+  max-width: none;
+  overflow-wrap: break-word;
+}
+
+#ov-end .ov-sub {
+  max-width: 52ch;
+}
+
+/* The loss result is warm cream rather than pink; a tie is plain white.
+   Each Final still names its result in the chip and the title. */
+#ov-end.ov-loss .ov-title,
+#ov-end.ov-loss .ov-final-score {
+  color: #f6e2c6;
+}
+
+#ov-end.ov-tie .ov-title,
+#ov-end.ov-tie .ov-final-score {
+  color: #eef4ff;
+}
+
+:is(#ov-td, #ov-defense, #ov-offense, #ov-quarter, #ov-halftime) .ov-btn {
+  margin-top: 20px;
+}
+
+:is(#ov-td, #ov-defense, #ov-offense, #ov-quarter, #ov-halftime, #ov-end) .ov-btn {
+  border-radius: 8px;
+  background: var(--gold);
+  box-shadow: none;
+  color: #13203a;
+}
+
+:is(#ov-td, #ov-defense, #ov-offense, #ov-quarter, #ov-halftime, #ov-end) .ov-btn:focus-visible {
+  outline: 3px solid #fff;
+  outline-offset: 3px;
+}
+
+:is(#ov-td, #ov-defense, #ov-offense, #ov-quarter, #ov-halftime, #ov-end) .ov-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+#ov-end .ov-btn.ov-btn-secondary {
+  background: transparent;
+  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.42);
+  color: #fff;
+}
+
+:is(#ov-quarter, #ov-halftime) .ov-fieldbg {
+  opacity: 0.24;
+}
+
+:is(#ov-quarter, #ov-halftime) .ov-scorebug {
+  margin-top: 14px;
+  border-color: rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  box-shadow: none;
+}
+
+:is(#ov-quarter, #ov-halftime) .ov-sb-next {
+  padding: 5px 10px 4px;
+  border-radius: 6px;
+  background: rgba(255, 211, 55, 0.14);
+  box-shadow: inset 0 0 0 1px rgba(255, 211, 55, 0.45);
+  color: var(--gold);
+}
+
+#ov-end .ov-stat {
+  border-color: rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+#ov-end .ov-coach-row {
+  border-radius: 4px 8px 8px 4px;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+/* Taller tablets have no tuned Final tier; trim the base 60/56 padding. */
+@media (min-width: 761px) and (min-height: 821px) {
+  #ov-end > .overlay-card {
+    padding-top: 34px;
+    padding-bottom: 32px;
+  }
+}
+
+/* iPad 11 landscape: the ordinary Final's overlay padding is 16px. */
+@media (min-width: 700px) and (min-height: 761px) and (max-height: 820px) {
+  #ov-end:not([data-special-result]) > .overlay-card {
+    max-height: calc(100vh - 32px);
+    max-height: calc(100dvh - 32px);
+  }
+}
+
+/* The special-result Final keeps its tuned spacing without the rail. */
+@media (max-height: 820px) and (min-width: 700px) {
+  #ov-end[data-special-result] > .overlay-card {
+    justify-content: flex-start;
+    padding-left: 36px;
+  }
+}
+
+@media (max-width: 760px) {
+  :is(#ov-td, #ov-defense, #ov-offense, #ov-quarter, #ov-halftime, #ov-end) > .overlay-card {
+    max-height: calc(100vh - 28px);
+    max-height: calc(100dvh - 28px);
+    padding-right: 18px;
+    padding-left: 18px;
+    border-radius: 12px;
+  }
+
+  :is(#ov-td, #ov-defense, #ov-offense, #ov-quarter, #ov-halftime) > .overlay-card {
+    padding-top: 20px;
+    padding-bottom: 22px;
+  }
+
+  #ov-end > .overlay-card {
+    padding-top: 22px;
+    padding-bottom: 22px;
+  }
+
+  :is(#ov-td, #ov-defense, #ov-offense, #ov-quarter, #ov-halftime, #ov-end) .ov-broadcast-badge {
+    padding: 4px 8px 3px;
+    font-size: 13px;
+  }
+
+  :is(#ov-td, #ov-defense, #ov-offense, #ov-quarter, #ov-halftime) .ov-title {
+    margin-top: 8px;
+    font-size: clamp(44px, 12vw, 56px);
+  }
+
+  :is(#ov-quarter, #ov-halftime) .ov-title {
+    font-size: clamp(40px, 10.5vw, 50px);
+  }
+
+  :is(#ov-td, #ov-defense, #ov-offense, #ov-quarter, #ov-halftime) .ov-sub {
+    max-width: none;
+    margin-top: 8px;
+    font-size: 19px;
+  }
+
+  :is(#ov-td, #ov-defense, #ov-offense, #ov-quarter, #ov-halftime) .ov-btn {
+    margin-top: 16px;
+  }
+}
+
+/* Phone special and pending Finals: their overlay padding is 8px, and their
+   tuned spacing stays; only the rail's left padding is replaced. */
+@media (max-width: 480px) {
+  #ov-end[data-special-result] > .overlay-card {
+    justify-content: flex-start;
+    padding-left: 12px;
+  }
+
+  #ov-end.season-save-pending > .overlay-card {
+    max-height: calc(100vh - 16px);
+    max-height: calc(100dvh - 16px);
+    padding-left: 16px;
+  }
+}
