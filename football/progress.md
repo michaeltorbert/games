@@ -1771,3 +1771,82 @@ shell and ran nothing.
   Browser results are engine emulation, not Simulator or device proof.
 - This delivers the question-workspace portion of #51; the broader redesign
   issue stays open.
+
+## 2026-10-17 — Football v1.34.12 (#51 kickoff setup, superseding release entry)
+
+Original request: find another Football or math issue that can be finished
+without more input, and make product progress rather than diagnostics. This
+continues #51 with the kickoff/setup screen, using the already approved simple
+navy, brown and gold style. The author is a native Claude (Opus 5.5) session,
+separate from both planning seats, working on exact base
+`31167a18ebd40188bcd5ef81a064ef59b167bf02` (Football 1.34.11). The author had
+no shell and ran nothing.
+
+- **Scope (CSS only):** one appended block in `football.css`, scoped to
+  `#ov-start`:
+  - A flat navy panel under a gold top rule, matching the approved question
+    workspace. The chamfer, gold side rail and gloss layers are gone.
+  - The full-width Kickoff pill becomes a compact left-aligned chip. It keeps
+    its existing info-blue fill, which an existing team-neutral chrome
+    assertion requires.
+  - A one-line Football Math title at about 56–72 px on tablets (it was 78 px)
+    and 43–48 px on phones (it was two lines).
+  - A flat gold Start leads. Time Lab is a plain outlined secondary entry with
+    its full copy. On phones they stack, so the Time Lab copy goes from 10 px
+    to 13 px.
+  - Small-text floor of 12 px: the mode hints, rival Selected chip and phone
+    rung and rival text are slightly larger.
+  - Tablet rival tiles move from 104 px tall to 84 px, in the team-tile radius
+    family.
+  - Disabled Start and Time Lab entries are now dimmed. The base stylesheet
+    defines no `:disabled` style for either control; how they actually
+    rendered when disabled was not measured.
+- **Fit:** the card is capped to the viewport and starts at the top. Quick and
+  ordinary Season states are meant to fit with no scrolling. If a long Season
+  notice is taller than the cap, the whole card scrolls instead of being
+  clipped. In the base CSS, the phone card combines a viewport `max-height`
+  with `overflow: hidden`. That is a conditional risk that over-tall content
+  could be clipped; no clipped base state was observed. There is no nested
+  scrolling. Whether any target actually needs that scroll is measured by the
+  focused spec, not assumed here.
+- **Unchanged:**
+  - DOM, IDs, `data-slot`s, copy, order, native radios and buttons, and
+    `index.html` except its cache keys.
+  - The design C team options, badges, names, colors, selected and locked
+    looks. None of their rules are overridden.
+  - The rival accent and its Selected chip, the mode selection idiom, and the
+    focus outlines.
+  - Every other overlay, Time Lab, the field, the scoreboard, the cards, the
+    question workspace, and all JavaScript except `GAME_VERSION`.
+  - No gameplay, RNG, storage, Season, learning, stats, audio or curriculum
+    change.
+- **Tests:** new `tests/football-kickoff-setup.spec.mjs`, on the existing muted
+  fixture with real taps and keys. It is not in the release runner's file list
+  and runs separately in both engines. It covers:
+  - Quick; new, locked active and complete Season; and damaged, newer-version,
+    unavailable, unsaved-create, unsaved-result and unsaved-over-damaged
+    Season states.
+  - Per state: strict no-scroll or whole-card reachability, clipping, 44 px
+    targets, a 12 px type floor, contrast, the one-line title, the action
+    hierarchy and the design C computed styles.
+  - Keyboard choice and focus, Time Lab Back focus, and curriculum
+    Cancel/Continue.
+  - Existing specs, assertions, retries, workers, deadlines and the runner are
+    unchanged.
+- **Metadata:** `GAME_VERSION`, every Football asset query string (including
+  `../shared/`), the Football registry entry and `version.json` are 1.34.12.
+  Kayak 1.1.38, Prague 1.4.0 and Place by Place 1.9.0 keep their exact base
+  descriptors and versions.
+- **Pending (recorded outside this file, under `output/issue-51-kickoff/`):**
+  - the focused spec in both engines;
+  - the registry gate at the exact base;
+  - both unchanged release matrices;
+  - before/after captures, the preview and a reference pixel review;
+  - the browser-client smoke;
+  - a fresh independent review;
+  - the reviewed PR, merge, Pages deployment and live verification.
+
+  This entry claims none of them, and failures are retained. Browser results
+  are engine emulation, not Simulator or device proof.
+- This delivers the kickoff/setup portion of #51; the broader redesign issue
+  stays open.
