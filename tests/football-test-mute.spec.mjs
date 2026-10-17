@@ -70,13 +70,14 @@ test('reload reinstalls the mute in a fresh document without writing a preferenc
   expect(await storedPreference(context)).toBeNull();
 });
 
-test('same-context pages and helper contexts are muted; a plain context keeps the real default', async ({ page, context, browser, baseURL }) => {
+test('same-context pages and helper contexts are muted; a plain context keeps the real default', async ({ page, context, browser, baseURL, resourceDiagnostics }) => {
   await page.goto('/football/');
   const sibling = await context.newPage();
   await sibling.goto('/football/');
   await expectFootballTestMuted(sibling);
 
   const helped = await browser.newContext();
+  resourceDiagnostics.registerContext(helped);
   await muteFootballForTests(helped);
   const helpedPage = await helped.newPage();
   await helpedPage.goto(`${baseURL}/football/`);
@@ -85,6 +86,7 @@ test('same-context pages and helper contexts are muted; a plain context keeps th
 
   // The mute is installed per context, so it cannot leak into an unrelated one.
   const plain = await browser.newContext();
+  resourceDiagnostics.registerContext(plain);
   const plainPage = await plain.newPage();
   await plainPage.goto(`${baseURL}/football/`);
   expect(await plainPage.evaluate(() => ({ proof: window.__footballTestMute ?? null, soundOn }))).toEqual({ proof: null, soundOn: true });
@@ -92,8 +94,9 @@ test('same-context pages and helper contexts are muted; a plain context keeps th
   await plain.close();
 });
 
-test('blocked storage still gets the session mute and a working trusted-gesture unlock', async ({ browser, baseURL }) => {
+test('blocked storage still gets the session mute and a working trusted-gesture unlock', async ({ browser, baseURL, resourceDiagnostics }) => {
   const blocked = await browser.newContext();
+  resourceDiagnostics.registerContext(blocked);
   await muteFootballForTests(blocked);
   const blockedPage = await blocked.newPage();
   const errors = trackErrors(blockedPage);
@@ -112,8 +115,9 @@ test('blocked storage still gets the session mute and a working trusted-gesture 
 });
 
 for (const seeded of [null, 'false', 'true']) {
-  test(`stored preference ${JSON.stringify(seeded)} is read by the game but never written by the mute`, async ({ browser, baseURL }) => {
+  test(`stored preference ${JSON.stringify(seeded)} is read by the game but never written by the mute`, async ({ browser, baseURL, resourceDiagnostics }) => {
     const seededContext = await browser.newContext();
+    resourceDiagnostics.registerContext(seededContext);
     await muteFootballForTests(seededContext);
     // Seeds once; a later write by anything else would survive the reload below.
     await seededContext.addInitScript(([key, value]) => {
