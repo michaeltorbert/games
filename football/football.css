@@ -6331,3 +6331,410 @@ body::after {
     line-height: 14px;
   }
 }
+
+/* Issue 51: the user-approved question workspace. Kept last so it wins the
+   cascade over the older question, feedback and explanation rules. It is
+   presentation only for those three phases: the DOM, reading and focus order,
+   hidden states and the visually hidden explanation #feedback are unchanged.
+   Compact navy desk with a gold top rule, small play facts above a primary
+   question, flat paper answers (brown when missed, gold when correct), plain
+   feedback text, and a flat Coach Replay with a clear action footer.
+
+   Answer selectors include #btn-row[data-choice-type] to match the specificity
+   of the older per-type rules. Hidden choices are display:none, so a single
+   auto-flow row fits two, three or four answers; four text or yard labels use
+   two columns so longer labels keep their size. */
+
+#ui-desk:is([data-phase="question"], [data-phase="feedback"], [data-phase="explanation"]) {
+  border: 0;
+  border-top: 3px solid var(--gold);
+  border-radius: 0 0 14px 14px;
+  background: linear-gradient(110deg, #07152c, #091b31);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.28);
+}
+
+#ui-desk[data-possession="defense"]:is([data-phase="question"], [data-phase="feedback"], [data-phase="explanation"]) {
+  border-top-color: var(--defense);
+}
+
+#ui-desk:is([data-phase="question"], [data-phase="feedback"], [data-phase="explanation"])::before,
+#ui-desk:is([data-phase="question"], [data-phase="feedback"], [data-phase="explanation"])::after,
+#ui-desk:is([data-phase="question"], [data-phase="feedback"], [data-phase="explanation"]) #action-panel::before {
+  content: none;
+}
+
+#ui-desk:is([data-phase="question"], [data-phase="feedback"], [data-phase="explanation"]) #play-context {
+  margin: 0 0 4px;
+  color: #aebbd0;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  line-height: 1.3;
+}
+
+#ui-desk[data-possession="defense"]:is([data-phase="question"], [data-phase="feedback"], [data-phase="explanation"]) #play-context {
+  color: #e6c9a6;
+}
+
+#ui-desk:is([data-phase="question"], [data-phase="feedback"], [data-phase="explanation"]) #play-label {
+  max-width: none;
+  margin: 0;
+  color: var(--gold);
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 15px;
+  font-weight: 750;
+  letter-spacing: 0.03em;
+  line-height: 1.25;
+  text-transform: none;
+}
+
+#ui-desk[data-possession="defense"]:is([data-phase="question"], [data-phase="feedback"], [data-phase="explanation"]) #play-label {
+  color: #f4c27f;
+}
+
+#ui-desk:is([data-phase="question"], [data-phase="feedback"], [data-phase="explanation"]) #play-label span {
+  display: inline;
+  margin: 0;
+  color: inherit;
+  font-size: 1em;
+}
+
+#ui-desk:is([data-phase="question"], [data-phase="feedback"]) #question {
+  max-width: 46ch;
+  margin-top: 6px;
+  padding-top: 0;
+  color: #fffdf5;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: clamp(18px, 2vw, 24px);
+  font-weight: 720;
+  letter-spacing: -0.01em;
+  line-height: 1.22;
+}
+
+#ui-desk:is([data-phase="question"], [data-phase="feedback"]) #question::before {
+  content: none;
+}
+
+#ui-desk:is([data-phase="question"], [data-phase="feedback"]) #feedback {
+  max-width: 46ch;
+  margin-top: 8px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  color: #dae7f5;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 16px;
+  font-weight: 630;
+  letter-spacing: normal;
+  line-height: 1.3;
+}
+
+#ui-desk:is([data-phase="question"], [data-phase="feedback"]) #feedback[data-tone="positive"] {
+  color: #fff0a9;
+}
+
+#ui-desk:is([data-phase="question"], [data-phase="feedback"]) #feedback[data-tone="negative"] {
+  color: #f2c99a;
+}
+
+#ui-desk:is([data-phase="question"], [data-phase="feedback"]) #action-panel {
+  align-self: center;
+}
+
+#ui-desk:is([data-phase="question"], [data-phase="feedback"]) .worked-review-actions {
+  margin-top: 0;
+}
+
+#ui-desk:is([data-phase="question"], [data-phase="feedback"]) #btn-row[data-choice-type] {
+  grid-template-columns: none;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  grid-auto-rows: auto;
+  gap: 8px;
+  min-height: 0;
+  padding-top: 0;
+}
+
+#ui-desk:is([data-phase="question"], [data-phase="feedback"]) #btn-row:is([data-choice-type="text"], [data-choice-type="yard"]):not(:has(> #b3.hidden)) {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-auto-flow: row;
+}
+
+#ui-desk:is([data-phase="question"], [data-phase="feedback"]) #btn-row[data-choice-type] .ans-btn {
+  min-width: 44px;
+  min-height: 48px;
+  padding: 6px 8px;
+  border: 1px solid rgba(247, 244, 235, 0.3);
+  border-radius: 8px;
+  background: #f5f2e9;
+  box-shadow: none;
+  clip-path: none;
+  color: #101d34;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: clamp(19px, 2vw, 25px);
+  font-weight: 760;
+  letter-spacing: normal;
+  line-height: 1.1;
+  overflow-wrap: break-word;
+  text-align: center;
+  text-transform: none;
+  transform: none;
+  touch-action: manipulation;
+}
+
+#ui-desk:is([data-phase="question"], [data-phase="feedback"]) #btn-row[data-choice-type="yard"] .ans-btn {
+  font-size: clamp(17px, 1.6vw, 21px);
+}
+
+#ui-desk:is([data-phase="question"], [data-phase="feedback"]) #btn-row[data-choice-type] .ans-btn::before,
+#ui-desk:is([data-phase="question"], [data-phase="feedback"]) #btn-row[data-choice-type] .ans-btn::after {
+  content: none;
+}
+
+#ui-desk:is([data-phase="question"], [data-phase="feedback"]) #btn-row[data-choice-type] .ans-btn:focus-visible {
+  outline: 3px solid var(--gold);
+  outline-offset: 3px;
+}
+
+#ui-desk:is([data-phase="question"], [data-phase="feedback"]) #btn-row[data-choice-type] .ans-btn:disabled {
+  cursor: default;
+  opacity: 0.64;
+}
+
+#ui-desk:is([data-phase="question"], [data-phase="feedback"]) #btn-row[data-choice-type] .ans-btn.wrong {
+  border-color: #d8a86b;
+  background: #624329;
+  color: #fff7e8;
+  opacity: 1;
+}
+
+#ui-desk:is([data-phase="question"], [data-phase="feedback"]) #btn-row[data-choice-type] .ans-btn.correct {
+  border-color: var(--gold);
+  background: var(--gold);
+  color: #17243a;
+  opacity: 1;
+}
+
+@media (hover: hover) {
+  #ui-desk:is([data-phase="question"], [data-phase="feedback"]) #btn-row[data-choice-type] .ans-btn:hover:not(:disabled) {
+    background: #fff;
+  }
+}
+
+/* Explanation keeps its production content: the compact play label, the
+   Film Room summary, then Coach Replay and its actions. */
+#ui-desk[data-phase="explanation"] .film-room-summary {
+  max-width: 46ch;
+  margin-top: 8px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  color: #fff5d5;
+}
+
+#ui-desk[data-phase="explanation"] :is(.film-room-eyebrow, .worked-review-label) {
+  color: var(--gold);
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 12px;
+  font-weight: 760;
+  letter-spacing: 0.08em;
+}
+
+#ui-desk[data-phase="explanation"] :is(.film-room-summary h2, #worked-review-heading) {
+  margin: 2px 0 0;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 17px;
+  font-weight: 760;
+  letter-spacing: normal;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+#ui-desk[data-phase="explanation"] .film-room-summary h2 {
+  color: #fffdf5;
+}
+
+#ui-desk[data-phase="explanation"] #worked-review-heading {
+  color: var(--gold);
+}
+
+#ui-desk[data-phase="explanation"] .film-room-summary p {
+  margin: 6px 0 0;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 16px;
+  font-weight: 650;
+  line-height: 1.3;
+}
+
+#ui-desk[data-phase="explanation"] :is(.film-room-summary, #worked-review-heading):focus-visible {
+  outline: 3px solid var(--gold);
+  outline-offset: 3px;
+  border-radius: 3px;
+}
+
+#ui-desk[data-phase="explanation"] .worked-review {
+  gap: 8px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+}
+
+#ui-desk[data-phase="explanation"] :is(.worked-review-goal, .worked-review-meaning) {
+  padding: 0;
+  border-radius: 0;
+  background: none;
+}
+
+#ui-desk[data-phase="explanation"] :is(.worked-review-goal, .worked-review-steps) p {
+  color: #e5eaf2;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.32;
+}
+
+#ui-desk[data-phase="explanation"] .worked-review-meaning p {
+  color: #c8d3e1;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.32;
+}
+
+#ui-desk[data-phase="explanation"] .worked-review-steps {
+  gap: 4px;
+}
+
+#ui-desk[data-phase="explanation"] .worked-review-steps li {
+  grid-template-columns: 22px minmax(0, 1fr);
+  gap: 8px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+}
+
+#ui-desk[data-phase="explanation"] .worked-review-step-number {
+  width: 22px;
+  height: 22px;
+  margin-top: 1px;
+  background: rgba(255, 211, 55, 0.14);
+  color: var(--gold);
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 13px;
+  font-weight: 760;
+}
+
+#ui-desk[data-phase="explanation"] .worked-review-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+#ui-desk[data-phase="explanation"] #worked-review:not(.hidden) + .worked-review-actions {
+  padding-top: 10px;
+  border-top: 1px solid rgba(220, 230, 245, 0.22);
+}
+
+#ui-desk[data-phase="explanation"] .worked-review-actions :is(.question-learn-why, .worked-review-back, .question-continue) {
+  width: auto;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 9px 16px;
+  border: 1px solid rgba(245, 239, 218, 0.4);
+  border-radius: 7px;
+  background: transparent;
+  box-shadow: none;
+  color: #f7f4eb;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 16px;
+  font-weight: 720;
+  letter-spacing: normal;
+  line-height: 1.2;
+  touch-action: manipulation;
+}
+
+#ui-desk[data-phase="explanation"] .worked-review-actions .question-learn-why {
+  margin-right: auto;
+}
+
+#ui-desk[data-phase="explanation"] .worked-review-actions .question-continue {
+  border-color: var(--gold);
+  background: var(--gold);
+  color: #13203a;
+}
+
+#ui-desk[data-phase="explanation"] .worked-review-actions :is(.question-learn-why, .worked-review-back, .question-continue):focus-visible {
+  outline: 3px solid var(--gold);
+  outline-offset: 3px;
+}
+
+/* Wide tiers give the question the larger column and the answers the
+   smaller one, as in the approved iPad landscape reference. */
+@media (min-width: 1081px) {
+  #ui-desk:is([data-phase="question"], [data-phase="feedback"]) {
+    grid-template-columns: minmax(0, 1.15fr) minmax(280px, 0.85fr);
+  }
+}
+
+@media (hover: none) and (pointer: coarse) and (min-width: 1024px) and (orientation: landscape) {
+  #ui-desk:is([data-phase="question"], [data-phase="feedback"]) {
+    grid-template-columns: minmax(0, 1.15fr) minmax(280px, 0.85fr);
+  }
+}
+
+@media (max-width: 760px) {
+  #ui-desk:is([data-phase="question"], [data-phase="feedback"], [data-phase="explanation"]) {
+    border-radius: 0 0 12px 12px;
+  }
+
+  #ui-desk:is([data-phase="question"], [data-phase="feedback"], [data-phase="explanation"]) #play-label {
+    font-size: 14px;
+  }
+
+  #ui-desk:is([data-phase="question"], [data-phase="feedback"]) #prompt-panel {
+    padding-bottom: 0;
+  }
+
+  #ui-desk:is([data-phase="question"], [data-phase="feedback"]) #action-panel {
+    padding-top: 10px;
+  }
+
+  #ui-desk:is([data-phase="question"], [data-phase="feedback"]) #question {
+    max-width: none;
+    font-size: 17px;
+    line-height: 1.2;
+  }
+
+  #ui-desk:is([data-phase="question"], [data-phase="feedback"]) #feedback {
+    max-width: none;
+    font-size: 15px;
+  }
+
+  #ui-desk:is([data-phase="question"], [data-phase="feedback"]) #btn-row[data-choice-type] {
+    gap: 6px;
+  }
+
+  #ui-desk:is([data-phase="question"], [data-phase="feedback"]) #btn-row[data-choice-type] .ans-btn {
+    min-height: 46px;
+    padding: 4px 4px;
+    border-radius: 7px;
+    font-size: 21px;
+  }
+
+  #ui-desk:is([data-phase="question"], [data-phase="feedback"]) #btn-row[data-choice-type="yard"] .ans-btn {
+    font-size: 17px;
+  }
+
+  #ui-desk[data-phase="explanation"] .film-room-summary {
+    max-width: none;
+  }
+}
