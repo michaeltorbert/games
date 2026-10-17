@@ -957,7 +957,7 @@ test('history remains capped, completion is deduplicated, and stats IDs consume 
   expect(JSON.parse(replay.rawAfterReplay)).toEqual(persisted);
 });
 
-test('malformed stores recover, future schemas remain untouched, and blocked storage does not break sessions', async ({ browser, baseURL }, testInfo) => {
+test('malformed stores recover, future schemas remain untouched, and blocked storage does not break sessions', async ({ browser, baseURL, resourceDiagnostics }, testInfo) => {
   primaryOnly(testInfo);
 
   const completeOnePresentedPlay = async page => page.evaluate(() => {
@@ -999,6 +999,7 @@ test('malformed stores recover, future schemas remain untouched, and blocked sto
   });
 
   const malformedContext = await browser.newContext();
+  resourceDiagnostics.registerContext(malformedContext);
   await muteFootballForTests(malformedContext);
   const malformedPage = await malformedContext.newPage();
   const malformedErrors = trackErrors(malformedPage);
@@ -1015,6 +1016,7 @@ test('malformed stores recover, future schemas remain untouched, and blocked sto
   await malformedContext.close();
 
   const futureContext = await browser.newContext();
+  resourceDiagnostics.registerContext(futureContext);
   await muteFootballForTests(futureContext);
   const futurePage = await futureContext.newPage();
   const futureErrors = trackErrors(futurePage);
@@ -1032,6 +1034,7 @@ test('malformed stores recover, future schemas remain untouched, and blocked sto
   await futureContext.close();
 
   const blockedContext = await browser.newContext();
+  resourceDiagnostics.registerContext(blockedContext);
   await muteFootballForTests(blockedContext);
   const blockedPage = await blockedContext.newPage();
   const blockedErrors = trackErrors(blockedPage);
