@@ -6738,3 +6738,188 @@ body::after {
     max-width: none;
   }
 }
+
+/* Kickoff setup (#51): the start overlay joins the approved flat navy
+   workspace — one navy panel under a gold rule, a small Kickoff label, a
+   one-line title, and a flat gold Start ahead of a plain Time Lab entry.
+   Every rule is scoped to #ov-start, so the other overlays keep the shared
+   chrome. The team options, badges and names (design C) are not restyled.
+   The Kickoff label keeps its info-blue fill as a compact chip.
+   The card is capped to the viewport and starts at the top, so a long Season
+   notice scrolls the whole card instead of being clipped. Ordinary content
+   is shorter than the cap and does not scroll. */
+#ov-start .overlay-card {
+  justify-content: flex-start;
+  min-height: 0;
+  max-height: calc(100vh - 48px);
+  max-height: calc(100dvh - 48px);
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 28px 40px 26px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-top: 3px solid var(--gold);
+  border-radius: 14px;
+  background: linear-gradient(110deg, #07152c, #091b31);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.28);
+  clip-path: none;
+}
+
+#ov-start .overlay-card::before,
+#ov-start .overlay-card::after {
+  display: none;
+}
+
+#ov-start .ov-broadcast-badge {
+  align-self: flex-start;
+  padding: 5px 10px 4px;
+  border-radius: 6px;
+  box-shadow: none;
+  font-size: 14px;
+  letter-spacing: 0.16em;
+}
+
+#ov-start .ov-title {
+  max-width: none;
+  margin-top: 10px;
+  font-size: clamp(56px, 5.4vw, 72px);
+  line-height: 0.9;
+}
+
+#ov-start .ov-sub {
+  max-width: 56ch;
+  margin-top: 6px;
+  font-size: 22px;
+  line-height: 1.18;
+}
+
+#ov-start .play-mode-option small { font-size: 13px; }
+#ov-start .rival-selected { font-size: 12px; }
+
+#ov-start .start-action-row {
+  width: min(100%, 760px);
+  display: flex;
+  align-items: stretch;
+  gap: 12px;
+  margin-top: 20px;
+}
+
+#ov-start #start-game-btn {
+  flex: 0 0 auto;
+  min-width: 220px;
+  min-height: 56px;
+  margin-top: 0;
+  padding: 12px 30px 10px;
+  border-radius: 8px;
+  background: var(--gold);
+  box-shadow: none;
+  color: #13203a;
+  font-size: 34px;
+}
+
+#ov-start #start-game-btn:focus-visible {
+  outline: 3px solid #fff;
+  outline-offset: 3px;
+}
+
+#ov-start .tl-entry-btn {
+  flex: 0 1 auto;
+  min-height: 56px;
+  padding: 8px 16px;
+  border-radius: 8px;
+  background: transparent;
+  box-shadow: none;
+}
+
+#ov-start .tl-entry-title { font-size: 19px; }
+#ov-start .tl-entry-copy { margin-top: 4px; color: #cdd8ea; font-size: 14px; }
+
+/* Disabled actions were drawn exactly like enabled ones. */
+#ov-start #start-game-btn:disabled,
+#ov-start .tl-entry-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+/* Tablet tiers: rival tiles match the team tiles' height family. */
+@media (min-width: 761px) and (min-height: 761px) {
+  #ov-start .rival-option {
+    min-height: 84px;
+    padding: 10px 14px;
+    border-radius: 15px;
+  }
+
+  #ov-start .rival-option-style { font-size: 15px; }
+}
+
+@media (max-height: 760px) and (min-width: 700px) {
+  #ov-start .overlay-card { padding: 20px 32px 18px; }
+  #ov-start .ov-title { margin-top: 8px; font-size: 52px; }
+  #ov-start .ov-sub { font-size: 19px; }
+  #ov-start .start-action-row { margin-top: 12px; }
+  #ov-start #start-game-btn { min-height: 46px; font-size: 28px; }
+  #ov-start .tl-entry-btn { min-height: 46px; padding: 6px 13px; }
+}
+
+/* Phones: the rail and its padding are gone, so the content is wider. Start
+   takes the full width and the Time Lab entry sits under it, which leaves
+   room for its copy at a readable size. */
+@media (max-width: 760px) {
+  #ov-start .overlay-card {
+    max-height: calc(100vh - 28px);
+    max-height: calc(100dvh - 28px);
+    padding: 16px;
+    border-radius: 12px;
+  }
+
+  #ov-start .ov-broadcast-badge {
+    padding: 4px 8px 3px;
+    font-size: 13px;
+  }
+
+  #ov-start .ov-title {
+    margin-top: 8px;
+    font-size: clamp(40px, 11vw, 48px);
+  }
+
+  #ov-start .ov-sub {
+    max-width: none;
+    margin-top: 5px;
+    font-size: 17px;
+  }
+
+  #ov-start .rival-option-style,
+  #ov-start .rival-preview-style { font-size: 13px; }
+  #ov-start .season-rung-result { font-size: 12px; }
+
+  #ov-start .start-action-row {
+    width: 100%;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 12px;
+  }
+
+  #ov-start #start-game-btn {
+    width: 100%;
+    min-width: 0;
+    min-height: 50px;
+    padding: 10px 16px 8px;
+    font-size: 28px;
+  }
+
+  #ov-start .tl-entry-btn {
+    width: 100%;
+    min-height: 50px;
+    padding: 7px 12px;
+  }
+
+  #ov-start .tl-entry-title { font-size: 17px; }
+  #ov-start .tl-entry-copy { font-size: 13px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #ov-start .ov-btn:hover,
+  #ov-start .ov-btn:focus-visible {
+    transform: none;
+  }
+}
