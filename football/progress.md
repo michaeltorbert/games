@@ -1709,3 +1709,65 @@ capture helper remain preserved in the external evidence.
 - This delivers the scoreboard portion of #51; the broader redesign issue
   remains open. Per-file browsers continue the existing #161 workaround and
   do not resolve that investigation.
+
+## 2026-10-17 — Football v1.34.11 (#51 question workspace, superseding release entry)
+
+Original request: put the user-approved question-and-answer workspace into the
+live game. The user liked the existing reference, so this applies it rather than
+redesigning it. This is release preparation by a native Claude (Opus 5.5) author,
+separate from both planning seats, on exact base
+`1950441b5a07d4aadbd28f84fc524547abdc7f77` (Football 1.34.10). The author had no
+shell and ran nothing.
+
+- **Scope (CSS only):** the change covers only the question, feedback and
+  explanation phases. One appended, scoped block in `football.css`:
+  - A compact navy desk with a gold top rule. The rule is amber on defense.
+  - Small play facts above a primary system-font question.
+  - Flat paper answers: brown when missed, gold when correct.
+  - Plain feedback text.
+  - A flat Coach Replay with a clear Back / Continue footer.
+  - Two-, three- and four-choice rows fit through the existing hidden-choice
+    `display:none`. Four text or field-position labels use two columns so
+    longer labels keep their size. Wide tiers give the question the larger
+    column.
+  - Replay text has floors of 15 px for steps and goal and 14 px for meaning.
+- **Unchanged:**
+  - No JavaScript, DOM, copy, pedagogy, timing or domain change.
+  - IDs `b0`–`b3` and the hidden, disabled, `wrong` and `correct` states.
+  - The coached retry and its focus move, the second-miss lock, the worked
+    summary, Learn why, Back and the gated Continue (`reviewSatisfied`), and the
+    automatic commit after a correct answer.
+  - Frozen render snapshots, reading and focus order.
+  - The visually hidden explanation `#feedback` status region.
+  - The scoreboard, field and math visuals, call and decision grids, overlays,
+    other screens and team colors.
+  - The miss and correct animations. Removing them was optional, and the answer
+    flow read for this change does not depend on them. No exhaustive repository
+    search was possible without a shell.
+- **Deliberate adaptations, for the pixel review:**
+  - The review state keeps the production order. The question and answers are
+    hidden, and the Film Room summary and Coach Replay are shown. The answers do
+    not reappear under the question as in the static reference.
+  - The Replay type floors above.
+  - The defense amber accents.
+  - The real play-label and play-context lines, kept in place of the reference's
+    single fixture line.
+- **Tests:** new `tests/football-question-workspace.spec.mjs`. It covers real
+  number, three-choice comparison, four-choice text, long field-position and
+  defense questions on the existing muted fixture with real taps. It checks
+  target size, fit, clipping, contrast, primary typography, the retry focus and
+  status, the second-miss explanation semantics, Replay readability, no nested
+  scrolling and the gated Continue. Existing specs, deadlines, retries and the
+  runner are unchanged.
+- **Metadata:** `GAME_VERSION`, every Football asset query string, the Football
+  registry entry and `version.json` are 1.34.11. Kayak 1.1.38, Prague 1.4.0 and
+  Place by Place 1.9.0 keep their exact base descriptors and versions.
+- **Pending (recorded outside this file, under
+  `output/issue-51/question-production/`):** focused checks, the registry gate at
+  the exact base, both unchanged release matrices, current before/after and
+  approved-reference pixels at the six viewports in both engines, a new fresh
+  review, the reviewed PR, merge, Pages deployment and live identity
+  verification. This entry claims none of them, and failures are retained.
+  Browser results are engine emulation, not Simulator or device proof.
+- This delivers the question-workspace portion of #51; the broader redesign
+  issue stays open.
