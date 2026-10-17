@@ -1927,3 +1927,45 @@ no shell and ran nothing.
 - This delivers the game-overlay portion of #51. Time Lab, the field and the
   decision surfaces are not redesigned here, so the broader issue stays open.
   #161 stays open.
+
+## 2026-10-17 — Football v1.34.14 (#52 home-screen icon, superseding release entry)
+
+Original request: "Ok do 51 and release then 52 and release." #52 is scoped to
+Football and Place by Place imagery only; Kayak and Prague are excluded. The
+author is a new native Claude (Opus 5.5) session, separate from both planning
+seats, working on exact base `a0fb736af7986721a9ad1bf64087806ddcc8832b`
+(Football 1.34.13). The author had no shell and ran nothing.
+
+- **Scope (one image):** `apple-touch-icon.png`, used as both the
+  `apple-touch-icon` and the PNG `icon`, is replaced with a generated icon.
+  - It fills the whole square in navy, with a brown football, cream laces and
+    stripes and a gold outline. It has no baked rounded tile or light margin,
+    so iOS masking no longer frames it twice.
+  - The ball is larger and clearer at 32 and 16 px than the old lime icon.
+  - It is still a 1024×1024 opaque RGB PNG, now 796,894 bytes (was 1,135,532).
+    It has no text, numbers or logos.
+  - It was made with the built-in image tool from the author's brief, with the
+    old icon as a reference. The exact image model version is not exposed and
+    is not claimed. The optional Grok consultation stayed incomplete because
+    its CLI was not authenticated. The brief, selection and metrics are
+    recorded under `output/issue-52/`.
+- **Unchanged:** the unlinked `apple-touch-icon.svg`; all CSS, DOM, copy and
+  JavaScript except `GAME_VERSION`; gameplay, RNG, storage, Season, learning,
+  stats, audio and curriculum; tests, runners and configs.
+- **Metadata:** `GAME_VERSION`, all 18 Football asset query strings (including
+  `../shared/`), the Football registry entry and `version.json` are 1.34.14.
+  Place by Place moves to 1.9.1 in the same release for its own #52 art. Kayak
+  1.1.38 and Prague 1.4.0 keep their exact base descriptors and versions.
+- **Pending (recorded outside this file):**
+  - the registry gate at the exact base with targets
+    `football,place-value-practice`;
+  - both unchanged Football release matrices;
+  - the 16/32/180 icon renditions in the product;
+  - a fresh independent review;
+  - the reviewed PR, merge, Pages deployment and live verification.
+
+  This entry claims none of them, and failures are retained. Browser results
+  are engine emulation. No installed-icon, iOS Simulator or physical-device
+  proof is claimed.
+- This delivers the Football part of #52. The issue stays open for the
+  excluded games and broader image scope. #161 stays open.

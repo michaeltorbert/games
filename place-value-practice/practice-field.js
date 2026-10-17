@@ -2,7 +2,7 @@
 // Each caller keeps its own yards and points; this view only draws them. Number facts keeps its own scene.
 (() => {
   'use strict';
-  const ART='assets/touchdown-stadium-v1.webp?v=1.7.0',RUNNER='assets/touchdown-runner-v1.webp?v=1.7.0';
+  const ART='assets/touchdown-stadium-v1.webp?v=1.9.1',RUNNER='assets/touchdown-runner-v1.webp?v=1.9.1';
   const node=(tag,text,cls)=>{const el=document.createElement(tag);if(text)el.textContent=text;if(cls)el.className=cls;return el;};
   // Lazy art is not fetched while its practice panel is hidden, so Number facts still loads only its own two images.
   const art=(src,cls,width,height)=>{const img=node('img',null,cls);img.src=src;img.alt='';img.width=width;img.height=height;img.loading='lazy';img.decoding='async';return img;};

@@ -77,7 +77,7 @@ test('desktop and ultrawide art preserves aspect ratio with a small decoded WebP
   await page.screenshot({path:test.info().outputPath(`${viewport.width}-manual-next.png`)});
  }
  expect(loaded).toHaveLength(2);let bytes=0;
- for(const response of loaded){expect(response.url()).toMatch(/\.webp\?v=1\.7\.0$/);bytes+=(await response.body()).length;}
+ for(const response of loaded){expect(response.url()).toMatch(/\.webp\?v=1\.9\.1$/);bytes+=(await response.body()).length;}
  expect(bytes).toBeLessThan(300000);
 });
 
@@ -377,7 +377,7 @@ test('toggle-only report exposure also marks a warm prompt as supported for driv
 
 test('mixed practice is the default and presentation changes do not change its arithmetic',async({page})=>{
  await page.goto('/place-value-practice/');
- await expect(page.locator('#game-version')).toHaveText('Version 1.9.0');
+ await expect(page.locator('#game-version')).toHaveText('Version 1.9.1');
  await mathPractice(page).click();await settled(page);
  await expect(page.locator('#arithmetic-practice')).toBeVisible();
  await expect(page.locator('#practice-route-label')).toHaveText('Addition & subtraction');await expect(optionsButton(page)).toHaveAccessibleName('Practice options, now Addition & subtraction');
