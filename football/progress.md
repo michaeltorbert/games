@@ -1850,3 +1850,80 @@ no shell and ran nothing.
   are engine emulation, not Simulator or device proof.
 - This delivers the kickoff/setup portion of #51; the broader redesign issue
   stays open.
+
+## 2026-10-17 — Football v1.34.13 (#51 game overlays, superseding release entry)
+
+Original request: "Ok do 51 and release then 52 and release." This release
+covers the remaining #51 game overlays; #52 imagery is a separate later
+release. The author is a new native Claude (Opus 5.5) session, separate from
+both planning seats, working on exact base
+`c3cb1175577e07ef7e4e167bad910a81e025a394` (Football 1.34.12). The author had
+no shell and ran nothing.
+
+- **Scope (CSS only):** one appended block in `football.css`, scoped to
+  `#ov-td`, `#ov-defense`, `#ov-offense`, `#ov-quarter`, `#ov-halftime` and
+  `#ov-end`:
+  - The same flat navy panel and gold top rule as Kickoff. The chamfer, side
+    rail and gloss layers are gone.
+  - The opponent's touchdown and the defense hand-off use a flat brown panel.
+  - The full-width red, blue and orange pills become small label chips: gold
+    for the player's touchdown, offense and win; brown for the opponent's
+    touchdown, defense and loss; quiet navy for breaks and a tie. The chip
+    and title text still name each event and result.
+  - The loss title and score are warm cream instead of pink; a tie is white.
+  - Flat gold actions with an 8 px radius and a 3 px white focus outline. The
+    Final's Quick Game action is an outline button. Disabled actions are
+    dimmed.
+  - Flat score bug, Next chip, stat tiles and Coach rows.
+  - Touchdown, possession and break cards size to their content (760 px wide
+    at most) instead of filling about two thirds of a tablet screen. Titles
+    are one line where they fit: about 60–88 px on tablets and 44–56 px on
+    phones; breaks stay a step smaller.
+  - The Final is at most 920 px wide. Its title and explanation lose their
+    narrow line limits, so "Final Score" is one line. Type sizes and the
+    tuned height tiers are unchanged. Taller tablets, which have no tuned
+    tier, get less vertical padding.
+  - The break field art is quieter (opacity 0.34 to 0.24).
+- **Fit:** each card is capped to the viewport. Content taller than the cap
+  scrolls the whole card; nothing inside it scrolls. Ordinary states are meant
+  to fit with no scrolling, as the existing assertions require. Where a tuned
+  tier sets the Final's padding, only the old rail's left padding is replaced.
+- **Unchanged:**
+  - DOM, IDs, `data-slot`s, ARIA, copy, actions and `index.html` except its
+    cache keys.
+  - Confetti, fireworks, the break art, sweep and rise animations, their timing
+    and the reduced-motion rules.
+  - Kickoff, Time Lab, the field, the scoreboard, the cards and the question
+    workspace.
+  - All JavaScript except `GAME_VERSION`. No gameplay, RNG, storage, Season,
+    learning, stats, audio or curriculum change.
+- **Tests:** new `tests/football-remaining-overlays.spec.mjs`, on the existing
+  muted fixture. It is not in the release runner's file list and runs
+  separately in both engines through an ignored focused config. It covers:
+  - Every overlay state, with the longest supported team labels (Virginia
+    Tech vs Wake Forest): the flat chrome, no-scroll fit, clipping, 44 px
+    targets, a 12 px type floor and contrast.
+  - The longest supported Final (special result, damaged-Season copy, Coach
+    Report and two actions): whole-card reachability, keyboard focus in view,
+    and a real tap on Quick Game.
+  - Existing specs, assertions, retries, workers, deadlines and the runner are
+    unchanged.
+- **Metadata:** `GAME_VERSION`, every Football asset query string (including
+  `../shared/`), the Football registry entry and `version.json` are 1.34.13.
+  Kayak 1.1.38, Prague 1.4.0 and Place by Place 1.9.0 keep their exact base
+  descriptors and versions.
+- **Pending (recorded outside this file, under `output/issue-51-overlays/`):**
+  - the focused spec in both engines;
+  - the unchanged overlay-contract after captures;
+  - the registry gate at the exact base;
+  - both unchanged release matrices;
+  - the before/after pixel review;
+  - the browser-client smoke;
+  - a fresh independent review;
+  - the reviewed PR, merge, Pages deployment and live verification.
+
+  This entry claims none of them, and failures are retained. Browser results
+  are engine emulation, not Simulator or device proof.
+- This delivers the game-overlay portion of #51. Time Lab, the field and the
+  decision surfaces are not redesigned here, so the broader issue stays open.
+  #161 stays open.
