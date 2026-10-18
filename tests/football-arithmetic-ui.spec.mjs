@@ -581,3 +581,83 @@ test('keyboard Space on Two-Point Try and Enter on the correct answer make the t
   expect(committed.score, 'the made try adds two points').toEqual({ player: 8, opponent: 0 });
   expect(errors).toEqual([]);
 });
+
+// Issue #188: the two-point challenge's Coach Replay is the tallest measured
+// question-desk content. At the 780px threshold and a plausible 788px primary
+// usable height, every stage keeps the column picture inside the field and
+// the whole desk 16-64px above the bottom, with no empty tail and no clipping.
+async function lowerSpace(page) {
+  return page.evaluate(() => {
+    const shown = element => getComputedStyle(element).display !== 'none' && element.getBoundingClientRect().height >= 2;
+    const desk = document.getElementById('ui-desk');
+    const style = getComputedStyle(desk);
+    const box = desk.getBoundingClientRect();
+    const parts = [...desk.children].filter(shown).map(element => element.getBoundingClientRect());
+    const controls = [...desk.querySelectorAll('button')].filter(button => shown(button) && !button.closest('[inert]'))
+      .map(button => { const rect = button.getBoundingClientRect(); return { id: button.id, width: rect.width, height: rect.height, bottom: rect.bottom }; });
+    return {
+      innerHeight: window.innerHeight,
+      deskBottom: box.bottom,
+      clipped: desk.scrollHeight > desk.clientHeight + 1,
+      emptyAbove: Math.min(...parts.map(part => part.top)) - (box.top + parseFloat(style.borderTopWidth) + parseFloat(style.paddingTop)),
+      emptyBelow: (box.bottom - parseFloat(style.borderBottomWidth) - parseFloat(style.paddingBottom)) - Math.max(...parts.map(part => part.bottom)),
+      controls,
+    };
+  });
+}
+
+function assertLowerSpace(metrics, label) {
+  const gap = metrics.innerHeight - metrics.deskBottom;
+  expect(gap, `${label}: at least 16px below the desk`).toBeGreaterThanOrEqual(16 - 0.5);
+  expect(gap, `${label}: desk reaches the lower screen`).toBeLessThanOrEqual(64);
+  expect(metrics.clipped, `${label}: desk content not clipped`).toBe(false);
+  expect(metrics.emptyBelow, `${label}: no empty tail below the content`).toBeLessThanOrEqual(metrics.emptyAbove + 8);
+  for (const control of metrics.controls) {
+    expect(control.width, `${label}: ${control.id} width`).toBeGreaterThanOrEqual(44);
+    expect(control.height, `${label}: ${control.id} height`).toBeGreaterThanOrEqual(44);
+    expect(control.bottom, `${label}: ${control.id} at least 16px above the bottom`).toBeLessThanOrEqual(metrics.innerHeight - 16 + 0.5);
+  }
+}
+
+for (const height of [780, 788]) for (const familyId of CHALLENGE_FAMILIES) {
+  test(`${familyId} uses the lower space through Coach Replay at 1180x${height}`, async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name !== 'ipad-11-landscape', 'Primary landscape question-space threshold check');
+    test.setTimeout(120_000);
+    const errors = [];
+    page.on('pageerror', error => errors.push(error.message));
+    page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
+    await page.setViewportSize({ width: 1180, height });
+    await page.goto('/football/?boot=offense-call');
+    const draw = await findTwoPointDraw(page, familyId);
+    expect(draw, `${familyId} is reachable from the Two-Point Try`).not.toBeNull();
+    await page.evaluate((value) => window.__openTwoPoint(value), draw);
+    await page.locator('#decision-grid .decision-btn[data-action="twoPoint"]').tap();
+    await expect(page.locator('#ui-desk')).toHaveAttribute('data-phase', 'question');
+    const question = JSON.parse((await snapshotState(page)).question);
+    expect(question.familyId).toBe(familyId);
+    const label = `${familyId} 1180x${height}`;
+
+    const initialMetrics = await questionGeometry(page);
+    assertQuestionGeometry(initialMetrics, `${label} question`);
+    assertLowerSpace(await lowerSpace(page), `${label} question`);
+
+    const wrong = question.choices.filter(choice => choice.id !== question.correctChoiceId).map(choice => choice.id);
+    await page.locator(`[data-choice-id="${wrong[0]}"]`).tap();
+    await expect(page.locator('#feedback')).toHaveText(`Good try. ${question.hint.text}`);
+    assertQuestionGeometry(await questionGeometry(page), `${label} retry`, { initialAnswers: initialMetrics.answers });
+    assertLowerSpace(await lowerSpace(page), `${label} retry`);
+
+    await page.locator(`[data-choice-id="${wrong[1]}"]`).tap();
+    await expect(page.locator('#ui-desk')).toHaveAttribute('data-phase', 'explanation');
+    assertLowerSpace(await lowerSpace(page), `${label} worked`);
+
+    await page.locator('#question-learn-why').tap();
+    await expect(page.locator('#worked-review')).toBeVisible();
+    assertLowerSpace(await lowerSpace(page), `${label} Coach Replay`);
+    await page.screenshot({ path: testInfo.outputPath(`${familyId}-${height}-replay.png`) });
+
+    await page.locator('#question-continue').tap();
+    expect(await page.evaluate(() => JSON.parse(render_game_to_text()).outcomeCommitted)).toBe(true);
+    expect(errors).toEqual([]);
+  });
+}

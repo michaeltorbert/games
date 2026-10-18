@@ -2209,3 +2209,101 @@ no shell and ran nothing. Reproducible check commands and rationale are in
 
   This entry claims none of them. Browser results will be engine emulation,
   not Simulator or device proof.
+
+## 2026-10-18 — Football v1.34.17 (#188 question space, superseding release entry)
+
+Original request (user email, 17 October 2026): the game left too much unused
+screen space, and the bottom question area should extend farther down. This is a
+focused follow-up to #51, a separate PR and release from #186. The approved
+navy/brown/gold simple style stays; there is no redesign, Fullscreen API, or
+safe-area/viewport integration. The plan is the reconciled native and Sol plan
+(`output/issues-186-188/plan188-result.md`, `sol-reconciliation188.md`,
+`reconcile188-result.md`). The author is a native Claude (Opus 5.5) session, on
+branch `codex/football-question-space` from base
+`c770200ca69e8b5f382d0d6f26e063181cecec60` (#190, Football 1.34.16). The author
+had no shell and ran nothing.
+
+- **Preview before production.** Isolated previews in
+  `output/issues-186-188/author188/` compared three candidates on the real page
+  in Chromium and WebKit:
+  - **core:** rejected; the desk bottom moved 75px up.
+  - **fill:** rejected; about 200px of empty navy tail.
+  - **balanced:** accepted after coordinator pixel review.
+
+  The first run's failures stay recorded. Its area-inequality pass rule and its
+  per-context random game IDs were the author's oracle and fixture errors, and
+  were corrected without weakening any check. The 780px threshold is measured:
+  the tallest natural content (two-point Coach Replay at 1180px wide) needed
+  779px in Chromium and 775px in WebKit, including the 16px clearance.
+- **Change (`football.css` only, appended last):**
+  - **Every phase:** landscape touch tablets of at least 1024px start at the
+    top, so the scoreboard no longer moves between phases.
+  - **From 780px tall:** larger question, support and Coach Replay text, and
+    larger answer numbers with intrinsic rows (no min-height change).
+  - **At 1080px and wider:** the question and feedback field stays at the
+    260px it has in call and explanation.
+  - **From 780 to 900px tall:** the question desk ends 16px above the bottom,
+    with its content centred.
+  - **iPad Pro landscape:** keeps a desk sized to its content.
+  - **Unchanged:** phones and portrait tablets. Short landscapes (1180×740,
+    1024×688) gain only top alignment.
+  - **Not used:** `dvh`/`svh`, safe-area or fixed heights. No DOM, JS, math,
+    state, RNG or curriculum change.
+- **Tests (existing registered specs; no runner, config, retry or deadline
+  change):**
+  - **`football-call-layout.spec.mjs`, primary iPad project at 1180×820, 788
+    and 780:** number, text and yard answers, each by real taps, compared with
+    the same state at 1180×740.
+  - **Same spec, next-down chain:** the miss, worked review and Coach Replay
+    at those three heights.
+  - **Same spec, 1024×688:** stays compact.
+  - **Same spec, every project:** a steady scoreboard and a whole desk; iPad
+    Pro landscape keeps a content-sized desk.
+  - **`football-arithmetic-ui.spec.mjs`:** both two-point challenge families
+    through Coach Replay at 1180×780 and 788.
+  - **Assertions are outcomes, not CSS values:**
+    - the scoreboard sits at the top and doesn't move;
+    - the desk ends 16–64px above the bottom with no empty tail;
+    - nothing is clipped;
+    - controls are at least 44px and on screen;
+    - text is larger than at the short height.
+- **Production pixel evidence:** `output/issues-186-188/author188/capture-production.mjs`
+  compares the frozen released 1.34.16 server with this candidate's served
+  files, with no injected CSS.
+  - It hashes every served Football runtime asset against each root.
+  - It covers all six targets plus 1180×780/788, both short landscapes and a
+    1024×820 probe.
+  - It uses deterministic IDs, strict semantic equality and the existing mute.
+- **Metadata:** `GAME_VERSION`, all 18 Football asset query strings (including
+  `../shared/`), the Football registry entry and `version.json` are 1.34.17.
+  Kayak 1.1.38, Prague 1.4.0 and Place by Place 1.9.1 keep their base
+  descriptors and versions.
+- **Pending:**
+  - the registry gate;
+  - the focused specs and both full release matrices (Chromium and WebKit);
+  - the production before/after captures and their pixel review;
+  - a fresh independent Sol review;
+  - the PR, merge, and Pages/live verification.
+
+  This entry claims none of them. Browser results are engine emulation, not
+  Simulator or device proof. The real primary iPad's usable height is
+  unknown, so whether it reaches 780px is not claimed.
+- **Correction 1 (candidate `990c93d`):** the first full Chromium release run
+  (`tests/artifacts.nosync/football-release/20261018T063606Z-chromium-ad4af7`)
+  failed only the three new next-down Coach Replay cases. The desk was 13.66px
+  from the bottom at 1180×820 and −18.34px at 788, and Back ended at 782.34px
+  at 780. A fresh Sol review requested the same fix.
+  - **Cause:** the 780px budget came from captures that omitted the next-down
+    Replay. That Replay is taller than the two-point Replay and needed about
+    823px.
+  - **CSS fix:** only the explanation desk inside the 780px tier is packed
+    more tightly. Padding is 14/16, the Replay text 16px with line-height
+    1.25, the meaning 15px, and the Replay heading 19px, with smaller gaps and
+    action padding. Everything stays larger than the shipped page, and the
+    actions keep their 44px minimum. The estimated requirement is about 771px
+    (not measured).
+  - **Unchanged:** the question desk, field, threshold and the new assertions.
+  - **Helper:** the capture helper now captures the next-down chain, and it
+    excuses a released-page failure only when the candidate is not worse.
+  - The failed run is retained. All checks and a new fresh review are
+    pending.
