@@ -96,6 +96,15 @@ async function boot(page) {
   });
 }
 
+// seedDriveState and showConversionDecision both call hideOverlays(), whose
+// focusGameplayControl() queues the initial gameplay focus for the next
+// animation frame. Each entry state is complete once that queued focus has
+// run, so keyboard scenarios begin only from settled entry focus: a frame
+// callback registered after it runs after it in the same frame.
+async function settleFocus(page) {
+  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => resolve())));
+}
+
 // The fault is installed first so an opponent action built during the seed
 // fails exactly as in the existing recovery coverage.
 async function seedDecision(page, seed, fault = null) {
@@ -103,6 +112,7 @@ async function seedDecision(page, seed, fault = null) {
     window.__footballTest.setQuestionFault(mode);
     window.__footballTest.seedDriveState(value);
   }, { value: seed, mode: fault });
+  await settleFocus(page);
 }
 
 async function openConversion(page, seed, fault = null) {
@@ -112,6 +122,7 @@ async function openConversion(page, seed, fault = null) {
     window.__footballTest.setQuestionFault(mode);
     showConversionDecision();
   }, { value: seed, mode: fault });
+  await settleFocus(page);
 }
 
 async function setFault(page, fault) {
