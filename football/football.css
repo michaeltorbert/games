@@ -7497,3 +7497,149 @@ body::after {
     font-size: 13px;
   }
 }
+
+/* Issue 188: question space on landscape touch tablets. Kept last so these
+   rules win by source order over the same selectors above. Colours, borders,
+   DOM, reading and focus order are unchanged.
+
+   1. Every phase starts at the top, so the scoreboard does not move between
+      call, decision, question, feedback and Coach Replay. This only moves
+      content up, so it applies at every height.
+   2. From 780px tall, the question, support and Coach Replay text and the
+      answer numbers are larger. Answer rows stay at their intrinsic height.
+      780px is the tallest measured natural content (two-point Coach Replay
+      at 1180px wide) plus the 16px bottom clearance, rounded up.
+   3. At 1080px and wider, the question and feedback field keeps the 260px it
+      has in call and explanation instead of the short-height 220px. The
+      1024-1079px tier keeps its own reduced fields.
+   4. From 780 to 900px tall, the question desk ends 16px above the bottom
+      with its content centred, so spare room is shared above and below the
+      content rather than left as an empty tail. Taller screens such as iPad
+      Pro keep a desk sized to its content. The desk only grows (flex-shrink
+      0, basis auto), so its overflow:hidden cannot clip content. */
+@media (hover: none) and (pointer: coarse) and (min-width: 1024px) and (orientation: landscape) {
+  body {
+    align-items: flex-start;
+  }
+}
+
+@media (hover: none) and (pointer: coarse) and (min-width: 1024px) and (min-height: 780px) and (orientation: landscape) {
+  #ui-desk:is([data-phase="question"], [data-phase="feedback"], [data-phase="explanation"]) {
+    padding: 20px 28px 24px;
+  }
+
+  #ui-desk:is([data-phase="question"], [data-phase="feedback"], [data-phase="explanation"]) #play-context {
+    margin-bottom: 6px;
+    font-size: 14px;
+  }
+
+  #ui-desk:is([data-phase="question"], [data-phase="feedback"], [data-phase="explanation"]) #play-label {
+    font-size: 20px;
+  }
+
+  #ui-desk:is([data-phase="question"], [data-phase="feedback"]) #question {
+    margin-top: 12px;
+    font-size: clamp(26px, 2.75vw, 34px);
+  }
+
+  #ui-desk:is([data-phase="question"], [data-phase="feedback"]) #feedback {
+    margin-top: 14px;
+    font-size: 21px;
+  }
+
+  #ui-desk:is([data-phase="question"], [data-phase="feedback"]) #btn-row[data-choice-type] {
+    gap: 12px;
+  }
+
+  #ui-desk:is([data-phase="question"], [data-phase="feedback"]) #btn-row[data-choice-type] .ans-btn {
+    padding: 14px 10px;
+    font-size: clamp(30px, 3vw, 38px);
+  }
+
+  #ui-desk:is([data-phase="question"], [data-phase="feedback"]) #btn-row[data-choice-type="text"] .ans-btn {
+    font-size: clamp(21px, 2vw, 26px);
+  }
+
+  #ui-desk:is([data-phase="question"], [data-phase="feedback"]) #btn-row[data-choice-type="yard"] .ans-btn {
+    font-size: clamp(20px, 1.9vw, 25px);
+  }
+
+  #ui-desk[data-phase="explanation"] .film-room-summary {
+    margin-top: 12px;
+  }
+
+  #ui-desk[data-phase="explanation"] :is(.film-room-summary h2, #worked-review-heading) {
+    font-size: 21px;
+  }
+
+  #ui-desk[data-phase="explanation"] .film-room-summary p {
+    font-size: 19px;
+  }
+
+  #ui-desk[data-phase="explanation"] .worked-review {
+    gap: 10px;
+  }
+
+  #ui-desk[data-phase="explanation"] :is(.worked-review-goal, .worked-review-steps) p {
+    font-size: 18px;
+  }
+
+  #ui-desk[data-phase="explanation"] .worked-review-meaning p {
+    font-size: 16px;
+  }
+
+  #ui-desk[data-phase="explanation"] .worked-review-steps {
+    gap: 6px;
+  }
+
+  #ui-desk[data-phase="explanation"] .worked-review-steps li {
+    grid-template-columns: 26px minmax(0, 1fr);
+  }
+
+  #ui-desk[data-phase="explanation"] .worked-review-step-number {
+    width: 26px;
+    height: 26px;
+    font-size: 15px;
+  }
+
+  #ui-desk[data-phase="explanation"] .worked-review-actions :is(.question-learn-why, .worked-review-back, .question-continue) {
+    padding: 12px 20px;
+    font-size: 18px;
+  }
+}
+
+@media (hover: none) and (pointer: coarse) and (min-width: 1080px) and (min-height: 780px) and (orientation: landscape) {
+  #wrap:is([data-phase="question"], [data-phase="feedback"]) #field-stage {
+    padding-bottom: 56px;
+  }
+
+  #wrap:is([data-phase="question"], [data-phase="feedback"]) #field-wrap {
+    height: 260px;
+  }
+
+  #ui-desk:is([data-phase="question"], [data-phase="feedback"]) {
+    margin-top: -42px;
+  }
+}
+
+@media (hover: none) and (pointer: coarse) and (min-width: 1024px) and (min-height: 780px) and (max-height: 900px) and (orientation: landscape) {
+  #broadcast-shell {
+    display: flex;
+    flex-direction: column;
+    align-self: stretch;
+  }
+
+  #wrap {
+    flex: 1 0 auto;
+  }
+
+  #wrap:is([data-phase="question"], [data-phase="feedback"], [data-phase="explanation"]) {
+    padding-bottom: 16px;
+  }
+
+  #ui-desk:is([data-phase="question"], [data-phase="feedback"], [data-phase="explanation"]) {
+    flex: 1 0 auto;
+    grid-template-rows: auto;
+    align-content: center;
+  }
+}

@@ -1384,3 +1384,273 @@ test.describe('football call tiles from the #48 template', () => {
     expect(consoleErrors, 'console errors').toEqual([]);
   });
 });
+
+// Issue #188: on landscape touch tablets the game starts at the top in every
+// phase, and with enough height the question desk uses the lower screen for
+// larger, readable content instead of leaving it empty. These check outcomes,
+// not CSS values:
+// - the scoreboard stays at the top and does not move between phases;
+// - the desk ends 16-64px above the bottom, with any spare room shared above
+//   and below its content rather than left as an empty tail;
+// - nothing is clipped, and every control is at least 44px and on screen;
+// - the question and answers are larger than the same state at a short
+//   height, where the layout stays compact.
+// 780px is the threshold and 788px a plausible primary usable height.
+const SPACE_OFFENSE_SEED = Object.freeze({
+  possession: 'offense', direction: 1, quarter: 2, down: 2, yardsToGo: 7,
+  yardLine: 30, firstDownLine: 37, driveStart: 20,
+  scores: { player: 7, opponent: 7 }, totalYards: { player: 83, opponent: 71 },
+  plays: 4, drivePlays: 2,
+});
+// Fourth down at the own 30: the constant 0.2 football draw gives a punt that
+// lands short of the end zone (as in football-question-workspace.spec.mjs).
+const SPACE_PUNT_SEED = Object.freeze({
+  rivalId: 'wake-forest',
+  possession: 'offense', direction: 1, quarter: 2, down: 4, yardsToGo: 10,
+  yardLine: 30, firstDownLine: 40, driveStart: 20,
+  scores: { player: 7, opponent: 7 }, totalYards: { player: 83, opponent: 71 },
+  plays: 4, drivePlays: 3,
+});
+const SPACE_CALL = '#call-grid .call-btn';
+const SPACE_SHAPES = [
+  { shape: 'number', familyId: 'line-to-gain-missing-part', seed: SPACE_OFFENSE_SEED, trigger: SPACE_CALL },
+  { shape: 'text', familyId: 'next-down', seed: SPACE_OFFENSE_SEED, trigger: SPACE_CALL },
+  { shape: 'yard', familyId: 'punt-landing-spot', seed: SPACE_PUNT_SEED, trigger: '#decision-grid .decision-btn[data-action="punt"]' },
+];
+const SPACE_TALL_HEIGHTS = [820, 788, 780];
+
+// Presents familyId through an ordinary scheduler draw and a real tap on the
+// trigger. Returns the question and the trigger phase's metrics.
+async function openSpaceFamily(page, { seed, trigger, familyId }) {
+  await page.addInitScript(() => {
+    try { window.localStorage.removeItem('footballMathStats:v1'); } catch (error) {}
+  });
+  await page.goto('/football/?boot=offense-call');
+  const draw = await page.evaluate(({ seed, trigger, familyId }) => {
+    window.__spacePrepare = (value) => {
+      window.__footballTest.seedDriveState(seed);
+      window.__footballTest.resetLearning();
+      window.__footballTest.setRngStreams({ football: () => 0.2, scheduler: () => value, presentation: () => 0.4 });
+    };
+    window.__footballTest.setQuestionFault(null);
+    for (let index = 0; index < 600; index++) {
+      const value = (index + 0.5) / 600;
+      window.__spacePrepare(value);
+      const control = document.querySelector(trigger);
+      if (!control) continue;
+      control.click();
+      if (window.__footballTest.activeContracts().questionInstance?.familyId === familyId) return value;
+    }
+    return null;
+  }, { seed, trigger, familyId });
+  expect(draw, `${familyId} is reachable through the ordinary scheduler`).not.toBeNull();
+  await page.evaluate((value) => window.__spacePrepare(value), draw);
+  await expect(page.locator(trigger).first()).toBeVisible();
+  const triggerMetrics = await spaceMetrics(page);
+  await page.locator(trigger).first().tap();
+  await expect(page.locator('#ui-desk')).toHaveAttribute('data-phase', 'question');
+  const question = await page.evaluate(() => window.__footballTest.activeContracts().questionInstance);
+  expect(question.familyId).toBe(familyId);
+  return { question, triggerMetrics };
+}
+
+async function spaceMetrics(page) {
+  return page.evaluate(() => {
+    const box = (element) => {
+      const rect = element.getBoundingClientRect();
+      return { top: rect.top, right: rect.right, bottom: rect.bottom, left: rect.left, width: rect.width, height: rect.height };
+    };
+    const shown = element => getComputedStyle(element).display !== 'none' && element.getBoundingClientRect().height >= 2;
+    const desk = document.getElementById('ui-desk');
+    const style = getComputedStyle(desk);
+    const deskBox = box(desk);
+    const parts = [...desk.children].filter(shown).map(box);
+    const contentTop = deskBox.top + parseFloat(style.borderTopWidth) + parseFloat(style.paddingTop);
+    const contentBottom = deskBox.bottom - parseFloat(style.borderBottomWidth) - parseFloat(style.paddingBottom);
+    const answers = [...document.querySelectorAll('#btn-row .ans-btn:not(.hidden)')].map(box);
+    return {
+      phase: desk.dataset.phase,
+      innerWidth: window.innerWidth,
+      innerHeight: window.innerHeight,
+      scrollY: window.scrollY,
+      scrollWidth: document.documentElement.scrollWidth,
+      scorebugTop: document.getElementById('scorebug').getBoundingClientRect().top,
+      desk: deskBox,
+      deskScrollHeight: desk.scrollHeight,
+      deskClientHeight: desk.clientHeight,
+      emptyAbove: Math.min(...parts.map(part => part.top)) - contentTop,
+      emptyBelow: contentBottom - Math.max(...parts.map(part => part.bottom)),
+      questionSize: parseFloat(getComputedStyle(document.getElementById('question')).fontSize),
+      answerHeight: answers.length ? Math.min(...answers.map(answer => answer.height)) : null,
+      controls: [...desk.querySelectorAll('button')]
+        .filter(button => shown(button) && !button.closest('[inert]'))
+        .map(button => ({ id: button.id || button.textContent.trim().slice(0, 24), ...box(button) })),
+    };
+  });
+}
+
+// Shared by every height: no scroll, no overflow, no clipping, and every
+// visible desk control whole, on screen and at least 44px.
+function assertSpaceBasics(metrics, label) {
+  expect(metrics.scrollY, `${label}: no automatic scroll`).toBe(0);
+  expect(metrics.scrollWidth, `${label}: no horizontal overflow`).toBeLessThanOrEqual(metrics.innerWidth + EPSILON);
+  expect(metrics.deskScrollHeight, `${label}: desk content not clipped`).toBeLessThanOrEqual(metrics.deskClientHeight + EPSILON);
+  expect(metrics.controls.length, `${label}: desk controls shown`).toBeGreaterThan(0);
+  for (const control of metrics.controls) {
+    expect(control.width, `${label}: ${control.id} width`).toBeGreaterThanOrEqual(44);
+    expect(control.height, `${label}: ${control.id} height`).toBeGreaterThanOrEqual(44);
+    expect(control.left, `${label}: ${control.id} left`).toBeGreaterThanOrEqual(-EPSILON);
+    expect(control.right, `${label}: ${control.id} right`).toBeLessThanOrEqual(metrics.innerWidth + EPSILON);
+    expect(control.bottom, `${label}: ${control.id} above the fold`).toBeLessThanOrEqual(metrics.innerHeight + EPSILON);
+  }
+}
+
+// Scoreboard at the top (inside the body padding) and in the same place as
+// the phase the play started from.
+function assertScoreboardSteady(metrics, reference, label) {
+  expect(metrics.scorebugTop, `${label}: game starts at the top`).toBeLessThanOrEqual(16 + EPSILON);
+  expect(Math.abs(metrics.scorebugTop - reference.scorebugTop), `${label}: scoreboard does not move between phases`)
+    .toBeLessThanOrEqual(EPSILON);
+}
+
+// Tall primary heights: the desk reaches the lower screen with its content
+// centred, never as an empty tail.
+function assertLowerSpaceUsed(metrics, label) {
+  assertSpaceBasics(metrics, label);
+  const gap = metrics.innerHeight - metrics.desk.bottom;
+  expect(gap, `${label}: at least 16px below the desk`).toBeGreaterThanOrEqual(16 - 0.5);
+  expect(gap, `${label}: desk reaches the lower screen`).toBeLessThanOrEqual(64);
+  expect(metrics.emptyBelow, `${label}: no empty tail below the content`).toBeLessThanOrEqual(metrics.emptyAbove + 8);
+}
+
+// Short heights and taller secondary screens: the desk stays sized to its content.
+function assertContentSizedDesk(metrics, label) {
+  assertSpaceBasics(metrics, label);
+  expect(metrics.emptyAbove + metrics.emptyBelow, `${label}: desk sized to its content`).toBeLessThanOrEqual(2);
+}
+
+async function missOnce(page, question) {
+  const wrongId = question.choices.find(choice => choice.id !== question.correctChoiceId).id;
+  await page.locator(`#btn-row .ans-btn[data-choice-id="${wrongId}"]`).tap();
+  await expect.poll(() => page.evaluate(() => window.__footballTest.activeContracts().questionUi.attempt)).toBe(2);
+  await expect(page.locator('#ui-desk')).toHaveAttribute('data-phase', 'question');
+  return wrongId;
+}
+
+test.describe('football question space on landscape tablets (#188)', () => {
+  for (const shape of SPACE_SHAPES) for (const height of SPACE_TALL_HEIGHTS) {
+    test(`${shape.shape} answers use the lower space at 1180x${height} and stay compact at 1180x740`, async ({ page }, testInfo) => {
+      test.skip(testInfo.project.name !== 'ipad-11-landscape', 'Primary landscape question-space check');
+      const { pageErrors, consoleErrors } = attachErrorListeners(page);
+
+      await page.setViewportSize({ width: 1180, height: 740 });
+      const short = await openSpaceFamily(page, shape);
+      await expect(page.locator('#btn-row')).toHaveAttribute('data-choice-type', shape.shape);
+      const compact = await spaceMetrics(page);
+      assertContentSizedDesk(compact, `${shape.shape} 740 question`);
+      assertScoreboardSteady(compact, short.triggerMetrics, `${shape.shape} 740 question`);
+      await assertAnswerPanelClearance(page, `${shape.shape} 740 question`);
+
+      await page.setViewportSize({ width: 1180, height });
+      const tall = await openSpaceFamily(page, shape);
+      const label = `${shape.shape} 1180x${height}`;
+      const question = await spaceMetrics(page);
+      assertLowerSpaceUsed(question, `${label} question`);
+      assertScoreboardSteady(question, tall.triggerMetrics, `${label} question`);
+      expect(question.questionSize, `${label}: question larger than at 740`).toBeGreaterThan(compact.questionSize);
+      expect(question.answerHeight, `${label}: answers no smaller than at 740`).toBeGreaterThanOrEqual(compact.answerHeight - 0.5);
+
+      await missOnce(page, tall.question);
+      const retry = await spaceMetrics(page);
+      assertLowerSpaceUsed(retry, `${label} retry`);
+      assertScoreboardSteady(retry, tall.triggerMetrics, `${label} retry`);
+      expect(Math.abs(retry.answerHeight - question.answerHeight), `${label}: retry keeps the answer size`).toBeLessThanOrEqual(0.5);
+
+      await testInfo.attach(`question-space-${shape.shape}-${height}.png`, {
+        body: await page.screenshot({ fullPage: false }),
+        contentType: 'image/png',
+      });
+      expect(pageErrors, 'page errors').toEqual([]);
+      expect(consoleErrors, 'console errors').toEqual([]);
+    });
+  }
+
+  for (const height of SPACE_TALL_HEIGHTS) {
+    test(`worked review and Coach Replay use the lower space at 1180x${height}`, async ({ page }, testInfo) => {
+      test.skip(testInfo.project.name !== 'ipad-11-landscape', 'Primary landscape question-space check');
+      const { pageErrors, consoleErrors } = attachErrorListeners(page);
+      await page.setViewportSize({ width: 1180, height });
+      const shape = SPACE_SHAPES.find(item => item.shape === 'text');
+      const { question, triggerMetrics } = await openSpaceFamily(page, shape);
+      const label = `next-down 1180x${height}`;
+
+      const wrongId = await missOnce(page, question);
+      const secondWrong = question.choices.find(choice => choice.id !== question.correctChoiceId && choice.id !== wrongId).id;
+      await page.locator(`#btn-row .ans-btn[data-choice-id="${secondWrong}"]`).tap();
+      await expect(page.locator('#ui-desk')).toHaveAttribute('data-phase', 'explanation');
+      await expect(page.locator('#question-learn-why')).toBeVisible();
+      const worked = await spaceMetrics(page);
+      assertLowerSpaceUsed(worked, `${label} worked`);
+      assertScoreboardSteady(worked, triggerMetrics, `${label} worked`);
+
+      await page.locator('#question-learn-why').tap();
+      await expect(page.locator('#worked-review')).toBeVisible();
+      await expect(page.locator('#worked-review-heading')).toBeFocused();
+      const replay = await spaceMetrics(page);
+      assertLowerSpaceUsed(replay, `${label} Coach Replay`);
+      assertScoreboardSteady(replay, triggerMetrics, `${label} Coach Replay`);
+
+      await testInfo.attach(`question-space-replay-${height}.png`, {
+        body: await page.screenshot({ fullPage: false }),
+        contentType: 'image/png',
+      });
+      await page.locator('#question-continue').tap();
+      await expect(page.locator('#ui-desk')).toHaveAttribute('data-phase', 'feedback');
+      expect(pageErrors, 'page errors').toEqual([]);
+      expect(consoleErrors, 'console errors').toEqual([]);
+    });
+  }
+
+  test('1024px short iPad landscape stays compact and top-aligned', async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name !== 'ipad-11-landscape', 'Older iPad landscape compatibility check');
+    const { pageErrors, consoleErrors } = attachErrorListeners(page);
+    await page.setViewportSize({ width: 1024, height: 688 });
+    const shape = SPACE_SHAPES.find(item => item.shape === 'number');
+    const { question, triggerMetrics } = await openSpaceFamily(page, shape);
+    const metrics = await spaceMetrics(page);
+    assertContentSizedDesk(metrics, '1024x688 question');
+    assertScoreboardSteady(metrics, triggerMetrics, '1024x688 question');
+    await assertAnswerPanelClearance(page, '1024x688 question');
+    await missOnce(page, question);
+    const retry = await spaceMetrics(page);
+    assertContentSizedDesk(retry, '1024x688 retry');
+    assertScoreboardSteady(retry, triggerMetrics, '1024x688 retry');
+    await assertAnswerPanelClearance(page, '1024x688 retry');
+    expect(pageErrors, 'page errors').toEqual([]);
+    expect(consoleErrors, 'console errors').toEqual([]);
+  });
+
+  // Every project's own viewport. iPad Pro landscape is top-aligned with a
+  // content-sized desk (bounded growth, no blank panel). Phones and portrait
+  // tablets keep their existing layout; the matched before/after captures
+  // compare their geometry exactly, so here they need only a steady
+  // scoreboard and the shared basics.
+  test('each target keeps a steady scoreboard and a whole question desk', async ({ page }, testInfo) => {
+    const { pageErrors, consoleErrors } = attachErrorListeners(page);
+    const shape = SPACE_SHAPES.find(item => item.shape === 'number');
+    const { question, triggerMetrics } = await openSpaceFamily(page, shape);
+    const pro = testInfo.project.name === 'ipad-pro-13-landscape';
+    const check = pro ? assertContentSizedDesk : assertSpaceBasics;
+    const verify = (metrics, state) => {
+      const label = `${testInfo.project.name} ${state}`;
+      check(metrics, label);
+      if (pro) assertScoreboardSteady(metrics, triggerMetrics, label);
+      else expect(Math.abs(metrics.scorebugTop - triggerMetrics.scorebugTop), `${label}: scoreboard does not move`).toBeLessThanOrEqual(EPSILON);
+    };
+    verify(await spaceMetrics(page), 'question');
+    await missOnce(page, question);
+    verify(await spaceMetrics(page), 'retry');
+    expect(pageErrors, 'page errors').toEqual([]);
+    expect(consoleErrors, 'console errors').toEqual([]);
+  });
+});
