@@ -2260,6 +2260,356 @@ test('special learning events retain only the closed outcome-independent binding
   }
 });
 
+// Issue #186: the player's own two-point try uses the requested three-digit
+// challenge; PAT and opponent tries keep their conversion families.
+const CHALLENGE_FAMILIES = ['two-point-three-digit-add', 'two-point-three-digit-subtract'];
+const OLD_CONVERSION_FAMILIES = ['conversion-attempt-value', 'conversion-try-marker'];
+const PLAYER_TRY_SEED = Object.freeze({
+  possession: 'offense', direction: 1, quarter: 1, quarterPossessions: 0, down: 1,
+  yardsToGo: 10, yardLine: 20, firstDownLine: 30, driveStart: 20,
+  scores: { player: 6, opponent: 0 }, totalYards: { player: 0, opponent: 0 },
+  plays: 0, drivePlays: 0,
+});
+
+async function openPlayerConversion(page, fault = null) {
+  await page.evaluate(({ seed, faultMode }) => {
+    window.__footballTest.setQuestionFault(null);
+    window.__footballTest.seedDriveState(seed);
+    window.__footballTest.setQuestionFault(faultMode);
+    showConversionDecision();
+  }, { seed: PLAYER_TRY_SEED, faultMode: fault });
+}
+
+async function tapConversion(page, action) {
+  await page.locator(`#decision-grid .decision-btn[data-action="${action}"]`).click();
+  return activeContracts(page);
+}
+
+test('player two-point challenge resolves atomically as made or missed and records only its own concept', async ({ page }, testInfo) => {
+  primaryOnly(testInfo);
+  await cleanBoot(page, 0x5b186);
+  await page.evaluate(() => {
+    window.__challengeLearningEvents = [];
+    window.addEventListener('football:learning', event => window.__challengeLearningEvents.push(event.detail));
+  });
+  const learningState = () => page.evaluate(() => window.__footballTest.learningState());
+
+  for (const policy of ['firstTryCorrect', 'retryCorrect', 'secondMiss']) {
+    await openPlayerConversion(page);
+    await page.evaluate(() => { window.__challengeLearningEvents.length = 0; });
+    const learningBefore = await learningState();
+    const before = await tapConversion(page, 'twoPoint');
+    const question = before.questionInstance;
+    const label = `two-point ${policy}`;
+    expect(before.activePlay.context, label).toMatchObject({ possession: 'offense', attemptType: 'twoPoint', attemptValue: 2 });
+    expect(CHALLENGE_FAMILIES, label).toContain(question.familyId);
+    expect(question).toMatchObject({
+      concept: 'two-point-challenge', evidenceClass: 'independent', curriculumSource: 'requested-challenge',
+      introducedOnPage: null, purpose: 'requestedChallenge', support: 'guided',
+    });
+    expect(before.questionUi).toMatchObject({ attempt: 1, support: 'guided', missedChoiceIds: [] });
+    // The canonical football play carries no challenge numbers.
+    expect(Object.keys(before.activePlay).sort()).toEqual([
+      'context', 'contextId', 'gameId', 'playId', 'playType', 'possessionId', 'proposal', 'schemaVersion',
+    ]);
+    expect(JSON.stringify(before.activePlay)).not.toMatch(/challenge/i);
+    expect(before.activePlay.proposal).toMatchObject({ made: true, points: 2, resultKind: 'conversionMade' });
+    const trusted = await page.evaluate(() => FOOTBALL_DOMAIN.clone(
+      FOOTBALL_CONTEXTUAL_QUESTIONS.twoPointChallengeFor(state.activePlay, state.questionInstance.familyId),
+    ));
+    expect(question.challengeFixture).toEqual(trusted);
+    expect(trusted.identity).toEqual({
+      gameId: before.activePlay.gameId, possessionId: before.activePlay.possessionId,
+      playId: before.activePlay.playId, contextId: before.activePlay.contextId, familyId: question.familyId,
+    });
+    expect(question.choices.map(choice => choice.value).sort()).toEqual([...trusted.choiceValues].sort());
+    expect(question.choices.filter(choice => choice.value === trusted.answer)).toHaveLength(1);
+    expect(before.render.math).toMatchObject({ type: 'column-arithmetic', revealsAnswer: false, result: null });
+
+    const wrongIds = question.choices.filter(choice => choice.id !== question.correctChoiceId).map(choice => choice.id);
+    let after;
+    if (policy === 'firstTryCorrect') {
+      after = await answerChoice(page, question.correctChoiceId);
+    } else {
+      const retry = await answerChoice(page, wrongIds[0]);
+      expect(retry.render.mode, label).toBe('question');
+      expect(retry.questionUi).toMatchObject({ attempt: 2, support: 'guided' });
+      expect(retry.render.math).toMatchObject({ type: 'column-arithmetic', revealsAnswer: false, result: null });
+      // The same frozen play, question, numbers and choices survive the retry.
+      expect(retry.activePlay).toEqual(before.activePlay);
+      expect(retry.questionInstance).toEqual(question);
+      expect(retry.statsSession.completedPlays).toHaveLength(before.statsSession.completedPlays.length);
+      if (policy === 'retryCorrect') {
+        after = await answerChoice(page, question.correctChoiceId);
+      } else {
+        const worked = await answerChoice(page, wrongIds[1]);
+        expect(worked.render.mode, label).toBe('explanation');
+        expect(worked.questionUi.support).toBe('worked');
+        expect(worked.render.math).toMatchObject({ type: 'column-arithmetic', revealsAnswer: true });
+        expect(worked.render.outcomeCommitted).toBe(false);
+        expect(worked.statsSession.completedPlays).toHaveLength(before.statsSession.completedPlays.length);
+        await expect(page.locator('#film-room-summary-copy')).toHaveText(question.workedExplanation.text);
+        const synchronous = await continueAndRetryCommitSynchronously(page);
+        expect(synchronous.duplicateCommit).toBe(false);
+        expect(synchronous.resultCount).toBe(1);
+        after = synchronous.contracts;
+      }
+    }
+
+    const made = policy !== 'secondMiss';
+    expect(after.render.outcomeCommitted, label).toBe(true);
+    expect(after.render.score, label).toEqual({ player: made ? 8 : 6, opponent: 0 });
+    expect(after.render.pendingNextPossession).toBe('defense');
+    expect(after.render.pendingRestartReason).toBe('automaticTouchback');
+    expect(after.render.plays).toBe(0);
+    expect(after.render.totalYards).toEqual({ player: 0, opponent: 0 });
+    expect(after.statsSession.completedPlays).toHaveLength(before.statsSession.completedPlays.length + 1);
+    const row = after.statsSession.completedPlays.at(-1);
+    expect(row).toMatchObject({
+      playType: 'conversion', instructionalStatus: 'presented', resolution: policy,
+      outcome: made ? 'conversionMade' : 'conversionMissed', offeredYards: null, actualYards: null,
+      links: { familyId: question.familyId, contextId: question.contextId, questionInstanceId: question.questionInstanceId },
+      // The canonical stats row keeps the family in links and as question.id.
+      question: {
+        id: question.familyId, skill: question.skill, concept: 'two-point-challenge', purpose: 'requestedChallenge',
+        grading: 'gate', tier: 'three-digit-no-regrouping', evidenceClass: 'independent',
+      },
+    });
+    expect(row.metrics).toMatchObject({ attemptType: 'twoPoint', attemptValue: 2 });
+    const serializedRow = JSON.stringify(row);
+    for (const forbidden of ['challengeFixture', 'challengeA', 'challengeB', question.prompt.text, question.workedExplanation.text]) {
+      expect(serializedRow).not.toContain(forbidden);
+    }
+
+    const duplicate = await page.evaluate(() => ({
+      commit: commitPendingResolution(),
+      finalize: finalizePossessionState(state.possessionId, {
+        nextPossession: state.pendingNextPossession,
+        nextStartYardLine: state.pendingNextStartYardLine,
+        restartReason: state.pendingRestartReason,
+      }),
+      contracts: window.__footballTest.activeContracts(),
+    }));
+    expect(duplicate.commit).toBe(false);
+    expect(duplicate.finalize).toBe(false);
+    expect(duplicate.contracts.render.score).toEqual(after.render.score);
+    expect(duplicate.contracts.render.quarterPossessions).toBe(after.render.quarterPossessions);
+    expect(duplicate.contracts.statsSession.completedPlays).toHaveLength(after.statsSession.completedPlays.length);
+
+    const events = await page.evaluate(() => FOOTBALL_DOMAIN.clone(window.__challengeLearningEvents));
+    expect(events.map(event => event.type), label).toEqual(policy === 'firstTryCorrect'
+      ? ['presented', 'attempt', 'resolved']
+      : ['presented', 'attempt', 'attempt', 'resolved']);
+    expect(events.at(-1).result).toBe(policy);
+    for (const event of events) {
+      expect(event).toMatchObject({
+        familyId: question.familyId, concept: 'two-point-challenge', evidenceClass: 'independent',
+        playId: before.activePlay.playId, playType: 'conversion',
+      });
+      expect(event.bindings.map(binding => binding.source)).toEqual([
+        { kind: 'context', path: '/context/attemptType' },
+        { kind: 'context', path: '/context/attemptValue' },
+        { kind: 'challengeFixture', path: '/a' },
+        { kind: 'challengeFixture', path: '/b' },
+      ]);
+      expect(event.bindings.map(binding => binding.value)).toEqual(['twoPoint', 2, trusted.a, trusted.b]);
+    }
+
+    const learningAfter = await learningState();
+    const bucket = state => state.byConcept?.['two-point-challenge']?.independent || { resolved: 0 };
+    expect(bucket(learningAfter).resolved).toBe(bucket(learningBefore).resolved + 1);
+    expect(bucket(learningAfter)[policy]).toBe((bucket(learningBefore)[policy] || 0) + 1);
+    for (const concept of ['conversion-scoring', 'conversion-placement']) {
+      expect(learningAfter.byConcept?.[concept] ?? null, `${label}: ${concept} untouched`)
+        .toEqual(learningBefore.byConcept?.[concept] ?? null);
+    }
+  }
+  // Coach Report names the dedicated concept, not a generic or workbook label.
+  const coach = await page.evaluate(() => window.__footballTest.coachReport());
+  expect(coach).toContainEqual({ label: 'Strong today', value: 'Two-point challenge' });
+  expect(JSON.stringify(coach)).not.toMatch(/Football math/);
+});
+
+test('player two-point challenge keeps RNG budgets, and its bypass records no learning success', async ({ page }, testInfo) => {
+  primaryOnly(testInfo);
+  await cleanBoot(page, 0x5b187);
+  const installCounters = () => page.evaluate(() => {
+    window.__challengeDraws = { football: 0, scheduler: 0, presentation: 0 };
+    window.__footballTest.setRngStreams({
+      football: () => { window.__challengeDraws.football++; return 0.5; },
+      scheduler: () => { window.__challengeDraws.scheduler++; return 0.25; },
+      presentation: () => { window.__challengeDraws.presentation++; return 0.5; },
+    });
+  });
+  const draws = () => page.evaluate(() => ({ ...window.__challengeDraws }));
+
+  const budgets = {};
+  for (const action of ['pat', 'twoPoint']) {
+    await openPlayerConversion(page);
+    await installCounters();
+    const opened = await tapConversion(page, action);
+    expect(action === 'twoPoint' ? CHALLENGE_FAMILIES : OLD_CONVERSION_FAMILIES).toContain(opened.questionInstance.familyId);
+    budgets[action] = await draws();
+    await answerChoice(page, opened.questionInstance.correctChoiceId);
+    const resolved = await draws();
+    expect(resolved.football, `${action}: resolution uses no football draw`).toBe(0);
+    expect(resolved.scheduler, `${action}: resolution uses no scheduler draw`).toBe(budgets[action].scheduler);
+  }
+  // One scheduler draw picks the family and three presentation draws shuffle
+  // four choices, exactly as the PAT question already does.
+  expect(budgets.twoPoint).toEqual({ football: 0, scheduler: 1, presentation: 3 });
+  expect(budgets.twoPoint).toEqual(budgets.pat);
+
+  await page.evaluate(() => {
+    window.__challengeDiagnostics = [];
+    window.addEventListener('football:diagnostic', event => window.__challengeDiagnostics.push(event.detail));
+  });
+  for (const fault of ['empty-pool', 'malformed']) {
+    await openPlayerConversion(page, fault);
+    await page.evaluate(() => { window.__challengeDiagnostics.length = 0; });
+    const baseline = await activeContracts(page);
+    const learningBaseline = await page.evaluate(() => window.__footballTest.learningState());
+    const after = await tapConversion(page, 'twoPoint');
+    await page.evaluate(() => window.__footballTest.setQuestionFault(null));
+    const diagnostics = await page.evaluate(() => FOOTBALL_DOMAIN.clone(window.__challengeDiagnostics));
+    const row = after.statsSession.completedPlays.at(-1);
+    expect(after.render.mode, fault).toBe('feedback');
+    expect(after.render.score, `${fault}: the frozen made try commits`).toEqual({ player: 8, opponent: 0 });
+    expect(after.statsSession.completedPlays).toHaveLength(baseline.statsSession.completedPlays.length + 1);
+    expect(row).toMatchObject({
+      playType: 'conversion', instructionalStatus: 'bypassed', question: null, attempts: [], resolution: null,
+    });
+    expect(after.learning, `${fault}: no learning attempt or success`).toEqual(baseline.learning);
+    expect(await page.evaluate(() => window.__footballTest.learningState())).toEqual(learningBaseline);
+    expect(diagnostics).toHaveLength(1);
+    expect(diagnostics[0].code).toBe(fault === 'malformed' ? 'malformed-question' : 'empty-pool');
+    if (fault === 'malformed') expect(CHALLENGE_FAMILIES).toContain(diagnostics[0].familyId);
+    else expect(diagnostics[0].familyId).toBeNull();
+  }
+});
+
+test('player two-point validation recomputes the trusted fixture and fails closed on tampering', async ({ page }, testInfo) => {
+  primaryOnly(testInfo);
+  await cleanBoot(page, 0x5b188);
+  const verdicts = await page.evaluate(({ seed, families }) => {
+    const verdict = (activePlay, question) => {
+      try {
+        validateQuestionInstance(activePlay, question);
+        return 'accepted';
+      } catch (error) {
+        return error?.code || 'thrown';
+      }
+    };
+    const prepare = (activePlay, familyId) => FOOTBALL_DOMAIN.deepFreeze(FOOTBALL_DOMAIN.clone({
+      ...FOOTBALL_CONTEXTUAL_QUESTIONS.build(activePlay, familyId, { presentationRng: () => 0.5, support: 'guided' }),
+      contextId: activePlay.contextId,
+      questionInstanceId: nextQuestionInstanceId(),
+    }));
+    const edit = (question, change) => {
+      const copy = FOOTBALL_DOMAIN.clone(question);
+      change(copy);
+      return FOOTBALL_DOMAIN.deepFreeze(copy);
+    };
+    const binding = (question, id) => question.bindings.find(item => item.id === id);
+    window.__footballTest.seedDriveState(seed);
+    const play = makeConversionActivePlay('twoPoint');
+    const otherPlay = makeConversionActivePlay('twoPoint');
+    const pat = makeConversionActivePlay('pat');
+    const patQuestion = prepare(pat, 'conversion-try-marker');
+    window.__footballTest.seedDriveState({ ...seed, possession: 'defense', direction: -1, yardLine: 80, firstDownLine: 70, driveStart: 80 });
+    const opponentTwoPoint = makeConversionActivePlay('twoPoint');
+    const result = {};
+    for (const familyId of families) {
+      const valid = prepare(play, familyId);
+      const fixture = valid.challengeFixture;
+      const wrongIndex = valid.choices.findIndex(choice => choice.id !== valid.correctChoiceId);
+      const cases = {
+        valid: [play, valid],
+        otherIdentity: [play, edit(valid, copy => {
+          copy.challengeFixture = FOOTBALL_DOMAIN.clone(FOOTBALL_CONTEXTUAL_QUESTIONS.twoPointChallengeFor(otherPlay, familyId));
+        })],
+        identityField: [play, edit(valid, copy => { copy.challengeFixture.identity.possessionId = 'another-possession'; })],
+        operation: [play, edit(valid, copy => {
+          copy.challengeFixture.operation = fixture.operation === 'add' ? 'subtract' : 'add';
+        })],
+        outOfBounds: [play, edit(valid, copy => {
+          copy.challengeFixture.a = 1000;
+          binding(copy, 'challengeA').value = 1000;
+        })],
+        regrouping: [play, edit(valid, copy => {
+          // Consistent carrying numbers are still not the trusted fixture.
+          copy.challengeFixture.a = 158;
+          copy.challengeFixture.b = 264;
+          binding(copy, 'challengeA').value = 158;
+          binding(copy, 'challengeB').value = 264;
+        })],
+        answer: [play, edit(valid, copy => { copy.answer.value = fixture.answer + 1; })],
+        choiceSet: [play, edit(valid, copy => { copy.choices[wrongIndex].value = fixture.answer + 2; })],
+        operandIds: [play, edit(valid, copy => { copy.operation.operandIds = ['challengeB', 'challengeA']; })],
+        bindingPath: [play, edit(valid, copy => { binding(copy, 'challengeB').source.path = '/answer'; })],
+        bindingKind: [play, edit(valid, copy => { binding(copy, 'challengeB').source.kind = 'generated'; })],
+        bindingField: [play, edit(valid, copy => { binding(copy, 'challengeA').source.generator = 'other'; })],
+        missingFixture: [play, edit(valid, copy => { delete copy.challengeFixture; })],
+        visual: [play, edit(valid, copy => { copy.visuals.initial.data.a = fixture.a + 1; })],
+        // The renderer draws the sign and the worked result, so both are checked.
+        sign: [play, edit(valid, copy => {
+          for (const stage of ['initial', 'guided', 'worked']) {
+            copy.visuals[stage].data.operator = fixture.operation === 'add' ? '−' : '+';
+          }
+        })],
+        extraVisualField: [play, edit(valid, copy => { copy.visuals.guided.data.answer = fixture.answer; })],
+        workedAnswer: [play, edit(valid, copy => { copy.visuals.worked.result.value = fixture.answer + 1; })],
+        resultLink: [play, edit(valid, copy => { copy.visuals.worked.result.answerId = 'other--answer'; })],
+        visualAnswerLink: [play, edit(valid, copy => { copy.visuals.initial.answerId = 'other--answer'; })],
+        workedHidden: [play, edit(valid, copy => {
+          copy.visuals.worked.revealsAnswer = false;
+          copy.visuals.worked.result = null;
+        })],
+        guidedExposure: [play, edit(valid, copy => {
+          copy.visuals.guided.revealsAnswer = true;
+          copy.visuals.guided.result = { answerId: copy.answer.id, value: fixture.answer };
+        })],
+        stageLabel: [play, edit(valid, copy => { copy.visuals.guided.stage = 'worked'; })],
+        source: [play, edit(valid, copy => { copy.curriculumSource = 'workbook'; })],
+        page: [play, edit(valid, copy => { copy.introducedOnPage = 113; })],
+        concept: [play, edit(valid, copy => { copy.concept = 'conversion-scoring'; })],
+        onPat: [pat, edit(valid, copy => { copy.contextId = pat.contextId; })],
+        onOpponentTry: [opponentTwoPoint, edit(valid, copy => { copy.contextId = opponentTwoPoint.contextId; })],
+      };
+      result[familyId] = Object.fromEntries(Object.entries(cases)
+        .map(([name, [activePlay, question]]) => [name, verdict(activePlay, question)]));
+    }
+    result.pat = {
+      valid: verdict(pat, patQuestion),
+      fixtureCopy: verdict(pat, edit(patQuestion, copy => {
+        copy.challengeFixture = FOOTBALL_DOMAIN.clone(FOOTBALL_CONTEXTUAL_QUESTIONS.twoPointChallengeFor(play, families[0]));
+      })),
+      fixtureBinding: verdict(pat, edit(patQuestion, copy => {
+        copy.bindings.push({ id: 'challengeA', source: { kind: 'challengeFixture', path: '/a' }, value: 124 });
+      })),
+    };
+    result.columnCheck = {
+      rejected: [['add', 158, 264], ['add', 190, 120], ['add', 620, 512], ['add', 99, 201],
+        ['subtract', 432, 157], ['subtract', 305, 120], ['subtract', 245, 236], ['subtract', 405, 300]]
+        .map(([operation, a, b]) => threeDigitColumnsWithoutRegrouping(operation, a, b)),
+      accepted: [['add', 124, 353], ['add', 482, 517], ['subtract', 987, 321], ['subtract', 405, 103]]
+        .map(([operation, a, b]) => threeDigitColumnsWithoutRegrouping(operation, a, b)),
+    };
+    return result;
+  }, { seed: PLAYER_TRY_SEED, families: CHALLENGE_FAMILIES });
+
+  for (const familyId of CHALLENGE_FAMILIES) {
+    const { valid, ...tampered } = verdicts[familyId];
+    expect(valid, `${familyId}: untouched question`).toBe('accepted');
+    for (const [name, code] of Object.entries(tampered)) {
+      expect(code, `${familyId}: ${name}`).toBe('malformed-question');
+    }
+  }
+  expect(verdicts.pat).toEqual({ valid: 'accepted', fixtureCopy: 'malformed-question', fixtureBinding: 'malformed-question' });
+  expect(verdicts.columnCheck.rejected.every(value => value === false)).toBe(true);
+  expect(verdicts.columnCheck.accepted.every(value => value === true)).toBe(true);
+});
+
 test('keyboard decisions synchronously move focus to the replacement call or answer grid', async ({ page }, testInfo) => {
   primaryOnly(testInfo);
   await cleanBoot(page, 0x5aa54);

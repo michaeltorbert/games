@@ -48,6 +48,8 @@ repository-level `AGENTS.md`.
 - Keep question-family source metadata auditable. Workbook-derived families
   must name their earliest relevant workbook page; football-only display or
   rule literacy must be labeled separately and must not claim a workbook page.
+  The user-requested `requested-challenge` source is the player two-point
+  challenge below; it claims no workbook page and no completion.
 - Give every question family one immutable `evidenceClass`: `literacy` when the
   child is reading a supplied number, place, marker, or football rule/value,
   and `independent` when the child must derive the answer. Source-visible
@@ -64,6 +66,30 @@ repository-level `AGENTS.md`.
   own closed special-team context. The question gates that same frozen outcome;
   never substitute a random, merely football-themed, curriculum-only, or
   no-stakes question.
+- **Player two-point challenge (#186, user-requested exception).** The user
+  asked that the player's own two-point tries use three-digit addition and
+  subtraction. Only that try presents only the two challenge families
+  (`two-point-three-digit-add`, `two-point-three-digit-subtract`); PAT tries,
+  opponent tries, and every other play keep the play-grounded rule above, and
+  this is the only graded content outside completed or included curriculum. The
+  operands form a validated challenge fixture: a pure function of the frozen
+  `gameId`, `possessionId`, `playId`, `contextId`, and `familyId` that draws
+  from no football, scheduler, or presentation stream and never changes the
+  canonical play, context, or proposal. `football.js` recomputes the fixture
+  from the live play and rejects any question whose fixture, operands,
+  operation, answer, choice set, or pictures differ. These families use
+  `curriculumSource: 'requested-challenge'`, claim no workbook page or
+  completion, describe no yardage, gate only the frozen conversion outcome,
+  record `independent` evidence under their own `two-point-challenge` concept,
+  and start guided under this authorization. The first delivery uses no
+  regrouping: both operands are 100 through 999, every column adds to at most 9
+  or takes away without borrowing, sums stay at most 999, and differences at
+  least 100. Carrying or borrowing needs a later approved change and its own
+  tier.
+- **Offense/defense symmetry exception (#186).** Because the request covers
+  only the player's tries, the opponent's two-point try keeps the conversion
+  literacy families. Shared retry, worked-explanation, Film Room, and
+  second-miss resolution policy stays identical on both sides.
 - Preserve the canonical football snapshot separately from every child-facing
   prompt, math model, and visualization. The snapshot and its independently
   projected transition are authoritative; presentation cannot change the play.

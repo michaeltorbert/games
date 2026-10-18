@@ -42,6 +42,9 @@ const OPPONENT_TWO_POINT_TRY = Object.freeze({
   yardsToGo: 10, yardLine: 80, firstDownLine: 70, driveStart: 80,
   scores: { player: 14, opponent: 12 },
 });
+// Issue #186: only the player's own two-point try uses the three-digit challenge.
+const CHALLENGE_FAMILIES = ['two-point-three-digit-add', 'two-point-three-digit-subtract'];
+const OLD_CONVERSION_FAMILIES = ['conversion-attempt-value', 'conversion-try-marker'];
 const ORDINARY_DEFENSE = Object.freeze({
   possession: 'defense', direction: -1, quarter: 3, down: 2, yardsToGo: 10,
   yardLine: 70, firstDownLine: 60, driveStart: 80,
@@ -518,7 +521,9 @@ test.describe('football decision surfaces (#51)', () => {
       assertDecision(metrics, expected, `conversion before ${action}`);
       if (action === 'twoPoint') await capture(page, testInfo, browserName, 'conversion', metrics);
       await page.locator(`${DECISION}[data-action="${action}"]`).tap();
-      await expectSpecialQuestion(page, `after ${action}`, { playType: 'conversion', attemptType: action });
+      const opened = await expectSpecialQuestion(page, `after ${action}`, { playType: 'conversion', attemptType: action });
+      expect(action === 'twoPoint' ? CHALLENGE_FAMILIES : OLD_CONVERSION_FAMILIES, `${action}: question family`)
+        .toContain(opened.questionInstance.familyId);
     }
     expect(errors).toEqual([]);
   });
@@ -650,6 +655,7 @@ test.describe('football decision surfaces (#51)', () => {
     await page.locator(`${DECISION}[data-action="twoPoint"]`).tap();
     const retried = await expectSpecialQuestion(page, 'opponent two-point recovered', { playType: 'conversion', attemptType: 'twoPoint' });
     expect(retried.activePlay.playId).toBe(conversion.playId);
+    expect(OLD_CONVERSION_FAMILIES, 'opponent two-point keeps its conversion families').toContain(retried.questionInstance.familyId);
     expect(errors).toEqual([]);
   });
 
@@ -724,8 +730,10 @@ test.describe('football decision surfaces (#51)', () => {
     await page.keyboard.press(tabKey(browserName));
     await expect(page.locator(`${DECISION}[data-action="twoPoint"]`)).toBeFocused();
     await page.keyboard.press('Space');
-    await expectSpecialQuestion(page, 'Space on Two-Point Try', { playType: 'conversion', attemptType: 'twoPoint' });
+    const challenge = await expectSpecialQuestion(page, 'Space on Two-Point Try', { playType: 'conversion', attemptType: 'twoPoint' });
     await expect(page.locator('#btn-row .ans-btn:not(.hidden):not(:disabled)').first()).toBeFocused();
+    expect(CHALLENGE_FAMILIES).toContain(challenge.questionInstance.familyId);
+    await expect(page.locator('#math-overlay')).toHaveAttribute('data-type', 'column-arithmetic');
 
     // Reduced motion: keyboard focus stays visible without lifting the card.
     await page.emulateMedia({ reducedMotion: 'reduce' });

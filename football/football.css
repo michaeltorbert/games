@@ -973,6 +973,110 @@ body::after {
   }
 }
 
+/* Issue #186: hundreds, tens and ones columns for the player's two-point
+   challenge. The answer row stays "?" until the worked stage; a guided attempt
+   tints the ones column, where the hint starts. Phones keep the panel left of
+   the sound toggle's 44px corner, like the #138 model. */
+#math-overlay[data-type="column-arithmetic"] {
+  width: auto;
+  min-height: 0;
+  padding: 8px 18px 10px;
+}
+
+.math-columns {
+  display: grid;
+  grid-template-columns: 26px repeat(3, minmax(58px, auto));
+  align-items: center;
+  justify-items: center;
+  gap: 2px 6px;
+  font-family: 'Bebas Neue', 'Barlow Condensed', sans-serif;
+  font-size: 30px;
+  line-height: 1;
+}
+
+.math-column-head {
+  color: #b9d7f1;
+  font-family: 'Barlow Condensed', 'Nunito', sans-serif;
+  font-size: 14px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.math-column-sign {
+  color: #ffd62e;
+}
+
+.math-column-digit {
+  min-width: 40px;
+  padding: 2px 6px 1px;
+  border-radius: 8px;
+  text-align: center;
+}
+
+.math-column-answer {
+  justify-self: stretch;
+  padding-top: 4px;
+  border-top: 3px solid #ffd62e;
+  border-radius: 0;
+  color: #fff6b5;
+}
+
+/* The answer rule spans only the digit columns; the blank sign cell keeps its
+   border width for alignment but draws nothing under the operator. */
+.math-column-sign.math-column-answer {
+  border-top-color: transparent;
+}
+
+#math-overlay[data-type="column-arithmetic"][data-support="guided"] .math-column-digit[data-place="ones"] {
+  background: rgba(255, 214, 46, 0.24);
+}
+
+@media (max-width: 760px) {
+  #math-overlay[data-type="column-arithmetic"] {
+    left: calc(50% - 25.5px);
+    width: min(calc(94% - 51px), 300px);
+    padding: 4px 10px 6px;
+  }
+
+  .math-columns {
+    grid-template-columns: 18px repeat(3, minmax(44px, auto));
+    gap: 1px 4px;
+    font-size: 21px;
+  }
+
+  .math-column-head {
+    font-size: 11px;
+    letter-spacing: 0.04em;
+  }
+
+  .math-column-digit {
+    min-width: 30px;
+    padding: 1px 4px 0;
+  }
+
+  .math-column-answer {
+    padding-top: 2px;
+    border-top-width: 2px;
+  }
+}
+
+/* The 1024px-wide landscape iPads shorten the question field to 152px. */
+@media (hover: none) and (pointer: coarse) and (min-width: 1024px) and (max-width: 1079px) and (orientation: landscape) {
+  #math-overlay[data-type="column-arithmetic"] {
+    bottom: 8px;
+    padding: 4px 14px 6px;
+  }
+
+  .math-columns {
+    gap: 1px 6px;
+    font-size: 24px;
+  }
+
+  .math-column-head {
+    font-size: 12px;
+  }
+}
+
 #ui-desk[data-phase="explanation"] {
   grid-template-columns: minmax(360px, 0.92fr) minmax(390px, 1.08fr);
 }

@@ -2062,3 +2062,150 @@ no shell and ran nothing.
 - This delivers the decision-surface portion of #51. The field, Time Lab and
   the call-phase chrome are not redesigned here, so the broader issue stays
   open. #161 stays open.
+
+## 2026-10-18 — Football v1.34.16 (#186 three-digit two-point challenge, superseding release entry)
+
+Original request: James asked for three-digit addition and subtraction, and
+the user clarified that it belongs to the player's own two-point conversion
+attempts. It is not a new chooser and not ordinary-play practice; the existing
+PAT versus Two-Point Try choice stays the entry point. The plan is the
+reconciled native plan with Sol's hardening
+(`output/issues-186-188/plan-result.md`, `sol-reconciliation.md`,
+`reconcile-result.md`). The author is a new native Claude (Opus 5.5) session,
+separate from both planning seats, on branch
+`codex/football-two-point-three-digit` from base
+`06edf1ffdc6a5b457a74c7903e38a3b550426946` (Football 1.34.15). The author had
+no shell and ran nothing. Reproducible check commands and rationale are in
+`output/issues-186-188/author186/rationale.md`.
+
+- **Policy:** `football/AGENTS.md` adds a scoped, user-requested exception
+  for the player's two-point try only, plus an explicit offense/defense
+  symmetry exception. The root `AGENTS.md` and `curriculum-progress.json` are
+  unchanged.
+- **Families:** `two-point-three-digit-add` and
+  `two-point-three-digit-subtract` are the only eligible families on a player
+  two-point try. The two older conversion families decline only there, so PAT
+  tries, opponent PAT tries and opponent two-point tries keep their pool.
+  - Metadata: source `requested-challenge`, no workbook page, worktext or
+    completion; concept `two-point-challenge`; skills `three-digit-addition`
+    and `three-digit-subtraction`; `independent` evidence; tier
+    `three-digit-no-regrouping`. `CHALLENGE_MAP` is unchanged.
+  - The first attempt starts guided under this authorization. The answer
+    stays hidden at the initial and guided stages.
+- **Numbers:** `twoPointChallengeFor(play, familyId)` is a pure function of
+  the frozen `gameId`, `possessionId`, `playId`, `contextId` and `familyId`
+  through a local seeded sequence. It draws from no football, scheduler or
+  presentation stream. The canonical `activePlay`, context and proposal are
+  unchanged; the fixture lives on the question as a presentation copy.
+- **Regrouping decision:** this delivery uses no regrouping. Both operands are
+  100–999, and the second is never a whole hundred. Additions keep every column
+  sum at most 9, so totals stay at most 999. Subtractions need no borrowing and
+  have a larger hundreds digit, so differences stay at least 100. Carrying or
+  borrowing needs a later approved change and its own tier.
+- **Choices:** four unique choices, with exactly one correct. Each wrong choice
+  changes exactly one digit of the answer by one: one in the ones, one in the
+  tens, one in the hundreds. All stay within 100–999. Shuffling uses the same
+  three presentation draws as before.
+- **Copy:** for example, the prompt "Two-point challenge! Solve 124 + 353 to make
+  the try." The hint lines up hundreds, tens and ones and starts with the ones,
+  without the result. The worked explanation goes column by column. No copy
+  mentions yards or workbook pages.
+- **Validation (`football.js`):** `validateQuestionInstance` recomputes the
+  trusted fixture from the live play and compares it against:
+  - the question's whole fixture and metadata;
+  - its operation and operand IDs, answer and complete choice set;
+  - its two operand bindings (`challengeFixture` `/a` and `/b` only);
+  - its pictures at every stage.
+
+  A separate per-digit check rejects regrouping and out-of-range operands. A
+  challenge family off the player's two-point try, or a fixture on any other
+  question, is `malformed-question`. That takes the existing deterministic
+  bypass path: the frozen made try commits, a diagnostic is logged, and no
+  learning attempt or success is recorded.
+- **Picture:** a `column-arithmetic` visual at all three stages. It shows
+  hundreds/tens/ones headers, both operands and a "?" answer row until the
+  worked stage fills the digits. A guided attempt tints the ones column. On
+  phones the panel stays left of the sound toggle, like the #138 model, and
+  1024 px landscape iPads get a compact size. The worked explanation stays in
+  the Film Room summary rather than the field panel.
+- **Unchanged:** scoring (+2 when made on the first try or a retry, 0 after a
+  second miss through the existing reprojection), separate touchdown and
+  conversion IDs, atomic commit, retry, worked explanation and Film Room
+  behavior, opponent plans, football RNG, stats schema and `learning.js`.
+  Coach Report gains the label "Two-point challenge".
+- **Tests (existing registered suites):**
+  - Deliberate changes, called out in place:
+    - in `football-contextual-questions.spec.mjs`: the source list, the
+      registry count (38 to 40), the evidence-class and worked-review registries,
+      and the conversion registry closure;
+    - in `verifyGrounding`: dereferencing `challengeFixture` bindings and
+      recomputing `subtract`.
+  - New unit coverage:
+    - the mandatory and excluded pools;
+    - metadata with no claimed page;
+    - a bounded deterministic sweep of 1,500 synthetic identities per family,
+      checking bounds, no regrouping, unique one-step slips and possession
+      sensitivity (it does not claim to cover every hash);
+    - representative carrying and borrowing cases;
+    - a hidden answer before worked, accurate column copy and no yardage.
+  - New browser coverage:
+    - all six projects in `football-arithmetic-ui.spec.mjs`: real taps through
+      guided columns, retry, worked review and the missed try, with geometry
+      and 44 px targets; and a keyboard Space/Enter made try.
+    - in `football-context-integration.spec.mjs`:
+      - atomic made and missed resolution, with duplicate commit and
+        finalization rejected;
+      - stats-row privacy, learning events, the dedicated concept bucket and
+        the Coach Report label;
+      - RNG budgets equal to PAT;
+      - bypass with no learning;
+      - tamper fail-closed cases.
+    - small family assertions in the decision-surfaces and
+      overlay-accessibility specs. The decision-surfaces `conversion` capture
+      is taken before the tap and is not a `toHaveScreenshot` baseline, so no
+      baseline changes.
+- **Checkpoint (approved and applied):** `tests/football-learning-domain.spec.mjs:29–30`
+  pinned the registry at 38 families. The coordinator approved a bounded scope
+  expansion to those two lines only. The author changed the count and the
+  matching test title to 40. The six-family ladder and role assertions are
+  unchanged. The author ran no checks.
+- **Metadata:** `GAME_VERSION`, all 18 Football asset query strings (including
+  `../shared/`), the Football registry entry and `version.json` are 1.34.16.
+  Kayak 1.1.38, Prague 1.4.0 and Place by Place 1.9.1 keep their exact base
+  descriptors and versions.
+- **Fresh-review corrections (v1 candidate `55e18eb`, `review186-v1.md`):**
+  the same author made these; nothing was run by the author.
+  - **F186-1:** the validator now checks every picture stage exactly against
+    the trusted fixture: the displayed operator, the exact data fields, the
+    stage name, the answer link, and the exposure (hidden result at initial and
+    guided, the trusted answer only at worked). New tamper cases cover the
+    sign, an extra data field, a wrong worked answer, a wrong result or picture
+    answer link, a hidden worked stage, guided exposure and a wrong stage name.
+    Ordinary questions are unaffected.
+  - **F186-2:** the first Chromium release run
+    (`tests/artifacts.nosync/football-release/20261018T052741Z-chromium-609fdb`)
+    failed only at the new stats assertion, which expected
+    `row.question.familyId`. The canonical row keeps the family in
+    `links.familyId` and `question.id`. The test now checks that canonical
+    shape; the stats schema is unchanged. The later atomic-commit, learning and
+    Coach Report assertions in that test have not yet run.
+  - **F186-3:** the blank sign cell's answer rule drew an isolated gold dash
+    under the operator. Its border colour is now transparent, with width and
+    every dimension kept, and the all-device test checks the rule colours.
+  - **E186-1:** a new matched before/after capture helper,
+    `output/issues-186-188/author186/capture186.mjs`, covers base 1.34.15 and
+    the candidate on all six profiles and both engines. Same seeded player
+    two-point try; the question change is intentional and labelled.
+- **Pending:**
+  - the corrected candidate's release runs;
+  - the matched captures;
+  - the domain suites;
+  - the focused specs in Chromium and WebKit;
+  - both release matrices;
+  - the registry gate;
+  - device-pixel review of the column picture (especially at 393 px);
+  - a fresh independent Sol review;
+  - the PR, merge and deployment.
+
+  This entry claims none of them. Browser results will be engine emulation,
+  not Simulator or device proof.

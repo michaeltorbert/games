@@ -15,6 +15,9 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
   // Bare legacy page limits refer only to Grade 1-A. Book-specific limits may
   // narrow inclusion, never widen the approved source or assert completion.
   function sourceStatus(meta, profile = DEFAULT_PROFILE) {
+    // The user-requested challenge is beyond confirmed completion, so it always
+    // starts with visible guided support and never depends on a workbook page.
+    if (meta.curriculumSource === 'requested-challenge') return { included: true, guided: true };
     if (meta.curriculumSource !== 'workbook') return { included: true, guided: false };
     const title = meta.worktext || 'Math Mammoth Grade 1-A';
     const book = WORKTEXTS[title];
@@ -68,6 +71,7 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
     'compare',
     'conversionValue',
     'tryMarkerForDirection',
+    'subtract',
   ]);
 
   const ANSWER_EXPOSURE_POLICIES = Object.freeze([
@@ -84,7 +88,25 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
   const CURRICULUM_SOURCES = Object.freeze([
     'workbook',
     'football-only',
+    'requested-challenge',
   ]);
+
+  // Issue #186: the user asked for three-digit addition and subtraction on the
+  // player's own two-point tries. No live football fact supplies those numbers,
+  // so football/AGENTS.md scopes an exception: the operands are a pure function
+  // of the frozen play identity and family, use no game RNG stream, claim no
+  // workbook page, and stay inside columns that need no regrouping.
+  const TWO_POINT_CHALLENGE = deepFreeze({
+    schemaVersion: 1,
+    generator: 'two-point-three-digit-v1',
+    regrouping: 'none',
+    families: {
+      'two-point-three-digit-add': 'add',
+      'two-point-three-digit-subtract': 'subtract',
+    },
+  });
+  const PLACES = Object.freeze(['hundreds', 'tens', 'ones']);
+  const PLACE_VALUES = Object.freeze({ hundreds: 100, tens: 10, ones: 1 });
 
   const RULES = deepFreeze({
     'field.goal.left': 0,
@@ -640,6 +662,11 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
     if (curriculumSource === 'football-only' && introducedOnPage !== null) {
       throw new Error('Football-only families must not claim a workbook source page.');
     }
+    if (curriculumSource === 'requested-challenge' && (introducedOnPage !== null || playType !== 'conversion'
+      || evidenceClass !== 'independent'
+      || !Object.prototype.hasOwnProperty.call(TWO_POINT_CHALLENGE.families, familyId))) {
+      throw new Error('Requested-challenge families must be the player two-point challenge, claim no workbook page, and record independent evidence.');
+    }
     const challenge = CHALLENGE_MAP[familyId] || null;
     if (challenge && (challenge.concept !== concept || evidenceClass !== 'independent' || playType !== 'scrimmage')) {
       throw new Error('Challenge metadata contradicts the family contract.');
@@ -687,11 +714,13 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
     guidedVisualType = null,
     guidedVisualData = null,
     choicePresentation = null,
+    challengeFixture = null,
     initialAriaLabel,
     guidedAriaLabel,
     workedAriaLabel,
   }) {
     return {
+      ...(challengeFixture ? { challengeFixture } : {}),
       bindings,
       operation: { type: operationType, operandIds: [...operandIds] },
       answer,
@@ -711,6 +740,120 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
         worked: workedAriaLabel,
       },
     };
+  }
+
+  function playerTwoPointTry(play) {
+    return sourcePlayType(play) === 'conversion' && play.context?.possession === 'offense'
+      && play.context?.attemptType === 'twoPoint';
+  }
+
+  function digitsOf(value) {
+    return Object.fromEntries(PLACES.map((place) => [place, Math.floor(value / PLACE_VALUES[place]) % 10]));
+  }
+
+  // Both operands are three-digit, the second is never a plain whole hundred,
+  // and every column works without carrying or borrowing, so an addition stays
+  // at most 999 and a subtraction at least 100.
+  function threeDigitWithoutRegrouping(operation, a, b) {
+    if (![a, b].every((value) => Number.isInteger(value) && value >= 100 && value <= 999) || b % 100 === 0) return false;
+    const top = digitsOf(a);
+    const bottom = digitsOf(b);
+    if (operation === 'add') return PLACES.every((place) => top[place] + bottom[place] <= 9);
+    if (operation === 'subtract') {
+      return top.hundreds > bottom.hundreds && PLACES.every((place) => top[place] >= bottom[place]);
+    }
+    return false;
+  }
+
+  function identityHash(text) {
+    let hash = 0x811c9dc5;
+    for (let index = 0; index < text.length; index++) {
+      hash ^= text.charCodeAt(index);
+      hash = Math.imul(hash, 0x01000193) >>> 0;
+    }
+    return hash;
+  }
+
+  // A local seeded sequence; it never touches the football, scheduler, or
+  // presentation streams.
+  function identityDraws(seed) {
+    let state = seed >>> 0;
+    return () => {
+      state = (state + 0x6d2b79f5) >>> 0;
+      let mixed = Math.imul(state ^ (state >>> 15), 1 | state);
+      mixed = (mixed + Math.imul(mixed ^ (mixed >>> 7), 61 | mixed)) ^ mixed;
+      return ((mixed ^ (mixed >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  // Pure and deterministic for one frozen player two-point play and family.
+  // Each wrong choice changes exactly one digit of the answer by one, so it is
+  // a single-column slip that stays within 100 through 999.
+  function twoPointChallengeFor(play, familyId) {
+    const operation = Object.prototype.hasOwnProperty.call(TWO_POINT_CHALLENGE.families, familyId)
+      ? TWO_POINT_CHALLENGE.families[familyId]
+      : null;
+    if (!operation || !isRecord(play) || !playerTwoPointTry(play)) return null;
+    const identity = {
+      gameId: play.gameId,
+      possessionId: play.possessionId,
+      playId: play.playId,
+      contextId: play.contextId,
+      familyId,
+    };
+    const draw = identityDraws(identityHash(JSON.stringify([
+      TWO_POINT_CHALLENGE.generator, identity.gameId, identity.possessionId,
+      identity.playId, identity.contextId, identity.familyId,
+    ])));
+    const pick = (low, high) => low + Math.floor(draw() * (high - low + 1));
+    const top = {};
+    const bottom = {};
+    if (operation === 'add') {
+      top.hundreds = pick(1, 8);
+      bottom.hundreds = pick(1, 9 - top.hundreds);
+      top.tens = pick(0, 9);
+      bottom.tens = pick(0, 9 - top.tens);
+      top.ones = pick(0, 8);
+      bottom.ones = pick(0, 9 - top.ones);
+    } else {
+      top.hundreds = pick(2, 9);
+      bottom.hundreds = pick(1, top.hundreds - 1);
+      top.tens = pick(0, 9);
+      bottom.tens = pick(0, top.tens);
+      top.ones = pick(1, 9);
+      bottom.ones = pick(0, top.ones);
+    }
+    // The top ones digit leaves room, so this keeps the column rule.
+    if (bottom.tens === 0 && bottom.ones === 0) bottom.ones = 1;
+    const number = (digits) => PLACES.reduce((sum, place) => sum + digits[place] * PLACE_VALUES[place], 0);
+    const a = number(top);
+    const b = number(bottom);
+    const answer = operation === 'add' ? a + b : a - b;
+    if (!threeDigitWithoutRegrouping(operation, a, b)) {
+      throw contractError('invalid-two-point-challenge', 'The two-point challenge left its no-regrouping domain.');
+    }
+    const result = digitsOf(answer);
+    const slips = ['ones', 'tens', 'hundreds'].map((place) => {
+      const lowest = place === 'hundreds' ? 1 : 0;
+      let step = draw() < 0.5 ? -1 : 1;
+      if (result[place] + step < lowest || result[place] + step > 9) step = -step;
+      return answer + step * PLACE_VALUES[place];
+    });
+    return deepFreeze({
+      schemaVersion: TWO_POINT_CHALLENGE.schemaVersion,
+      generator: TWO_POINT_CHALLENGE.generator,
+      identity,
+      operation,
+      a,
+      b,
+      answer,
+      regrouping: TWO_POINT_CHALLENGE.regrouping,
+      choiceValues: [answer, ...slips],
+    });
+  }
+
+  function challengeBinding(fixture, id, path) {
+    return { id, source: { kind: 'challengeFixture', path }, value: readPointer(fixture, path) };
   }
 
   function lineBindings(snap) {
@@ -852,6 +995,50 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
       },
     }));
   });
+
+  // Issue #186: the only families on the player's own two-point try. PAT and
+  // opponent tries keep the conversion literacy families. The guided first
+  // attempt follows sourceStatus for this requested, beyond-completion work.
+  const TWO_POINT_CHALLENGE_FAMILIES = Object.entries(TWO_POINT_CHALLENGE.families).map(([familyId, operation]) => ({
+    meta: makeMeta({ familyId, skill: operation === 'add' ? 'three-digit-addition' : 'three-digit-subtraction',
+      concept: 'two-point-challenge', purpose: 'requestedChallenge', tier: 'three-digit-no-regrouping', weight: 1,
+      operationType: operation, answerExposure: 'modeled-with-result-hidden', evidenceClass: 'independent',
+      curriculumSource: 'requested-challenge', playType: 'conversion' }),
+    derive(play) {
+      if (!playerTwoPointTry(play)) {
+        return { decline: decline('not-player-two-point', "The three-digit challenge is only for the player's own two-point try.", ['/context/possession', '/context/attemptType']) };
+      }
+      const fixture = twoPointChallengeFor(play, familyId);
+      const { a, b, answer } = fixture;
+      const plus = operation === 'add';
+      const operator = plus ? '+' : '−';
+      const spoken = plus ? 'plus' : 'minus';
+      const equation = `${a} ${operator} ${b}`;
+      const top = digitsOf(a);
+      const bottom = digitsOf(b);
+      const result = digitsOf(answer);
+      const column = (place, label) => `${label}: ${top[place]} ${operator} ${bottom[place]} = ${result[place]}.`;
+      return eligible(makeSemantic({
+        bindings: [
+          contextBinding(play, 'attemptType', '/context/attemptType'),
+          contextBinding(play, 'attemptValue', '/context/attemptValue'),
+          challengeBinding(fixture, 'challengeA', '/a'),
+          challengeBinding(fixture, 'challengeB', '/b'),
+        ],
+        operationType: operation, operandIds: ['challengeA', 'challengeB'], answer,
+        prompt: `Two-point challenge! Solve ${equation} to make the try.`,
+        hint: `Line up the hundreds, tens, and ones. Start with the ones: ${top.ones} ${operator} ${bottom.ones}.`,
+        explanation: `${column('ones', 'Ones')} ${column('tens', 'Tens')} ${column('hundreds', 'Hundreds')} So ${equation} = ${answer}.`,
+        choiceSpec: fixedChoiceSpec(fixture.choiceValues),
+        visualType: 'column-arithmetic',
+        visualData: { operation, operator, a, b },
+        challengeFixture: fixture,
+        initialAriaLabel: `${a} ${spoken} ${b} in hundreds, tens, and ones columns; the answer is hidden.`,
+        guidedAriaLabel: `${a} ${spoken} ${b} in hundreds, tens, and ones columns. Start with the ones, then the tens, then the hundreds; the answer is hidden.`,
+        workedAriaLabel: `${a} ${spoken} ${b} equals ${answer}.`,
+      }));
+    },
+  }));
 
   const FAMILY_DEFINITIONS = [
     ...ARITHMETIC_FAMILIES,
@@ -1322,6 +1509,7 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
     {
       meta: makeMeta({ familyId: 'conversion-attempt-value', skill: 'football-number-sense', concept: 'conversion-scoring', purpose: 'coreReview', tier: 'football-context', weight: 1.4, operationType: 'conversionValue', answerExposure: 'hidden-until-worked', evidenceClass: 'literacy', curriculumSource: 'football-only', playType: 'conversion' }),
       derive(play) {
+        if (playerTwoPointTry(play)) return { decline: decline('player-two-point-challenge', "The player's two-point try uses the requested three-digit challenge.") };
         const c = play.context;
         const teamRole = c.possession === 'offense' ? 'player' : 'opponent';
         const labels = publicTeamLabels(play);
@@ -1350,6 +1538,7 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
     {
       meta: makeMeta({ familyId: 'conversion-try-marker', skill: 'football-number-sense', concept: 'conversion-placement', purpose: 'coreReview', tier: 'football-context', weight: 1, operationType: 'tryMarkerForDirection', answerExposure: 'modeled-with-result-hidden', evidenceClass: 'literacy', curriculumSource: 'football-only', playType: 'conversion' }),
       derive(play) {
+        if (playerTwoPointTry(play)) return { decline: decline('player-two-point-challenge', "The player's two-point try uses the requested three-digit challenge.") };
         const c = play.context;
         const answer = c.tryYardLine;
         const ownerRole = teamRoleForPossession(c.possession);
@@ -1373,6 +1562,7 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
         }));
       },
     },
+    ...TWO_POINT_CHALLENGE_FAMILIES,
     {
       meta: makeMeta({ familyId: 'field-goal-attempt-distance', skill: 'football-number-sense', concept: 'field-goal-distance', purpose: 'coreReview', tier: 'football-context', weight: 1.5, operationType: 'read', answerExposure: 'source-visible', evidenceClass: 'literacy', curriculumSource: 'football-only', playType: 'fieldGoal' }),
       derive(play) {
@@ -1632,6 +1822,16 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
       title: 'Place the Conversion Try',
       goal: 'Use the offense direction to find the conversion marker.',
       footballMeaning: 'That marker is where the conversion play begins on this field.',
+    },
+    'two-point-three-digit-add': {
+      title: 'Add by Columns',
+      goal: 'Add the ones, then the tens, then the hundreds.',
+      footballMeaning: 'A correct answer makes the two-point try good for two points.',
+    },
+    'two-point-three-digit-subtract': {
+      title: 'Subtract by Columns',
+      goal: 'Take away the ones, then the tens, then the hundreds.',
+      footballMeaning: 'A correct answer makes the two-point try good for two points.',
     },
     'field-goal-attempt-distance': {
       title: 'Read the Kick Distance',
@@ -1954,6 +2154,8 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
       math: { ...visuals[support], support },
       grounding: { bindingIds, answerId },
       selection: selectionFor(source, familyId),
+      // A presentation copy only; football.js recomputes it from the live play.
+      ...(semantic.challengeFixture ? { challengeFixture: semantic.challengeFixture } : {}),
     };
     const frozen = deepFreeze(question);
     // Preserve an intentional alias so consumers cannot let premises and
@@ -1979,6 +2181,8 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
     CHALLENGE_MAP,
     CALL_AFFINITY_MULTIPLIER,
     CALL_AFFINITIES,
+    TWO_POINT_CHALLENGE,
+    twoPointChallengeFor,
     selectionFor,
     inspect,
     build,

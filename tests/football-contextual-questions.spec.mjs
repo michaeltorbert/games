@@ -241,6 +241,7 @@ function recompute(question) {
     case 'ruleValue': return operands[0];
     case 'conversionValue': return operands[0] === 'pat' ? 1 : 2;
     case 'tryMarkerForDirection': return operands[0] === 1 ? 98 : 2;
+    case 'subtract': return operands[0] - operands[1];
     default: throw new Error(`Unknown operation ${question.operation.type}`);
   }
 }
@@ -265,6 +266,13 @@ function verifyGrounding(questions, snap, question) {
     if (binding.source.kind === 'context') {
       assert.equal(binding.source.path.startsWith('/context/privateOpponentSnapshot'), false);
       assert.deepEqual(plain(binding.value), plain(pointer(snap, binding.source.path)), `${question.familyId}:${binding.id}`);
+    } else if (binding.source.kind === 'challengeFixture') {
+      // #186: generated operands dereference only into the fixture recomputed
+      // from the same frozen play and family.
+      const trusted = questions.twoPointChallengeFor(snap, question.familyId);
+      assert.ok(trusted, `${question.familyId}:${binding.id} needs a trusted fixture`);
+      assert.deepEqual(plain(binding.source), { kind: 'challengeFixture', path: binding.source.path });
+      assert.deepEqual(plain(binding.value), plain(pointer(trusted, binding.source.path)), `${question.familyId}:${binding.id}`);
     } else {
       assert.equal(binding.source.kind, 'rule');
       assert.ok(Object.hasOwn(questions.RULES, binding.source.ruleId));
@@ -353,7 +361,7 @@ test('exports one deeply frozen plain-global API with a closed contract', () => 
   assert.equal(questions.OPERATION_TYPES.includes('nextOrdinal'), false);
   assert.ok(questions.ANSWER_EXPOSURE_POLICIES.includes('hidden-until-worked'));
   assert.deepEqual(plain(questions.EVIDENCE_CLASSES), ['literacy', 'independent']);
-  assert.deepEqual(plain(questions.CURRICULUM_SOURCES), ['workbook', 'football-only']);
+  assert.deepEqual(plain(questions.CURRICULUM_SOURCES), ['workbook', 'football-only', 'requested-challenge']);
 });
 
 test('field-position copy strictly normalizes canonical coordinates for every public rival', () => {
@@ -509,6 +517,8 @@ test('every family authors the exact evidence class and independent families hid
       'goal-distance-minus-whole-tens',
       'drive-distance-plus-whole-tens',
       'touchdown-base-points',
+      'two-point-three-digit-add',
+      'two-point-three-digit-subtract',
     ],
   };
   const registry = Object.values(questions.FAMILY_REGISTRY).flat();
@@ -518,7 +528,8 @@ test('every family authors the exact evidence class and independent families hid
       [...expected[evidenceClass]].sort(),
     );
   }
-  assert.equal(registry.length, 38);
+  // #186 deliberately adds the two player two-point challenge families.
+  assert.equal(registry.length, 40);
   assert.equal(Object.isFrozen(registry[0]), true);
 
   const scenarios = [
@@ -543,6 +554,7 @@ test('every family authors the exact evidence class and independent families hid
     }, 5),
     makeSpecialPlay(domain, 'conversion', { attemptType: 'pat' }),
     makeSpecialPlay(domain, 'conversion', { attemptType: 'twoPoint', possession: 'defense' }),
+    makeSpecialPlay(domain, 'conversion', { attemptType: 'twoPoint', possession: 'offense' }),
     makeSpecialPlay(domain, 'fieldGoal'),
     makeSpecialPlay(domain, 'punt', { yardLine: 30, travelYards: 40 }),
   ];
@@ -680,6 +692,7 @@ test('every exported family builds one exact, grounded, recursively frozen schem
       driveStart: 90, scores: { player: 3, opponent: 4 },
     }, 10),
     makeSpecialPlay(domain, 'conversion', { possession: 'offense', attemptType: 'pat' }),
+    makeSpecialPlay(domain, 'conversion', { possession: 'offense', attemptType: 'twoPoint' }),
     makeSpecialPlay(domain, 'fieldGoal', { possession: 'offense', yardLine: 60 }),
     makeSpecialPlay(domain, 'punt', { possession: 'offense', yardLine: 30, travelYards: 40 }),
   ];
@@ -718,6 +731,8 @@ test('every exported family builds one exact, grounded, recursively frozen schem
     'touchdown-base-points': ['touchdown-base-scoring', 'ruleValue', ['resultKind', 'touchdownBasePoints']],
     'conversion-attempt-value': ['conversion-scoring', 'conversionValue', ['possessingTeamScore', 'attemptType', 'attemptValue']],
     'conversion-try-marker': ['conversion-placement', 'tryMarkerForDirection', ['direction', 'tryYardLine']],
+    'two-point-three-digit-add': ['two-point-challenge', 'add', ['attemptType', 'attemptValue', 'challengeA', 'challengeB']],
+    'two-point-three-digit-subtract': ['two-point-challenge', 'subtract', ['attemptType', 'attemptValue', 'challengeA', 'challengeB']],
     'field-goal-attempt-distance': ['field-goal-distance', 'read', ['attemptDistance']],
     'field-goal-point-value': ['field-goal-scoring', 'ruleValue', ['possessingTeamScore', 'attemptDistance', 'fieldGoalPoints']],
     'punt-travel-distance': ['punt-distance', 'read', ['direction', 'puntStartYardLine', 'rawLandingYardLine', 'appliedTravelYards']],
@@ -795,10 +810,16 @@ test('touchdown scoring retires the automatic-seven identity and teaches the tou
 
 test('special-team registries are closed, buildable, neutral, and grounded in each public active play', () => {
   const { domain, questions } = loadModules();
+  // #186 deliberately registers the player two-point challenge families. The
+  // PAT and opponent tries checked below keep exactly the two older families.
   const expectedIds = {
-    conversion: ['conversion-attempt-value', 'conversion-try-marker'],
+    conversion: ['conversion-attempt-value', 'conversion-try-marker', 'two-point-three-digit-add', 'two-point-three-digit-subtract'],
     fieldGoal: ['field-goal-attempt-distance', 'field-goal-point-value'],
     punt: ['punt-travel-distance', 'punt-landing-spot'],
+  };
+  const expectedEligible = {
+    ...expectedIds,
+    conversion: ['conversion-attempt-value', 'conversion-try-marker'],
   };
   for (const [playType, ids] of Object.entries(expectedIds)) {
     assert.deepEqual(plain(questions.FAMILY_REGISTRY[playType].map((entry) => entry.familyId)), ids);
@@ -835,7 +856,7 @@ test('special-team registries are closed, buildable, neutral, and grounded in ea
     assert.equal(inspection.playType, play.playType);
     assert.deepEqual(
       plain(inspection.eligible.map((entry) => entry.familyId)),
-      expectedIds[play.playType],
+      expectedEligible[play.playType],
       `${play.playType}:${play.context.possession}`,
     );
     assert.ok([...inspection.eligible, ...inspection.declined]
@@ -923,6 +944,257 @@ test('special-team registries are closed, buildable, neutral, and grounded in ea
     () => questions.build(forwardPunt, 'field-goal-attempt-distance'),
     (error) => error.code === 'family-play-type-mismatch',
   );
+});
+
+// Issue #186: the player's own two-point try uses requested three-digit work.
+const CHALLENGE_FAMILIES = ['two-point-three-digit-add', 'two-point-three-digit-subtract'];
+const OLD_CONVERSION_FAMILIES = ['conversion-attempt-value', 'conversion-try-marker'];
+
+function columnDigits(value) {
+  return [Math.floor(value / 100), Math.floor(value / 10) % 10, value % 10];
+}
+
+// Written independently of the module: three-digit operands with no carrying
+// or borrowing in any column.
+function noRegroupingThreeDigit(operation, a, b) {
+  if (![a, b].every((value) => Number.isInteger(value) && value >= 100 && value <= 999)) return false;
+  const top = columnDigits(a);
+  const bottom = columnDigits(b);
+  if (operation === 'add') return top.every((digit, index) => digit + bottom[index] <= 9);
+  if (operation === 'subtract') return top[0] > bottom[0] && top.every((digit, index) => digit >= bottom[index]);
+  return false;
+}
+
+function playerTwoPointPlay(domain, index = 0) {
+  return makeSpecialPlay(domain, 'conversion', {
+    possession: 'offense',
+    attemptType: 'twoPoint',
+    gameId: `sweep-game-${index % 37}`,
+    possessionId: `sweep-game-${index % 37}-possession-${index}`,
+    playId: `sweep-game-${index % 37}-play-${index * 3 + 1}`,
+    contextId: `sweep-context-${index}`,
+  });
+}
+
+test('player two-point tries present only the two challenge families while PAT and opponent tries keep theirs', () => {
+  const { domain, questions } = loadModules();
+  const challengeTry = makeSpecialPlay(domain, 'conversion', { possession: 'offense', attemptType: 'twoPoint' });
+  const inspection = questions.inspect(challengeTry);
+  assert.deepEqual(plain(inspection.eligible.map((entry) => entry.familyId)), CHALLENGE_FAMILIES);
+  assert.deepEqual(
+    plain(inspection.declined.map(({ familyId, reason }) => [familyId, reason.code])),
+    OLD_CONVERSION_FAMILIES.map((familyId) => [familyId, 'player-two-point-challenge']),
+  );
+  for (const familyId of OLD_CONVERSION_FAMILIES) {
+    assert.throws(() => questions.build(challengeTry, familyId), (error) => error.code === 'family-not-eligible');
+  }
+
+  for (const [possession, attemptType] of [['offense', 'pat'], ['defense', 'pat'], ['defense', 'twoPoint']]) {
+    const play = makeSpecialPlay(domain, 'conversion', { possession, attemptType });
+    const other = questions.inspect(play);
+    assert.deepEqual(plain(other.eligible.map((entry) => entry.familyId)), OLD_CONVERSION_FAMILIES, `${possession}:${attemptType}`);
+    assert.deepEqual(
+      plain(other.declined.map(({ familyId, reason }) => [familyId, reason.code])),
+      CHALLENGE_FAMILIES.map((familyId) => [familyId, 'not-player-two-point']),
+    );
+    for (const familyId of CHALLENGE_FAMILIES) {
+      assert.equal(questions.twoPointChallengeFor(play, familyId), null);
+      assert.throws(() => questions.build(play, familyId), (error) => error.code === 'family-not-eligible');
+    }
+  }
+
+  for (const source of [
+    makeSnap(domain, {}, 4),
+    makeSnap(domain, { possession: 'defense', direction: -1 }, 4),
+    makeSpecialPlay(domain, 'fieldGoal'),
+    makeSpecialPlay(domain, 'punt', { yardLine: 30, travelYards: 40 }),
+  ]) {
+    const seen = questions.inspect(source);
+    const ids = [...seen.eligible, ...seen.declined].map((entry) => entry.familyId);
+    assert.equal(ids.some((familyId) => CHALLENGE_FAMILIES.includes(familyId)), false);
+    for (const familyId of CHALLENGE_FAMILIES) assert.equal(questions.twoPointChallengeFor(source, familyId), null);
+  }
+  assert.equal(questions.twoPointChallengeFor(challengeTry, 'conversion-attempt-value'), null);
+
+  const requested = Object.values(questions.FAMILY_REGISTRY).flat()
+    .filter((entry) => entry.curriculumSource === 'requested-challenge');
+  assert.deepEqual(requested.map((entry) => entry.familyId), CHALLENGE_FAMILIES);
+  assert.deepEqual(requested.map((entry) => entry.skill), ['three-digit-addition', 'three-digit-subtraction']);
+  assert.deepEqual(requested.map((entry) => entry.operationType), ['add', 'subtract']);
+  for (const entry of requested) {
+    assert.deepEqual({
+      concept: entry.concept, purpose: entry.purpose, tier: entry.tier, evidenceClass: entry.evidenceClass,
+      answerExposure: entry.answerExposure, introducedOnPage: entry.introducedOnPage, playType: entry.playType,
+    }, {
+      concept: 'two-point-challenge', purpose: 'requestedChallenge', tier: 'three-digit-no-regrouping',
+      evidenceClass: 'independent', answerExposure: 'modeled-with-result-hidden', introducedOnPage: null,
+      playType: 'conversion',
+    });
+    for (const key of ['worktext', 'edition', 'coverageThroughPage', 'challenge']) {
+      assert.equal(Object.hasOwn(entry, key), false, `${entry.familyId} claims no ${key}`);
+    }
+    assert.deepEqual(plain(questions.sourceStatus(entry)), { included: true, guided: true });
+  }
+  assert.deepEqual(Object.keys(questions.CHALLENGE_MAP).sort(), [
+    'drive-distance-plus-whole-tens', 'drive-distance-scaffolded', 'line-to-gain-exact',
+    'line-to-gain-fact-family', 'line-to-gain-missing-part', 'line-to-gain-surplus',
+  ]);
+  assert.deepEqual(plain(questions.TWO_POINT_CHALLENGE), {
+    schemaVersion: 1,
+    generator: 'two-point-three-digit-v1',
+    regrouping: 'none',
+    families: { 'two-point-three-digit-add': 'add', 'two-point-three-digit-subtract': 'subtract' },
+  });
+});
+
+// A bounded deterministic property sweep over 1,500 synthetic identities per
+// family. It is evidence for the generator's domain, not an exhaustive proof
+// over every possible identity hash.
+test('a bounded identity sweep keeps every fixture three-digit, regrouping-free, and four-choice', () => {
+  const { domain, questions } = loadModules();
+  const SWEEP = 1500;
+  for (const familyId of CHALLENGE_FAMILIES) {
+    const operation = questions.TWO_POINT_CHALLENGE.families[familyId];
+    const topValues = new Set();
+    const answers = new Set();
+    let possessionSensitive = 0;
+    for (let index = 0; index < SWEEP; index++) {
+      const play = playerTwoPointPlay(domain, index);
+      const fixture = questions.twoPointChallengeFor(play, familyId);
+      const label = `${familyId}:${index}`;
+      assert.equal(deepFrozen(fixture), true, label);
+      assert.deepEqual(plain(fixture), plain(questions.twoPointChallengeFor(play, familyId)), `${label}: deterministic`);
+      assert.deepEqual(plain(fixture.identity), {
+        gameId: play.gameId, possessionId: play.possessionId, playId: play.playId, contextId: play.contextId, familyId,
+      });
+      assert.equal(fixture.schemaVersion, 1);
+      assert.equal(fixture.generator, 'two-point-three-digit-v1');
+      assert.equal(fixture.regrouping, 'none');
+      assert.equal(fixture.operation, operation);
+      const { a, b, answer } = fixture;
+      assert.equal(noRegroupingThreeDigit(operation, a, b), true, `${label}: ${a} ${operation} ${b}`);
+      assert.notEqual(b % 100, 0, `${label}: second operand is never a whole hundred`);
+      assert.equal(answer, operation === 'add' ? a + b : a - b, label);
+      assert.ok(answer >= 100 && answer <= 999, `${label}: answer ${answer}`);
+      if (operation === 'add') assert.ok(answer <= 999);
+      else assert.ok(answer >= 100);
+
+      const values = fixture.choiceValues;
+      assert.equal(values.length, 4, label);
+      assert.equal(values[0], answer);
+      assert.equal(new Set(values).size, 4, `${label}: unique choices`);
+      assert.equal(values.filter((value) => value === answer).length, 1, `${label}: one correct`);
+      const answerDigits = columnDigits(answer);
+      const changedPlaces = new Set();
+      for (const value of values.slice(1)) {
+        assert.ok(Number.isInteger(value) && value >= 100 && value <= 999, `${label}: slip ${value}`);
+        const digits = columnDigits(value);
+        const changed = digits.map((digit, place) => [place, digit - answerDigits[place]]).filter(([, delta]) => delta !== 0);
+        assert.equal(changed.length, 1, `${label}: ${value} changes exactly one column of ${answer}`);
+        assert.equal(Math.abs(changed[0][1]), 1, `${label}: ${value} is a one-step slip`);
+        changedPlaces.add(changed[0][0]);
+      }
+      assert.equal(changedPlaces.size, 3, `${label}: one slip each in the ones, tens, and hundreds`);
+
+      const otherPossession = questions.twoPointChallengeFor({ ...play, possessionId: `${play.possessionId}-other` }, familyId);
+      if (otherPossession && JSON.stringify(plain(otherPossession).choiceValues) !== JSON.stringify(plain(values))) possessionSensitive++;
+      topValues.add(a);
+      answers.add(answer);
+    }
+    // Varied numbers, and the possession ID really is part of the identity.
+    assert.ok(topValues.size > 300, `${familyId}: ${topValues.size} distinct first operands`);
+    assert.ok(answers.size > 300, `${familyId}: ${answers.size} distinct answers`);
+    assert.ok(possessionSensitive > SWEEP * 0.9, `${familyId}: possession-sensitive ${possessionSensitive}`);
+  }
+});
+
+test('the independent column check rejects representative carrying and borrowing cases', () => {
+  // Representative regrouping and boundary cases that the first delivery excludes.
+  const rejected = [
+    ['add', 158, 264], // ones carry
+    ['add', 190, 120], // tens carry
+    ['add', 620, 512], // hundreds carry past 999
+    ['add', 99, 201], // two-digit operand
+    ['subtract', 432, 157], // ones and tens borrow
+    ['subtract', 305, 120], // tens borrow
+    ['subtract', 245, 236], // same hundreds; difference below 100
+    ['subtract', 1000, 300], // four-digit operand
+  ];
+  const accepted = [['add', 124, 353], ['add', 482, 517], ['subtract', 987, 321], ['subtract', 405, 103]];
+  for (const [operation, a, b] of rejected) assert.equal(noRegroupingThreeDigit(operation, a, b), false, `${a} ${operation} ${b}`);
+  for (const [operation, a, b] of accepted) assert.equal(noRegroupingThreeDigit(operation, a, b), true, `${a} ${operation} ${b}`);
+});
+
+test('the challenge question hides its answer until worked and explains every column without yardage', () => {
+  const { domain, questions } = loadModules();
+  for (const familyId of CHALLENGE_FAMILIES) {
+    for (const index of [0, 1, 2, 3, 4, 5]) {
+      const play = playerTwoPointPlay(domain, index);
+      const fixture = questions.twoPointChallengeFor(play, familyId);
+      const { a, b, answer, operation } = fixture;
+      const operator = operation === 'add' ? '+' : '−';
+      let presentationDraws = 0;
+      const question = questions.build(play, familyId, {
+        support: 'guided',
+        presentationRng: () => { presentationDraws++; return 0.37; },
+      });
+      verifyGrounding(questions, play, question);
+      assert.equal(presentationDraws, 3, 'four choices use the existing three presentation draws');
+      assert.equal(deepFrozen(question), true);
+      assert.deepEqual(plain(question.challengeFixture), plain(fixture));
+      assert.equal(question.curriculumSource, 'requested-challenge');
+      assert.equal(question.introducedOnPage, null);
+      assert.equal(question.concept, 'two-point-challenge');
+      assert.equal(question.evidenceClass, 'independent');
+      assert.equal(question.support, 'guided');
+      assert.equal(question.challenge, undefined);
+      assert.deepEqual(plain(question.operation), { type: operation, operandIds: ['challengeA', 'challengeB'], outputId: question.answer.id });
+      assert.equal(question.answer.value, answer);
+      assert.deepEqual(plain(question.choices.map((choice) => choice.value)).sort(), plain(fixture.choiceValues).sort());
+      assert.equal(question.choices.length, 4);
+      assert.equal(question.choices.find((choice) => choice.id === question.correctChoiceId).value, answer);
+      assert.deepEqual(plain(question.selection), {
+        strategy: 'play-type-neutral-v1', role: 'offense', selectedCallId: null, multiplier: 1,
+      });
+
+      const equation = `${a} ${operator} ${b}`;
+      assert.equal(question.prompt.text, `Two-point challenge! Solve ${equation} to make the try.`);
+      const [ta, tt, to] = columnDigits(a);
+      const [ba, bt, bo] = columnDigits(b);
+      const [ra, rt, ro] = columnDigits(answer);
+      assert.equal(question.hint.text, `Line up the hundreds, tens, and ones. Start with the ones: ${to} ${operator} ${bo}.`);
+      assert.equal(question.workedExplanation.text,
+        `Ones: ${to} ${operator} ${bo} = ${ro}. Tens: ${tt} ${operator} ${bt} = ${rt}. `
+        + `Hundreds: ${ta} ${operator} ${ba} = ${ra}. So ${equation} = ${answer}.`);
+      // Remove the shown operands first: a difference may equal its second operand.
+      const withoutOperands = (text) => text.split(String(a)).join('').split(String(b)).join('');
+      for (const text of [question.prompt.text, question.hint.text, question.prompt.ariaLabel]) {
+        assert.equal(withoutOperands(text).includes(String(answer)), false, `${familyId}: ${text}`);
+      }
+      const copy = JSON.stringify(plain({
+        prompt: question.prompt, hint: question.hint, worked: question.workedExplanation,
+        review: question.workedReview, visuals: question.visuals,
+      }));
+      assert.doesNotMatch(copy, /yard|workbook|page|mammoth/i);
+
+      for (const stage of ['initial', 'guided']) {
+        const visual = question.visuals[stage];
+        assert.equal(visual.type, 'column-arithmetic', stage);
+        assert.equal(visual.revealsAnswer, false, stage);
+        assert.equal(visual.result, null, stage);
+        assert.deepEqual(plain(visual.data), { operation, operator, a, b }, stage);
+        assert.equal(withoutOperands(visual.ariaLabel).includes(String(answer)), false, stage);
+      }
+      assert.equal(question.visuals.worked.type, 'column-arithmetic');
+      assert.equal(question.visuals.worked.revealsAnswer, true);
+      assert.deepEqual(plain(question.visuals.worked.result), { answerId: question.answer.id, value: answer });
+      assert.equal(question.visuals.worked.ariaLabel, `${a} ${operation === 'add' ? 'plus' : 'minus'} ${b} equals ${answer}.`);
+      assert.deepEqual(plain(question.workedReview.steps.map((step) => step.text)), [question.hint.text, question.workedExplanation.text]);
+      assert.equal(question.workedReview.footballMeaning.text, 'A correct answer makes the two-point try good for two points.');
+      assert.equal(question.math.support, 'guided');
+      assert.equal(question.math.result, null);
+    }
+  }
 });
 
 test('punt touchbacks preserve direction polarity and retain a truthful travel family', () => {
