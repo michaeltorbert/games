@@ -1642,10 +1642,18 @@ function trustedTwoPointChallenge(activePlay, question) {
     || values.filter(value => value === answer).length !== 1) {
     reject('Two-point challenge choices contradict the trusted choice set.');
   }
+  // The renderer draws data.operator and the worked result, so every stage's
+  // picture must match the trusted operation, answer link and exposure exactly.
+  const answerId = `${question.familyId}--answer`;
+  if (question.answer?.id !== answerId) reject('Two-point challenge answer link contradicts its family.');
+  const expectedData = { operation, operator: operation === 'add' ? '+' : '−', a, b };
   for (const stage of ['initial', 'guided', 'worked']) {
     const visual = question.visuals?.[stage];
-    if (visual?.type !== 'column-arithmetic' || visual.data?.operation !== operation
-      || visual.data?.a !== a || visual.data?.b !== b) {
+    const worked = stage === 'worked';
+    const expectedResult = worked ? { answerId, value: answer } : null;
+    if (visual?.type !== 'column-arithmetic' || visual.stage !== stage || visual.answerId !== answerId
+      || !sameContractValue(visual.data, expectedData)
+      || visual.revealsAnswer !== worked || !sameContractValue(visual.result, expectedResult)) {
       reject(`Two-point challenge ${stage} picture contradicts the trusted fixture.`);
     }
   }

@@ -2369,7 +2369,11 @@ test('player two-point challenge resolves atomically as made or missed and recor
       playType: 'conversion', instructionalStatus: 'presented', resolution: policy,
       outcome: made ? 'conversionMade' : 'conversionMissed', offeredYards: null, actualYards: null,
       links: { familyId: question.familyId, contextId: question.contextId, questionInstanceId: question.questionInstanceId },
-      question: { familyId: question.familyId, concept: 'two-point-challenge', evidenceClass: 'independent', purpose: 'requestedChallenge' },
+      // The canonical stats row keeps the family in links and as question.id.
+      question: {
+        id: question.familyId, skill: question.skill, concept: 'two-point-challenge', purpose: 'requestedChallenge',
+        grading: 'gate', tier: 'three-digit-no-regrouping', evidenceClass: 'independent',
+      },
     });
     expect(row.metrics).toMatchObject({ attemptType: 'twoPoint', attemptValue: 2 });
     const serializedRow = JSON.stringify(row);
@@ -2547,6 +2551,25 @@ test('player two-point validation recomputes the trusted fixture and fails close
         bindingField: [play, edit(valid, copy => { binding(copy, 'challengeA').source.generator = 'other'; })],
         missingFixture: [play, edit(valid, copy => { delete copy.challengeFixture; })],
         visual: [play, edit(valid, copy => { copy.visuals.initial.data.a = fixture.a + 1; })],
+        // The renderer draws the sign and the worked result, so both are checked.
+        sign: [play, edit(valid, copy => {
+          for (const stage of ['initial', 'guided', 'worked']) {
+            copy.visuals[stage].data.operator = fixture.operation === 'add' ? '−' : '+';
+          }
+        })],
+        extraVisualField: [play, edit(valid, copy => { copy.visuals.guided.data.answer = fixture.answer; })],
+        workedAnswer: [play, edit(valid, copy => { copy.visuals.worked.result.value = fixture.answer + 1; })],
+        resultLink: [play, edit(valid, copy => { copy.visuals.worked.result.answerId = 'other--answer'; })],
+        visualAnswerLink: [play, edit(valid, copy => { copy.visuals.initial.answerId = 'other--answer'; })],
+        workedHidden: [play, edit(valid, copy => {
+          copy.visuals.worked.revealsAnswer = false;
+          copy.visuals.worked.result = null;
+        })],
+        guidedExposure: [play, edit(valid, copy => {
+          copy.visuals.guided.revealsAnswer = true;
+          copy.visuals.guided.result = { answerId: copy.answer.id, value: fixture.answer };
+        })],
+        stageLabel: [play, edit(valid, copy => { copy.visuals.guided.stage = 'worked'; })],
         source: [play, edit(valid, copy => { copy.curriculumSource = 'workbook'; })],
         page: [play, edit(valid, copy => { copy.introducedOnPage = 113; })],
         concept: [play, edit(valid, copy => { copy.concept = 'conversion-scoring'; })],

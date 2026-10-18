@@ -2173,7 +2173,32 @@ no shell and ran nothing. Reproducible check commands and rationale are in
   `../shared/`), the Football registry entry and `version.json` are 1.34.16.
   Kayak 1.1.38, Prague 1.4.0 and Place by Place 1.9.1 keep their exact base
   descriptors and versions.
+- **Fresh-review corrections (v1 candidate `55e18eb`, `review186-v1.md`):**
+  the same author made these; nothing was run by the author.
+  - **F186-1:** the validator now checks every picture stage exactly against
+    the trusted fixture: the displayed operator, the exact data fields, the
+    stage name, the answer link, and the exposure (hidden result at initial and
+    guided, the trusted answer only at worked). New tamper cases cover the
+    sign, an extra data field, a wrong worked answer, a wrong result or picture
+    answer link, a hidden worked stage, guided exposure and a wrong stage name.
+    Ordinary questions are unaffected.
+  - **F186-2:** the first Chromium release run
+    (`tests/artifacts.nosync/football-release/20261018T052741Z-chromium-609fdb`)
+    failed only at the new stats assertion, which expected
+    `row.question.familyId`. The canonical row keeps the family in
+    `links.familyId` and `question.id`. The test now checks that canonical
+    shape; the stats schema is unchanged. The later atomic-commit, learning and
+    Coach Report assertions in that test have not yet run.
+  - **F186-3:** the blank sign cell's answer rule drew an isolated gold dash
+    under the operator. Its border colour is now transparent, with width and
+    every dimension kept, and the all-device test checks the rule colours.
+  - **E186-1:** a new matched before/after capture helper,
+    `output/issues-186-188/author186/capture186.mjs`, covers base 1.34.15 and
+    the candidate on all six profiles and both engines. Same seeded player
+    two-point try; the question change is intentional and labelled.
 - **Pending:**
+  - the corrected candidate's release runs;
+  - the matched captures;
   - the domain suites;
   - the focused specs in Chromium and WebKit;
   - both release matrices;

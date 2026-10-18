@@ -462,6 +462,10 @@ async function columnCells(page) {
     digits: [...document.querySelectorAll('#math-overlay .math-column-digit')].map(cell => cell.textContent),
     answer: [...document.querySelectorAll('#math-overlay .math-column-digit.math-column-answer')].map(cell => cell.textContent),
     signs: [...document.querySelectorAll('#math-overlay .math-column-sign')].map(cell => cell.textContent),
+    // The answer rule is drawn under the digit columns only, never as a lone
+    // dash under the operator.
+    rules: [...document.querySelectorAll('#math-overlay .math-column-answer')]
+      .map(cell => getComputedStyle(cell).borderTopColor),
   }));
 }
 
@@ -500,6 +504,7 @@ for (const familyId of CHALLENGE_FAMILIES) {
     expect(cells.signs).toEqual(['', '', operator, '']);
     expect(cells.digits).toEqual([...placeDigits(a), ...placeDigits(b), '?', '?', '?']);
     expect(cells.answer).toEqual(['?', '?', '?']);
+    expect(cells.rules).toEqual(['rgba(0, 0, 0, 0)', 'rgb(255, 214, 46)', 'rgb(255, 214, 46)', 'rgb(255, 214, 46)']);
     const labels = await page.locator('#btn-row .ans-btn:not(.hidden)').allTextContents();
     expect(labels.map(text => Number(text.trim())).sort()).toEqual([...question.challengeFixture.choiceValues].sort());
     const initialMetrics = await questionGeometry(page);

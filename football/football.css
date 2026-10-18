@@ -1021,6 +1021,12 @@ body::after {
   color: #fff6b5;
 }
 
+/* The answer rule spans only the digit columns; the blank sign cell keeps its
+   border width for alignment but draws nothing under the operator. */
+.math-column-sign.math-column-answer {
+  border-top-color: transparent;
+}
+
 #math-overlay[data-type="column-arithmetic"][data-support="guided"] .math-column-digit[data-place="ones"] {
   background: rgba(255, 214, 46, 0.24);
 }
