@@ -211,6 +211,8 @@ test('render_game_to_text reports conversion facts instead of stale down-distanc
       status: 'active', attemptType: 'twoPoint', attemptValue: 2,
       tryYardLine: 98, trySpot: "UNC's 2-yard line",
     },
+    // #186: the player's two-point try shows hidden-result challenge columns.
+    math: { type: 'column-arithmetic', revealsAnswer: false, result: null },
   });
 
   await page.evaluate(() => {

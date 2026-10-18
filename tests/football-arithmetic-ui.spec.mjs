@@ -404,3 +404,175 @@ for (const possession of ['offense', 'defense']) for (const testCase of MODEL_CA
     expect(errors).toEqual([]);
   });
 }
+
+// Issue #186: the player's own two-point try asks three-digit addition or
+// subtraction with hundreds, tens and ones columns. Entry is the existing
+// conversion decision, seeded through the test seam; every choice is a real
+// tap or key press.
+const CHALLENGE_FAMILIES = ['two-point-three-digit-add', 'two-point-three-digit-subtract'];
+const PLAYER_TRY = Object.freeze({
+  possession: 'offense', direction: 1, quarter: 1, down: 1, yardsToGo: 10,
+  yardLine: 20, firstDownLine: 30, driveStart: 20, scores: { player: 6, opponent: 0 },
+  totalYards: { player: 0, opponent: 0 }, plays: 0, drivePlays: 0,
+});
+
+function placeDigits(value) {
+  return [Math.floor(value / 100), Math.floor(value / 10) % 10, value % 10].map(String);
+}
+
+// Safari's default keyboard policy skips buttons on Tab; Option-Tab is its
+// all-controls gesture. Applied to Playwright WebKit on macOS only.
+function tabKey(browserName) {
+  return browserName === 'webkit' && process.platform === 'darwin' ? 'Alt+Tab' : 'Tab';
+}
+
+async function installTwoPoint(page) {
+  await page.evaluate((seed) => {
+    window.__openTwoPoint = (draw) => {
+      __footballTest.seedDriveState(seed);
+      __footballTest.resetLearning();
+      window.__rngDraws = { football: 0, scheduler: 0, presentation: 0 };
+      __footballTest.setRngStreams({
+        football: () => { window.__rngDraws.football++; return .2; },
+        scheduler: () => { window.__rngDraws.scheduler++; return draw; },
+        presentation: () => { window.__rngDraws.presentation++; return .4; },
+      });
+      showConversionDecision();
+    };
+  }, PLAYER_TRY);
+}
+
+// Finds a scheduler draw for the family with the production decision path.
+async function findTwoPointDraw(page, familyId) {
+  await installTwoPoint(page);
+  return page.evaluate((familyId) => {
+    for (let i = 0; i < 40; i++) {
+      const draw = (i + 0.5) / 40;
+      window.__openTwoPoint(draw);
+      __footballTest.selectDecision('twoPoint');
+      if (__footballTest.activeContracts().questionInstance?.familyId === familyId) return draw;
+    }
+    return null;
+  }, familyId);
+}
+
+async function columnCells(page) {
+  return page.evaluate(() => ({
+    heads: [...document.querySelectorAll('#math-overlay .math-column-head')].map(cell => cell.textContent),
+    digits: [...document.querySelectorAll('#math-overlay .math-column-digit')].map(cell => cell.textContent),
+    answer: [...document.querySelectorAll('#math-overlay .math-column-digit.math-column-answer')].map(cell => cell.textContent),
+    signs: [...document.querySelectorAll('#math-overlay .math-column-sign')].map(cell => cell.textContent),
+  }));
+}
+
+for (const familyId of CHALLENGE_FAMILIES) {
+  test(`${familyId} keeps guided columns through a real retry, worked review and missed try`, async ({ page }, testInfo) => {
+    test.setTimeout(120_000);
+    const errors = [];
+    page.on('pageerror', error => errors.push(error.message));
+    page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
+    await page.goto('/football/?boot=offense-call');
+    const draw = await findTwoPointDraw(page, familyId);
+    expect(draw, `${familyId} is reachable from the Two-Point Try`).not.toBeNull();
+    await page.evaluate((value) => window.__openTwoPoint(value), draw);
+    await page.locator('#decision-grid .decision-btn[data-action="twoPoint"]').tap();
+    await expect(page.locator('#ui-desk')).toHaveAttribute('data-phase', 'question');
+
+    const before = await snapshotState(page);
+    const question = JSON.parse(before.question);
+    const contracts = await page.evaluate(() => __footballTest.activeContracts());
+    const { a, b, answer, operation } = question.challengeFixture;
+    const operator = operation === 'add' ? '+' : '−';
+    expect(question.familyId).toBe(familyId);
+    expect(contracts.activePlay.context).toMatchObject({ possession: 'offense', attemptType: 'twoPoint' });
+    expect(question.support).toBe('guided');
+    expect(contracts.questionUi).toMatchObject({ attempt: 1, support: 'guided', missedChoiceIds: [] });
+    expect(before.draws, 'one scheduler draw and three shuffle draws').toEqual({ football: 0, scheduler: 1, presentation: 3 });
+
+    await expect(page.locator('#question')).toHaveText(question.prompt.text);
+    await expect(page.locator('#feedback')).toContainText(question.hint.text);
+    const overlay = page.locator('#math-overlay');
+    await expect(overlay).toHaveAttribute('data-type', 'column-arithmetic');
+    await expect(overlay).toHaveAttribute('data-support', 'guided');
+    await expect(overlay).toHaveAttribute('aria-label', question.visuals.guided.ariaLabel);
+    let cells = await columnCells(page);
+    expect(cells.heads).toEqual(['', 'hundreds', 'tens', 'ones']);
+    expect(cells.signs).toEqual(['', '', operator, '']);
+    expect(cells.digits).toEqual([...placeDigits(a), ...placeDigits(b), '?', '?', '?']);
+    expect(cells.answer).toEqual(['?', '?', '?']);
+    const labels = await page.locator('#btn-row .ans-btn:not(.hidden)').allTextContents();
+    expect(labels.map(text => Number(text.trim())).sort()).toEqual([...question.challengeFixture.choiceValues].sort());
+    const initialMetrics = await questionGeometry(page);
+    assertQuestionGeometry(initialMetrics, `${familyId} guided start`);
+    await page.screenshot({ path: testInfo.outputPath(`${familyId}-guided-start.png`) });
+    await testInfo.attach(`${familyId}-guided-geometry.json`, {
+      body: JSON.stringify({ viewport: page.viewportSize(), overlay: initialMetrics.overlay, field: initialMetrics.inner,
+        answers: initialMetrics.answers, desk: initialMetrics.desk }, null, 2),
+      contentType: 'application/json',
+    });
+
+    const wrong = question.choices.filter(choice => choice.id !== question.correctChoiceId).map(choice => choice.id);
+    await page.locator(`[data-choice-id="${wrong[0]}"]`).tap();
+    await expect(page.locator('#feedback')).toHaveText(`Good try. ${question.hint.text}`);
+    await expect(overlay).toHaveAttribute('data-type', 'column-arithmetic');
+    cells = await columnCells(page);
+    expect(cells.answer, 'retry keeps the result hidden').toEqual(['?', '?', '?']);
+    assertQuestionGeometry(await questionGeometry(page), `${familyId} retry`, { initialAnswers: initialMetrics.answers });
+    const afterMiss = await snapshotState(page);
+    expect(afterMiss.activePlay).toBe(before.activePlay);
+    expect(afterMiss.question).toBe(before.question);
+    expect(afterMiss.choiceOrder).toEqual(before.choiceOrder);
+    expect(afterMiss.draws).toEqual(before.draws);
+    await page.screenshot({ path: testInfo.outputPath(`${familyId}-retry.png`) });
+
+    await page.locator(`[data-choice-id="${wrong[1]}"]`).tap();
+    await expect(page.locator('#ui-desk')).toHaveAttribute('data-phase', 'explanation');
+    await expect(overlay).toHaveAttribute('aria-label', question.visuals.worked.ariaLabel);
+    cells = await columnCells(page);
+    expect(cells.answer).toEqual(placeDigits(answer));
+    await expect(page.locator('#film-room-summary-copy')).toHaveText(question.workedExplanation.text);
+    await page.screenshot({ path: testInfo.outputPath(`${familyId}-worked.png`) });
+
+    await page.locator('#question-learn-why').tap();
+    const steps = page.locator('#worked-review-content .worked-review-steps li p');
+    await expect(steps).toHaveText([question.hint.text, question.workedExplanation.text]);
+    await page.screenshot({ path: testInfo.outputPath(`${familyId}-replay.png`) });
+    expect((await snapshotState(page)).activePlay).toBe(before.activePlay);
+
+    await page.locator('#question-continue').tap();
+    const committed = await page.evaluate(() => JSON.parse(render_game_to_text()));
+    expect(committed.outcomeCommitted).toBe(true);
+    expect(committed.score, 'the missed try adds no points').toEqual({ player: 6, opponent: 0 });
+    expect(errors).toEqual([]);
+  });
+}
+
+test('keyboard Space on Two-Point Try and Enter on the correct answer make the try', async ({ page, browserName }) => {
+  test.setTimeout(120_000);
+  const errors = [];
+  page.on('pageerror', error => errors.push(error.message));
+  page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
+  await page.goto('/football/?boot=offense-call');
+  await installTwoPoint(page);
+  await page.evaluate(() => window.__openTwoPoint(0.25));
+  // Let the queued entry focus settle before the keyboard moves it.
+  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => resolve())));
+  await expect(page.locator('#decision-grid .decision-btn[data-action="pat"]')).toBeFocused();
+  await page.keyboard.press(tabKey(browserName));
+  await expect(page.locator('#decision-grid .decision-btn[data-action="twoPoint"]')).toBeFocused();
+  await page.keyboard.press('Space');
+  await expect(page.locator('#ui-desk')).toHaveAttribute('data-phase', 'question');
+  await expect(page.locator('#btn-row .ans-btn:not(.hidden):not(:disabled)').first()).toBeFocused();
+  const question = (await page.evaluate(() => __footballTest.activeContracts())).questionInstance;
+  expect(CHALLENGE_FAMILIES).toContain(question.familyId);
+  await expect(page.locator('#math-overlay')).toHaveAttribute('data-type', 'column-arithmetic');
+
+  const correct = page.locator(`[data-choice-id="${question.correctChoiceId}"]`);
+  await correct.focus();
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#ui-desk')).toHaveAttribute('data-phase', 'feedback');
+  const committed = await page.evaluate(() => JSON.parse(render_game_to_text()));
+  expect(committed.outcomeCommitted).toBe(true);
+  expect(committed.score, 'the made try adds two points').toEqual({ player: 8, opponent: 0 });
+  expect(errors).toEqual([]);
+});

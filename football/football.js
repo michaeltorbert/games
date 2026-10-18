@@ -1,4 +1,4 @@
-const GAME_VERSION = '1.34.15';
+const GAME_VERSION = '1.34.16';
 let prevPlayerScore = -1, prevOpponentScore = -1;
 let playerRunTimer = 0, playerCelebrateTimer = 0, playerCelebrateDelayTimer = 0;
 const EZ = 5;
@@ -72,6 +72,7 @@ const COACH_CONCEPT_LABELS = Object.freeze({
   'touchdown-base-scoring': 'Six-point touchdowns',
   'conversion-scoring': 'Conversion points',
   'conversion-placement': 'Conversion try spot',
+  'two-point-challenge': 'Two-point challenge',
   'field-goal-scoring': 'Field-goal points',
   'field-goal-distance': 'Field-goal distance',
   'punt-distance': 'Punt distance',
@@ -1573,6 +1574,84 @@ function validReviewCopy(copy, bindingIds, answerId) {
     && copy.answerId === answerId;
 }
 
+// Issue #186: the player's two-point challenge carries generated operands, not
+// play facts. Only the module's pure generator, recomputed here from the live
+// frozen play, is trusted. The question's fixture copy, bindings, operation,
+// answer, complete choice set and pictures must all match it, and this separate
+// per-digit check rejects regrouping or an operand outside 100 through 999.
+const CHALLENGE_PLACE_VALUES = Object.freeze({ hundreds: 100, tens: 10, ones: 1 });
+const CHALLENGE_BINDING_PATHS = Object.freeze({ challengeA: '/a', challengeB: '/b' });
+
+function threeDigitColumnsWithoutRegrouping(operation, a, b) {
+  if (![a, b].every(value => Number.isInteger(value) && value >= 100 && value <= 999) || b % 100 === 0) return false;
+  const digit = (value, place) => Math.floor(value / CHALLENGE_PLACE_VALUES[place]) % 10;
+  const places = Object.keys(CHALLENGE_PLACE_VALUES);
+  if (operation === 'add') return places.every(place => digit(a, place) + digit(b, place) <= 9);
+  if (operation === 'subtract') {
+    return digit(a, 'hundreds') > digit(b, 'hundreds') && places.every(place => digit(a, place) >= digit(b, place));
+  }
+  return false;
+}
+
+function trustedTwoPointChallenge(activePlay, question) {
+  const reject = (message) => {
+    throw Object.assign(new Error(message), { code: 'malformed-question' });
+  };
+  const families = FOOTBALL_CONTEXTUAL_QUESTIONS.TWO_POINT_CHALLENGE.families;
+  const fixtureBindings = question.bindings.filter(binding => binding?.source?.kind === 'challengeFixture');
+  if (!Object.prototype.hasOwnProperty.call(families, question.familyId)) {
+    if (fixtureBindings.length || question.challengeFixture !== undefined) {
+      reject('Only the player two-point challenge may carry generated operands.');
+    }
+    return null;
+  }
+  const context = activePlay.context;
+  if (activePlay.playType !== 'conversion' || context?.possession !== POSSESSIONS.offense || context?.attemptType !== 'twoPoint') {
+    reject('The three-digit challenge belongs only to the player two-point try.');
+  }
+  const registered = FOOTBALL_CONTEXTUAL_QUESTIONS.FAMILY_REGISTRY.conversion
+    .find(entry => entry.familyId === question.familyId);
+  const metaKeys = ['skill', 'concept', 'purpose', 'tier', 'curriculumSource', 'introducedOnPage',
+    'evidenceClass', 'answerExposure', 'operationType', 'playType'];
+  if (!registered || metaKeys.some(key => !sameContractValue(question[key], registered[key]))) {
+    reject('Two-point challenge metadata contradicts its registered family.');
+  }
+  const trusted = FOOTBALL_CONTEXTUAL_QUESTIONS.twoPointChallengeFor(activePlay, question.familyId);
+  if (!trusted || !sameContractValue(question.challengeFixture, trusted)) {
+    reject('The two-point challenge fixture does not match the frozen play.');
+  }
+  const { operation, a, b, answer } = trusted;
+  if (operation !== families[question.familyId] || !threeDigitColumnsWithoutRegrouping(operation, a, b)
+    || answer !== (operation === 'add' ? a + b : a - b) || answer < 100 || answer > 999) {
+    reject('Two-point challenge operands leave the no-regrouping three-digit domain.');
+  }
+  if (question.operation?.type !== operation
+    || !sameContractValue(question.operation.operandIds, Object.keys(CHALLENGE_BINDING_PATHS))
+    || question.answer?.value !== answer) {
+    reject('Two-point challenge operation or answer contradicts the trusted fixture.');
+  }
+  if (fixtureBindings.length !== 2 || fixtureBindings.some(binding => (
+    !sameContractValue(binding.source, { kind: 'challengeFixture', path: CHALLENGE_BINDING_PATHS[binding.id] })
+  ))) {
+    reject('Two-point challenge bindings must name exactly its two operands.');
+  }
+  const values = Array.isArray(question.choices) ? question.choices.map(choice => choice?.value) : [];
+  const ascending = list => [...list].sort((left, right) => left - right);
+  if (values.length !== trusted.choiceValues.length || new Set(values).size !== values.length
+    || !sameContractValue(ascending(values), ascending(trusted.choiceValues))
+    || values.filter(value => value === answer).length !== 1) {
+    reject('Two-point challenge choices contradict the trusted choice set.');
+  }
+  for (const stage of ['initial', 'guided', 'worked']) {
+    const visual = question.visuals?.[stage];
+    if (visual?.type !== 'column-arithmetic' || visual.data?.operation !== operation
+      || visual.data?.a !== a || visual.data?.b !== b) {
+      reject(`Two-point challenge ${stage} picture contradicts the trusted fixture.`);
+    }
+  }
+  return trusted;
+}
+
 function validateQuestionInstance(activePlay, question) {
   if (!question || typeof question !== 'object') throw Object.assign(new Error('Question builder returned no contract.'), { code: 'malformed-question' });
   if (question.schemaVersion !== FOOTBALL_CONTEXTUAL_QUESTIONS.SCHEMA_VERSION) {
@@ -1601,6 +1680,7 @@ function validateQuestionInstance(activePlay, question) {
   const specialBindingPaths = activePlay.playType === 'scrimmage'
     ? null
     : new Set(FOOTBALL_CONTEXTUAL_QUESTIONS.SPECIAL_BINDING_PATHS[activePlay.playType] || []);
+  const trustedChallenge = trustedTwoPointChallenge(activePlay, question);
   for (const binding of question.bindings) {
     if (binding?.source?.kind === 'context'
       && /private|opponentDecision|plannedCall|weight/i.test(binding.source.path)) {
@@ -1614,7 +1694,9 @@ function validateQuestionInstance(activePlay, question) {
       ? readQuestionPointer(activePlay, binding.source.path)
       : binding?.source?.kind === 'rule'
         ? FOOTBALL_CONTEXTUAL_QUESTIONS.RULES[binding.source.ruleId]
-        : undefined;
+        : binding?.source?.kind === 'challengeFixture' && trustedChallenge
+          ? readQuestionPointer(trustedChallenge, binding.source.path)
+          : undefined;
     if (actual === undefined || !sameContractValue(actual, binding.value)) {
       throw Object.assign(new Error(`Question binding ${binding?.id || 'unknown'} is not grounded in the snap.`), { code: 'malformed-question' });
     }
@@ -1947,6 +2029,11 @@ function renderMathVisual() {
     visual.type === 'punt-travel' && data.possibleTouchback === true,
   );
   overlay.setAttribute('aria-label', visual.ariaLabel);
+  if (visual.type === 'column-arithmetic') {
+    overlay.removeAttribute('data-model');
+    overlay.replaceChildren(renderColumnArithmetic(data, visual.result));
+    return;
+  }
 
   let tokens = [];
   const teamToken = (text, team) => ({ text, team });
@@ -2139,6 +2226,34 @@ function renderArithmeticModel(data) {
   caption.textContent = data.caption;
   figure.append(picture, caption);
   return figure;
+}
+
+// Issue #186: hundreds, tens and ones columns for the player's two-point
+// challenge. The answer row stays blank until the worked stage supplies the
+// result; the worked explanation itself stays in the Film Room summary.
+function renderColumnArithmetic(data, result) {
+  const places = Object.keys(CHALLENGE_PLACE_VALUES);
+  const digits = value => places.map(place => Math.floor(value / CHALLENGE_PLACE_VALUES[place]) % 10);
+  const grid = document.createElement('div');
+  grid.className = 'math-columns';
+  grid.setAttribute('aria-hidden', 'true');
+  const cell = (text, className, place = null) => {
+    const element = document.createElement('span');
+    element.className = className;
+    if (place) element.dataset.place = place;
+    element.textContent = text;
+    grid.appendChild(element);
+  };
+  cell('', 'math-column-sign math-column-head');
+  places.forEach(place => cell(place, 'math-column-head', place));
+  cell('', 'math-column-sign');
+  digits(data.a).forEach((digit, index) => cell(String(digit), 'math-column-digit', places[index]));
+  cell(data.operator, 'math-column-sign');
+  digits(data.b).forEach((digit, index) => cell(String(digit), 'math-column-digit', places[index]));
+  const answer = result ? digits(result.value).map(String) : ['?', '?', '?'];
+  cell('', 'math-column-sign math-column-answer');
+  answer.forEach((digit, index) => cell(digit, 'math-column-digit math-column-answer', places[index]));
+  return grid;
 }
 
 function workedReviewElements() {
