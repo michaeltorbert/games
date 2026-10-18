@@ -1969,3 +1969,96 @@ seats, working on exact base `a0fb736af7986721a9ad1bf64087806ddcc8832b`
   proof is claimed.
 - This delivers the Football part of #52. The issue stays open for the
   excluded games and broader image scope. #161 stays open.
+
+## 2026-10-17 — Football v1.34.15 (#51 decision surfaces, superseding release entry)
+
+Original request, as recorded in the planning packet: the user accepted the
+recommendation to update the fourth-down and conversion choices to match the
+simpler released scoreboard and question area, preserving the football rules.
+Outcomes R1–R5 from `output/issue-51-decisions/plan-packet.md` bind this
+portion. The author is a new native Claude (Opus 5.5) session, separate from
+both planning seats, working on exact base
+`f1e934ad426aab7d08146d5385b415dada3f533c` (Football 1.34.14). The author had
+no shell and ran nothing.
+
+- **Scope (CSS only):** one appended block in `football.css`, scoped to the
+  `fourth-down-decision` and `conversion-decision` desk phases and to
+  `#decision-grid`. Every earlier byte is unchanged.
+  - The desk uses the approved question workspace: flat navy under a 3 px gold
+    rule (brown on defense), no texture, tab or panel divider. The play facts
+    are small, `#play-label` is a 15 px gold sans line (14 px on phones)
+    instead of display type, and the question and feedback use the workspace
+    sans. Feedback loses its left-bar box.
+  - On touch landscape tablets (1024 px and wider), the desk takes the call
+    phase's compact placement and hides the header. The header only repeats the
+    question and feedback and is not a live region. This removes the old
+    overlap with the bottom of the field.
+  - The cards are flat navy (`#0d1f44`) or brown (`#2b1a0b`) with a uniform
+    1 px edge and a 14 px radius. The gold strip, sheen, gradient, thick bottom
+    edge and resting shadow are gone.
+  - Labels use the workspace sans in white (warm on defense), at 17–22 px on
+    tablets and 16 px on phones, never larger than the question. The eyebrow
+    is a 12 px muted line (the old one was 10 px on phones and touch
+    landscape). Descriptions are a 15 px muted sans (14 px on touch landscape,
+    13 px on phones; the old size was 12 px there).
+  - Casing is unchanged: `text-transform` is not redeclared.
+- **Unchanged:**
+  - DOM, copy, actions, availability, listeners, focus, ARIA and the single
+    polite `#feedback` status.
+  - Grid columns, the phone two-column layout with the third choice across the
+    row, the one-card retry, card min-heights, padding and gaps.
+  - Hover, focus and active transforms, and the reduced-motion rules.
+  - The call cards and call-phase chrome, the field, Time Lab, Kickoff and the
+    overlays. All JavaScript except `GAME_VERSION`. No gameplay, RNG, storage,
+    Season, learning, stats, audio or curriculum change.
+  - Go still opens the unchanged five-call grid, and ordinary or opponent-Go
+    defense the four-call grid.
+- **Known, deferred:** after Go, the unchanged call cards and call-phase
+  chrome are louder than the new decision cards. This stays under #51 for the
+  later call and field portion.
+- **Tests:** new `tests/football-decision-surfaces.spec.mjs`, on the existing
+  muted curriculum fixture. It is not in the release runner's file list and
+  runs separately in both engines.
+  - Entry states are seeded through the existing test seams, so they are not
+    played possessions. Every choice, retry and transition is a real tap or
+    key press.
+  - It covers the legal three choices, Go/Punt only, both conversion choices,
+    the player punt, field-goal, PAT and two-point retries, and the opponent
+    punt, field-goal and two-point retries.
+  - Each state checks the exact actions, order, counts, copy, casing, ARIA,
+    first focus and the desk's single polite status. It also checks that the
+    cards are whole, unclipped, at least 44 px, readable (4.5:1) and above the
+    fold, with no scroll or horizontal overflow.
+  - Each tap must open a question bound to the same frozen play, the same
+    punt travel, or (for opponent retries) the same play ID. Go must open five
+    calls; opponent Go and ordinary defense must open four.
+  - Keyboard checks: Tab moves a visible, unclipped 3 px focus ring; Enter and
+    Space activate. Reduced motion and coarse-pointer hover do not lift a card.
+  - Its style assertions pin this portion's flat cards, 1 px edge and
+    workspace-sans labels. Later #51 call or field work may need to update them
+    deliberately.
+  - Screenshots and geometry with the engine environment go to
+    `testInfo.outputPath`.
+  - Existing specs, assertions, retries, workers, deadlines and the runner are
+    unchanged.
+- **Metadata:** `GAME_VERSION`, all 18 Football asset query strings (including
+  `../shared/`), the Football registry entry and `version.json` are 1.34.15.
+  Kayak 1.1.38, Prague 1.4.0 and Place by Place 1.9.1 keep their exact base
+  descriptors and versions.
+- **Pending (recorded outside this file, under `output/issue-51-decisions/`):**
+  - the new spec on all six projects in Chromium and in Safari-configured
+    WebKit;
+  - unchanged `test:football` and the focused question-workspace,
+    remaining-overlays and kickoff-setup specs;
+  - the registry gate at the exact base;
+  - both unchanged release matrices;
+  - the after captures and before/after/reference pixel review;
+  - the browser-client smoke;
+  - a fresh independent review;
+  - the reviewed PR, merge, Pages deployment and live verification.
+
+  This entry claims none of them, and failures are retained. Browser results
+  are engine emulation, not Simulator or device proof.
+- This delivers the decision-surface portion of #51. The field, Time Lab and
+  the call-phase chrome are not redesigned here, so the broader issue stays
+  open. #161 stays open.

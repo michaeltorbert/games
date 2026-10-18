@@ -7192,3 +7192,204 @@ body::after {
     padding-left: 16px;
   }
 }
+
+/* Issue 51: decision surfaces. The fourth-down (Go / Punt / legal Field Goal)
+   and conversion (PAT / Two-Point Try) choices, and their one-card retries,
+   join the approved question workspace: the same flat navy desk under a gold
+   rule (brown on defense), small play facts above a sans question and plain
+   feedback, and flat navy/brown cards like the play cards. The cards' gold
+   strip, sheen, gradient and thick bottom edge are gone; labels use the
+   workspace sans at no more than the question's size.
+
+   Presentation only, scoped to the two decision phases and #decision-grid.
+   DOM, copy, casing (text-transform is not redeclared), grid columns, card
+   min-heights, padding and gaps, hover/focus/active transforms and the
+   reduced-motion rules are unchanged. On touch landscape tablets the desk
+   takes the call phase's compact placement, whose header only repeats the
+   question and feedback. */
+
+#ui-desk:is([data-phase="fourth-down-decision"], [data-phase="conversion-decision"]) {
+  border: 0;
+  border-top: 3px solid var(--gold);
+  border-radius: 0 0 14px 14px;
+  background: linear-gradient(110deg, #07152c, #091b31);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.28);
+}
+
+#ui-desk[data-possession="defense"]:is([data-phase="fourth-down-decision"], [data-phase="conversion-decision"]) {
+  border-top-color: var(--defense);
+}
+
+#ui-desk:is([data-phase="fourth-down-decision"], [data-phase="conversion-decision"])::before,
+#ui-desk:is([data-phase="fourth-down-decision"], [data-phase="conversion-decision"])::after,
+#ui-desk:is([data-phase="fourth-down-decision"], [data-phase="conversion-decision"]) #action-panel::before {
+  content: none;
+}
+
+#ui-desk:is([data-phase="fourth-down-decision"], [data-phase="conversion-decision"]) #play-context {
+  margin: 0 0 4px;
+  color: #aebbd0;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  line-height: 1.3;
+}
+
+#ui-desk[data-possession="defense"]:is([data-phase="fourth-down-decision"], [data-phase="conversion-decision"]) #play-context {
+  color: #e6c9a6;
+}
+
+#ui-desk:is([data-phase="fourth-down-decision"], [data-phase="conversion-decision"]) #play-label {
+  max-width: none;
+  margin: 0;
+  color: var(--gold);
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 15px;
+  font-weight: 750;
+  letter-spacing: 0.03em;
+  line-height: 1.25;
+}
+
+#ui-desk[data-possession="defense"]:is([data-phase="fourth-down-decision"], [data-phase="conversion-decision"]) #play-label {
+  color: #f4c27f;
+}
+
+#ui-desk:is([data-phase="fourth-down-decision"], [data-phase="conversion-decision"]) #question {
+  max-width: 46ch;
+  margin-top: 6px;
+  padding-top: 0;
+  color: #fffdf5;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: clamp(18px, 2vw, 24px);
+  font-weight: 720;
+  letter-spacing: -0.01em;
+  line-height: 1.22;
+}
+
+#ui-desk:is([data-phase="fourth-down-decision"], [data-phase="conversion-decision"]) #feedback {
+  max-width: 46ch;
+  margin-top: 8px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  color: #dae7f5;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 16px;
+  font-weight: 630;
+  letter-spacing: normal;
+  line-height: 1.3;
+}
+
+#decision-grid .decision-btn {
+  border-width: 1px;
+  border-color: rgba(119, 177, 227, 0.42);
+  border-radius: 14px;
+  background: #0d1f44;
+}
+
+#decision-grid .decision-btn::before,
+#decision-grid .decision-btn::after {
+  content: none;
+}
+
+/* As on the play cards, hover, focus-visible and the coarse-pointer hover
+   shadow keep their existing rules; only the resting shadow is removed. */
+#decision-grid .decision-btn:not(:hover):not(:focus-visible) {
+  box-shadow: none;
+}
+
+#decision-grid .decision-eyebrow {
+  color: var(--muted-soft);
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  line-height: 1.3;
+}
+
+#decision-grid .decision-label {
+  color: var(--white);
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: clamp(17px, 1.75vw, 22px);
+  font-weight: 750;
+  letter-spacing: 0.02em;
+  line-height: 1.15;
+  overflow-wrap: break-word;
+}
+
+#decision-grid .decision-desc {
+  color: var(--muted-soft);
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: normal;
+  line-height: 1.3;
+}
+
+#decision-grid[data-possession="defense"] .decision-btn {
+  background: #2b1a0b;
+}
+
+#decision-grid[data-possession="defense"] .decision-eyebrow,
+#decision-grid[data-possession="defense"] .decision-desc {
+  color: #f0d5b4;
+}
+
+#decision-grid[data-possession="defense"] .decision-label {
+  color: #ffd4a1;
+}
+
+@media (hover: none) and (pointer: coarse) and (min-width: 1024px) and (orientation: landscape) {
+  #ui-desk:is([data-phase="fourth-down-decision"], [data-phase="conversion-decision"]) {
+    margin: -42px 16px 0;
+    padding: 14px 18px 16px;
+    gap: 0 18px;
+  }
+
+  #ui-desk:is([data-phase="fourth-down-decision"], [data-phase="conversion-decision"]) #desk-head {
+    display: none;
+  }
+
+  #ui-desk:is([data-phase="fourth-down-decision"], [data-phase="conversion-decision"]) #prompt-panel {
+    padding: 0;
+  }
+
+  #ui-desk:is([data-phase="fourth-down-decision"], [data-phase="conversion-decision"]) #action-panel {
+    padding-left: 16px;
+  }
+
+  #decision-grid .decision-desc {
+    font-size: 14px;
+  }
+}
+
+@media (max-width: 760px) {
+  #ui-desk:is([data-phase="fourth-down-decision"], [data-phase="conversion-decision"]) {
+    border-radius: 0 0 12px 12px;
+  }
+
+  #ui-desk:is([data-phase="fourth-down-decision"], [data-phase="conversion-decision"]) #play-label {
+    font-size: 14px;
+  }
+
+  #ui-desk:is([data-phase="fourth-down-decision"], [data-phase="conversion-decision"]) #question {
+    max-width: none;
+    font-size: 17px;
+    line-height: 1.2;
+  }
+
+  #ui-desk:is([data-phase="fourth-down-decision"], [data-phase="conversion-decision"]) #feedback {
+    max-width: none;
+    font-size: 15px;
+  }
+
+  #decision-grid .decision-label {
+    font-size: 16px;
+  }
+
+  #decision-grid .decision-desc {
+    font-size: 13px;
+  }
+}
