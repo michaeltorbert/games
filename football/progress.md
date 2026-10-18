@@ -2288,3 +2288,22 @@ had no shell and ran nothing.
   This entry claims none of them. Browser results are engine emulation, not
   Simulator or device proof. The real primary iPad's usable height is
   unknown, so whether it reaches 780px is not claimed.
+- **Correction 1 (candidate `990c93d`):** the first full Chromium release run
+  (`tests/artifacts.nosync/football-release/20261018T063606Z-chromium-ad4af7`)
+  failed only the three new next-down Coach Replay cases. The desk was 13.66px
+  from the bottom at 1180×820 and −18.34px at 788, and Back ended at 782.34px
+  at 780. A fresh Sol review requested the same fix.
+  - **Cause:** the 780px budget came from captures that omitted the next-down
+    Replay. That Replay is taller than the two-point Replay and needed about
+    823px.
+  - **CSS fix:** only the explanation desk inside the 780px tier is packed
+    more tightly. Padding is 14/16, the Replay text 16px with line-height
+    1.25, the meaning 15px, and the Replay heading 19px, with smaller gaps and
+    action padding. Everything stays larger than the shipped page, and the
+    actions keep their 44px minimum. The estimated requirement is about 771px
+    (not measured).
+  - **Unchanged:** the question desk, field, threshold and the new assertions.
+  - **Helper:** the capture helper now captures the next-down chain, and it
+    excuses a released-page failure only when the candidate is not worse.
+  - The failed run is retained. All checks and a new fresh review are
+    pending.

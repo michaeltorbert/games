@@ -7507,8 +7507,11 @@ body::after {
       content up, so it applies at every height.
    2. From 780px tall, the question, support and Coach Replay text and the
       answer numbers are larger. Answer rows stay at their intrinsic height.
-      780px is the tallest measured natural content (two-point Coach Replay
-      at 1180px wide) plus the 16px bottom clearance, rounded up.
+      Coach Replay is the tallest content (the next-down Replay has a goal,
+      two two-line steps, a two-line meaning and its actions), so the
+      explanation desk is packed more tightly than the question desk. Its
+      text stays larger than below 780px, and its actions stay at least 44px.
+      The whole Replay fits with 16px clearance at 780px.
    3. At 1080px and wider, the question and feedback field keeps the 260px it
       has in call and explanation instead of the short-height 220px. The
       1024-1079px tier keeps its own reduced fields.
@@ -7524,8 +7527,12 @@ body::after {
 }
 
 @media (hover: none) and (pointer: coarse) and (min-width: 1024px) and (min-height: 780px) and (orientation: landscape) {
-  #ui-desk:is([data-phase="question"], [data-phase="feedback"], [data-phase="explanation"]) {
+  #ui-desk:is([data-phase="question"], [data-phase="feedback"]) {
     padding: 20px 28px 24px;
+  }
+
+  #ui-desk[data-phase="explanation"] {
+    padding: 14px 28px 16px;
   }
 
   #ui-desk:is([data-phase="question"], [data-phase="feedback"], [data-phase="explanation"]) #play-context {
@@ -7569,41 +7576,51 @@ body::after {
   }
 
   #ui-desk[data-phase="explanation"] :is(.film-room-summary h2, #worked-review-heading) {
-    font-size: 21px;
-  }
-
-  #ui-desk[data-phase="explanation"] .film-room-summary p {
     font-size: 19px;
   }
 
-  #ui-desk[data-phase="explanation"] .worked-review {
-    gap: 10px;
-  }
-
-  #ui-desk[data-phase="explanation"] :is(.worked-review-goal, .worked-review-steps) p {
+  #ui-desk[data-phase="explanation"] .film-room-summary p {
     font-size: 18px;
   }
 
-  #ui-desk[data-phase="explanation"] .worked-review-meaning p {
+  #ui-desk[data-phase="explanation"] .worked-review {
+    gap: 8px;
+  }
+
+  #ui-desk[data-phase="explanation"] :is(.worked-review-goal, .worked-review-steps) p {
     font-size: 16px;
+    line-height: 1.25;
+  }
+
+  #ui-desk[data-phase="explanation"] .worked-review-meaning p {
+    font-size: 15px;
+    line-height: 1.25;
   }
 
   #ui-desk[data-phase="explanation"] .worked-review-steps {
-    gap: 6px;
+    gap: 4px;
   }
 
   #ui-desk[data-phase="explanation"] .worked-review-steps li {
-    grid-template-columns: 26px minmax(0, 1fr);
+    grid-template-columns: 24px minmax(0, 1fr);
   }
 
   #ui-desk[data-phase="explanation"] .worked-review-step-number {
-    width: 26px;
-    height: 26px;
-    font-size: 15px;
+    width: 24px;
+    height: 24px;
+    font-size: 14px;
+  }
+
+  #ui-desk[data-phase="explanation"] .worked-review-actions {
+    margin-top: 8px;
+  }
+
+  #ui-desk[data-phase="explanation"] #worked-review:not(.hidden) + .worked-review-actions {
+    padding-top: 8px;
   }
 
   #ui-desk[data-phase="explanation"] .worked-review-actions :is(.question-learn-why, .worked-review-back, .question-continue) {
-    padding: 12px 20px;
+    padding: 10px 20px;
     font-size: 18px;
   }
 }
