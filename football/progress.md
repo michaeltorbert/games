@@ -2456,3 +2456,96 @@ shell, ran nothing, and made no commits.
   - **Release:** the PR, merge, and Pages/live verification.
 
   Browser results will be engine emulation, not Simulator or device proof.
+
+## 2026-10-19 — Football v1.34.19 (#51 phone field labels, superseding candidate)
+
+- **Request retained:** keep the current design while making complete field
+  context labels visible on iPhone 15 and iPhone 17 Pro Max during questions,
+  retries, worked explanation, and Coach Replay. Preserve
+  readable typography, the field picture, above-fold answers and Replay
+  controls, tablet layouts, and all gameplay, learning, retry, RNG, and result
+  behavior. Broader #51 work remains open; #161 remains unresolved.
+- **Scope correction:** the original PLAY crop was the defense
+  `gain-vs-needed-comparison` picture, not just the marker strip. The retained
+  #188 iPhone 15 WebKit capture (proposed 5, needed 10) shows the top of
+  "PLAY 5" cut off by the field edge, with "?" and "NEED 10" stacked in a
+  narrow left column. Comparison is therefore in scope with down-progression
+  and marker-strip.
+- **Failed attempts (retained, not waived):**
+  - **v2 (focused, Chromium):** the iPhone 15 next-down worked text intersected
+    the answer desk (desk margin -72px). Three other failures came from an
+    incorrect assertion that feedback should show the picture.
+  - **v3 (`ef89f1f`):** the focused workspace spec passed in both engines on
+    all six targets. The stock Chromium release run
+    `20261019T160516Z-chromium-d9a9d7` then failed 28 phone cases in the
+    unchanged `football-arithmetic-ui.spec.mjs`; later files and WebKit did not
+    run.
+  - **Cause:** v3's broad `#wrap:is(question, explanation) #math-overlay` rule
+    (specificity 2,1,0) outranked the per-type phone rules (1,1,0). It replaced
+    their width, padding and gap but kept their `left: calc(50% - 25.5px)`, so
+    guided models started about 11px inside a 26px field edge. Its `top: 8px`
+    full-width panel also covered the 44px sound toggle, in the label families
+    as well.
+  - **Matched captures:** v3's phone captures failed their semantic comparator.
+    The only differences were feedback top/bottom positions, so they were
+    reclassified offline. That run stays FAILED; its candidate pixels are stale
+    after this change.
+- **Change (`football.css`, phones only):** the three broad rules are removed,
+  so every other picture, the desk margins and feedback compute exactly the
+  released 1.34.18 styles. This includes arithmetic initial, guided and column
+  layouts and the punt touchback. Two scoped rules replace them:
+  - `down-progression`, `marker-strip` and `comparison` panels use one
+    full-width grid track. Comparison's released `1fr auto 1fr` grid fit its
+    single label row into the first third, and that was what cropped PLAY.
+    They sit left of the sound toggle's 44px corner using the #138/#186 phone
+    geometry and stay bottom-anchored with a 4px row gap. Fonts (30/20/17px),
+    padding, colors and text are unchanged.
+  - The field is 238px (≤760) or 230px (≤420) only for down-progression and
+    marker-strip in question/explanation, and for comparison in explanation.
+    Comparison question and retry keep the released field because its one
+    label row fits there.
+  - Tablet, call, decision, feedback and the #189 defender are untouched. No
+    JS, renderer, state, learning or audio change.
+- **Committed-feedback disposition (E51P-FEEDBACK, O1 subcondition):**
+  `syncUiState` and `renderMathVisual` deliberately clear the picture outside
+  question and explanation. Committed feedback therefore shows a hidden, empty
+  picture and the visible result in its polite status region. Field geometry
+  matches the release. This exception was proposed by the Luna author and
+  accepted in planning; the final independent review must verify it.
+- **Regression (`tests/football-question-workspace.spec.mjs`, additive):**
+  - The phone field-label check now also requires the panel and every picture
+    part inside the field, the panel, parts and every line clear of the full
+    44px sound toggle, a toggle at least 44px, and a hit at its center. It
+    still checks the label lines, the desk and the 30/20/17px sizes.
+  - A new real-tap defense comparison case reproduces the #188 source (it
+    asserts defense, proposed 5 and needed 10). It covers question, retry,
+    committed feedback, worked explanation, Learn why above the fold, Coach
+    Replay, Back and Continue to committed feedback.
+  - Number and punt-landing questions assert the released 150/142px phone
+    field.
+  - The arithmetic and call-layout specs are unchanged and remain the oracle
+    for released geometry.
+- **Author tooling (`output/issue-51-phone/opus-author/`, new):**
+  `capture-51-phone-v4.mjs` captures matched 1.34.18/1.34.19 states on all six
+  targets in both engines. It covers the three label families and the make-ten
+  and three-digit representatives, with served-byte checks, verified test mute,
+  fonts ready, environment metadata and real taps. It reports content parity,
+  released geometry and candidate label checks separately. A v3 baseline is
+  reused only when its full provenance and PNG hashes match. Its README lists
+  the commands and limits. The Luna helper and runs under
+  `output/issue-51-phone/author/` are unchanged.
+- **Observations rejected as actionable:** `parts`, `base-ten` and
+  `base-ten-move` also put one row into a multi-column grid, and the tablet
+  comparison grid is unscoped. None shows clipping or a PLAY/CURRENT label
+  crop in evidence, so no change or follow-up is planned.
+- **Authorship:** a new native Claude Opus author owns this correction; the
+  Luna author wrote v1–v3.
+- **Metadata:** `GAME_VERSION`, all 18 Football asset cache keys, the Football
+  registry entry and `version.json` stay at the unreleased `1.34.19`. Other
+  games are unchanged.
+- **Pending (none claimed here):** focused workspace, arithmetic and
+  call-layout runs in both engines on all six targets; both full stock release
+  gates and the registry gate; matched current pixels on all six targets;
+  fresh independent functional, accessibility and visual review; PR, merge and
+  Pages/live verification. #161 and broader #51 stay open. Browser results
+  will be engine emulation, not Simulator or device proof.
