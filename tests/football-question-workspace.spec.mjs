@@ -23,6 +23,15 @@ const MARKER_SEED = Object.freeze({
   firstDownLine: 31,
 });
 
+// The #188 iPhone 15 defense capture whose comparison picture cropped PLAY 5:
+// Q2, 2nd & 10 at the 50, where the constant 0.2 football draw proposes 5.
+const DEFENSE_COMPARISON_SEED = Object.freeze({
+  possession: 'defense', direction: -1, quarter: 2, down: 2, yardsToGo: 10,
+  yardLine: 50, firstDownLine: 40, driveStart: 50,
+  scores: { player: 7, opponent: 6 }, totalYards: { player: 71, opponent: 71 },
+  plays: 4, drivePlays: 2,
+});
+
 // Fourth down at the own 30: Go and Punt only. The constant 0.2 football draw
 // gives a 38-yard punt that lands short of the end zone.
 const PUNT_SEED = Object.freeze({
@@ -227,6 +236,20 @@ async function assertPhoneFieldLabelsStayInsideField(page, stage, expectedLabels
     const right = left + field.clientWidth;
     const bottom = top + field.clientHeight;
     const deskBox = document.getElementById('ui-desk').getBoundingClientRect();
+    const rect = (element) => {
+      const box = element.getBoundingClientRect();
+      return { top: box.top, right: box.right, bottom: box.bottom, left: box.left, width: box.width, height: box.height };
+    };
+    const mute = document.getElementById('mute-toggle');
+    const muteBox = rect(mute);
+    const muteX = muteBox.left + muteBox.width / 2;
+    const muteY = muteBox.top + muteBox.height / 2;
+    const muteInViewport = muteX >= 0 && muteX <= innerWidth && muteY >= 0 && muteY <= innerHeight;
+    const muteHit = muteInViewport ? document.elementFromPoint(muteX, muteY) : null;
+    const boxes = [overlay, ...overlay.querySelectorAll('*')].map(element => ({
+      name: element === overlay ? 'panel' : element.className || element.tagName,
+      ...rect(element),
+    })).filter(box => box.width > 0 || box.height > 0);
     const labels = [...overlay.querySelectorAll('.math-context-token, .math-context-link, .math-worked')];
     const measured = labels.map(element => {
       const range = document.createRange();
@@ -251,11 +274,32 @@ async function assertPhoneFieldLabelsStayInsideField(page, stage, expectedLabels
       visible: !overlay.hidden,
       field: { left, top, right, bottom },
       desk: { left: deskBox.left, top: deskBox.top, right: deskBox.right, bottom: deskBox.bottom },
+      mute: muteBox,
+      muteInViewport,
+      muteHitIsToggle: Boolean(muteHit && mute.contains(muteHit)),
+      boxes,
       labels: measured,
       overlayText: overlay.innerText,
     };
   });
   if (!result.applicable) return;
+  // The whole panel and every part stay inside the field and clear of the full
+  // 44px sound toggle, as the arithmetic pictures already require.
+  const overlaps = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
+  expect(result.mute.width, `${stage}: sound toggle width`).toBeGreaterThanOrEqual(44);
+  expect(result.mute.height, `${stage}: sound toggle height`).toBeGreaterThanOrEqual(44);
+  if (result.muteInViewport) {
+    // The panel ignores pointer events, so this proves tap reachability; the
+    // overlap checks below prove the panel does not cover the toggle.
+    expect(result.muteHitIsToggle, `${stage}: sound toggle receives a tap at its center`).toBe(true);
+  }
+  for (const box of result.boxes) {
+    expect(box.left, `${stage}: ${box.name} inside field left edge`).toBeGreaterThanOrEqual(result.field.left - EPS);
+    expect(box.right, `${stage}: ${box.name} inside field right edge`).toBeLessThanOrEqual(result.field.right + EPS);
+    expect(box.top, `${stage}: ${box.name} inside field top edge`).toBeGreaterThanOrEqual(result.field.top - EPS);
+    expect(box.bottom, `${stage}: ${box.name} inside field bottom edge`).toBeLessThanOrEqual(result.field.bottom + EPS);
+    expect(overlaps(box, result.mute), `${stage}: ${box.name} clear of the sound toggle`).toBe(false);
+  }
   expect(result.visible, `${stage}: instructional field picture remains visible`).toBe(true);
   expect(result.labels.length, `${stage}: field carries context labels`).toBeGreaterThan(0);
   for (const label of expectedLabels) {
@@ -273,8 +317,21 @@ async function assertPhoneFieldLabelsStayInsideField(page, stage, expectedLabels
       expect(line.top, `${stage}: ${label.text} line remains inside field top edge`).toBeGreaterThanOrEqual(result.field.top - EPS);
       expect(line.bottom, `${stage}: ${label.text} line remains inside field bottom edge`).toBeLessThanOrEqual(result.field.bottom + EPS);
       expect(intersects(line, result.desk), `${stage}: ${label.text} remains visible above the answer desk`).toBe(false);
+      expect(overlaps(line, result.mute), `${stage}: ${label.text} line clear of the sound toggle`).toBe(false);
     }
   }
+}
+
+// Pictures outside the three label families keep the released phone field.
+async function assertReleasedPhoneField(page, stage) {
+  const result = await page.evaluate(() => ({
+    width: window.innerWidth,
+    type: document.getElementById('math-overlay').dataset.type || null,
+    height: getComputedStyle(document.getElementById('field-wrap')).height,
+  }));
+  if (result.width > 480) return;
+  expect(result.height, `${stage}: ${result.type} picture keeps the released phone field`)
+    .toBe(result.width <= 420 ? '142px' : '150px');
 }
 
 async function assertCommittedFeedbackHidesInstructionalPicture(page, stage) {
@@ -351,6 +408,7 @@ test.describe('football question workspace (#51)', () => {
     const errors = watchErrors(page);
     await boot(page);
     const question = await presentFamily(page, { seed: OFFENSE_SEED, trigger: CALL, familyId: 'line-to-gain-missing-part' });
+    await assertReleasedPhoneField(page, 'number question');
     expect(question.choices.every(choice => typeof choice.value === 'number')).toBe(true);
     await expect(page.locator('#btn-row')).toHaveAttribute('data-choice-type', 'number');
     await retryThenCorrect(page, question, 'number');
@@ -371,6 +429,7 @@ test.describe('football question workspace (#51)', () => {
     const errors = watchErrors(page);
     await boot(page);
     const question = await presentFamily(page, { seed: PUNT_SEED, trigger: PUNT, familyId: 'punt-landing-spot' });
+    await assertReleasedPhoneField(page, 'punt landing question');
     await expect(page.locator('#btn-row')).toHaveAttribute('data-choice-type', 'yard');
     await retryThenCorrect(page, question, 'punt landing');
     expect(errors).toEqual([]);
@@ -521,6 +580,60 @@ test.describe('football question workspace (#51)', () => {
     await page.locator('#question-learn-why').tap();
     await expect(page.locator('#worked-review')).toBeVisible();
     await assertPhoneFieldLabelsStayInsideField(page, 'marker-strip Coach Replay', ['NEED', 'PLAY', 'PAST']);
+    expect(errors).toEqual([]);
+  });
+
+  test('defense comparison PLAY and NEED labels stay whole through retry, feedback, worked explanation, Replay, Back and Continue', async ({ page }) => {
+    const errors = watchErrors(page);
+    await boot(page);
+    const options = { seed: DEFENSE_COMPARISON_SEED, trigger: CALL, familyId: 'gain-vs-needed-comparison' };
+    const labels = ['PLAY 5', 'NEED 10'];
+    const question = await presentFamily(page, options);
+    const play = await page.evaluate(() => window.__footballTest.activeContracts().activePlay);
+    expect(play.context.possession, '#188 source: defense').toBe('defense');
+    expect(play.proposal.appliedGain, '#188 source: proposed 5').toBe(5);
+    expect(play.context.yardsToGo, '#188 source: needed 10').toBe(10);
+    expect(question.visuals.initial.type).toBe('comparison');
+    assertWorkspace(await workspaceMetrics(page), question, 'comparison question');
+    await assertPhoneFieldLabelsStayInsideField(page, 'comparison question', labels);
+
+    const wrongId = question.choices.find(choice => choice.id !== question.correctChoiceId).id;
+    await tapChoice(page, wrongId);
+    await expectStatus(page, `Good try. ${question.hint.text}`);
+    assertWorkspace(await workspaceMetrics(page), question, 'comparison retry');
+    await assertPhoneFieldLabelsStayInsideField(page, 'comparison coached retry', labels);
+    await tapChoice(page, question.correctChoiceId);
+    await expect(page.locator('#ui-desk')).toHaveAttribute('data-phase', 'feedback');
+    // Freeze only the already-committed result for stable layout assertions.
+    await page.evaluate(() => clearTimeout(advTimer));
+    await assertCommittedFeedbackHidesInstructionalPicture(page, 'comparison feedback');
+
+    const workedQuestion = await presentFamily(page, options);
+    const wrongIds = workedQuestion.choices.filter(choice => choice.id !== workedQuestion.correctChoiceId).map(choice => choice.id);
+    await tapChoice(page, wrongIds[0]);
+    await tapChoice(page, wrongIds[1]);
+    await expect(page.locator('#ui-desk')).toHaveAttribute('data-phase', 'explanation');
+    await assertPhoneFieldLabelsStayInsideField(page, 'comparison worked explanation', [...labels, 'LESS THAN']);
+    await expect(page.locator('#film-room-summary-copy')).toHaveText(workedQuestion.workedExplanation.text);
+
+    const learn = page.locator('#question-learn-why');
+    await expect(learn).toBeVisible();
+    const learnBox = await learn.boundingBox();
+    expect(learnBox.width).toBeGreaterThanOrEqual(44);
+    expect(learnBox.height).toBeGreaterThanOrEqual(44);
+    expect(learnBox.y + learnBox.height, 'Learn why above the fold').toBeLessThanOrEqual(page.viewportSize().height + EPS);
+    await learn.tap();
+    await expect(page.locator('#worked-review')).toBeVisible();
+    await expect(page.locator('#worked-review-heading')).toHaveText(`Coach Replay: ${workedQuestion.workedReview.title}`);
+    await assertPhoneFieldLabelsStayInsideField(page, 'comparison Coach Replay', [...labels, 'LESS THAN']);
+
+    await page.locator('#worked-review-back').tap();
+    await expect(page.locator('#worked-review')).toBeHidden();
+    await expect(page.locator('#question-continue')).toBeVisible();
+    await assertPhoneFieldLabelsStayInsideField(page, 'comparison after Replay Back', [...labels, 'LESS THAN']);
+    await page.locator('#question-continue').tap();
+    await expect(page.locator('#ui-desk')).toHaveAttribute('data-phase', 'feedback');
+    await assertCommittedFeedbackHidesInstructionalPicture(page, 'comparison worked feedback');
     expect(errors).toEqual([]);
   });
 });

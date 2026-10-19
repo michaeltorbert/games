@@ -4413,22 +4413,21 @@ body::after {
     border-radius: 28px;
   }
 
-  /* Give long phone field labels room to wrap inside the field picture while
-     keeping the established font sizes. */
-  #wrap:is([data-phase="question"], [data-phase="explanation"]) #field-wrap {
+  /* #51: the down, marker and comparison label pictures wrap their full-size
+     tokens and worked text in one full-width track, left of the sound
+     toggle's 44px corner like the #138 model. The field grows only where the
+     wrapped labels need it; comparison fits the released field until its
+     worked stage. Every other picture keeps its released geometry. */
+  #wrap:is([data-phase="question"], [data-phase="explanation"]):has(#math-overlay:is([data-type="down-progression"], [data-type="marker-strip"])) #field-wrap,
+  #wrap[data-phase="explanation"]:has(#math-overlay[data-type="comparison"]) #field-wrap {
     height: 238px;
   }
 
-  #wrap:is([data-phase="question"], [data-phase="explanation"]) #math-overlay {
-    top: 8px;
-    bottom: auto;
-    width: min(94%, 700px);
-    padding: 10px 12px;
-    gap: 6px 10px;
-  }
-
-  #wrap:is([data-phase="question"], [data-phase="explanation"]) #ui-desk {
-    margin-top: -20px;
+  #wrap:is([data-phase="question"], [data-phase="explanation"]) #math-overlay:is([data-type="down-progression"], [data-type="marker-strip"], [data-type="comparison"]) {
+    left: calc(50% - 25.5px);
+    width: min(calc(94% - 51px), 380px);
+    grid-template-columns: 1fr;
+    gap: 4px;
   }
 
   #version-display {
@@ -5134,12 +5133,9 @@ body::after {
     margin-top: -28px;
   }
 
-  #wrap:is([data-phase="question"], [data-phase="explanation"]) #field-wrap {
+  #wrap:is([data-phase="question"], [data-phase="explanation"]):has(#math-overlay:is([data-type="down-progression"], [data-type="marker-strip"])) #field-wrap,
+  #wrap[data-phase="explanation"]:has(#math-overlay[data-type="comparison"]) #field-wrap {
     height: 230px;
-  }
-
-  #wrap:is([data-phase="question"], [data-phase="explanation"]) #ui-desk {
-    margin-top: -24px;
   }
 
   #ui-desk[data-phase="fourth-down-decision"] #action-panel {
