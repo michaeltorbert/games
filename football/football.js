@@ -4406,6 +4406,21 @@ function tacklerExtent(tackler, field) {
     minX: box.left + field.clientLeft + TACKLE_EDGE_CLEARANCE,
     maxX: box.left + field.clientLeft + field.clientWidth - TACKLE_EDGE_CLEARANCE,
     minY: box.top + field.clientTop + TACKLE_EDGE_CLEARANCE,
+    maxY: box.top + field.clientTop + field.clientHeight - TACKLE_EDGE_CLEARANCE,
+  };
+}
+
+// The parts that make him recognizable: helmet, shoulder pads, jersey and number.
+function tacklerIdentityBox(tackler) {
+  const parts = [...tackler.querySelectorAll('.pl-helmet, .pl-pads, .pl-jersey, .pl-number')]
+    .map(node => node.getBoundingClientRect())
+    .filter(rect => rect.width > 0 || rect.height > 0);
+  if (!parts.length) return null;
+  return {
+    left: Math.min(...parts.map(rect => rect.left)),
+    right: Math.max(...parts.map(rect => rect.right)),
+    top: Math.min(...parts.map(rect => rect.top)),
+    bottom: Math.max(...parts.map(rect => rect.bottom)),
   };
 }
 
@@ -4429,7 +4444,9 @@ function clampTacklerToField(tackler, field, behind = 0) {
 
 // The staged spot: downfield of his contact spot and raised into his lane,
 // edge-clamped like every other pose. Should the clamp near the opponent's goal
-// line ever leave him touching the carrier, he rises until he is clear.
+// line ever leave him touching the carrier, he rises until he is clear; should it
+// leave the ball hiding his helmet, jersey or number, he steps clear of the ball.
+// Only public geometry is read: the carrier, the ball and the field.
 function placeStagedTackler(tackler, player, field) {
   tackler.style.removeProperty('--tackle-shift');
   tackler.style.setProperty('--tackle-stage-x', `${TACKLE_STAGE_GAP_PX}px`);
@@ -4438,9 +4455,36 @@ function placeStagedTackler(tackler, player, field) {
   clampTacklerToField(tackler, field, TACKLE_SWING_ALLOWANCE_PX);
   const extent = tacklerExtent(tackler, field);
   const carrier = drawnBox(player);
-  if (!extent || !carrier || !boxesOverlap(extent, carrier)) return;
-  rise += Math.max(0, Math.min(extent.bottom - carrier.top + TACKLE_STAGE_SEPARATION_PX, extent.top - extent.minY));
-  tackler.style.setProperty('--tackle-stage-y', `${-rise}px`);
+  if (extent && carrier && boxesOverlap(extent, carrier)) {
+    rise += Math.max(0, Math.min(extent.bottom - carrier.top + TACKLE_STAGE_SEPARATION_PX, extent.top - extent.minY));
+    tackler.style.setProperty('--tackle-stage-y', `${-rise}px`);
+  }
+  clearStagedTacklerOfBall(tackler, field);
+}
+
+// The ball is drawn above him. Near the opponent's goal line the edge clamp can
+// leave him behind it, hiding his helmet, jersey and number (F189-VISIBILITY,
+// phones at the opponent's 97-99). He then steps below the ball, where the field
+// has room and nothing else is drawn; above it are the mute button and the first-
+// down chain. Only if that does not fit does he go above it, and with neither
+// fitting he takes the side with more room. His arms and legs may still pass
+// behind the ball.
+function clearStagedTacklerOfBall(tackler, field) {
+  const ball = document.querySelector('#ball .ball-body');
+  const identity = tacklerIdentityBox(tackler);
+  const extent = tacklerExtent(tackler, field);
+  if (!ball || !identity || !extent) return;
+  const ballBox = ball.getBoundingClientRect();
+  if (!boxesOverlap(identity, ballBox)) return;
+  const down = ballBox.bottom + TACKLE_STAGE_SEPARATION_PX - identity.top;
+  const up = identity.bottom - (ballBox.top - TACKLE_STAGE_SEPARATION_PX);
+  const roomDown = Math.max(0, extent.maxY - extent.bottom);
+  const roomUp = Math.max(0, extent.top - extent.minY);
+  const shift = down <= roomDown ? down
+    : up <= roomUp ? -up
+      : roomDown >= roomUp ? roomDown : -roomUp;
+  const stageY = parseFloat(tackler.style.getPropertyValue('--tackle-stage-y')) || 0;
+  tackler.style.setProperty('--tackle-stage-y', `${(stageY + shift).toFixed(1)}px`);
 }
 
 // Issue #189: set the defender at an ordinary player-offense call. His spot

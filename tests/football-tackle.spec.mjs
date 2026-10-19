@@ -186,6 +186,19 @@ async function installProbe(page) {
       const carrierBounds = carrierShown ? drawn(player).bounds : null;
       const ballBox = ball ? box(ball) : null;
       const badgeBox = badge ? box(badge) : null;
+      const ballBody = document.querySelector('#ball .ball-body');
+      const mute = document.getElementById('mute-toggle');
+      let identityBounds = null;
+      if (shown) {
+        const parts = [...tackler.querySelectorAll('.pl-helmet, .pl-pads, .pl-jersey, .pl-number')]
+          .map(node => node.getBoundingClientRect()).filter(r => r.width > 0 || r.height > 0);
+        if (parts.length) {
+          identityBounds = {
+            left: Math.min(...parts.map(r => r.left)), right: Math.max(...parts.map(r => r.right)),
+            top: Math.min(...parts.map(r => r.top)), bottom: Math.max(...parts.map(r => r.bottom)),
+          };
+        }
+      }
       return {
         elapsed,
         at: performance.now(),
@@ -206,6 +219,13 @@ async function installProbe(page) {
         badgeOverlap: bounds && badgeBox ? overlaps(bounds, badgeBox) : null,
         ballOverlap: bounds && ballBox ? overlaps(bounds, ballBox) : null,
         ballAbove: ball && tackler ? Number(getComputedStyle(ball).zIndex) > Number(tacklerStyle.zIndex) : null,
+        // F189-VISIBILITY: what makes him recognizable (helmet, pads, jersey,
+        // number) against what is drawn above him or carries information: the
+        // ball's drawn body, the mute control and the first-down badge.
+        identityBounds,
+        identityBallOverlap: identityBounds && ballBody ? overlaps(identityBounds, box(ballBody)) : null,
+        identityMuteOverlap: identityBounds && mute ? overlaps(identityBounds, box(mute)) : null,
+        identityBadgeOverlap: identityBounds && badgeBox ? overlaps(identityBounds, badgeBox) : null,
         inner,
         runningTacklerAnimations: tackler
           ? tackler.getAnimations({ subtree: true }).filter(a => a.playState === 'running').length : 0,
@@ -477,6 +497,13 @@ function assertStagedSample(sample, at) {
   expect(sample.separated, `${at}: drawn extents of defender and carrier do not touch`).toBe(true);
   expect(sample.badgeOverlap, `${at}: first-down badge not covered`).toBe(false);
   if (sample.ballOverlap) expect(sample.ballAbove, `${at}: the ball stays drawn above the defender`).toBe(true);
+  // F189-VISIBILITY: separate sprite boxes are not enough. The ball is drawn above
+  // him, so his helmet, pads, jersey and number must not sit behind its drawn
+  // body, and must not sit under the mute control. Arms and legs may.
+  expect(sample.identityBounds, `${at}: identity parts drawn`).not.toBeNull();
+  expect(sample.identityBallOverlap, `${at}: helmet, jersey and number not hidden by the ball`).toBe(false);
+  expect(sample.identityMuteOverlap, `${at}: identity parts not under the mute control`).toBe(false);
+  expect(sample.identityBadgeOverlap, `${at}: identity parts clear of the first-down badge`).toBe(false);
   assertInsideField(sample, at);
 }
 

@@ -2389,6 +2389,50 @@ shell, ran nothing, and made no commits.
     - The added coverage now runs as separate, bounded new tests. Six have 60s
       ceilings; the four staged-geometry tests use the default timeout.
     - No assertion was weakened.
+- **Correction 2 (F189-VISIBILITY, after source `945366f` passed both full
+  release gates):** an independent pixel consultation, which is not an
+  approval, found the problem in the actual iPhone 15 WebKit pixels.
+  - **Finding:** at the opponent's 99, only a helmet cap above the ball and leg
+    fragments below it are visible. The ball (z-index 6, above the defender's 5)
+    hides his face, jersey and number.
+  - **Cause:** the right-edge clamp pulls the staged defender back under the
+    ball, and staging checked only the carrier's drawn extent, not the ball.
+  - **For comparison:** iPad portrait at 99 stayed recognizable despite partial
+    overlap. Its overlap with the decorative CAROLINA end-zone lettering was
+    accepted as non-blocking; there is no follow-up task.
+- **Change (`football.js`, presentation only):** a new step,
+  `clearStagedTacklerOfBall`, runs at the end of `placeStagedTackler`.
+  - **When it acts:** only when the ball's drawn body box would cover the
+    defender's helmet, pads, jersey or number.
+  - **Where he goes:** he steps below the ball by the needed amount plus 2px,
+    within the field. Above the ball are the mute control and the first-down
+    chain. Only if below does not fit does he go above, and if neither fits he
+    takes the side with more room.
+  - **What it reads:** only the ball, carrier and field geometry at the call. It
+    uses no call, proposal, private plan, outcome, RNG or state.
+  - **Unchanged:** the marker design and z-index; the defender's art, wrap,
+    colors and full-part edge clamp; carrier separation; the measured-start
+    pursuit to the exact committed spot; and all timers. There is no CSS change.
+  - **Scope:** positions where the ball does not hide him (everything away from
+    the goal line) are unaffected.
+- **Tests (`football-tackle.spec.mjs`):** the probe now records the identity
+  parts (helmet, pads, jersey, number). Every staged-frame check additionally
+  requires that those parts do not overlap the ball's drawn body, the mute
+  control or the first-down badge; arms and legs may.
+  - This covers every pre-commit frame of every existing case, and the four
+    all-project staged-geometry tests at own 20, own 1 and opponent 97 and 99.
+  - Test names, ceilings and case lists are unchanged.
+- **Author tooling:**
+  - The capture recorder and classifier apply the same identity rule to staged
+    and next-call images.
+  - The reuse report reuses unchanged frozen baseline records independently of
+    stale candidate records. It never treats a stale candidate image as
+    current.
+  - `--skip-complete` runs only the servers that lack current evidence.
+- **Pending:** focused specs in both engines; both full release gates on the
+  new fingerprint; fresh candidate captures and actual-pixel review on all six
+  targets (phones and goal states first); and a new independent final review.
+  Metadata stays unreleased 1.34.18.
 - **External author tooling:** `output/issue-189/author/` holds the following.
   None of it changes the repository, the installed skill or production audio.
   - **`capture-189.mjs`:** baseline (8092) and candidate (8093) captures and
