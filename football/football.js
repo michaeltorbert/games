@@ -1,4 +1,4 @@
-const GAME_VERSION = '1.34.18';
+const GAME_VERSION = '1.34.19';
 let prevPlayerScore = -1, prevOpponentScore = -1;
 let playerRunTimer = 0, playerCelebrateTimer = 0, playerCelebrateDelayTimer = 0;
 const EZ = 5;

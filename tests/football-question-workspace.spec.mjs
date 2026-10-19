@@ -17,6 +17,12 @@ const OFFENSE_SEED = Object.freeze({
   plays: 4, drivePlays: 2,
 });
 
+const MARKER_SEED = Object.freeze({
+  ...OFFENSE_SEED,
+  yardsToGo: 1,
+  firstDownLine: 31,
+});
+
 // Fourth down at the own 30: Go and Punt only. The constant 0.2 football draw
 // gives a 38-yard punt that lands short of the end zone.
 const PUNT_SEED = Object.freeze({
@@ -210,6 +216,106 @@ async function tapChoice(page, choiceId) {
   await page.locator(`#btn-row .ans-btn[data-choice-id="${choiceId}"]`).tap();
 }
 
+async function assertPhoneFieldLabelsStayInsideField(page, stage, expectedLabels) {
+  const result = await page.evaluate(() => {
+    if (window.innerWidth > 480) return { applicable: false };
+    const field = document.getElementById('field-wrap');
+    const overlay = document.getElementById('math-overlay');
+    const fieldBox = field.getBoundingClientRect();
+    const left = fieldBox.left + field.clientLeft;
+    const top = fieldBox.top + field.clientTop;
+    const right = left + field.clientWidth;
+    const bottom = top + field.clientHeight;
+    const deskBox = document.getElementById('ui-desk').getBoundingClientRect();
+    const labels = [...overlay.querySelectorAll('.math-context-token, .math-context-link, .math-worked')];
+    const measured = labels.map(element => {
+      const range = document.createRange();
+      range.selectNodeContents(element);
+      const lines = [...range.getClientRects()].map(box => ({
+        top: box.top, right: box.right, bottom: box.bottom, left: box.left,
+      }));
+      const style = getComputedStyle(element);
+      return {
+        text: element.textContent.trim(),
+        className: element.className,
+        fontSize: parseFloat(style.fontSize),
+        lines,
+        scrollWidth: element.scrollWidth,
+        clientWidth: element.clientWidth,
+        scrollHeight: element.scrollHeight,
+        clientHeight: element.clientHeight,
+      };
+    });
+    return {
+      applicable: true,
+      visible: !overlay.hidden,
+      field: { left, top, right, bottom },
+      desk: { left: deskBox.left, top: deskBox.top, right: deskBox.right, bottom: deskBox.bottom },
+      labels: measured,
+      overlayText: overlay.innerText,
+    };
+  });
+  if (!result.applicable) return;
+  expect(result.visible, `${stage}: instructional field picture remains visible`).toBe(true);
+  expect(result.labels.length, `${stage}: field carries context labels`).toBeGreaterThan(0);
+  for (const label of expectedLabels) {
+    expect(result.overlayText, `${stage}: ${label} context is retained`).toMatch(new RegExp(label, 'i'));
+  }
+  for (const label of result.labels) {
+    const expectedSize = label.className.includes('math-context-token') ? 30
+      : label.className.includes('math-context-link') ? 20 : 17;
+    expect(label.fontSize, `${stage}: ${label.text} keeps its established font size`).toBe(expectedSize);
+    expect(label.scrollWidth, `${stage}: ${label.text} is not horizontally clipped`).toBeLessThanOrEqual(label.clientWidth + 1);
+    expect(label.scrollHeight, `${stage}: ${label.text} is not vertically clipped`).toBeLessThanOrEqual(label.clientHeight + 1);
+    for (const line of label.lines) {
+      expect(line.left, `${stage}: ${label.text} line remains inside field left edge`).toBeGreaterThanOrEqual(result.field.left - EPS);
+      expect(line.right, `${stage}: ${label.text} line remains inside field right edge`).toBeLessThanOrEqual(result.field.right + EPS);
+      expect(line.top, `${stage}: ${label.text} line remains inside field top edge`).toBeGreaterThanOrEqual(result.field.top - EPS);
+      expect(line.bottom, `${stage}: ${label.text} line remains inside field bottom edge`).toBeLessThanOrEqual(result.field.bottom + EPS);
+      expect(intersects(line, result.desk), `${stage}: ${label.text} remains visible above the answer desk`).toBe(false);
+    }
+  }
+}
+
+async function assertCommittedFeedbackHidesInstructionalPicture(page, stage) {
+  const result = await page.evaluate(() => {
+    const overlay = document.getElementById('math-overlay');
+    const feedback = document.getElementById('feedback');
+    const box = feedback.getBoundingClientRect();
+    return {
+      phase: document.getElementById('ui-desk').dataset.phase,
+      overlayHidden: overlay.hidden,
+      overlayText: overlay.textContent.trim(),
+      overlayChildren: overlay.childElementCount,
+      feedbackText: feedback.textContent.trim(),
+      feedbackVisible: box.width > 0 && box.height > 0 && getComputedStyle(feedback).visibility !== 'hidden',
+      feedbackBox: { top: box.top, bottom: box.bottom },
+      viewportHeight: innerHeight,
+      viewportWidth: innerWidth,
+      documentWidth: document.documentElement.scrollWidth,
+      scrollY,
+      committed: JSON.parse(render_game_to_text()).outcomeCommitted,
+      outcomeMessage: JSON.parse(render_game_to_text()).outcomeMessage,
+      statusRole: feedback.getAttribute('role'),
+      statusLive: feedback.getAttribute('aria-live'),
+    };
+  });
+  expect(result.phase, `${stage}: production feedback phase`).toBe('feedback');
+  expect(result.overlayHidden, `${stage}: committed feedback clears the instructional picture`).toBe(true);
+  expect(result.overlayText, `${stage}: no question labels remain in feedback`).toBe('');
+  expect(result.overlayChildren, `${stage}: no question-label descendants remain in feedback`).toBe(0);
+  expect(result.feedbackVisible, `${stage}: committed result feedback remains visible`).toBe(true);
+  expect(result.feedbackText, `${stage}: committed result feedback has content`).not.toBe('');
+  expect(result.committed, `${stage}: play outcome is committed`).toBe(true);
+  expect(result.outcomeMessage, `${stage}: production outcome message remains available`).not.toBeNull();
+  expect(result.statusRole, `${stage}: feedback remains a status region`).toBe('status');
+  expect(result.statusLive, `${stage}: feedback remains announced politely`).toBe('polite');
+  expect(result.feedbackBox.top, `${stage}: result feedback starts in the viewport`).toBeGreaterThanOrEqual(-EPS);
+  expect(result.feedbackBox.bottom, `${stage}: result feedback stays above the fold`).toBeLessThanOrEqual(result.viewportHeight + EPS);
+  expect(result.documentWidth, `${stage}: no horizontal page overflow`).toBeLessThanOrEqual(result.viewportWidth + EPS);
+  expect(result.scrollY, `${stage}: no automatic page scroll`).toBe(0);
+}
+
 // One coached retry, then a correct retry that commits and shows feedback.
 async function retryThenCorrect(page, question, label) {
   const initial = await workspaceMetrics(page);
@@ -228,6 +334,8 @@ async function retryThenCorrect(page, question, label) {
 
   await tapChoice(page, question.correctChoiceId);
   await expect(page.locator('#ui-desk')).toHaveAttribute('data-phase', 'feedback');
+  // Freeze only the already-committed result for stable layout assertions;
+  // this does not measure or replace the production feedback timing.
   await page.evaluate(() => clearTimeout(advTimer));
   expect(await page.evaluate(() => JSON.parse(render_game_to_text()).outcomeCommitted)).toBe(true);
   const feedback = await workspaceMetrics(page);
@@ -291,12 +399,15 @@ test.describe('football question workspace (#51)', () => {
     expect(question.choices).toHaveLength(4);
     await expect(page.locator('#btn-row')).toHaveAttribute('data-choice-type', 'text');
     assertWorkspace(await workspaceMetrics(page), question, 'next-down question');
+    await assertPhoneFieldLabelsStayInsideField(page, 'next-down question', ['CURRENT', 'PLAY', 'NEXT']);
 
     const wrongIds = question.choices.filter(choice => choice.id !== question.correctChoiceId).map(choice => choice.id);
     await tapChoice(page, wrongIds[0]);
     await expectStatus(page, 'Good try.');
+    await assertPhoneFieldLabelsStayInsideField(page, 'next-down coached retry', ['CURRENT', 'PLAY', 'NEXT']);
     await tapChoice(page, wrongIds[1]);
     await expect(page.locator('#ui-desk')).toHaveAttribute('data-phase', 'explanation');
+    await assertPhoneFieldLabelsStayInsideField(page, 'next-down worked explanation', ['CURRENT', 'PLAY', 'NEXT']);
 
     // Production review state: question and answers hidden, worked text in the
     // focused summary, and the status region kept for assistive technology only.
@@ -326,6 +437,7 @@ test.describe('football question workspace (#51)', () => {
 
     await learn.tap();
     await expect(page.locator('#worked-review')).toBeVisible();
+    await assertPhoneFieldLabelsStayInsideField(page, 'Coach Replay', ['CURRENT', 'PLAY', 'NEXT']);
     await expect(page.locator('#worked-review-heading')).toBeFocused();
     await expect(page.locator('#worked-review-heading')).toHaveText(`Coach Replay: ${question.workedReview.title}`);
     await expect(page.locator('#worked-review-content .worked-review-steps li')).toHaveCount(question.workedReview.steps.length);
@@ -374,7 +486,41 @@ test.describe('football question workspace (#51)', () => {
 
     await page.locator('#question-continue').tap();
     await expect(page.locator('#ui-desk')).toHaveAttribute('data-phase', 'feedback');
+    // syncUiState intentionally clears the instructional math picture outside
+    // question/explanation; committed feedback presents the play outcome.
+    await assertCommittedFeedbackHidesInstructionalPicture(page, 'next-down feedback');
     expect(await page.evaluate(() => JSON.parse(render_game_to_text()).outcomeCommitted)).toBe(true);
+    expect(errors).toEqual([]);
+  });
+
+  test('marker-strip PLAY context stays visible through retry, feedback, worked explanation, and Replay', async ({ page }) => {
+    const errors = watchErrors(page);
+    await boot(page);
+    const options = { seed: MARKER_SEED, trigger: CALL, familyId: 'line-to-gain-surplus' };
+    const question = await presentFamily(page, options);
+    expect(question.visuals.initial.type).toBe('marker-strip');
+    assertWorkspace(await workspaceMetrics(page), question, 'marker-strip question');
+    await assertPhoneFieldLabelsStayInsideField(page, 'marker-strip question', ['NEED', 'PLAY', 'PAST']);
+
+    const wrongId = question.choices.find(choice => choice.id !== question.correctChoiceId).id;
+    await tapChoice(page, wrongId);
+    await expectStatus(page, `Good try. ${question.hint.text}`);
+    await assertPhoneFieldLabelsStayInsideField(page, 'marker-strip coached retry', ['NEED', 'PLAY', 'PAST']);
+    await tapChoice(page, question.correctChoiceId);
+    await expect(page.locator('#ui-desk')).toHaveAttribute('data-phase', 'feedback');
+    await page.evaluate(() => clearTimeout(advTimer));
+    await assertCommittedFeedbackHidesInstructionalPicture(page, 'marker-strip feedback');
+    expect(JSON.parse(await page.evaluate(() => render_game_to_text())).outcomeCommitted).toBe(true);
+
+    const workedQuestion = await presentFamily(page, options);
+    const wrongIds = workedQuestion.choices.filter(choice => choice.id !== workedQuestion.correctChoiceId).map(choice => choice.id);
+    await tapChoice(page, wrongIds[0]);
+    await tapChoice(page, wrongIds[1]);
+    await expect(page.locator('#ui-desk')).toHaveAttribute('data-phase', 'explanation');
+    await assertPhoneFieldLabelsStayInsideField(page, 'marker-strip worked explanation', ['NEED', 'PLAY', 'PAST']);
+    await page.locator('#question-learn-why').tap();
+    await expect(page.locator('#worked-review')).toBeVisible();
+    await assertPhoneFieldLabelsStayInsideField(page, 'marker-strip Coach Replay', ['NEED', 'PLAY', 'PAST']);
     expect(errors).toEqual([]);
   });
 });

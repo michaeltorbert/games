@@ -2456,3 +2456,59 @@ shell, ran nothing, and made no commits.
   - **Release:** the PR, merge, and Pages/live verification.
 
   Browser results will be engine emulation, not Simulator or device proof.
+
+## 2026-10-19 — Football v1.34.19 (#51 phone field labels, superseding candidate)
+
+- **Request retained:** keep the current design while making complete field
+  context labels visible on iPhone 15 and iPhone 17 Pro Max during questions,
+  retries, worked explanation, and Coach Replay. Preserve
+  readable typography, the field picture, above-fold answers and Replay
+  controls, tablet layouts, and all gameplay, learning, retry, RNG, and result
+  behavior. Broader #51 work remains open; #161 remains unresolved.
+- **Change (`football.css`):** the phone question and explanation layouts
+  provide a taller field picture and a wider, top-aligned instructional panel.
+  Existing label font sizes and text remain unchanged. Feedback and tablet
+  layouts are untouched.
+- **Committed-feedback disposition (O1 subcondition):** this production phase
+  intentionally clears the instructional picture. `syncUiState` hides it
+  outside question and explanation phases (`football.js` around 869 and
+  2028–2034); `completeCorrectAnswer` switches to feedback and commits the
+  pending result (around 3647–3669). Extending the field labels into committed
+  feedback would change the existing result presentation beyond the requested
+  clipping correction. The original feedback-label subcondition is proposed as
+  excepted; the regression and capture helper require the picture to be hidden
+  with no label descendants while the committed outcome remains visible in its
+  polite status region. Proposed by the Luna author and accepted by the
+  coordinator for independent review; the fresh final review remains pending.
+- **Regression (`tests/football-question-workspace.spec.mjs`):** real-tap
+  next-down and marker-strip flows check `CURRENT` / `PLAY` / `NEXT` and
+  `NEED` / `PLAY` / `PAST` at the question, retry, worked explanation, and
+  Coach Replay states. On phone widths the checks measure every rendered text
+  line against the field's inner bounds and ensure the answer desk does not
+  cover the labels; they also pin the existing token, link, and worked-text
+  sizes at 30px, 20px, and 17px. Committed feedback checks the expected hidden
+  picture, committed outcome, and visible polite status text.
+- **Capture helper:** `output/issue-51-phone/author/capture-51-phone.mjs`
+  records matched baseline and candidate states for both label families on all
+  six device profiles in Chromium and WebKit. It verifies served asset bytes,
+  uses the existing test-scoped mute before taps, retains baseline clipping as
+  diagnostic evidence, requires candidate label containment and visibility in
+  question/retry/worked/Replay, requires the established hidden picture and
+  visible committed feedback in feedback, and checks font/content parity and no
+  horizontal overflow. Its README records the commands and engine-emulation
+  limits.
+- **Focused-check evidence correction:** the coordinator's preserved Chromium
+  v2 report records one actual failure: the iPhone 15 next-down worked
+  explanation intersects the answer desk. Three other failures are the
+  incorrect new feedback-picture assertion; question, retry, and Replay checks
+  reached and passed. No custom matched capture helper has run. The latest
+  230px/238px field heights and -24px/-20px desk margins are a source-level
+  correction aimed at the reported worked-text/desk intersection, but remain
+  unverified against the exact candidate. Feedback geometry is unchanged.
+- **Metadata:** `GAME_VERSION`, all 18 Football asset cache keys, the Football
+  registry entry, and `version.json` are synchronized to `1.34.19`. Other games
+  remain unchanged.
+- **Acceptance status:** implementation and metadata are prepared; browser
+  checks, full release gates, matched screenshot review, fresh independent
+  review, PR, merge, deployment, and live verification remain pending. No
+  release or visual approval is claimed.

@@ -4413,6 +4413,24 @@ body::after {
     border-radius: 28px;
   }
 
+  /* Give long phone field labels room to wrap inside the field picture while
+     keeping the established font sizes. */
+  #wrap:is([data-phase="question"], [data-phase="explanation"]) #field-wrap {
+    height: 238px;
+  }
+
+  #wrap:is([data-phase="question"], [data-phase="explanation"]) #math-overlay {
+    top: 8px;
+    bottom: auto;
+    width: min(94%, 700px);
+    padding: 10px 12px;
+    gap: 6px 10px;
+  }
+
+  #wrap:is([data-phase="question"], [data-phase="explanation"]) #ui-desk {
+    margin-top: -20px;
+  }
+
   #version-display {
     display: none;
   }
@@ -5114,6 +5132,14 @@ body::after {
 
   #ui-desk {
     margin-top: -28px;
+  }
+
+  #wrap:is([data-phase="question"], [data-phase="explanation"]) #field-wrap {
+    height: 230px;
+  }
+
+  #wrap:is([data-phase="question"], [data-phase="explanation"]) #ui-desk {
+    margin-top: -24px;
   }
 
   #ui-desk[data-phase="fourth-down-decision"] #action-panel {
