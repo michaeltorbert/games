@@ -1,4 +1,4 @@
-const GAME_VERSION = '1.34.17';
+const GAME_VERSION = '1.34.18';
 let prevPlayerScore = -1, prevOpponentScore = -1;
 let playerRunTimer = 0, playerCelebrateTimer = 0, playerCelebrateDelayTimer = 0;
 const EZ = 5;
@@ -1935,13 +1935,19 @@ window.addEventListener('resize', () => {
 // carrier's, so it runs even when that handler leaves a running movement alone
 // and it reads the carrier's already-corrected spot. A resize during the approach
 // skips straight to the endpoint; contact still waits for the carrier to settle.
+// Issue #189: before the commit, the staged defender is placed again from the
+// carrier's spot at the line, without any movement.
 window.addEventListener('resize', () => {
-  if (!tackle) return;
+  if (!tackle && !tackleStage) return;
   const tackler = document.getElementById('tackler');
   const player = document.getElementById('player');
   const field = document.getElementById('field-wrap');
   if (!tackler || !player || !field) return;
   tackler.style.left = player.style.left;
+  if (!tackle) {
+    placeStagedTackler(tackler, player, field);
+    return;
+  }
   if (tackler.dataset.tacklePhase === 'approach') tacklerApproachAnimations(tackler).forEach(animation => animation.finish());
   clampTacklerToField(tackler, field);
 });
@@ -2815,6 +2821,7 @@ function renderOrdinaryCallPrompt({ focusFirstCall = false } = {}) {
     renderCallGrid(view, Object.values(DEFENSE_CALLS), selectDefenseCall, { focusFirst: focusFirstCall });
   }
   setFeedback('');
+  if (state.possession === POSSESSIONS.offense) stageTackler();
 }
 
 function fourthDownDecisionState() {
@@ -4009,6 +4016,11 @@ function finishCommittedTransition(activePlay, transition, policy, outcome, {
 } = {}) {
   const offense = activePlay.context.possession === POSSESSIONS.offense;
   const source = FOOTBALL_DOMAIN.transitionSource(transitionSnapshot());
+  // Issue #189: the staged defender either runs down this play's committed spot
+  // or steps away where he stands.
+  const tackled = tackleEligible(activePlay, transition);
+  if (tackled) startTackle(activePlay);
+  else releaseTackler();
   if (activePlay.playType !== 'scrimmage') {
     const presentation = specialResultPresentation
       || buildSpecialResultPresentation(activePlay, transition, policy);
@@ -4027,8 +4039,6 @@ function finishCommittedTransition(activePlay, transition, policy, outcome, {
   }
 
   const gain = transition.appliedGain;
-  const tackled = tackleEligible(activePlay, transition);
-  if (tackled) startTackle(activePlay);
   if (outcome === 'turnover') showFieldFloat(transition.resultReason === 'fumble' ? 'FUMBLE!' : 'INTERCEPTED!', 'negative');
   else if (offense && gain > 0) startPlayerRun(transition.resultKind === 'touchdown' || transition.resultKind === 'firstDown' || gain >= 8);
   else if (!offense && gain === 0) { showFieldFloat('STOPPED', 'negative'); flashDefenseStop(); }
@@ -4296,16 +4306,23 @@ function resetPlayerAnimations() {
   player.classList.remove('player-running', 'player-celebrating', 'player-celebrate-quick');
 }
 
-// ── Tackle presentation (issue #169) ─────────────────────────────────────────
-// When the player's ball carrier is brought down, a decorative defender in the
-// visiting rival's colors runs in and wraps him at his final spot. It is
-// presentation only: it reads the committed play's public facts, draws no RNG,
-// and never touches game state. One generation-tagged record lives outside game
-// state; every asynchronous step checks the generation before touching the DOM.
+// ── Tackle presentation (issues #169, #189) ──────────────────────────────────
+// A decorative defender in the visiting rival's colors lines up across from the
+// player's ball carrier at every ordinary offensive call (#189). When the
+// committed play ends in a tackle, he runs from there and wraps the carrier at
+// his final spot; any other ending sends him away. It is presentation only: it
+// reads public facts, draws no RNG, and never touches game state. The staging
+// and tackle records live outside game state, tagged with a generation that
+// every asynchronous step checks before touching the DOM.
 const TACKLED_CELEBRATE_DELAY_MS = 1000;
-const TACKLE_APPROACH_MAX_PX = 56;
 const TACKLE_EDGE_CLEARANCE = 3;
+// Before the snap he stands this far downfield of his contact spot, raised by
+// this share of his height into his own lane above the carrier's row.
+const TACKLE_STAGE_GAP_PX = 56;
+const TACKLE_STAGE_RISE = 0.15;
+const TACKLE_STAGE_SEPARATION_PX = 2;
 let tackle = null;
+let tackleStage = null;
 let tackleGeneration = 0;
 
 // Fixed-order rules over the committed transition. Only player offense has a
@@ -4334,6 +4351,11 @@ function tacklerApproachAnimations(tackler) {
   return tackler.getAnimations().filter(animation => animation.animationName === 'tackler-approach');
 }
 
+function tacklerReleaseAnimations(tackler) {
+  if (typeof tackler.getAnimations !== 'function') return [];
+  return tackler.getAnimations().filter(animation => animation.animationName === 'tackler-release');
+}
+
 function tacklerPoseTransitions(tackler) {
   if (typeof tackler.getAnimations !== 'function') return [];
   return tackler.getAnimations({ subtree: true }).filter(animation => animation.transitionProperty === 'transform');
@@ -4342,6 +4364,7 @@ function tacklerPoseTransitions(tackler) {
 function resetTackle() {
   tackleGeneration++;
   tackle = null;
+  tackleStage = null;
   // A late timer must not carry the quick tackled celebration into the next prompt.
   const player = document.getElementById('player');
   if (player?.classList.contains('player-celebrate-quick')) {
@@ -4352,75 +4375,159 @@ function resetTackle() {
   if (!tackler) return;
   tackler.classList.add('tackler-hidden');
   delete tackler.dataset.tacklePhase;
-  tackler.style.removeProperty('--tackle-approach');
-  tackler.style.removeProperty('--tackle-shift');
+  ['--tackle-shift', '--tackle-stage-x', '--tackle-stage-y', '--tackle-from-x', '--tackle-from-y']
+    .forEach(property => tackler.style.removeProperty(property));
 }
 
-// Drawn extent of every SVG part, and the field's usable interior.
-function tacklerExtent(tackler, field) {
-  const parts = [...tackler.querySelectorAll('svg *')].map(node => node.getBoundingClientRect())
+// Drawn extent of every SVG part of a sprite, not its wrapper box.
+function drawnBox(sprite) {
+  const parts = [...sprite.querySelectorAll('svg *')].map(node => node.getBoundingClientRect())
     .filter(rect => rect.width > 0 || rect.height > 0);
   if (!parts.length) return null;
-  const box = field.getBoundingClientRect();
   return {
     left: Math.min(...parts.map(rect => rect.left)),
     right: Math.max(...parts.map(rect => rect.right)),
+    top: Math.min(...parts.map(rect => rect.top)),
+    bottom: Math.max(...parts.map(rect => rect.bottom)),
+  };
+}
+
+function boxesOverlap(a, b) {
+  return a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+}
+
+// The defender's drawn extent, and the field's usable interior.
+function tacklerExtent(tackler, field) {
+  const drawn = drawnBox(tackler);
+  if (!drawn) return null;
+  const box = field.getBoundingClientRect();
+  return {
+    ...drawn,
     minX: box.left + field.clientLeft + TACKLE_EDGE_CLEARANCE,
     maxX: box.left + field.clientLeft + field.clientWidth - TACKLE_EDGE_CLEARANCE,
+    minY: box.top + field.clientTop + TACKLE_EDGE_CLEARANCE,
   };
 }
 
 // The running legs swing about the hips and can reach a little past the
-// measured standing pose; keep that much extra room behind the defender.
+// measured standing pose. A staged defender runs from where he stands, so he
+// keeps that much extra room behind him.
 const TACKLE_SWING_ALLOWANCE_PX = 4;
 
-// The approach starts downfield of the carrier's final spot, never from beyond
-// the field's right edge. Room is measured from the drawn parts of the leaning
-// run pose at the endpoint (the approach's own first frame minus its offset),
-// not from the wrapper box, because the lean and limbs reach past it.
-function tackleApproachPx(tackler, field) {
-  const extent = tacklerExtent(tackler, field);
-  if (!extent) return 0;
-  const room = extent.maxX - extent.right - TACKLE_SWING_ALLOWANCE_PX;
-  return Math.max(0, Math.min(TACKLE_APPROACH_MAX_PX, Math.floor(room)));
-}
-
-// Keep every drawn part of the defender inside the field's clipped interior.
-function clampTacklerToField(tackler, field) {
+// Keep every drawn part of the defender inside the field's clipped interior,
+// less any room kept behind him (the field's right side, since he faces left).
+function clampTacklerToField(tackler, field, behind = 0) {
   if (tackler.classList.contains('tackler-hidden')) return;
   const extent = tacklerExtent(tackler, field);
   if (!extent) return;
-  const { left, right, minX, maxX } = extent;
+  const { left, right, minX } = extent;
+  const maxX = extent.maxX - behind;
   const shift = parseFloat(tackler.style.getPropertyValue('--tackle-shift')) || 0;
   const correction = right > maxX ? maxX - right : left < minX ? minX - left : 0;
   if (Math.abs(correction) >= 0.5) tackler.style.setProperty('--tackle-shift', `${(shift + correction).toFixed(1)}px`);
 }
 
-function startTackle(activePlay) {
+// The staged spot: downfield of his contact spot and raised into his lane,
+// edge-clamped like every other pose. Should the clamp near the opponent's goal
+// line ever leave him touching the carrier, he rises until he is clear.
+function placeStagedTackler(tackler, player, field) {
+  tackler.style.removeProperty('--tackle-shift');
+  tackler.style.setProperty('--tackle-stage-x', `${TACKLE_STAGE_GAP_PX}px`);
+  let rise = Math.round(tackler.offsetHeight * TACKLE_STAGE_RISE);
+  tackler.style.setProperty('--tackle-stage-y', `${-rise}px`);
+  clampTacklerToField(tackler, field, TACKLE_SWING_ALLOWANCE_PX);
+  const extent = tacklerExtent(tackler, field);
+  const carrier = drawnBox(player);
+  if (!extent || !carrier || !boxesOverlap(extent, carrier)) return;
+  rise += Math.max(0, Math.min(extent.bottom - carrier.top + TACKLE_STAGE_SEPARATION_PX, extent.top - extent.minY));
+  tackler.style.setProperty('--tackle-stage-y', `${-rise}px`);
+}
+
+// Issue #189: set the defender at an ordinary player-offense call. His spot
+// comes only from the carrier's public spot at the line and the sprites' sizes,
+// never from the call, the proposed gain or the result.
+function stageTackler() {
   resetTackle();
+  if (state.possession !== POSSESSIONS.offense) return;
   const tackler = document.getElementById('tackler');
   const player = document.getElementById('player');
   const field = document.getElementById('field-wrap');
   if (!tackler || !player || !field || player.classList.contains('player-hidden')) return;
+  tackleStage = {
+    generation: tackleGeneration,
+    gameId: state.gameId,
+    possessionId: state.possessionId,
+    yardLine: state.yd,
+  };
+  tackler.style.left = player.style.left;
+  tackler.dataset.tacklePhase = 'staged';
+  tackler.classList.remove('tackler-hidden');
+  placeStagedTackler(tackler, player, field);
+}
+
+function tacklerStagedFor(activePlay, tackler) {
+  return Boolean(tackleStage)
+    && tackleStage.generation === tackleGeneration
+    && tackleStage.gameId === activePlay.gameId
+    && tackleStage.possessionId === activePlay.possessionId
+    && tackleStage.yardLine === activePlay.context?.yardLine
+    && tackler.dataset.tacklePhase === 'staged'
+    && !tackler.classList.contains('tackler-hidden');
+}
+
+// The tackle starts from the staged defender. His painted spot is read before
+// he is re-anchored on the carrier's committed spot, so the pursuit's first
+// frame is exactly where he stood. Without this play's staging no defender
+// appears at all, rather than one popping in at the carrier.
+function startTackle(activePlay) {
+  const tackler = document.getElementById('tackler');
+  const player = document.getElementById('player');
+  const field = document.getElementById('field-wrap');
+  if (!tackler || !player || !field || player.classList.contains('player-hidden')
+    || !tacklerStagedFor(activePlay, tackler)) {
+    resetTackle();
+    return;
+  }
+  const staged = tackler.getBoundingClientRect();
+  resetTackle();
   const generation = tackleGeneration;
   tackle = { generation, gameId: activePlay.gameId, playId: activePlay.playId };
   // The carrier's committed spot; its left transition is already running.
+  // Placed in the run pose there and edge-clamped, all in this task, so the
+  // pursuit's offset is known before its first frame is painted.
   tackler.style.left = player.style.left;
+  tackler.classList.remove('tackler-hidden');
+  clampTacklerToField(tackler, field);
   const arrivals = settledPromises(carrierArrivals(player));
   if (reducedMotionPreferred()) {
-    // No moving approach: the static contact appears once the carrier settles.
+    // No pursuit: he waits, still, at the endpoint, and the static contact
+    // appears once the carrier settles.
+    tackler.dataset.tacklePhase = 'waiting';
     Promise.allSettled(arrivals).then(() => showTackleContact(generation));
     return;
   }
-  // Shown in its run pose at the endpoint, edge-clamped and measured, all in
-  // this task: the approach starts only after its offset is known, so its first
-  // painted frame is already inside the field.
-  tackler.classList.remove('tackler-hidden');
-  clampTacklerToField(tackler, field);
-  tackler.style.setProperty('--tackle-approach', `${tackleApproachPx(tackler, field)}px`);
+  const end = tackler.getBoundingClientRect();
+  tackler.style.setProperty('--tackle-from-x', `${(staged.left - end.left).toFixed(2)}px`);
+  tackler.style.setProperty('--tackle-from-y', `${(staged.top - end.top).toFixed(2)}px`);
   tackler.dataset.tacklePhase = 'approach';
   const approach = settledPromises(tacklerApproachAnimations(tackler));
   Promise.allSettled([...arrivals, ...approach]).then(() => showTackleContact(generation));
+}
+
+// Any other ending sends the staged defender away where he stands: a short
+// fade in normal motion, gone at once in reduced motion, well before any overlay.
+function releaseTackler() {
+  const tackler = document.getElementById('tackler');
+  if (!tackleStage || !tackler || tackler.dataset.tacklePhase !== 'staged' || reducedMotionPreferred()) {
+    resetTackle();
+    return;
+  }
+  tackleStage = null;
+  const generation = ++tackleGeneration;
+  tackler.dataset.tacklePhase = 'release';
+  Promise.allSettled(settledPromises(tacklerReleaseAnimations(tackler))).then(() => {
+    if (generation === tackleGeneration) resetTackle();
+  });
 }
 
 function showTackleContact(generation) {

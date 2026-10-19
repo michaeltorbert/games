@@ -2307,3 +2307,108 @@ had no shell and ran nothing.
     excuses a released-page failure only when the candidate is not worse.
   - The failed run is retained. All checks and a new fresh review are
     pending.
+
+Original prompt: ok do 189 (issue #189: James likes the tackling animation, but
+the defender appears suddenly; he wants the defender there from the start, then
+tackling the runner after x yards gained when correct, or after a loss of x
+yards when wrong). Implement and release when ready, as a separate PR.
+
+## 2026-10-19 — Football v1.34.18 (#189 defender continuity, superseding release entry)
+
+The plan is the reconciled native and Sol plan (`output/issue-189/candidate-plan.md`,
+`sol-reconciliation.md`, `reconcile-opus-result.md`, `planning-agreement.json`).
+The author is a new native Claude (Opus 5.5) session on branch
+`codex/football-defender-continuity` from base
+`cdc6032eac35aad65abcffb3409fac078b0d14c2` (Football 1.34.17). The author had no
+shell, ran nothing, and made no commits.
+
+- **Staging (`football.js`):**
+  - **When he appears:** every ordinary player-offense call, including after a
+    fourth-down "Go", stages the rival-colored defender.
+  - **Where he stands:** 56px downfield of his contact spot, raised 15% of his
+    height into his own lane.
+  - **What sets that spot:** only the carrier's public spot at the line and the
+    sprite sizes. The call, proposal, result and private opponent plan play no
+    part, and no RNG is drawn.
+  - **Edges:** he is clamped inside the field, with room behind him for his
+    running legs. If he would ever touch the carrier, he rises until he is
+    clear.
+  - **Through the question:** he stays still and fully opaque through the
+    question, a first miss, the worked explanation and Coach Replay.
+  - **Where he never appears:** the start, overlays, the opponent's offense, the
+    fourth-down decision and special teams.
+- **Resolution:**
+  - **Tackle:** an eligible tackle (eligibility unchanged) pursues from his
+    painted staged spot to the authoritative committed carrier spot. That
+    covers gains, the reduced retry gain and the supported stuff and sack
+    losses, including clipped losses. The pursuit uses the carrier's 750ms
+    curve at full opacity, then the unchanged wrap, contact, settle, celebration
+    and timers.
+  - **Every other ending:** touchdowns, incompletions, fumbles and
+    interceptions release him in place with a 240ms fade, before any overlay.
+  - **No staging:** without this play's staging, no defender appears at all.
+- **Reduced motion:**
+  - **Staging and endpoint:** he is staged still, then moves without motion to
+    the endpoint at the commit.
+  - **Contact:** static contact appears after the carrier settles.
+  - **Release:** he disappears at once.
+- **Resize:** a resize before the commit re-places the staging with no slide.
+  Committed resizes keep the #169 policy.
+- **CSS:** new staged, release and pursuit rules. The wrap, colors and contact
+  pose are unchanged.
+- **Tests (`tests/football-tackle.spec.mjs`; no runner, config, retry or
+  deadline change):** the #169 assertions that the tackler is hidden before the
+  commit, appears only during feedback, fades in from an offset, and never
+  appears on excluded endings are replaced. The replacements are named in the
+  spec header. The contact-pair, contact-after-arrival, per-frame clipping,
+  RNG, endpoint, duplicate, stale-route, lifecycle and celebration checks are
+  kept. New checks:
+  - **Before the commit:** every frame is staged, still, opaque and unclipped.
+    The defender's and carrier's full drawn extents are separated, and the
+    first-down badge is not covered.
+  - **Time zero:** the stable body anchor equals the staged spot.
+  - **Pursuit:** a straight, monotonic path, never ahead of the carrier's curve
+    at wall-clock time.
+  - **Visibility:** no hidden frame before contact.
+  - **Releases:** in place, before feedback ends.
+  - **No staging:** no pop-in.
+  - **Next call:** it is staged again.
+  - **Coverage:**
+    - staged geometry at own 20, own 1, opponent 97 and 99 on all six
+      projects;
+    - a sack on every project;
+    - a reduced-motion release;
+    - a resize before the commit;
+    - the retry-correct gain;
+    - an outcome table.
+  - **Correction 1 (F189-DEADLINES):** the first candidate wrongly raised four
+    existing test ceilings (240s to 300s and three from 120s to 150s) and
+    renamed three of those tests.
+    - Every pre-existing test is restored to its original name, ceiling and
+      case list.
+    - The added coverage now runs as separate, bounded new tests. Six have 60s
+      ceilings; the four staged-geometry tests use the default timeout.
+    - No assertion was weakened.
+- **External author tooling:** `output/issue-189/author/` holds the following.
+  None of it changes the repository, the installed skill or production audio.
+  - **`capture-189.mjs`:** baseline (8092) and candidate (8093) captures and
+    parity.
+    - It checks served bytes, versions and the existing mute before any input.
+    - Each case runs in a fresh browser with real taps and the real wall clock.
+    - Screenshots are full viewport, with timing metadata.
+    - It compares result, RNG and normalized text parity.
+  - **`web-game-client-muted.mjs`:** runs the unmodified develop-web-game
+    client with the existing mute.
+  - **`README.md`:** the rationale and the commands to run.
+- **Metadata:** `GAME_VERSION`, all 18 Football asset query strings, the
+  Football registry entry and `version.json` are 1.34.18. Kayak 1.1.38, Prague
+  1.4.0 and Place by Place 1.9.1 are unchanged.
+- **Pending (none claimed here):**
+  - **Gates:** the registry gate, the focused tackle spec, and both full release
+    matrices (Chromium and WebKit).
+  - **Evidence and review:** the before/current captures, parity and pixel
+    review on all six targets; the supplemental client smoke; a fresh
+    independent Sol review.
+  - **Release:** the PR, merge, and Pages/live verification.
+
+  Browser results will be engine emulation, not Simulator or device proof.
