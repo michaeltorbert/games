@@ -1,4 +1,4 @@
-const GAME_VERSION = '1.34.19';
+const GAME_VERSION = '1.34.20';
 let prevPlayerScore = -1, prevOpponentScore = -1;
 let playerRunTimer = 0, playerCelebrateTimer = 0, playerCelebrateDelayTimer = 0;
 const EZ = 5;
@@ -2048,6 +2048,17 @@ function renderMathVisual() {
     overlay.replaceChildren(renderColumnArithmetic(data, visual.result));
     return;
   }
+  if (visual.type === 'comparison') {
+    overlay.removeAttribute('data-model');
+    overlay.replaceChildren(renderComparison(data, visual.result));
+    if (support === 'worked') {
+      const worked = document.createElement('span');
+      worked.className = 'math-worked';
+      worked.textContent = question.workedExplanation.text;
+      overlay.appendChild(worked);
+    }
+    return;
+  }
 
   let tokens = [];
   const teamToken = (text, team) => ({ text, team });
@@ -2106,12 +2117,6 @@ function renderMathVisual() {
     case 'quarter-half':
       tokens = [`Q${data.quarter}`, visual.result ? String(visual.result.value).toUpperCase() : 'HALF ?'];
       break;
-    case 'comparison': {
-      const relation = visual.result?.value;
-      const relationLabel = relation === '<' ? 'LESS THAN' : relation === '>' ? 'GREATER THAN' : relation === '=' ? 'EQUAL TO' : '?';
-      tokens = [`${data.leftLabel} ${data.leftValue}`, relationLabel, `${data.rightLabel} ${data.rightValue}`];
-      break;
-    }
     case 'hundreds-move': {
       if (support === 'initial') {
         tokens = [teamToken(`${data.team} TOTAL ${data.startTotal}`, data.teamRole), `+${data.proposedGain}`, visual.result ? `= ${visual.result.value}` : '= ?'];
@@ -2196,6 +2201,37 @@ function renderMathVisual() {
   } else {
     overlay.removeAttribute('data-model');
   }
+}
+
+// Issue #51: each compared amount keeps its caption and full unit, and the
+// middle shows only ? or the revealed symbol, so the picture never reads as a
+// label, relation word, label run-on. Relation words stay in the worked text.
+function renderComparison(data, result) {
+  const make = (tag, className, text) => {
+    const element = document.createElement(tag);
+    element.className = className;
+    element.textContent = text;
+    return element;
+  };
+  const side = (name, caption, value) => {
+    const element = document.createElement('span');
+    element.className = 'math-compare-side';
+    element.dataset.side = name;
+    element.append(
+      make('small', 'math-compare-caption', caption),
+      make('span', 'math-context-token', `${value} ${value === 1 ? 'YARD' : 'YARDS'}`),
+    );
+    return element;
+  };
+  const row = document.createElement('div');
+  row.className = 'math-compare-row';
+  row.setAttribute('aria-hidden', 'true');
+  row.append(
+    side('gain', data.leftCaption, data.leftValue),
+    make('span', 'math-compare-mark', result ? result.value : '?'),
+    side('target', data.rightCaption, data.rightValue),
+  );
+  return row;
 }
 
 // Issue #138: static make-ten and tens-and-ones pictures for a guided retry.

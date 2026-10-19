@@ -378,6 +378,15 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
     return snap.proposal.appliedGain;
   }
 
+  // #51: the yards needed run to the validated line to gain. When that line is
+  // the attacking goal line, reaching it scores instead of earning a first
+  // down, and the capped gain can only fall short of it or reach it.
+  function comparisonTarget(snap) {
+    return snap.context.firstDownLine === goalLine(snap)
+      ? { caption: 'TO THE END ZONE', need: 'to reach the end zone', place: 'the end zone' }
+      : { caption: 'FOR A FIRST DOWN', need: 'for a first down', place: 'the first-down marker' };
+  }
+
   function sourcePlayType(source) {
     if (isRecord(source) && source.playType !== undefined) {
       return PLAY_TYPES.includes(source.playType) ? source.playType : null;
@@ -1170,25 +1179,33 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
         }
         if (!inDisplayBand(profile, gain, needed)) return { decline: decline('outside-display-band', 'Gain and yards needed must fit the approved comparison display band.') };
         const answer = comparisonSymbol(gain, needed);
-        const comparisonHint = gain >= 10 || needed >= 10
-          ? 'Compare the tens first. If they match, compare the ones. The open side points to the greater number.'
-          : 'Compare the two amounts. The open side points to the greater number.';
+        // Name both amounts, their unit, the team with the ball and its target.
+        // The gain is only proposed, so the worked copy describes a gain of
+        // that size rather than what this play will do.
+        const team = publicTeamLabels(snap)[teamRoleForPossession(snap.context.possession)];
+        const target = comparisonTarget(snap);
+        const twoDigit = gain >= 10 || needed >= 10;
+        const amounts = `Compare the possible gain, ${yards(gain)}, with the ${yards(needed)} needed.`;
+        const comparisonHint = twoDigit
+          ? `${amounts} Compare the tens first. If they match, compare the ones. The open side points to the greater number.`
+          : `${amounts} The open side points to the greater number.`;
+        const relation = { '<': 'less than', '=': 'equal to', '>': 'greater than' }[answer];
+        const consequence = { '<': 'fall short of', '=': 'reach', '>': 'go past' }[answer];
+        const meaning = `gain of ${yards(gain)} is ${relation} the ${yards(needed)}`;
         return eligible(makeSemantic({
           bindings: [
             contextBinding(snap, 'proposedGain', '/proposal/appliedGain'),
             contextBinding(snap, 'yardsToGo', '/context/yardsToGo'),
           ],
           operationType: 'compare', operandIds: ['proposedGain', 'yardsToGo'], answer,
-          prompt: `This play could gain ${yards(gain)}, and ${yards(needed)} ${isOrAre(needed)} needed. Which symbol makes ${gain} ? ${needed} true?`,
+          prompt: `On this play, ${team} could gain ${yards(gain)} and needs ${yards(needed)} ${target.need}. Which symbol makes ${gain} ? ${needed} true?`,
           hint: comparisonHint,
-          explanation: `${gain} ${answer} ${needed}. The yards this play could gain are ${gain === needed ? 'exactly the same as' : gain > needed ? 'greater than' : 'less than'} the yards needed.`,
+          explanation: `${gain} ${answer} ${needed}. A ${meaning} needed, so it would ${consequence} ${target.place}.`,
           choiceSpec: fixedChoiceSpec(['<', '=', '>']), visualType: 'comparison',
-          visualData: { leftLabel: 'PLAY', leftValue: gain, rightLabel: 'NEED', rightValue: needed },
-          initialAriaLabel: `Compare the ${yards(gain)} this play could gain with the ${yards(needed)} needed; the comparison symbol is hidden.`,
-          guidedAriaLabel: gain >= 10 || needed >= 10
-            ? `Compare ${gain} and ${needed} by tens, then ones; the symbol remains hidden.`
-            : `Compare ${gain} and ${needed}; the symbol remains hidden.`,
-          workedAriaLabel: `${gain} ${answer} ${needed}.`,
+          visualData: { leftCaption: 'POSSIBLE GAIN', leftValue: gain, rightCaption: target.caption, rightValue: needed },
+          initialAriaLabel: `Possible gain: ${yards(gain)}. ${team} needs ${yards(needed)} ${target.need}. The comparison symbol is hidden.`,
+          guidedAriaLabel: `Compare the possible gain, ${yards(gain)}, with the ${yards(needed)} ${team} needs ${target.need}${twoDigit ? ', by tens, then ones' : ''}; the symbol remains hidden.`,
+          workedAriaLabel: `${gain} ${relation} ${needed}: a ${meaning} ${team} needs ${target.need}, so it would ${consequence} ${target.place}.`,
         }));
       },
     },
@@ -1739,9 +1756,9 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
       footballMeaning: 'The linked addition and subtraction facts show the yards still needed.',
     },
     'gain-vs-needed-comparison': {
-      title: 'Compare Play and Need',
-      goal: 'Compare the play gain with the yards needed.',
-      footballMeaning: 'The comparison shows whether the play falls short, reaches, or passes the marker.',
+      title: 'Compare the Yards',
+      goal: 'Compare the possible gain with the yards needed to reach the first-down marker or the end zone.',
+      footballMeaning: 'The comparison shows whether a gain of that size would fall short of, reach, or go past the first-down marker. When the end zone is the target, it shows whether the gain would reach the end zone.',
     },
     'goal-distance-tens': {
       title: 'Find the Tens Digit',

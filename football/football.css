@@ -768,8 +768,17 @@ body::after {
   background: #7bafd4;
 }
 
+/* #51: a caption above each amount, with ? or the revealed symbol between
+   them; the worked sentence spans the panel below. */
 #math-overlay[data-type="comparison"] {
-  grid-template-columns: 1fr auto 1fr;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.math-compare-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: end;
+  gap: 4px 14px;
 }
 
 .math-compare-side {
@@ -778,15 +787,22 @@ body::after {
   gap: 3px;
 }
 
-.math-compare-side small {
+.math-compare-caption {
   color: #b9d7f1;
   font-size: 15px;
+  letter-spacing: 0.08em;
+  line-height: 1.1;
+  text-align: center;
 }
 
+/* A normal line box matches the symbol font's own ascent and descent, so the
+   glyph's content area never overflows the mark in any engine or fallback. */
 .math-compare-mark {
   color: #ffd62e;
   font-family: 'Bebas Neue', sans-serif;
   font-size: 42px;
+  line-height: normal;
+  text-align: center;
 }
 
 #math-overlay[data-type="parts"] {
@@ -4416,10 +4432,8 @@ body::after {
   /* #51: the down, marker and comparison label pictures wrap their full-size
      tokens and worked text in one full-width track, left of the sound
      toggle's 44px corner like the #138 model. The field grows only where the
-     wrapped labels need it; comparison fits the released field until its
-     worked stage. Every other picture keeps its released geometry. */
-  #wrap:is([data-phase="question"], [data-phase="explanation"]):has(#math-overlay:is([data-type="down-progression"], [data-type="marker-strip"])) #field-wrap,
-  #wrap[data-phase="explanation"]:has(#math-overlay[data-type="comparison"]) #field-wrap {
+     wrapped labels need it. Every other picture keeps its released geometry. */
+  #wrap:is([data-phase="question"], [data-phase="explanation"]):has(#math-overlay:is([data-type="down-progression"], [data-type="marker-strip"])) #field-wrap {
     height: 238px;
   }
 
@@ -4428,6 +4442,43 @@ body::after {
     width: min(calc(94% - 51px), 380px);
     grid-template-columns: 1fr;
     gap: 4px;
+  }
+
+  /* #51 comparison: two full-width amounts are too wide side by side, so each
+     sits on its own line, caption beside its chip, with ? or the revealed
+     symbol between the chips. The field fits the stacked amounts and, in the
+     worked stage, the sentence below them. */
+  #wrap[data-phase="question"]:has(#math-overlay[data-type="comparison"]) #field-wrap {
+    height: 182px;
+  }
+
+  #wrap[data-phase="explanation"]:has(#math-overlay[data-type="comparison"]) #field-wrap {
+    height: 276px;
+  }
+
+  #math-overlay[data-type="comparison"] .math-compare-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 4px 8px;
+  }
+
+  #math-overlay[data-type="comparison"] .math-compare-side {
+    display: contents;
+  }
+
+  #math-overlay[data-type="comparison"] .math-compare-caption {
+    justify-self: end;
+    font-size: 14px;
+    text-align: right;
+  }
+
+  #math-overlay[data-type="comparison"] .math-context-token {
+    justify-self: stretch;
+  }
+
+  #math-overlay[data-type="comparison"] .math-compare-mark {
+    grid-column: 2;
+    font-size: 30px;
   }
 
   #version-display {
@@ -5133,8 +5184,7 @@ body::after {
     margin-top: -28px;
   }
 
-  #wrap:is([data-phase="question"], [data-phase="explanation"]):has(#math-overlay:is([data-type="down-progression"], [data-type="marker-strip"])) #field-wrap,
-  #wrap[data-phase="explanation"]:has(#math-overlay[data-type="comparison"]) #field-wrap {
+  #wrap:is([data-phase="question"], [data-phase="explanation"]):has(#math-overlay:is([data-type="down-progression"], [data-type="marker-strip"])) #field-wrap {
     height: 230px;
   }
 
