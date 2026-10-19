@@ -2549,3 +2549,65 @@ shell, ran nothing, and made no commits.
   fresh independent functional, accessibility and visual review; PR, merge and
   Pages/live verification. #161 and broader #51 stay open. Browser results
   will be engine emulation, not Simulator or device proof.
+
+## 2026-10-19 — Football v1.34.20 (#51 comparison meaning, superseding candidate)
+
+- **Request retained (verbatim):** "Play 5? Need 10? Play 5 less than need
+  10? That is nonsensical to me." Then: "Yeah, also fix this issue. Using
+  your workflow, but do a better job." The v1.34.19 fix changed only clipping
+  and layout; the comparison still named neither amount, unit, owner nor
+  objective, and its worked picture read as a label, relation word, label
+  run-on.
+- **Scope:** the `gain-vs-needed-comparison` family only, per the agreed plan
+  (reconcile packet plus A1–A4). The generic context strip ("N YDS IN PLAY")
+  and the marker-strip and down-progression labels are unchanged; they are a
+  non-blocking #51 follow-up. Math, symbol choices and their IDs, bindings,
+  source band, metadata, scheduling, curriculum, retry, learning, scores and
+  RNG are unchanged.
+- **Change (`contextual-questions.js`):**
+  - The prompt names the team with the ball, both amounts with "yard"/"yards"
+    and the objective, for example "On this play, UNC could gain 5 yards and
+    needs 10 yards for a first down. Which symbol makes 5 ? 10 true?"
+  - When the old marker is the attacking goal line, the objective is "to
+    reach the end zone" instead of a first down. The domain caps a gain at
+    the goal line, so only `<` and `=` occur there.
+  - The hint names both amounts and keeps the tens/ones and open-side
+    strategy. Prompt, hint and initial/guided picture names state no
+    evaluated relation for these numbers.
+  - The worked sentence describes a gain of that size, not this play: "5 <
+    10. A gain of 5 yards is less than the 10 yards needed, so it would fall
+    short of the first-down marker." `>` says "go past the first-down marker"
+    and never promises a first down, because the worked state precedes the
+    second-miss or retry-adjusted commit.
+  - Coach Replay is renamed "Compare the Yards" with a generic goal and
+    football meaning that name no team, relation or "this play".
+- **Change (`football.js`, renderer only):** a comparison-specific picture
+  shows a caption above (tablet) or beside (phone) each amount — POSSIBLE GAIN
+  and FOR A FIRST DOWN or TO THE END ZONE — with "N YARDS" chips and only `?`
+  or the revealed symbol between them. The relation words live in the worked
+  sentence.
+- **Change (`football.css`, comparison only):** a tablet caption-over-chip row
+  and a phone stack (caption beside chip, symbol between chips). Chips stay
+  30px, worked text 17px on phones; captions are 14px on phones and 15px on
+  tablets. The middle symbol uses a normal line box so its glyph's content
+  area stays inside it. The phone field for comparison is 182px in question
+  and retry and 276px in the worked state; committed feedback keeps the
+  released field.
+- **Tests:** a domain test derives the relation, team and objective from raw
+  snaps across offense/defense `<`/`=`/`>`, end-zone `<`/`=`, 0/1, teens,
+  fourth down and the longest public names. It pins choices, bindings and
+  metadata, forbids relation leaks before the worked stage and checks Replay.
+  The workspace defense comparison test now checks the captions, amounts,
+  `?`/symbol, reading order, picture names and the opponent-owned prompt, and
+  measures the new caption and symbol sizes. A new real-tap offense test
+  covers equal, greater, end-zone equal and end-zone short through worked
+  explanation, Coach Replay, Back and Continue.
+- **Author tooling (`output/issue-51-clarity/author/`, new):** a matched
+  1.34.19/1.34.20 capture helper and the author record.
+- **Metadata:** `GAME_VERSION`, every Football cache key, the Football
+  registry entry and `version.json` move to `1.34.20`. Other games are
+  unchanged.
+- **Pending (none claimed here):** every check and capture listed in the
+  author record, actual-pixel review on all six targets in both engines,
+  fresh independent review, PR, merge and live verification. #161 and broader
+  #51 stay open. Browser results will be engine emulation only.

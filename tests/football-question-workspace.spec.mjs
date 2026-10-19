@@ -250,7 +250,7 @@ async function assertPhoneFieldLabelsStayInsideField(page, stage, expectedLabels
       name: element === overlay ? 'panel' : element.className || element.tagName,
       ...rect(element),
     })).filter(box => box.width > 0 || box.height > 0);
-    const labels = [...overlay.querySelectorAll('.math-context-token, .math-context-link, .math-worked')];
+    const labels = [...overlay.querySelectorAll('.math-context-token, .math-context-link, .math-worked, .math-compare-caption, .math-compare-mark')];
     const measured = labels.map(element => {
       const range = document.createRange();
       range.selectNodeContents(element);
@@ -306,8 +306,11 @@ async function assertPhoneFieldLabelsStayInsideField(page, stage, expectedLabels
     expect(result.overlayText, `${stage}: ${label} context is retained`).toMatch(new RegExp(label, 'i'));
   }
   for (const label of result.labels) {
+    // #51 comparison captions and the middle symbol are measured too.
     const expectedSize = label.className.includes('math-context-token') ? 30
-      : label.className.includes('math-context-link') ? 20 : 17;
+      : label.className.includes('math-context-link') ? 20
+        : label.className.includes('math-compare-caption') ? 14
+          : label.className.includes('math-compare-mark') ? 30 : 17;
     expect(label.fontSize, `${stage}: ${label.text} keeps its established font size`).toBe(expectedSize);
     expect(label.scrollWidth, `${stage}: ${label.text} is not horizontally clipped`).toBeLessThanOrEqual(label.clientWidth + 1);
     expect(label.scrollHeight, `${stage}: ${label.text} is not vertically clipped`).toBeLessThanOrEqual(label.clientHeight + 1);
@@ -371,6 +374,81 @@ async function assertCommittedFeedbackHidesInstructionalPicture(page, stage) {
   expect(result.feedbackBox.bottom, `${stage}: result feedback stays above the fold`).toBeLessThanOrEqual(result.viewportHeight + EPS);
   expect(result.documentWidth, `${stage}: no horizontal page overflow`).toBeLessThanOrEqual(result.viewportWidth + EPS);
   expect(result.scrollY, `${stage}: no automatic page scroll`).toBe(0);
+}
+
+// #51: what the comparison picture must say, derived from the live play's raw
+// facts rather than from the question copy.
+function expectedComparison(play) {
+  const c = play.context;
+  const gain = play.proposal.appliedGain;
+  const needed = c.yardsToGo;
+  const endZone = c.firstDownLine === (c.direction === 1 ? 100 : 0);
+  const amount = value => `${value} ${value === 1 ? 'YARD' : 'YARDS'}`;
+  return {
+    gain,
+    needed,
+    symbol: gain < needed ? '<' : gain > needed ? '>' : '=',
+    endZone,
+    team: c.possession === 'offense' ? c.match.player.displayName : c.match.opponent.shortName,
+    objective: endZone ? 'to reach the end zone' : 'for a first down',
+    captions: ['POSSIBLE GAIN', endZone ? 'TO THE END ZONE' : 'FOR A FIRST DOWN'],
+    amounts: [amount(gain), amount(needed)],
+  };
+}
+
+// Each amount keeps its caption and unit, the middle is only ? or the revealed
+// symbol, and reading order runs gain, symbol, target in either layout.
+async function assertComparisonPicture(page, question, expected, support, stage) {
+  const picture = await page.evaluate(() => {
+    const overlay = document.getElementById('math-overlay');
+    const row = overlay.querySelector('.math-compare-row');
+    const all = selector => [...overlay.querySelectorAll(selector)];
+    const box = element => {
+      const rect = element.getBoundingClientRect();
+      return { top: rect.top, right: rect.right, bottom: rect.bottom, left: rect.left };
+    };
+    return {
+      type: overlay.dataset.type,
+      support: overlay.dataset.support,
+      rowHidden: row?.getAttribute('aria-hidden') ?? null,
+      rowText: row?.textContent ?? '',
+      captions: all('.math-compare-caption').map(element => element.textContent.trim()),
+      captionBoxes: all('.math-compare-caption').map(box),
+      amounts: all('.math-context-token').map(element => element.textContent.trim()),
+      amountBoxes: all('.math-context-token').map(box),
+      marks: all('.math-compare-mark').map(element => element.textContent.trim()),
+      markBoxes: all('.math-compare-mark').map(box),
+      relationWordsOutsideRow: all('.math-context-link').length,
+      worked: all('.math-worked').map(element => element.textContent.trim()),
+      ariaLabel: overlay.getAttribute('aria-label'),
+    };
+  });
+  expect(picture.type, `${stage}: comparison picture`).toBe('comparison');
+  expect(picture.support, `${stage}: support stage`).toBe(support);
+  expect(picture.captions, `${stage}: captions name both amounts and the objective`).toEqual(expected.captions);
+  expect(picture.amounts, `${stage}: amounts carry the full unit`).toEqual(expected.amounts);
+  expect(picture.marks, `${stage}: middle shows only ? or the revealed symbol`).toEqual([support === 'worked' ? expected.symbol : '?']);
+  expect(picture.rowText, `${stage}: no relation word between the amounts`).not.toMatch(/less|greater|equal|than/i);
+  expect(picture.relationWordsOutsideRow, `${stage}: no label-word-label token run`).toBe(0);
+  expect(picture.rowHidden, `${stage}: the picture row is decorative`).toBe('true');
+  expect(picture.ariaLabel, `${stage}: picture name matches its support stage`).toBe(question.visuals[support].ariaLabel);
+  expect(picture.worked, `${stage}: worked sentence only in the worked stage`)
+    .toEqual(support === 'worked' ? [question.workedExplanation.text] : []);
+  const center = item => ({ x: (item.left + item.right) / 2, y: (item.top + item.bottom) / 2 });
+  const [gainBox, targetBox] = picture.amountBoxes.map(center);
+  const mark = center(picture.markBoxes[0]);
+  const sideBySide = Math.abs(gainBox.y - targetBox.y) <= EPS;
+  if (sideBySide) {
+    expect(gainBox.x < mark.x && mark.x < targetBox.x, `${stage}: gain, symbol, target read left to right`).toBe(true);
+  } else {
+    expect(gainBox.y < mark.y && mark.y < targetBox.y, `${stage}: gain, symbol, target read top to bottom`).toBe(true);
+  }
+  picture.captionBoxes.forEach((caption, index) => {
+    const amount = picture.amountBoxes[index];
+    const beside = caption.right <= amount.left + EPS && caption.top < amount.bottom && amount.top < caption.bottom;
+    const above = caption.bottom <= amount.top + EPS && caption.left < amount.right && amount.left < caption.right;
+    expect(beside || above, `${stage}: ${picture.captions[index]} sits with its own amount`).toBe(true);
+  });
 }
 
 // One coached retry, then a correct retry that commits and shows feedback.
@@ -583,24 +661,34 @@ test.describe('football question workspace (#51)', () => {
     expect(errors).toEqual([]);
   });
 
-  test('defense comparison PLAY and NEED labels stay whole through retry, feedback, worked explanation, Replay, Back and Continue', async ({ page }) => {
+  test('defense comparison captions, amounts and symbol stay whole through retry, feedback, worked explanation, Replay, Back and Continue', async ({ page }) => {
     const errors = watchErrors(page);
     await boot(page);
     const options = { seed: DEFENSE_COMPARISON_SEED, trigger: CALL, familyId: 'gain-vs-needed-comparison' };
-    const labels = ['PLAY 5', 'NEED 10'];
+    // #51: the user read "PLAY 5 ? NEED 10" and "Play 5 less than need 10" as
+    // nonsense; each amount now carries its meaning and unit.
+    const labels = ['POSSIBLE GAIN', '5 YARDS', 'FOR A FIRST DOWN', '10 YARDS'];
     const question = await presentFamily(page, options);
     const play = await page.evaluate(() => window.__footballTest.activeContracts().activePlay);
     expect(play.context.possession, '#188 source: defense').toBe('defense');
     expect(play.proposal.appliedGain, '#188 source: proposed 5').toBe(5);
     expect(play.context.yardsToGo, '#188 source: needed 10').toBe(10);
     expect(question.visuals.initial.type).toBe('comparison');
+    const expected = expectedComparison(play);
+    expect(expected.endZone, '#188 source: ordinary first-down marker').toBe(false);
+    // The opponent has the ball, so the prompt names its need, never "you".
+    const prompt = await page.locator('#question').textContent();
+    expect(prompt).toContain(`${expected.team} could gain 5 yards and needs 10 yards for a first down.`);
+    expect(prompt).not.toMatch(/\byou\b|\byour\b/i);
     assertWorkspace(await workspaceMetrics(page), question, 'comparison question');
+    await assertComparisonPicture(page, question, expected, 'initial', 'comparison question');
     await assertPhoneFieldLabelsStayInsideField(page, 'comparison question', labels);
 
     const wrongId = question.choices.find(choice => choice.id !== question.correctChoiceId).id;
     await tapChoice(page, wrongId);
     await expectStatus(page, `Good try. ${question.hint.text}`);
     assertWorkspace(await workspaceMetrics(page), question, 'comparison retry');
+    await assertComparisonPicture(page, question, expected, 'guided', 'comparison coached retry');
     await assertPhoneFieldLabelsStayInsideField(page, 'comparison coached retry', labels);
     await tapChoice(page, question.correctChoiceId);
     await expect(page.locator('#ui-desk')).toHaveAttribute('data-phase', 'feedback');
@@ -613,7 +701,8 @@ test.describe('football question workspace (#51)', () => {
     await tapChoice(page, wrongIds[0]);
     await tapChoice(page, wrongIds[1]);
     await expect(page.locator('#ui-desk')).toHaveAttribute('data-phase', 'explanation');
-    await assertPhoneFieldLabelsStayInsideField(page, 'comparison worked explanation', [...labels, 'LESS THAN']);
+    await assertComparisonPicture(page, workedQuestion, expected, 'worked', 'comparison worked explanation');
+    await assertPhoneFieldLabelsStayInsideField(page, 'comparison worked explanation', labels);
     await expect(page.locator('#film-room-summary-copy')).toHaveText(workedQuestion.workedExplanation.text);
 
     const learn = page.locator('#question-learn-why');
@@ -625,15 +714,90 @@ test.describe('football question workspace (#51)', () => {
     await learn.tap();
     await expect(page.locator('#worked-review')).toBeVisible();
     await expect(page.locator('#worked-review-heading')).toHaveText(`Coach Replay: ${workedQuestion.workedReview.title}`);
-    await assertPhoneFieldLabelsStayInsideField(page, 'comparison Coach Replay', [...labels, 'LESS THAN']);
+    await assertComparisonPicture(page, workedQuestion, expected, 'worked', 'comparison Coach Replay');
+    await assertPhoneFieldLabelsStayInsideField(page, 'comparison Coach Replay', labels);
 
     await page.locator('#worked-review-back').tap();
     await expect(page.locator('#worked-review')).toBeHidden();
     await expect(page.locator('#question-continue')).toBeVisible();
-    await assertPhoneFieldLabelsStayInsideField(page, 'comparison after Replay Back', [...labels, 'LESS THAN']);
+    await assertComparisonPicture(page, workedQuestion, expected, 'worked', 'comparison after Replay Back');
+    await assertPhoneFieldLabelsStayInsideField(page, 'comparison after Replay Back', labels);
     await page.locator('#question-continue').tap();
     await expect(page.locator('#ui-desk')).toHaveAttribute('data-phase', 'feedback');
     await assertCommittedFeedbackHidesInstructionalPicture(page, 'comparison worked feedback');
+    expect(errors).toEqual([]);
+  });
+
+  test('offense comparison names the first-down marker or end zone for equal, greater and short gains through worked Replay', async ({ page }) => {
+    const errors = watchErrors(page);
+    await boot(page);
+    const familyId = 'gain-vs-needed-comparison';
+    // The proposed gain comes from the first call and the constant football
+    // draw; read it once, then place the marker to make each relation.
+    await presentFamily(page, { seed: OFFENSE_SEED, trigger: CALL, familyId });
+    const gain = await page.evaluate(() => window.__footballTest.activeContracts().activePlay.proposal.appliedGain);
+    expect(gain >= 2 && gain <= 13, `first-call gain ${gain} leaves room for every relation`).toBe(true);
+    const cases = [
+      { name: 'equal first-down marker', symbol: '=', endZone: false, seed: { ...OFFENSE_SEED, yardsToGo: gain, firstDownLine: 30 + gain } },
+      { name: 'greater first-down marker', symbol: '>', endZone: false, seed: { ...OFFENSE_SEED, yardsToGo: gain - 1, firstDownLine: 30 + gain - 1 } },
+      { name: 'equal end zone', symbol: '=', endZone: true, seed: { ...OFFENSE_SEED, yardLine: 100 - gain, yardsToGo: gain, firstDownLine: 100, driveStart: 60 } },
+      { name: 'short end zone', symbol: '<', endZone: true, seed: { ...OFFENSE_SEED, yardLine: 97 - gain, yardsToGo: gain + 3, firstDownLine: 100, driveStart: 60 } },
+    ];
+    for (const item of cases) {
+      const label = `offense ${item.name}`;
+      await page.evaluate(() => clearTimeout(advTimer));
+      const question = await presentFamily(page, { seed: item.seed, trigger: CALL, familyId });
+      const play = await page.evaluate(() => window.__footballTest.activeContracts().activePlay);
+      const expected = expectedComparison(play);
+      expect(play.context.possession, `${label}: offense`).toBe('offense');
+      expect([expected.symbol, expected.endZone], `${label}: intended relation and objective`).toEqual([item.symbol, item.endZone]);
+      expect(question.answer.value, `${label}: answer`).toBe(expected.symbol);
+      expect(question.choices.map(choice => choice.id).sort(), `${label}: stable symbol choices`).toEqual([
+        `${familyId}--choice-s-3c`, `${familyId}--choice-s-3d`, `${familyId}--choice-s-3e`,
+      ]);
+      const prompt = await page.locator('#question').textContent();
+      const yardsText = value => `${value} ${value === 1 ? 'yard' : 'yards'}`;
+      expect(prompt, `${label}: team, amounts and objective`)
+        .toContain(`${expected.team} could gain ${yardsText(gain)} and needs ${yardsText(expected.needed)} ${expected.objective}.`);
+      if (expected.endZone) expect(prompt, `${label}: no first-down promise`).not.toMatch(/first down/i);
+      assertWorkspace(await workspaceMetrics(page), question, `${label} question`);
+      await assertComparisonPicture(page, question, expected, 'initial', `${label} question`);
+      await assertPhoneFieldLabelsStayInsideField(page, `${label} question`, [...expected.captions, ...expected.amounts]);
+
+      const wrongIds = question.choices.filter(choice => choice.id !== question.correctChoiceId).map(choice => choice.id);
+      await tapChoice(page, wrongIds[0]);
+      await expectStatus(page, `Good try. ${question.hint.text}`);
+      await tapChoice(page, wrongIds[1]);
+      await expect(page.locator('#ui-desk')).toHaveAttribute('data-phase', 'explanation');
+      await assertComparisonPicture(page, question, expected, 'worked', `${label} worked explanation`);
+      await assertPhoneFieldLabelsStayInsideField(page, `${label} worked explanation`, [...expected.captions, ...expected.amounts]);
+      await expect(page.locator('#film-room-summary-copy')).toHaveText(question.workedExplanation.text);
+      expect(question.workedExplanation.text, `${label}: worked target`)
+        .toMatch(expected.endZone ? /the end zone\.$/ : /the first-down marker\.$/);
+      expect(await page.evaluate(() => JSON.parse(render_game_to_text()).outcomeCommitted), `${label}: worked stays uncommitted`).toBe(false);
+
+      const learn = page.locator('#question-learn-why');
+      const learnBox = await learn.boundingBox();
+      expect(learnBox.width).toBeGreaterThanOrEqual(44);
+      expect(learnBox.height).toBeGreaterThanOrEqual(44);
+      expect(learnBox.y + learnBox.height, `${label}: Learn why above the fold`).toBeLessThanOrEqual(page.viewportSize().height + EPS);
+      await learn.tap();
+      await expect(page.locator('#worked-review')).toBeVisible();
+      await expect(page.locator('#worked-review-heading')).toHaveText('Coach Replay: Compare the Yards');
+      await expect(page.locator('#worked-review-content .worked-review-goal p')).toHaveText(question.workedReview.goal.text);
+      await expect(page.locator('#worked-review-content .worked-review-steps p'))
+        .toHaveText([question.hint.text, question.workedExplanation.text]);
+      await expect(page.locator('#worked-review-content .worked-review-meaning p')).toHaveText(question.workedReview.footballMeaning.text);
+      await assertComparisonPicture(page, question, expected, 'worked', `${label} Coach Replay`);
+      await assertPhoneFieldLabelsStayInsideField(page, `${label} Coach Replay`, [...expected.captions, ...expected.amounts]);
+
+      await page.locator('#worked-review-back').tap();
+      await expect(page.locator('#worked-review')).toBeHidden();
+      await expect(page.locator('#question-continue')).toBeVisible();
+      await page.locator('#question-continue').tap();
+      await expect(page.locator('#ui-desk')).toHaveAttribute('data-phase', 'feedback');
+      await assertCommittedFeedbackHidesInstructionalPicture(page, `${label} feedback`);
+    }
     expect(errors).toEqual([]);
   });
 });

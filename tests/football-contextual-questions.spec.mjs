@@ -1806,6 +1806,151 @@ test('live comparison and approved later pages stay source-accurate and snap-gro
   );
 });
 
+// #51: "Play 5? Need 10?" named neither amount, unit, owner nor objective. Each
+// expectation here comes from the raw snap: the relation from the two numbers,
+// the owner from possession, and the objective from whether the old marker is
+// the attacking goal line. Copy may only describe a gain of the compared size.
+test('comparison copy names amounts, units, team and objective without leaking the relation', () => {
+  const { domain, questions } = loadModules();
+  const longMatch = {
+    schemaVersion: 1,
+    player: { id: 'virginia-tech', displayName: 'Virginia Tech', shortName: 'VA TECH', endZoneName: 'VIRGINIA TECH' },
+    opponent: { id: 'wake-forest', displayName: 'Wake Forest', shortName: 'WAKE FOREST', endZoneName: 'WAKE FOREST' },
+  };
+  const defense = { possession: 'defense', direction: -1, yardLine: 50, yardsToGo: 10, firstDownLine: 40, driveStart: 50 };
+  const cases = [
+    ['offense short', {}, 4],
+    ['offense equal', {}, 7],
+    ['offense greater', {}, 12],
+    ['defense short (#188 5 vs 10)', defense, 5],
+    ['defense equal', defense, 10],
+    ['defense greater teen', defense, 13],
+    ['offense zero vs one yard', { yardsToGo: 1 }, 0],
+    ['offense one yard equal', { yardsToGo: 1 }, 1],
+    ['offense teen equal', { yardsToGo: 16 }, 16],
+    ['offense end zone short', { yardLine: 92, yardsToGo: 8, firstDownLine: 100 }, 5],
+    ['offense end zone equal', { yardLine: 92, yardsToGo: 8, firstDownLine: 100 }, 8],
+    ['defense end zone equal', { ...defense, yardLine: 6, yardsToGo: 6, firstDownLine: 0, driveStart: 30 }, 6],
+    ['fourth down defense short', { ...defense, down: 4 }, 5],
+    ['long player name greater', { match: longMatch, yardsToGo: 3 }, 12],
+    ['long opponent name end zone equal', {
+      ...defense, match: longMatch, yardLine: 16, yardsToGo: 16, firstDownLine: 0, driveStart: 40,
+      privateOpponentSnapshot: {
+        opponentId: 'wake-forest', profileKey: 'quickPass', plannedCallKey: 'shortPass', tendency: { profileKey: 'quickPass' },
+      },
+    }, 16],
+  ];
+  const relationWords = /less than|greater than|equal to|the same as|fall short|go past|would reach|would pass/i;
+  for (const [label, overrides, requested] of cases) {
+    const snap = makeSnap(domain, { yardsToGo: 7, firstDownLine: overrides.yardsToGo === undefined ? 37 : undefined, ...overrides }, requested);
+    const c = snap.context;
+    const gain = snap.proposal.appliedGain;
+    const needed = c.yardsToGo;
+    assert.equal(gain, requested, `${label}: fixture gain is not capped`);
+    const symbol = gain < needed ? '<' : gain > needed ? '>' : '=';
+    const endZone = c.firstDownLine === (c.direction === 1 ? 100 : 0);
+    const team = c.possession === 'offense' ? c.match.player.displayName : c.match.opponent.shortName;
+    const other = c.possession === 'offense' ? c.match.opponent.shortName : c.match.player.displayName;
+    const unit = value => `${value} ${value === 1 ? 'yard' : 'yards'}`;
+    const objective = endZone ? 'to reach the end zone' : 'for a first down';
+    const place = endZone ? 'the end zone' : 'the first-down marker';
+    const word = { '<': 'less than', '=': 'equal to', '>': 'greater than' }[symbol];
+    const consequence = { '<': 'fall short of', '=': 'reach', '>': 'go past' }[symbol];
+
+    for (const support of ['initial', 'guided', 'worked']) {
+      const question = questions.build(snap, 'gain-vs-needed-comparison', { support, presentationRng: () => 0.5 });
+      verifyGrounding(questions, snap, question);
+      expectComparisonChoiceLabels(question);
+      // Math, choices, bindings and metadata are unchanged by the copy.
+      assert.equal(question.answer.value, symbol, label);
+      assert.deepEqual(plain(question.choices.map(choice => choice.id)).sort(), [
+        'gain-vs-needed-comparison--choice-s-3c',
+        'gain-vs-needed-comparison--choice-s-3d',
+        'gain-vs-needed-comparison--choice-s-3e',
+      ], label);
+      assert.deepEqual(plain(question.bindings), [
+        { id: 'proposedGain', source: { kind: 'context', path: '/proposal/appliedGain' }, value: gain },
+        { id: 'yardsToGo', source: { kind: 'context', path: '/context/yardsToGo' }, value: needed },
+      ], label);
+      assert.deepEqual(plain(question.operation), { type: 'compare', operandIds: ['proposedGain', 'yardsToGo'], outputId: 'gain-vs-needed-comparison--answer' });
+      assert.deepEqual(
+        [question.concept, question.skill, question.tier, question.weight, question.answerExposure, question.evidenceClass, question.curriculumSource, question.introducedOnPage],
+        ['line-to-gain-comparison', 'comparison', 'within-16', 2.4, 'modeled-with-result-hidden', 'independent', 'workbook', 39],
+        label,
+      );
+      assert.equal(question.math.stage, support);
+    }
+    const question = questions.build(snap, 'gain-vs-needed-comparison', { presentationRng: () => 0.5 });
+    const prompt = question.prompt.text;
+    const hint = question.hint.text;
+    const worked = question.workedExplanation.text;
+
+    // The prompt names the team with the ball, both amounts with units and
+    // the objective, and keeps the gain conditional.
+    assert.ok(prompt.includes(`${team} could gain ${unit(gain)}`), `${label}: ${prompt}`);
+    assert.ok(prompt.includes(`needs ${unit(needed)} ${objective}`), `${label}: ${prompt}`);
+    assert.ok(prompt.endsWith(`Which symbol makes ${gain} ? ${needed} true?`), `${label}: ${prompt}`);
+    assert.equal(prompt.includes(other), false, `${label}: prompt names only the team with the ball`);
+    assert.doesNotMatch(prompt, /\byou\b|\byour\b/i, `${label}: no player-perspective need`);
+    if (endZone) assert.doesNotMatch(`${prompt} ${worked}`, /first.down/i, `${label}: end-zone target is not a first down`);
+    assert.doesNotMatch(`${prompt} ${hint} ${worked}`, /\b1 yards\b|\b(?:[02-9]|1\d) yard\b(?!-)/, `${label}: unit agrees with its number`);
+
+    // No evaluated relation for these operands before the worked stage. The
+    // three symbol answers and general strategy words remain.
+    for (const [stage, text] of [
+      ['prompt', prompt],
+      ['hint', hint],
+      ['initial aria', question.visuals.initial.ariaLabel],
+      ['guided aria', question.visuals.guided.ariaLabel],
+    ]) {
+      assert.doesNotMatch(text, relationWords, `${label}: ${stage} leaks the relation: ${text}`);
+      assert.equal(text.includes(`${gain} ${symbol} ${needed}`), false, `${label}: ${stage} leaks the solved symbol`);
+    }
+    for (const stage of ['initial', 'guided']) {
+      assert.equal(question.visuals[stage].result, null);
+      assert.deepEqual(plain(question.visuals[stage].data), {
+        leftCaption: 'POSSIBLE GAIN', leftValue: gain,
+        rightCaption: endZone ? 'TO THE END ZONE' : 'FOR A FIRST DOWN', rightValue: needed,
+      }, `${label}: ${stage} picture carries captions and amounts only`);
+    }
+    assert.ok(question.visuals.initial.ariaLabel.includes(`Possible gain: ${unit(gain)}`), label);
+    assert.ok(question.visuals.initial.ariaLabel.includes(`${team} needs ${unit(needed)} ${objective}`), label);
+    assert.ok(question.visuals.guided.ariaLabel.includes(`${unit(needed)} ${team} needs ${objective}`), label);
+
+    // The hint keeps the comparison strategy and names both amounts.
+    assert.ok(hint.startsWith(`Compare the possible gain, ${unit(gain)}, with the ${unit(needed)} needed.`), `${label}: ${hint}`);
+    assert.ok(hint.endsWith('The open side points to the greater number.'), `${label}: ${hint}`);
+    assert.equal(hint.includes('Compare the tens first. If they match, compare the ones.'), gain >= 10 || needed >= 10, label);
+
+    // The worked text states the relation and what a gain of that size would
+    // do, never what this play did or a promised first down.
+    assert.equal(worked, `${gain} ${symbol} ${needed}. A gain of ${unit(gain)} is ${word} the ${unit(needed)} needed, so it would ${consequence} ${place}.`, label);
+    assert.doesNotMatch(worked, /this play|earn|first down\b|touchdown|stopped/i, `${label}: ${worked}`);
+    assert.deepEqual(plain(question.visuals.worked.result.value), symbol);
+    assert.ok(question.visuals.worked.ariaLabel.startsWith(`${gain} ${word} ${needed}:`), label);
+    assert.ok(question.visuals.worked.ariaLabel.includes(`${team} needs ${objective}, so it would ${consequence} ${place}.`), label);
+
+    // Coach Replay: a renamed, generic static frame around this play's hint
+    // and worked sentence.
+    const review = question.workedReview;
+    assert.equal(review.title, 'Compare the Yards');
+    assert.deepEqual(plain(review.steps.map(step => step.text)), [hint, worked]);
+    for (const copy of [review.title, review.goal.text, review.footballMeaning.text]) {
+      assert.doesNotMatch(copy, /\bplay\b|\bneed\b|past the end zone|go past the end zone/i, `${label}: ${copy}`);
+    }
+    assert.match(review.goal.text, /possible gain/);
+    assert.match(review.goal.text, /first-down marker or the end zone/);
+  }
+
+  // A gain toward the goal line is capped at the end zone, so an end-zone
+  // comparison can never be greater than the yards needed.
+  const capped = makeSnap(domain, { yardLine: 92, yardsToGo: 8, firstDownLine: 100 }, 14);
+  assert.equal(capped.proposal.appliedGain, 8);
+  const cappedQuestion = questions.build(capped, 'gain-vs-needed-comparison');
+  assert.equal(cappedQuestion.answer.value, '=');
+  assert.match(cappedQuestion.workedExplanation.text, /would reach the end zone\.$/);
+});
+
 test('high committed-score relations and ungrounded clock or calendar work stay unavailable', () => {
   const { domain, questions } = loadModules();
   const snap = makeSnap(domain, { scores: { player: 14, opponent: 7 }, driveStart: 30 }, 4);
