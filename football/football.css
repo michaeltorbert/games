@@ -1585,10 +1585,15 @@ body::after {
 /* Issue #169: the opposing defender who brings the player's ball carrier down. It
    reuses the carrier's sprite in the visiting rival's live colors, faces the
    carrier from downfield, and never takes input. Leaning in, its shoulder meets
-   the carrier's hip and its arms wrap his waist, below the ball. */
+   the carrier's hip and its arms wrap his waist, below the ball.
+   Issue #189: he lines up before the snap, downfield and raised into his own
+   lane, and runs from there to the carrier's final spot. */
 #tackler {
   --tackle-shift: 0px;
-  --tackle-approach: 0px;
+  --tackle-stage-x: 0px;
+  --tackle-stage-y: 0px;
+  --tackle-from-x: 0px;
+  --tackle-from-y: 0px;
   position: absolute;
   top: 54%;
   width: 30px;
@@ -1656,20 +1661,31 @@ body::after {
   fill: var(--opponent-accent-ink);
 }
 
-/* Runs in on the carrier's own movement curve and duration. */
+#tackler:is([data-tackle-phase="staged"], [data-tackle-phase="release"]) {
+  transform: translate(-50%, -50%) translate(calc(var(--tackle-shift) + var(--tackle-stage-x)), var(--tackle-stage-y)) scaleX(-1);
+}
+
+/* Any ending other than a tackle: he fades where he stands. */
+#tackler[data-tackle-phase="release"] {
+  animation: tackler-release 240ms ease-out both;
+}
+
+@keyframes tackler-release {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+/* Runs from where he stood on the carrier's own movement curve and duration. */
 #tackler[data-tackle-phase="approach"] {
   animation: tackler-approach 750ms cubic-bezier(0.25, 0.46, 0.45, 0.94) both;
 }
 
 @keyframes tackler-approach {
   0% {
-    opacity: 0;
-    transform: translate(-50%, -50%) translateX(calc(var(--tackle-shift) + var(--tackle-approach))) scaleX(-1);
+    transform: translate(-50%, -50%) translate(calc(var(--tackle-shift) + var(--tackle-from-x)), var(--tackle-from-y)) scaleX(-1);
   }
-  20% { opacity: 1; }
   100% {
-    opacity: 1;
-    transform: translate(-50%, -50%) translateX(var(--tackle-shift)) scaleX(-1);
+    transform: translate(-50%, -50%) translate(var(--tackle-shift), 0px) scaleX(-1);
   }
 }
 
@@ -5182,7 +5198,8 @@ body::after {
     animation: none !important;
   }
 
-  /* The tackler appears only as a static contact pose at the settled spot. */
+  /* The tackler stands still where he lines up, then at the carrier's final
+     spot, and shows only a static contact pose there. */
   #tackler,
   #tackler svg,
   #tackler .pl-arm-l,
