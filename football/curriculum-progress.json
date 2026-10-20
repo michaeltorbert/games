@@ -196,6 +196,18 @@
           "introducedOnPage": 131,
           "coverageThroughPage": 143,
           "concepts": "Subtraction within 20, no-borrow subtraction, whole tens minus one digit. General borrowing excluded."
+        },
+        {
+          "families": ["game-part-boundary", "halves-make-whole"],
+          "introducedOnPage": 68,
+          "coverageThroughPage": 68,
+          "concepts": "Equal halves and quarters of one whole; two halves or four quarters make the whole. Applied to the four-quarter regulation game; thirds (p. 72) excluded."
+        },
+        {
+          "families": ["game-part-compare"],
+          "introducedOnPage": 71,
+          "coverageThroughPage": 71,
+          "concepts": "Compare one half with one, two, or three quarters of the same whole; two quarters equal one half."
         }
       ]
     }

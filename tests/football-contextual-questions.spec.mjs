@@ -26,6 +26,12 @@ function plain(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
+// #51: the eight quarter and half families, all independent evidence.
+const QUARTER_HALF_FAMILY_IDS = [
+  'quarters-still-to-come', 'quarters-before-halftime', 'quarters-finished', 'quarters-in-half',
+  'second-half-quarters', 'game-part-boundary', 'halves-make-whole', 'game-part-compare',
+];
+
 function completedArithmeticSnaps(domain) {
   return [
     makeSnap(domain, { yardLine: 53, yardsToGo: 17, firstDownLine: 70,
@@ -242,6 +248,25 @@ function recompute(question) {
     case 'conversionValue': return operands[0] === 'pat' ? 1 : 2;
     case 'tryMarkerForDirection': return operands[0] === 1 ? 98 : 2;
     case 'subtract': return operands[0] - operands[1];
+    // #51 quarters and halves of one four-quarter game; halves split it in two.
+    case 'quartersAfterCurrent': return operands[1] - operands[0];
+    case 'quartersBeforeHalftime': return operands[1] / 2 - operands[0];
+    case 'quartersFinished': return operands[0] - 1;
+    case 'quartersInHalf': return operands[0] / 2;
+    case 'secondHalfQuarters': return `${({ 3: '3rd' })[operands[0] / 2 + 1]} and ${({ 4: '4th' })[operands[0]]}`;
+    case 'gamePartAtBoundary': {
+      const [quarter, regulation] = operands;
+      const counted = quarter === regulation - 1 ? regulation - quarter : quarter;
+      return ({ 1: 'One quarter', 2: 'One half' })[counted * 4 / regulation];
+    }
+    case 'halvesMakeWhole': return 2 * (operands[0] / 2) === operands[0] ? 'One whole game' : null;
+    case 'compareGameParts': {
+      const [quarter, regulation] = operands;
+      const half = regulation / 2;
+      const [first, second] = quarter <= 2 ? [[half, 'One half'], [1, 'One quarter']]
+        : quarter === 3 ? [[2, 'Two quarters'], [half, 'One half']] : [[half, 'One half'], [3, 'Three quarters']];
+      return first[0] === second[0] ? 'Same size' : first[0] > second[0] ? first[1] : second[1];
+    }
     default: throw new Error(`Unknown operation ${question.operation.type}`);
   }
 }
@@ -521,6 +546,7 @@ test('every family authors the exact evidence class and independent families hid
       'touchdown-base-points',
       'two-point-three-digit-add',
       'two-point-three-digit-subtract',
+      ...QUARTER_HALF_FAMILY_IDS,
     ],
   };
   const registry = Object.values(questions.FAMILY_REGISTRY).flat();
@@ -531,14 +557,16 @@ test('every family authors the exact evidence class and independent families hid
     );
   }
   // #186 deliberately adds the two player two-point challenge families; #51
-  // adds the two wider past-marker yardage families.
-  assert.equal(registry.length, 42);
+  // adds the two wider past-marker yardage families and the eight quarter and
+  // half families.
+  assert.equal(registry.length, 50);
   assert.equal(Object.isFrozen(registry[0]), true);
 
   const comparisonSource = makeSnap(domain, { yardsToGo: 14, firstDownLine: 44, scores: { player: 14, opponent: 7 } }, 7);
   const scenarios = [
     ...completedArithmeticSnaps(domain),
     comparisonSource,
+    makeSnap(domain, { quarter: 1 }, 4),
     makeSnap(domain, { down: 3, yardsToGo: 8, firstDownLine: 38 }, 13),
     makeSnap(domain, { down: 3, yardsToGo: 7, firstDownLine: 37 }, 18),
     makeSnap(domain, {
@@ -572,9 +600,12 @@ test('every family authors the exact evidence class and independent families hid
       }
     }
   }
-  // #51: live inspection no longer offers the retired comparison, but its
-  // direct build keeps the same classification for history and review.
-  assert.deepEqual(plain(questions.RETIRED_LIVE_FAMILIES), ['gain-vs-needed-comparison']);
+  // #51: live inspection no longer offers the retired comparison or quarter
+  // label reading, but their direct builds keep the same classification for
+  // history and review.
+  assert.deepEqual(plain(questions.RETIRED_LIVE_FAMILIES), ['gain-vs-needed-comparison', 'quarter-read']);
+  assert.equal(builtById.has('quarter-read'), false);
+  assert.equal(questions.build(comparisonSource, 'quarter-read').evidenceClass, 'literacy');
   assert.equal(builtById.has('gain-vs-needed-comparison'), false);
   builtById.set('gain-vs-needed-comparison', questions.build(comparisonSource, 'gain-vs-needed-comparison'));
   for (const familyId of expected.independent) {
@@ -680,6 +711,7 @@ test('every exported family builds one exact, grounded, recursively frozen schem
   const scenarios = [
     ...completedArithmeticSnaps(domain),
     makeSnap(domain, { yardsToGo: 14, firstDownLine: 44, scores: { player: 14, opponent: 7 } }, 7),
+    makeSnap(domain, { quarter: 1 }, 4),
     makeSnap(domain, {
       quarter: 3, down: 2, yardLine: 30, firstDownLine: 35, yardsToGo: 5,
       driveStart: 25, scores: { player: 3, opponent: 4 },
@@ -740,6 +772,14 @@ test('every exported family builds one exact, grounded, recursively frozen schem
     'committed-score-ones': ['teen-place-value', 'onesOfScore', ['committedScore']],
     'quarter-read': ['quarter-read', 'ordinal', ['quarter']],
     'half-read': ['quarter-half-structure', 'halfFromQuarter', ['quarter']],
+    'quarters-still-to-come': ['quarter-half-structure', 'quartersAfterCurrent', ['quarter', 'regulationQuarters']],
+    'quarters-before-halftime': ['quarter-half-structure', 'quartersBeforeHalftime', ['quarter', 'regulationQuarters']],
+    'quarters-finished': ['quarter-half-structure', 'quartersFinished', ['quarter', 'regulationQuarters']],
+    'quarters-in-half': ['quarter-half-structure', 'quartersInHalf', ['quarter', 'regulationQuarters']],
+    'second-half-quarters': ['quarter-half-structure', 'secondHalfQuarters', ['quarter', 'regulationQuarters']],
+    'game-part-boundary': ['quarter-half-structure', 'gamePartAtBoundary', ['quarter', 'regulationQuarters']],
+    'halves-make-whole': ['quarter-half-structure', 'halvesMakeWhole', ['quarter', 'regulationQuarters']],
+    'game-part-compare': ['quarter-half-structure', 'compareGameParts', ['quarter', 'regulationQuarters']],
     'next-down': ['down-progression', 'ordinal', ['currentDown', 'yardsToGo', 'proposedGain', 'resultKind', 'nextDown']],
     'goal-distance-minus-whole-tens': ['field-distance', 'goalDistanceAfterGain', ['ballYardLine', 'goalLine', 'proposedGain']],
     'drive-distance-plus-whole-tens': ['drive-distance', 'driveDistancePlusGain', ['driveStart', 'ballYardLine', 'proposedGain']],
@@ -1398,7 +1438,7 @@ test('goal distance, drive movement, place value, whole tens, committed scores, 
   const required = [
     'goal-distance-tens', 'goal-distance-ones',
     'drive-distance-scaffolded', 'committed-score-total', 'committed-score-difference',
-    'quarter-read', 'half-read', 'goal-distance-minus-whole-tens',
+    'half-read', 'goal-distance-minus-whole-tens',
     'drive-distance-plus-whole-tens',
   ];
   for (const snap of [forward, reverse]) {
@@ -1407,6 +1447,9 @@ test('goal distance, drive movement, place value, whole tens, committed scores, 
       assert.ok(ids.includes(familyId), `${snap.context.possession}:${familyId}`);
       verifyGrounding(questions, snap, questions.build(snap, familyId));
     }
+    // #51: quarter-label reading is retired from live play but still builds.
+    assert.equal(ids.includes('quarter-read'), false);
+    verifyGrounding(questions, snap, questions.build(snap, 'quarter-read'));
   }
 });
 
@@ -1570,14 +1613,15 @@ test('next-down excludes unchanged 1st-down resets, touchdowns, and fourth-down 
   }
 });
 
-test('tautological ordinal families are retired while quarter and half families remain scheduled', () => {
+test('tautological ordinal families are retired, quarter reading leaves live play, and half reasoning stays scheduled', () => {
   const { domain, questions } = loadModules();
   const snap = makeSnap(domain, { quarter: 3, down: 2, yardsToGo: 8, firstDownLine: 38 }, 3);
   const inspection = questions.inspect(snap);
   const scheduled = [...inspection.eligible, ...inspection.declined].map((entry) => entry.familyId);
   assert.equal(scheduled.includes('down-read'), false);
   assert.equal(scheduled.includes('drive-play-ordinal'), false);
-  assert.equal(inspection.eligible.some((entry) => entry.familyId === 'quarter-read'), true);
+  assert.equal(inspection.eligible.some((entry) => entry.familyId === 'quarter-read'), false);
+  assert.equal(inspection.declined.find((entry) => entry.familyId === 'quarter-read')?.reason.code, 'retired-from-live-play');
   assert.equal(inspection.eligible.some((entry) => entry.familyId === 'half-read'), true);
   assert.equal(questions.build(snap, 'quarter-read').answer.value, '3rd');
   assert.equal(questions.build(snap, 'half-read').answer.value, '2nd half');
@@ -1608,8 +1652,8 @@ test('quarter reading keeps the Q3 source numeral in its visual and ARIA, not it
 test('half and teen-score families use only the frozen quarter and real committed scoreboard values', () => {
   const { domain, questions } = loadModules();
   const ordinarySnaps = [1, 2, 3, 4].map((quarter) => makeSnap(domain, { quarter }, 4));
-  const quarterCandidate = questions.inspect(ordinarySnaps[0]).eligible
-    .find((candidate) => candidate.familyId === 'quarter-read');
+  // The retired quarter-read entry keeps its registered weight for history.
+  const quarterCandidate = questions.FAMILY_REGISTRY.scrimmage.find((candidate) => candidate.familyId === 'quarter-read');
   assert.ok(quarterCandidate);
 
   for (const [index, snap] of ordinarySnaps.entries()) {
@@ -3222,6 +3266,297 @@ test('#51 the retired comparison never reaches the live pool or scheduler, even 
       // Inside the ladder, the downshift moves weight from stretch to core.
       assert.ok(downshifted['line-to-gain-fact-family'] < baseline['line-to-gain-fact-family'], `${label}: stretch share falls`);
       assert.ok(downshifted['line-to-gain-missing-part'] > baseline['line-to-gain-missing-part'], `${label}: core share rises`);
+    }
+  }
+});
+
+// #51 quarters and halves. Every expectation is written from the four-quarter
+// game and the frozen live quarter, not read back from production. A worked
+// row is [pieces, shaded quarters or halves, current quarter, halftime split,
+// half labels]; guided rows have the same pieces with nothing shaded and no
+// split or labels.
+const QUARTER_WORD = { 1: 'first', 2: 'second', 3: 'third', 4: 'fourth' };
+const HALVES = ['1st half', '2nd half'];
+const QH = {
+  'quarters-still-to-come': {
+    quarters: [1, 2, 3, 4], weight: 0.3, source: 'football-only',
+    prompt: q => `It's the ${QUARTER_WORD[q]} quarter. How many more quarters come after this one?`,
+    hint: () => "Count the quarters after the one we're playing. Don't include the current quarter.",
+    cases: {
+      1: { answer: 3, choices: [1, 2, 3, 4], explanation: 'The game has 4 quarters. After Q1 come Q2, Q3 and Q4, so 3 quarters come after this one.', rows: [[4, [2, 3, 4], 1]], caption: '3 quarters after Q1' },
+      2: { answer: 2, choices: [0, 1, 2, 3], explanation: 'The game has 4 quarters. After Q2 come Q3 and Q4, so 2 quarters come after this one.', rows: [[4, [3, 4], 2]], caption: '2 quarters after Q2' },
+      3: { answer: 1, choices: [0, 1, 2, 3], explanation: 'The game has 4 quarters. After Q3 comes Q4, so 1 quarter comes after this one.', rows: [[4, [4], 3]], caption: '1 quarter after Q3' },
+      4: { answer: 0, choices: [0, 1, 2, 4], explanation: "Q4 is the last of the game's 4 quarters, so 0 quarters come after this one.", rows: [[4, [], 4]], caption: '0 quarters after Q4' },
+    },
+  },
+  'quarters-before-halftime': {
+    quarters: [1], weight: 0.15, source: 'football-only',
+    prompt: () => "It's the first quarter. After this quarter, how many more quarters will be played before halftime?",
+    hint: () => 'Halftime splits the four quarters into two equal halves. Count the quarters after this one that come before halftime.',
+    cases: {
+      1: { answer: 1, choices: [0, 1, 2, 3], explanation: 'Halftime comes after Q2. After Q1, only Q2 is played before halftime, so 1 quarter.', rows: [[4, [2], 1, true]], caption: '1 quarter before halftime' },
+    },
+  },
+  'quarters-finished': {
+    quarters: [3, 4], weight: 0.2, source: 'football-only',
+    prompt: q => `We're playing the ${QUARTER_WORD[q]} quarter. How many quarters are completely finished?`,
+    hint: () => "Count only the quarters before the one we're playing. The quarter we're playing isn't finished yet.",
+    cases: {
+      3: { answer: 2, choices: [0, 1, 2, 3], explanation: 'Q3 is still being played. Q1 and Q2 are finished, so 2 quarters are completely finished.', rows: [[4, [1, 2], 3]], caption: '2 quarters finished' },
+      4: { answer: 3, choices: [1, 2, 3, 4], explanation: 'Q4 is still being played. Q1, Q2 and Q3 are finished, so 3 quarters are completely finished.', rows: [[4, [1, 2, 3], 4]], caption: '3 quarters finished' },
+    },
+  },
+  'quarters-in-half': {
+    quarters: [1, 2], weight: 0.15, source: 'football-only',
+    prompt: () => 'How many quarters make the first half of this game?',
+    hint: () => 'The game has four equal quarters. The first half is one of two equal parts of the game.',
+    cases: Object.fromEntries([1, 2].map(q => [q, { answer: 2, choices: [1, 2, 3, 4],
+      explanation: 'The 4 quarters split into two equal halves. Q1 and Q2 make the first half, so 2 quarters make the first half.',
+      rows: [[4, [1, 2], null, true, HALVES]], guidedCurrent: [null], caption: '2 quarters in the first half' }])),
+  },
+  'second-half-quarters': {
+    quarters: [3, 4], weight: 0.1, source: 'football-only',
+    prompt: () => 'Which two quarters make the second half of this game?',
+    hint: () => 'The game has four equal quarters. Split them in order into two equal halves. The second half comes after halftime.',
+    cases: Object.fromEntries([3, 4].map(q => [q, { answer: '3rd and 4th', choices: ['1st and 2nd', '2nd and 3rd', '3rd and 4th'],
+      explanation: 'Q1 and Q2 make the first half, and Q3 and Q4 make the second half: the 3rd and 4th quarters.',
+      rows: [[4, [3, 4], null, true, HALVES]], guidedCurrent: [null], caption: 'The 3rd and 4th quarters' }])),
+  },
+  'game-part-boundary': {
+    quarters: [1, 2, 3], weight: 0.2, source: 68,
+    prompt: q => ({
+      1: 'When the first quarter ends, what part of this four-quarter game is finished?',
+      2: 'At halftime, what part of this four-quarter game is finished?',
+      3: 'When the third quarter ends, what part of this four-quarter game is left?',
+    })[q],
+    hint: q => ({
+      1: 'The game has four equal quarters. Count the quarters that are finished when this quarter ends, then name that part of the game.',
+      2: 'Halftime comes when the second quarter ends. Count the finished quarters, then name that part of the four-quarter game.',
+      3: 'The game has four equal quarters. Count the quarters still to play when this quarter ends, then name that part of the game.',
+    })[q],
+    cases: {
+      1: { answer: 'One quarter', choices: ['One half', 'One quarter', 'The whole game', 'Three quarters'], explanation: 'When Q1 ends, 1 of the 4 equal quarters is finished. That is one quarter of the game.', rows: [[4, [1], 1]], caption: 'One quarter finished' },
+      2: { answer: 'One half', choices: ['One half', 'One quarter', 'The whole game', 'Three quarters'], explanation: 'At halftime, Q1 and Q2 are finished: 2 of the 4 equal quarters. Two quarters make one half of the game.', rows: [[4, [1, 2], 2, true, HALVES]], caption: 'One half finished' },
+      3: { answer: 'One quarter', choices: ['One half', 'One quarter', 'The whole game', 'Three quarters'], explanation: 'When Q3 ends, only Q4 is left: 1 of the 4 equal quarters. That is one quarter of the game.', rows: [[4, [4], 3]], caption: 'One quarter left' },
+    },
+  },
+  'halves-make-whole': {
+    quarters: [1, 2, 3, 4], weight: 0.1, source: 68,
+    prompt: () => 'The first half and the second half together make what?',
+    hint: () => 'A half is one of two equal parts. Put the first half and the second half together, then see how much of the game they cover.',
+    cases: Object.fromEntries([1, 2, 3, 4].map(q => [q, { answer: 'One whole game', choices: ['One half', 'One quarter', 'One whole game'],
+      explanation: 'The first half and the second half are the two equal parts of this game. Together they make one whole game.',
+      rows: [[2, [1, 2], null]], guidedCurrent: [null], caption: 'One whole game' }])),
+  },
+  'game-part-compare': {
+    quarters: [1, 2, 3, 4], weight: 0.2, source: 71,
+    prompt: q => `Compare ${q <= 2 ? 'one half and one quarter' : q === 3 ? 'two quarters and one half' : 'one half and three quarters'} of this same game. Which is bigger, or are they the same size?`,
+    hint: () => 'Picture this game split into two equal halves and into four equal quarters. Both strips are the same length. Compare how much of the game each part covers.',
+    cases: {
+      ...Object.fromEntries([1, 2].map(q => [q, { answer: 'One half', choices: ['One half', 'One quarter', 'Same size'],
+        explanation: 'One half covers 2 of the 4 equal quarters. One quarter covers 1. One half is bigger.',
+        rows: [[2, [1], null], [4, [1], null]], guidedCurrent: [null, null], caption: 'One half is bigger.' }])),
+      3: { answer: 'Same size', choices: ['One half', 'Same size', 'Two quarters'],
+        explanation: 'One half covers 2 of the 4 equal quarters, the same as two quarters. They are the same size.',
+        rows: [[4, [1, 2], null], [2, [1], null]], guidedCurrent: [null, null], caption: 'They are the same size.' },
+      4: { answer: 'Three quarters', choices: ['One half', 'Same size', 'Three quarters'],
+        explanation: 'One half covers 2 of the 4 equal quarters. Three quarters covers 3. Three quarters is bigger.',
+        rows: [[2, [1], null], [4, [1, 2, 3], null]], guidedCurrent: [null, null], caption: 'Three quarters is bigger.' },
+    },
+  },
+};
+const QH_HALF_READ = Object.fromEntries([1, 2, 3, 4].map(q => [q, {
+  answer: q <= 2 ? '1st half' : '2nd half',
+  rows: [[4, q <= 2 ? [1, 2] : [3, 4], q, true, HALVES]], caption: `Q${q} is in the ${q <= 2 ? '1st' : '2nd'} half`,
+}]));
+
+function rowFacts(row) {
+  const indexes = predicate => row.pieces.flatMap((piece, index) => predicate(piece) ? [index + 1] : []);
+  return [row.pieces.length, indexes(piece => piece.shaded), indexes(piece => piece.current)[0] ?? null, row.halftime, row.groups];
+}
+
+function expectedRow([pieces, shaded, current, halftime = false, groups = null]) {
+  return [pieces, shaded, current, halftime, groups];
+}
+
+function expectStages(question, expected, label) {
+  const { initial, guided, worked } = question.visuals;
+  // The first try adds no picture and names nothing.
+  assert.equal(initial.type, 'none', `${label}: initial adds no picture`);
+  assert.deepEqual(plain(initial.data), {}, label);
+  assert.equal(initial.result, null, label);
+  // The retry shows the same equal pieces unsolved: no shading, split, half labels or caption.
+  assert.equal(guided.type, 'game-parts', label);
+  assert.equal(guided.result, null, label);
+  assert.equal(guided.data.caption, null, `${label}: guided caption`);
+  assert.deepEqual(plain(guided.data.rows.map(rowFacts)), expected.rows.map((row, index) => [
+    row[0], [], (expected.guidedCurrent ?? [])[index] !== undefined ? expected.guidedCurrent[index] : row[2], false, null,
+  ]), `${label}: guided pieces`);
+  // Only the worked stage shades the answer and states it.
+  assert.equal(worked.type, 'game-parts', label);
+  assert.deepEqual(plain(worked.result.value), expected.answer, label);
+  assert.deepEqual(plain(worked.data.rows.map(rowFacts)), expected.rows.map(expectedRow), `${label}: worked pieces`);
+  assert.equal(worked.data.caption, expected.caption, `${label}: worked caption`);
+  assert.equal(worked.data.model, expected.rows.length > 1 ? 'compare' : 'strip', label);
+  // Stage ARIA never interprets the result before the worked stage. A part the
+  // prompt itself names (a comparison's two parts) may be named again.
+  const said = [expected.caption.toLowerCase()];
+  if (typeof expected.answer === 'string' && !question.prompt.text.toLowerCase().includes(expected.answer.toLowerCase())) {
+    said.push(expected.answer.toLowerCase());
+  }
+  for (const stage of [initial, guided]) {
+    for (const text of said) assert.equal(stage.ariaLabel.toLowerCase().includes(text), false, `${label}: ${stage.stage} ARIA names "${text}"`);
+    if (typeof expected.answer === 'number') {
+      assert.doesNotMatch(stage.ariaLabel, new RegExp(`(^|[^0-9Q])${expected.answer} quarters?\\b`), `${label}: ${stage.stage} ARIA count`);
+    }
+  }
+}
+
+test('#51 quarter and half families: exact wording, eligibility, rule bindings, answers and choices in every quarter on both sides', () => {
+  const { domain, questions } = loadModules();
+  const ids = [...QUARTER_HALF_FAMILY_IDS, 'half-read'];
+  const budgets = {};
+  for (const possession of ['offense', 'defense']) {
+    for (const q of [1, 2, 3, 4]) {
+      const snap = makeSnap(domain, { possession, quarter: q }, 4);
+      const inspection = questions.inspect(snap, questions.DEFAULT_PROFILE);
+      // plain(): the inspection array comes from the VM realm.
+      const eligibleIds = plain(inspection.eligible.map(entry => entry.familyId));
+      assert.equal(eligibleIds.includes('quarter-read'), false, `Q${q}: quarter-read stays out of live play`);
+      const expectedIds = [...QUARTER_HALF_FAMILY_IDS.filter(id => QH[id].quarters.includes(q)), 'half-read'];
+      assert.deepEqual(eligibleIds.filter(id => ids.includes(id)).sort(), [...expectedIds].sort(), `${possession} Q${q}`);
+      for (const id of QUARTER_HALF_FAMILY_IDS.filter(id => !QH[id].quarters.includes(q))) {
+        assert.equal(inspection.declined.find(entry => entry.familyId === id)?.reason.code, 'quarter-not-eligible', `${id} Q${q}`);
+        assert.throws(() => questions.build(snap, id), error => error.code === 'family-not-eligible', `${id} Q${q}`);
+      }
+      budgets[q] = Number(inspection.eligible.filter(entry => ids.includes(entry.familyId))
+        .reduce((sum, entry) => sum + entry.weight, 0).toFixed(2));
+      for (const id of QUARTER_HALF_FAMILY_IDS.filter(id => QH[id].quarters.includes(q))) {
+        const spec = QH[id];
+        const expected = spec.cases[q];
+        const label = `${possession} Q${q} ${id}`;
+        const question = questions.build(snap, id, { presentationRng: () => 0.37 });
+        verifyGrounding(questions, snap, question);
+        assert.equal(question.prompt.text, spec.prompt(q), label);
+        assert.equal(question.hint.text, spec.hint(q), label);
+        assert.equal(question.workedExplanation.text, expected.explanation, label);
+        assert.deepEqual(plain(question.answer.value), expected.answer, label);
+        assert.deepEqual(plain(question.choices.map(choice => choice.value)).sort(), [...expected.choices].sort(), label);
+        assert.equal(new Set(question.choices.map(choice => choice.label)).size, question.choices.length, label);
+        assert.deepEqual(plain(question.bindings), [
+          { id: 'quarter', source: { kind: 'context', path: '/context/quarter' }, value: q },
+          { id: 'regulationQuarters', source: { kind: 'rule', ruleId: 'game.regulationQuarters' }, value: 4 },
+        ], label);
+        assert.equal(question.evidenceClass, 'independent', label);
+        assert.equal(question.answerExposure, 'modeled-with-result-hidden', label);
+        assert.equal(question.concept, 'quarter-half-structure', label);
+        assert.equal(question.skill, 'quarter-half-structure', label);
+        assert.equal(question.purpose, 'coreReview', label);
+        assert.equal(question.weight, spec.weight, label);
+        if (spec.source === 'football-only') {
+          assert.deepEqual([question.curriculumSource, question.introducedOnPage], ['football-only', null], label);
+        } else {
+          assert.deepEqual([question.curriculumSource, question.worktext, question.edition, question.introducedOnPage, question.coverageThroughPage],
+            ['workbook', 'Math Mammoth Grade 1-B', 2026, spec.source, spec.source], label);
+        }
+        expectStages(question, expected, label);
+      }
+      // half-read keeps its identity, binding and choices with the staged picture.
+      const half = questions.build(snap, 'half-read', { presentationRng: () => 0.37 });
+      verifyGrounding(questions, snap, half);
+      assert.deepEqual(plain(half.choices.map(choice => choice.value)).sort(), ['1st half', '2nd half', 'Final', 'Halftime']);
+      assert.equal(half.prompt.text, `The scoreboard shows Q${q}. What part of the game is it?`);
+      expectStages(half, QH_HALF_READ[q], `${possession} Q${q} half-read`);
+    }
+  }
+  // The agreed shared quarter-half budget, with half-read at its existing 0.4.
+  assert.deepEqual(budgets, { 1: 1.5, 2: 1.35, 3: 1.5, 4: 1.3 });
+  assert.equal(questions.RULES['game.regulationQuarters'], 4);
+  for (const familyIds of Object.values(questions.CALL_AFFINITIES)) {
+    assert.equal(familyIds.some(id => ids.includes(id)), false, 'no call boosts the quarter-half budget');
+  }
+});
+
+test('#51 numeric quarter counts offer four unique choices with the counting-the-current-quarter slip', () => {
+  const { domain, questions } = loadModules();
+  // Counting the quarter being played as well is the expected slip.
+  for (const [id, q, answer, slip] of [
+    ['quarters-still-to-come', 1, 3, 4], ['quarters-still-to-come', 2, 2, 3],
+    ['quarters-still-to-come', 3, 1, 2], ['quarters-still-to-come', 4, 0, 1],
+    ['quarters-before-halftime', 1, 1, 2],
+    ['quarters-finished', 3, 2, 3], ['quarters-finished', 4, 3, 4],
+  ]) {
+    const question = questions.build(makeSnap(domain, { quarter: q }, 4), id);
+    const values = question.choices.map(choice => choice.value);
+    assert.equal(question.answer.value, answer, `${id} Q${q}`);
+    assert.equal(values.length, 4, `${id} Q${q}`);
+    assert.equal(new Set(values).size, 4, `${id} Q${q}`);
+    assert.ok(values.includes(slip), `${id} Q${q} offers ${slip}`);
+    assert.ok(values.every(value => Number.isInteger(value) && value >= 0 && value <= 4), `${id} Q${q}`);
+  }
+  // Comparisons always offer both named parts and Same size, so a retry still has a choice.
+  for (const q of [1, 2, 3, 4]) {
+    const question = questions.build(makeSnap(domain, { quarter: q }, 4), 'game-part-compare');
+    assert.equal(question.choices.length, 3);
+    assert.ok(question.choices.some(choice => choice.value === 'Same size'));
+    assert.match(question.prompt.text, /Which is bigger, or are they the same size\?$/);
+  }
+});
+
+test('#51 guided-first and guided support show the unsolved pieces from the first frame', () => {
+  const { domain, questions } = loadModules();
+  for (const id of [...QUARTER_HALF_FAMILY_IDS, 'half-read']) {
+    const q = id === 'quarters-before-halftime' ? 1 : id === 'quarters-finished' || id === 'second-half-quarters' ? 3 : 2;
+    const snap = makeSnap(domain, { quarter: q }, 4);
+    const guided = questions.build(snap, id, { support: 'guided' });
+    assert.equal(guided.support, 'guided', id);
+    assert.equal(guided.math.type, 'game-parts', id);
+    assert.equal(guided.math.result, null, id);
+    assert.equal(guided.math.data.rows.some(row => row.pieces.some(piece => piece.shaded) || row.halftime || row.groups), false, id);
+    const initial = questions.build(snap, id, { support: 'initial' });
+    assert.equal(initial.math.type, 'none', id);
+    const worked = questions.build(snap, id, { support: 'worked' });
+    assert.equal(worked.math.revealsAnswer, true, id);
+  }
+});
+
+test('#51 workbook game parts follow the Grade 1-B page; football-only quarter counts do not', async () => {
+  const { questions, domain } = await loadSchedulerModules();
+  const snap = makeSnap(domain, { quarter: 2 }, 4);
+  const workbook = { 'game-part-boundary': 68, 'halves-make-whole': 68, 'game-part-compare': 71 };
+  for (const page of [67, 68, 70, 71, 113]) {
+    const inspection = questions.inspect(snap, bookPage(page));
+    const ids = inspection.eligible.map(row => row.familyId);
+    for (const [id, introduced] of Object.entries(workbook)) {
+      assert.equal(ids.includes(id), page >= introduced, `${id} at p${page}`);
+      if (page < introduced) {
+        assert.equal(inspection.declined.find(row => row.familyId === id).reason.code, 'curriculum-not-included', `${id} at p${page}`);
+        assert.throws(() => questions.build(snap, id, { profile: bookPage(page) }), error => error.code === 'curriculum-not-included');
+      } else {
+        assert.deepEqual(plain(questions.sourceStatus(questions.FAMILY_REGISTRY.scrimmage.find(row => row.familyId === id), bookPage(page))),
+          { included: true, guided: false }, `${id} at p${page}`);
+      }
+    }
+    for (const id of ['quarters-still-to-come', 'quarters-in-half', 'half-read']) assert.ok(ids.includes(id), `${id} at p${page}`);
+  }
+});
+
+test('#51 quarter and half copy stays natural, structural and free of clock, overtime or invented history', () => {
+  const { domain, questions } = loadModules();
+  const jargon = /goal-distance (?:model|strip)|committed score|this exact play|proposed (?:gain|yard|play|move|addition)|overtime|minutes?|clock|seconds|ordinal|a half is two equal parts|it's halftime|fraction|1\/2|1\/4/i;
+  for (const q of [1, 2, 3, 4]) {
+    const snap = makeSnap(domain, { quarter: q }, 4);
+    for (const id of [...QUARTER_HALF_FAMILY_IDS, 'half-read'].filter(id => id === 'half-read' || QH[id].quarters.includes(q))) {
+      const question = questions.build(snap, id);
+      const copy = [
+        question.prompt.text, question.hint.text, question.workedExplanation.text,
+        question.workedReview.title, question.workedReview.goal.text, question.workedReview.footballMeaning.text,
+        ...question.workedReview.steps.map(step => step.text),
+        ...Object.values(question.visuals).map(visual => visual.ariaLabel),
+        ...question.choices.map(choice => choice.label),
+      ].join(' ');
+      assert.doesNotMatch(copy, jargon, `Q${q} ${id}`);
+      assert.deepEqual(plain(question.workedReview.steps.map(step => step.text)), [question.hint.text, question.workedExplanation.text]);
     }
   }
 });

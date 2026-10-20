@@ -72,6 +72,14 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
     'conversionValue',
     'tryMarkerForDirection',
     'subtract',
+    'quartersAfterCurrent',
+    'quartersBeforeHalftime',
+    'quartersFinished',
+    'quartersInHalf',
+    'secondHalfQuarters',
+    'gamePartAtBoundary',
+    'halvesMakeWhole',
+    'compareGameParts',
   ]);
 
   const ANSWER_EXPOSURE_POLICIES = Object.freeze([
@@ -118,6 +126,9 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
     'game.patPoints': 1,
     'game.twoPointPoints': 2,
     'game.fieldGoalPoints': 3,
+    // #51: the whole is one four-quarter regulation game; overtime is never
+    // counted. Halves are its two equal parts, so halftime follows quarter 2.
+    'game.regulationQuarters': 4,
   });
 
   const SPECIAL_CONTEXT_KEYS = deepFreeze({
@@ -181,10 +192,12 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
     'defense:deepPass': ['goal-distance-tens', 'goal-distance-ones', 'touchdown-base-points'],
   });
 
-  // #51: the user rejected the symbol comparison as live instruction. It stays
-  // registered so direct builds, worked review and old history still decode,
-  // but live inspection never offers it, whatever its weak-spot evidence.
-  const RETIRED_LIVE_FAMILIES = Object.freeze(['gain-vs-needed-comparison']);
+  // #51: the user rejected the symbol comparison as live instruction, and
+  // copying the scoreboard quarter label as too easy beside the quarter and
+  // half reasoning families. Both stay registered so direct builds, worked
+  // review and old history still decode, but live inspection never offers
+  // them, whatever their weak-spot evidence.
+  const RETIRED_LIVE_FAMILIES = Object.freeze(['gain-vs-needed-comparison', 'quarter-read']);
 
   const DEFAULT_PROFILE = deepFreeze({
     completedThroughPage: CURRENT_COMPLETED_PAGE,
@@ -825,6 +838,8 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
     visualData,
     guidedVisualType = null,
     guidedVisualData = null,
+    initialVisualType = null,
+    workedVisualData = null,
     choicePresentation = null,
     challengeFixture = null,
     reviewMeaning = null,
@@ -848,6 +863,10 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
       visualData,
       // Optional retry-only picture; initial and worked keep visualType.
       ...(guidedVisualType ? { guidedVisualType, guidedVisualData } : {}),
+      // #51 quarters and halves: 'none' adds no picture to the first try, and
+      // the worked stage alone draws the solved data.
+      ...(initialVisualType ? { initialVisualType } : {}),
+      ...(workedVisualData ? { workedVisualData } : {}),
       choicePresentation,
       visualAriaLabels: {
         initial: initialAriaLabel,
@@ -1173,6 +1192,294 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
       }));
     },
   }));
+
+  // #51 quarters and halves. Every family reasons about the same fixed
+  // four-quarter regulation game, bound as a rule, and reads only the frozen
+  // live quarter; nothing claims a clock, halftime now, or overtime. Pictures
+  // are equal pieces of that one game. Guided pieces show labels and the
+  // quarter being played, never the counted set, a result, or a halftime
+  // split that would mark it; the worked stage alone adds the solved shading,
+  // split and caption.
+  const QUARTER_WORDS = Object.freeze({ 1: 'first', 2: 'second', 3: 'third', 4: 'fourth' });
+  const GAME_PART_NAMES = Object.freeze({ 1: 'One quarter', 2: 'One half', 3: 'Three quarters' });
+  const HALF_GROUPS = Object.freeze(['1st half', '2nd half']);
+
+  function quarterBindings(snap) {
+    return [
+      contextBinding(snap, 'quarter', '/context/quarter'),
+      ruleBinding('regulationQuarters', 'game.regulationQuarters'),
+    ];
+  }
+
+  function quarterRange(from, to) {
+    return Array.from({ length: Math.max(0, to - from + 1) }, (_, index) => from + index);
+  }
+
+  function quarterList(quarters) {
+    const labels = quarters.map((quarter) => `Q${quarter}`);
+    return labels.length < 2 ? labels.join('') : `${labels.slice(0, -1).join(', ')} and ${labels.at(-1)}`;
+  }
+
+  function quarterRow(regulation, { current = null, shaded = [], halftime = false, groups = null, labels = true, caption = null } = {}) {
+    return {
+      caption,
+      pieces: quarterRange(1, regulation).map((quarter) => ({
+        label: labels ? `Q${quarter}` : null, current: quarter === current, shaded: shaded.includes(quarter),
+      })),
+      halftime,
+      groups: groups ? [...groups] : null,
+    };
+  }
+
+  function halfRow({ shaded = [], labels = true, caption = null } = {}) {
+    return {
+      caption,
+      pieces: [1, 2].map((half) => ({ label: labels ? HALF_GROUPS[half - 1] : null, current: false, shaded: shaded.includes(half) })),
+      halftime: false,
+      groups: null,
+    };
+  }
+
+  function gameParts(rows, caption = null) {
+    return { model: rows.length > 1 ? 'compare' : 'strip', rows, caption };
+  }
+
+  function quarterNotEligible(detail) {
+    return { decline: decline('quarter-not-eligible', detail, ['/context/quarter']) };
+  }
+
+  function quarterHalfMeta(familyId, weight, operationType, source = { curriculumSource: 'football-only' }) {
+    return makeMeta({ familyId, skill: 'quarter-half-structure', concept: 'quarter-half-structure', purpose: 'coreReview',
+      tier: 'football-context', weight, operationType, answerExposure: 'modeled-with-result-hidden',
+      evidenceClass: 'independent', ...source });
+  }
+
+  // Grade 1-B (2026): halves, quarters and the whole on p. 68; comparing a half
+  // with one, two or three quarters on p. 71.
+  const HALVES_QUARTERS_PAGE = Object.freeze({ curriculumSource: 'workbook', worktext: 'Math Mammoth Grade 1-B', edition: 2026, introducedOnPage: 68, coverageThroughPage: 68 });
+  const COMPARE_PARTS_PAGE = Object.freeze({ curriculumSource: 'workbook', worktext: 'Math Mammoth Grade 1-B', edition: 2026, introducedOnPage: 71, coverageThroughPage: 71 });
+
+  const QUARTER_HALF_FAMILIES = [
+    {
+      meta: quarterHalfMeta('quarters-still-to-come', 0.3, 'quartersAfterCurrent'),
+      derive(snap) {
+        const quarter = snap.context.quarter;
+        const regulation = RULES['game.regulationQuarters'];
+        const later = quarterRange(quarter + 1, regulation);
+        const answer = later.length;
+        const come = answer === 1 ? 'comes' : 'come';
+        return eligible(makeSemantic({
+          bindings: quarterBindings(snap),
+          operationType: 'quartersAfterCurrent', operandIds: ['quarter', 'regulationQuarters'], answer,
+          prompt: `It's the ${QUARTER_WORDS[quarter]} quarter. How many more quarters come after this one?`,
+          hint: "Count the quarters after the one we're playing. Don't include the current quarter.",
+          explanation: answer === 0
+            ? `Q${quarter} is the last of the game's ${regulation} quarters, so 0 quarters come after this one.`
+            : `The game has ${regulation} quarters. After Q${quarter} ${come} ${quarterList(later)}, so ${countNoun(answer, 'quarter')} ${come} after this one.`,
+          choiceSpec: numericChoiceSpec(0, regulation),
+          visualType: 'game-parts', initialVisualType: 'none',
+          visualData: gameParts([quarterRow(regulation, { current: quarter })]),
+          workedVisualData: gameParts([quarterRow(regulation, { current: quarter, shaded: later })], `${countNoun(answer, 'quarter')} after Q${quarter}`),
+          initialAriaLabel: `The game is in Q${quarter}; the number of quarters after it is hidden.`,
+          guidedAriaLabel: `Four equal quarter boxes, Q1 to Q4, with Q${quarter} marked now. Count the boxes after Q${quarter}; the count stays hidden.`,
+          workedAriaLabel: answer === 0
+            ? `Q${quarter} is now, and no quarter box comes after it: 0 quarters.`
+            : `Q${quarter} is now. ${quarterList(later)} ${come} after it: ${countNoun(answer, 'quarter')}.`,
+        }));
+      },
+    },
+    {
+      meta: quarterHalfMeta('quarters-before-halftime', 0.15, 'quartersBeforeHalftime'),
+      derive(snap) {
+        const quarter = snap.context.quarter;
+        if (quarter !== 1) return quarterNotEligible('Only the first quarter has another whole quarter to play before halftime.');
+        const regulation = RULES['game.regulationQuarters'];
+        const lastBeforeHalftime = regulation / 2;
+        const before = quarterRange(quarter + 1, lastBeforeHalftime);
+        const answer = before.length;
+        return eligible(makeSemantic({
+          bindings: quarterBindings(snap),
+          operationType: 'quartersBeforeHalftime', operandIds: ['quarter', 'regulationQuarters'], answer,
+          prompt: `It's the ${QUARTER_WORDS[quarter]} quarter. After this quarter, how many more quarters will be played before halftime?`,
+          hint: 'Halftime splits the four quarters into two equal halves. Count the quarters after this one that come before halftime.',
+          explanation: `Halftime comes after Q${lastBeforeHalftime}. After Q${quarter}, only ${quarterList(before)} is played before halftime, so ${countNoun(answer, 'quarter')}.`,
+          choiceSpec: numericChoiceSpec(0, regulation),
+          visualType: 'game-parts', initialVisualType: 'none',
+          visualData: gameParts([quarterRow(regulation, { current: quarter })]),
+          workedVisualData: gameParts([quarterRow(regulation, { current: quarter, shaded: before, halftime: true })], `${countNoun(answer, 'quarter')} before halftime`),
+          initialAriaLabel: `The game is in Q${quarter}; the number of quarters before halftime is hidden.`,
+          guidedAriaLabel: `Four equal quarter boxes, Q1 to Q4, with Q${quarter} marked now. Find where halftime splits them into two equal halves; the count stays hidden.`,
+          workedAriaLabel: `Halftime comes after Q${lastBeforeHalftime}. ${quarterList(before)} is the ${countNoun(answer, 'quarter')} after Q${quarter} before halftime.`,
+        }));
+      },
+    },
+    {
+      meta: quarterHalfMeta('quarters-finished', 0.2, 'quartersFinished'),
+      derive(snap) {
+        const quarter = snap.context.quarter;
+        if (quarter < 3) return quarterNotEligible('Finished-quarter counting is asked in the third and fourth quarters.');
+        const regulation = RULES['game.regulationQuarters'];
+        const done = quarterRange(1, quarter - 1);
+        const answer = done.length;
+        return eligible(makeSemantic({
+          bindings: quarterBindings(snap),
+          operationType: 'quartersFinished', operandIds: ['quarter'], answer,
+          prompt: `We're playing the ${QUARTER_WORDS[quarter]} quarter. How many quarters are completely finished?`,
+          hint: "Count only the quarters before the one we're playing. The quarter we're playing isn't finished yet.",
+          explanation: `Q${quarter} is still being played. ${quarterList(done)} ${isOrAre(answer)} finished, so ${countNoun(answer, 'quarter')} ${isOrAre(answer)} completely finished.`,
+          choiceSpec: numericChoiceSpec(0, regulation),
+          visualType: 'game-parts', initialVisualType: 'none',
+          visualData: gameParts([quarterRow(regulation, { current: quarter })]),
+          workedVisualData: gameParts([quarterRow(regulation, { current: quarter, shaded: done })], `${countNoun(answer, 'quarter')} finished`),
+          initialAriaLabel: `The game is in Q${quarter}; the number of finished quarters is hidden.`,
+          guidedAriaLabel: `Four equal quarter boxes, Q1 to Q4, with Q${quarter} marked now. Count the boxes before Q${quarter}; the count stays hidden.`,
+          workedAriaLabel: `Q${quarter} is still being played. ${quarterList(done)} ${isOrAre(answer)} finished: ${countNoun(answer, 'quarter')}.`,
+        }));
+      },
+    },
+    {
+      meta: quarterHalfMeta('quarters-in-half', 0.15, 'quartersInHalf'),
+      derive(snap) {
+        if (snap.context.quarter > 2) return quarterNotEligible('The first-half quarter count is asked during the first half.');
+        const regulation = RULES['game.regulationQuarters'];
+        const firstHalf = quarterRange(1, regulation / 2);
+        const answer = firstHalf.length;
+        return eligible(makeSemantic({
+          bindings: quarterBindings(snap),
+          operationType: 'quartersInHalf', operandIds: ['regulationQuarters'], answer,
+          prompt: 'How many quarters make the first half of this game?',
+          hint: 'The game has four equal quarters. The first half is one of two equal parts of the game.',
+          explanation: `The ${regulation} quarters split into two equal halves. ${quarterList(firstHalf)} make the first half, so ${countNoun(answer, 'quarter')} make the first half.`,
+          choiceSpec: fixedChoiceSpec([1, 2, 3, 4]),
+          visualType: 'game-parts', initialVisualType: 'none',
+          visualData: gameParts([quarterRow(regulation)]),
+          workedVisualData: gameParts([quarterRow(regulation, { shaded: firstHalf, halftime: true, groups: HALF_GROUPS })], `${countNoun(answer, 'quarter')} in the first half`),
+          initialAriaLabel: 'The number of quarters in the first half is hidden.',
+          guidedAriaLabel: 'Four equal quarter boxes, Q1 to Q4, with no split marked. Split them into two equal halves; the count stays hidden.',
+          workedAriaLabel: `Halftime splits the four quarters into two equal halves. ${quarterList(firstHalf)} make the first half: ${countNoun(answer, 'quarter')}.`,
+        }));
+      },
+    },
+    {
+      meta: quarterHalfMeta('second-half-quarters', 0.1, 'secondHalfQuarters'),
+      derive(snap) {
+        if (snap.context.quarter < 3) return quarterNotEligible('The second-half quarters are asked during the second half.');
+        const regulation = RULES['game.regulationQuarters'];
+        const firstHalf = quarterRange(1, regulation / 2);
+        const secondHalf = quarterRange(regulation / 2 + 1, regulation);
+        const answer = `${ordinal(secondHalf[0])} and ${ordinal(secondHalf.at(-1))}`;
+        return eligible(makeSemantic({
+          bindings: quarterBindings(snap),
+          operationType: 'secondHalfQuarters', operandIds: ['regulationQuarters'], answer,
+          prompt: 'Which two quarters make the second half of this game?',
+          hint: 'The game has four equal quarters. Split them in order into two equal halves. The second half comes after halftime.',
+          explanation: `${quarterList(firstHalf)} make the first half, and ${quarterList(secondHalf)} make the second half: the ${answer} quarters.`,
+          choiceSpec: fixedChoiceSpec(['1st and 2nd', '2nd and 3rd', '3rd and 4th']),
+          visualType: 'game-parts', initialVisualType: 'none',
+          visualData: gameParts([quarterRow(regulation)]),
+          workedVisualData: gameParts([quarterRow(regulation, { shaded: secondHalf, halftime: true, groups: HALF_GROUPS })], `The ${answer} quarters`),
+          initialAriaLabel: 'The two quarters in the second half are hidden.',
+          guidedAriaLabel: 'Four equal quarter boxes, Q1 to Q4, with no split marked. Split them in order into two equal halves; the second-half quarters stay hidden.',
+          workedAriaLabel: `Halftime splits the four quarters into two equal halves. ${quarterList(secondHalf)} make the second half.`,
+        }));
+      },
+    },
+    {
+      meta: quarterHalfMeta('game-part-boundary', 0.2, 'gamePartAtBoundary', HALVES_QUARTERS_PAGE),
+      derive(snap) {
+        const quarter = snap.context.quarter;
+        const regulation = RULES['game.regulationQuarters'];
+        // The fourth quarter has no later boundary inside regulation to ask about.
+        if (quarter >= regulation) return quarterNotEligible('The fourth quarter has no later quarter boundary inside regulation.');
+        const asksLeft = quarter === regulation - 1;
+        const counted = asksLeft ? quarterRange(quarter + 1, regulation) : quarterRange(1, quarter);
+        const answer = GAME_PART_NAMES[counted.length];
+        const halftime = quarter === regulation / 2;
+        const when = halftime ? 'At halftime' : `When the ${QUARTER_WORDS[quarter]} quarter ends`;
+        const status = asksLeft ? 'left' : 'finished';
+        const part = answer.toLowerCase();
+        return eligible(makeSemantic({
+          bindings: quarterBindings(snap),
+          operationType: 'gamePartAtBoundary', operandIds: ['quarter', 'regulationQuarters'], answer,
+          prompt: `${when}, what part of this four-quarter game is ${status}?`,
+          hint: halftime
+            ? 'Halftime comes when the second quarter ends. Count the finished quarters, then name that part of the four-quarter game.'
+            : `The game has four equal quarters. Count the quarters ${asksLeft ? 'still to play' : 'that are finished'} when this quarter ends, then name that part of the game.`,
+          explanation: halftime
+            ? `At halftime, ${quarterList(counted)} are finished: ${counted.length} of the ${regulation} equal quarters. Two quarters make ${part} of the game.`
+            : asksLeft
+              ? `When Q${quarter} ends, only ${quarterList(counted)} is left: ${counted.length} of the ${regulation} equal quarters. That is ${part} of the game.`
+              : `When Q${quarter} ends, ${counted.length} of the ${regulation} equal quarters ${isOrAre(counted.length)} finished. That is ${part} of the game.`,
+          choiceSpec: fixedChoiceSpec(['One quarter', 'One half', 'Three quarters', 'The whole game']),
+          visualType: 'game-parts', initialVisualType: 'none',
+          visualData: gameParts([quarterRow(regulation, { current: quarter })]),
+          workedVisualData: gameParts([quarterRow(regulation, { current: quarter, shaded: counted, halftime, groups: halftime ? HALF_GROUPS : null })], `${answer} ${status}`),
+          initialAriaLabel: `The game is in Q${quarter}; the part of the game ${status} is hidden.`,
+          guidedAriaLabel: `Four equal quarter boxes, Q1 to Q4, with Q${quarter} marked now. Count the boxes ${status} ${halftime ? 'at halftime' : `when Q${quarter} ends`}; the part stays hidden.`,
+          workedAriaLabel: `${quarterList(counted)} ${counted.length === 1 ? 'is' : 'are'} ${status} ${halftime ? 'at halftime' : `when Q${quarter} ends`}: ${counted.length} of ${regulation} equal quarters, ${part} of the game.`,
+        }));
+      },
+    },
+    {
+      meta: quarterHalfMeta('halves-make-whole', 0.1, 'halvesMakeWhole', HALVES_QUARTERS_PAGE),
+      derive(snap) {
+        const answer = 'One whole game';
+        const caption = 'This game · two equal halves';
+        return eligible(makeSemantic({
+          bindings: quarterBindings(snap),
+          operationType: 'halvesMakeWhole', operandIds: ['regulationQuarters'], answer,
+          prompt: 'The first half and the second half together make what?',
+          hint: 'A half is one of two equal parts. Put the first half and the second half together, then see how much of the game they cover.',
+          explanation: 'The first half and the second half are the two equal parts of this game. Together they make one whole game.',
+          choiceSpec: fixedChoiceSpec(['One quarter', 'One half', 'One whole game']),
+          visualType: 'game-parts', initialVisualType: 'none',
+          visualData: gameParts([halfRow({ caption })]),
+          workedVisualData: gameParts([halfRow({ caption, shaded: [1, 2] })], answer),
+          initialAriaLabel: 'What the two halves make together is hidden.',
+          guidedAriaLabel: 'This game as two equal halves, 1st half and 2nd half, with nothing shaded; what they make together stays hidden.',
+          workedAriaLabel: 'Both halves are shaded: the first half and the second half together make one whole game.',
+        }));
+      },
+    },
+    {
+      meta: quarterHalfMeta('game-part-compare', 0.2, 'compareGameParts', COMPARE_PARTS_PAGE),
+      derive(snap) {
+        const quarter = snap.context.quarter;
+        const regulation = RULES['game.regulationQuarters'];
+        const half = { name: 'one half', quarters: regulation / 2, row: 'halves' };
+        // One variant per quarter, so no extra draw: a half against one, two or three quarters.
+        const [first, second] = quarter <= 2
+          ? [half, { name: 'one quarter', quarters: 1, row: 'quarters' }]
+          : quarter === 3
+            ? [{ name: 'two quarters', quarters: 2, row: 'quarters' }, half]
+            : [half, { name: 'three quarters', quarters: 3, row: 'quarters' }];
+        const quarterPart = first.row === 'quarters' ? first : second;
+        const answer = first.quarters === second.quarters ? 'Same size'
+          : capitalize(first.quarters > second.quarters ? first.name : second.name);
+        const conclusion = answer === 'Same size' ? 'They are the same size.' : `${answer} is bigger.`;
+        const row = (part, solved) => (part.row === 'halves'
+          ? halfRow({ labels: false, caption: 'Same game · two equal halves', shaded: solved ? [1] : [] })
+          : quarterRow(regulation, { labels: false, caption: 'Same game · four equal quarters', shaded: solved ? quarterRange(1, part.quarters) : [] }));
+        const halfCovers = `One half covers ${half.quarters} of the ${regulation} equal quarters`;
+        return eligible(makeSemantic({
+          bindings: quarterBindings(snap),
+          operationType: 'compareGameParts', operandIds: ['quarter', 'regulationQuarters'], answer,
+          prompt: `Compare ${first.name} and ${second.name} of this same game. Which is bigger, or are they the same size?`,
+          hint: 'Picture this game split into two equal halves and into four equal quarters. Both strips are the same length. Compare how much of the game each part covers.',
+          explanation: answer === 'Same size'
+            ? `${halfCovers}, the same as ${quarterPart.name}. ${conclusion}`
+            : `${halfCovers}. ${capitalize(quarterPart.name)} covers ${quarterPart.quarters}. ${conclusion}`,
+          choiceSpec: fixedChoiceSpec([capitalize(first.name), capitalize(second.name), 'Same size']),
+          visualType: 'game-parts', initialVisualType: 'none',
+          visualData: gameParts([row(first, false), row(second, false)]),
+          workedVisualData: gameParts([row(first, true), row(second, true)], conclusion),
+          initialAriaLabel: `Comparing ${first.name} and ${second.name} of this game; the bigger part is hidden.`,
+          guidedAriaLabel: 'This game drawn twice at the same length, once as two equal halves and once as four equal quarters, with nothing shaded; which part is bigger stays hidden.',
+          workedAriaLabel: `${capitalize(first.name)} is shaded on one strip and ${second.name} on the other. ${conclusion}`,
+        }));
+      },
+    },
+  ];
 
   const FAMILY_DEFINITIONS = [
     ...ARITHMETIC_FAMILIES,
@@ -1530,20 +1837,27 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
       derive(snap) {
         const quarter = snap.context.quarter;
         const answer = quarter <= 2 ? '1st half' : '2nd half';
+        // #51: the same staged game-parts picture as the quarter families, with
+        // its existing binding, prompt and choices.
+        const regulation = RULES['game.regulationQuarters'];
+        const halfQuarters = quarter <= regulation / 2 ? quarterRange(1, regulation / 2) : quarterRange(regulation / 2 + 1, regulation);
         return eligible(makeSemantic({
           bindings: [contextBinding(snap, 'quarter', '/context/quarter')],
           operationType: 'halfFromQuarter', operandIds: ['quarter'], answer,
           prompt: `The scoreboard shows Q${quarter}. What part of the game is it?`,
           hint: `Split the four quarters into two equal groups in order, then place Q${quarter} in its group.`,
           explanation: `Q1 and Q2 make the 1st half. Q3 and Q4 make the 2nd half. Q${quarter} is in the ${answer}.`,
-          choiceSpec: fixedChoiceSpec(['1st half', 'Halftime', '2nd half', 'Final']), visualType: 'quarter-half',
-          visualData: { quarter },
+          choiceSpec: fixedChoiceSpec(['1st half', 'Halftime', '2nd half', 'Final']),
+          visualType: 'game-parts', initialVisualType: 'none',
+          visualData: gameParts([quarterRow(regulation, { current: quarter })]),
+          workedVisualData: gameParts([quarterRow(regulation, { current: quarter, shaded: halfQuarters, halftime: true, groups: HALF_GROUPS })], `Q${quarter} is in the ${answer}`),
           initialAriaLabel: `Scoreboard quarter Q${quarter}; the matching half is hidden.`,
           guidedAriaLabel: `Group Q1 and Q2 together, then Q3 and Q4 together; the half for Q${quarter} remains hidden.`,
           workedAriaLabel: `Q${quarter} is in the ${answer}.`,
         }));
       },
     },
+    ...QUARTER_HALF_FAMILIES,
     {
       meta: makeMeta({ familyId: 'next-down', skill: 'football-number-sense', concept: 'down-progression', purpose: 'coreReview', tier: 'football-context', weight: 1.1, operationType: 'ordinal', answerExposure: 'modeled-with-result-hidden', evidenceClass: 'independent', curriculumSource: 'football-only' }),
       derive(snap) {
@@ -1957,6 +2271,46 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
       goal: 'Use the quarter number to decide whether the game is in the first or second half.',
       footballMeaning: 'Quarters one and two make the first half; quarters three and four make the second.',
     },
+    'quarters-still-to-come': {
+      title: 'Count the Quarters Left',
+      goal: 'Count the quarters that come after the one being played.',
+      footballMeaning: 'A game has four quarters, so the quarters after this one are the rest of the game.',
+    },
+    'quarters-before-halftime': {
+      title: 'Count to Halftime',
+      goal: 'Count the quarters after this one that come before halftime.',
+      footballMeaning: 'Halftime splits the four quarters into two equal halves, so the first half ends after the second quarter.',
+    },
+    'quarters-finished': {
+      title: 'Count the Finished Quarters',
+      goal: 'Count only the quarters before the one being played.',
+      footballMeaning: 'The quarter being played is not finished until it ends, so only the earlier quarters count.',
+    },
+    'quarters-in-half': {
+      title: 'Find the First Half',
+      goal: 'Split the four quarters into two equal halves and count the first half.',
+      footballMeaning: 'The first half is the part of the game before halftime.',
+    },
+    'second-half-quarters': {
+      title: 'Find the Second Half',
+      goal: 'Split the four quarters in order into two equal halves and name the second one.',
+      footballMeaning: 'The second half is the part of the game after halftime.',
+    },
+    'game-part-boundary': {
+      title: 'Name the Part of the Game',
+      goal: 'Count the finished or remaining quarters and name that part of the four-quarter game.',
+      footballMeaning: 'One quarter is one of four equal parts of the game. One half is one of two equal parts.',
+    },
+    'halves-make-whole': {
+      title: 'Put the Halves Together',
+      goal: 'Join the first half and the second half of the game.',
+      footballMeaning: 'The two equal halves together are the whole game.',
+    },
+    'game-part-compare': {
+      title: 'Compare Parts of the Game',
+      goal: 'Compare two parts of the same four-quarter game.',
+      footballMeaning: 'One half of the game is the same as two quarters, so it is bigger than one quarter and smaller than three quarters.',
+    },
     'next-down': {
       title: 'Find the Next Down',
       goal: 'Compare the play gain with the yards needed, then follow the down rule.',
@@ -2195,8 +2549,11 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
     const stage = (name) => {
       const revealsAnswer = name === 'worked' || visibleAtSource;
       const guidedModel = name === 'guided' && Boolean(semantic.guidedVisualType);
-      const type = guidedModel ? semantic.guidedVisualType : semantic.visualType;
-      const data = clone(guidedModel ? semantic.guidedVisualData : semantic.visualData);
+      const noInitialPicture = name === 'initial' && semantic.initialVisualType === 'none';
+      const solvedData = name === 'worked' && semantic.workedVisualData;
+      const type = noInitialPicture ? 'none' : guidedModel ? semantic.guidedVisualType : semantic.visualType;
+      const data = noInitialPicture ? {}
+        : clone(guidedModel ? semantic.guidedVisualData : solvedData ? semantic.workedVisualData : semantic.visualData);
       if (!revealsAnswer && ['base-ten-distance', 'base-ten-score'].includes(type)) {
         if (data.targetPlace === 'tens') data.tens = null;
         if (data.targetPlace === 'ones') data.ones = null;

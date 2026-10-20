@@ -66,6 +66,18 @@ repository-level `AGENTS.md`.
   own closed special-team context. The question gates that same frozen outcome;
   never substitute a random, merely football-themed, curriculum-only, or
   no-stakes question.
+- **Quarters and halves (#51).** Quarter/half families read only the frozen
+  live quarter and bind the fixed four-quarter regulation game as the rule
+  `game.regulationQuarters`; halves are its two equal parts, so halftime
+  follows quarter 2. Ask only what that quarter makes true ("It's the third
+  quarter", "When the first quarter ends", "At halftime" only during Q2);
+  never claim a clock, elapsed minutes, history, halftime now, or overtime.
+  Keep this whole separate from field pictures. Count/grouping families are
+  football-only; naming a part of the game and halves making the whole cite
+  Grade 1-B p. 68, and comparing a half with quarters cites p. 71. The first
+  try adds no picture; the retry shows unsolved equal pieces; only the worked
+  stage shades the answer. Scoreboard quarter-label reading is retired from
+  live play.
 - **Player two-point challenge (#186, user-requested exception).** The user
   asked that the player's own two-point tries use three-digit addition and
   subtraction. Only that try presents only the two challenge families

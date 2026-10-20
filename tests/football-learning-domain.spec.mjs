@@ -26,8 +26,9 @@ const session = rows => L.createSession({}, {}, now, rows);
 const state = rows => L.challengeStateFor(session(rows), 'line-to-gain');
 const successes = n => Array.from({ length: n }, (_, i) => row(i));
 
-test('explicit immutable two-ladder map covers only eight of the 42 registered families', () => {
-  assert.equal(families.length, 42);
+test('explicit immutable two-ladder map covers only eight of the 50 registered families', () => {
+  // #51 adds eight quarter and half families; none joins a challenge ladder.
+  assert.equal(families.length, 50);
   assert.equal(Object.keys(Q.CHALLENGE_MAP).length, 8);
   // #51: the two wider past-marker variants join line-to-gain as core work.
   for (const familyId of ['line-to-gain-surplus-ch8', 'line-to-gain-surplus-ch8-ones-subtract']) {
@@ -48,6 +49,33 @@ test('explicit immutable two-ladder map covers only eight of the 42 registered f
     }
   }
 });
+test('#51 quarter and half families share one independent skill, so supported history guides their first try', () => {
+  const quarterHalf = families.filter(e => e.concept === 'quarter-half-structure');
+  assert.deepEqual(quarterHalf.map(e => e.familyId).sort(), ['game-part-boundary', 'game-part-compare', 'half-read',
+    'halves-make-whole', 'quarters-before-halftime', 'quarters-finished', 'quarters-in-half', 'quarters-still-to-come',
+    'second-half-quarters']);
+  for (const e of quarterHalf) {
+    assert.equal(e.evidenceClass, 'independent', e.familyId);
+    assert.equal(e.skill, 'quarter-half-structure', e.familyId);
+    assert.equal(e.challenge, undefined, e.familyId);
+  }
+  const fresh = session([]);
+  for (const e of quarterHalf) assert.equal(L.supportFor(fresh, e, 'initial'), 'initial', e.familyId);
+  const supported = session([]);
+  for (const index of [1, 2]) {
+    L.recordResolved(supported, { ...entry('half-read'), contextId: `prior-${index}`, questionInstanceId: 9000 + index },
+      'retryCorrect', { support: 'guided' });
+  }
+  for (const e of quarterHalf) assert.equal(L.supportFor(supported, e, 'initial'), 'guided', e.familyId);
+  // Literacy quarter reading is a different class and never guides them.
+  const literacy = session([]);
+  for (const index of [1, 2]) {
+    L.recordResolved(literacy, { ...entry('quarter-read'), skill: 'quarter-half-structure', contextId: `lit-${index}`, questionInstanceId: 9100 + index },
+      'secondMiss', { support: 'guided' });
+  }
+  for (const e of quarterHalf) assert.equal(L.supportFor(literacy, e, 'initial'), 'initial', e.familyId);
+});
+
 test('promotion boundaries require eight results, rate, recent success and unsupported core evidence', () => {
   assert.equal(state(successes(7)).preference, 'initial');
   assert.equal(state(successes(8)).preference, 'promoted');
