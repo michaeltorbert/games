@@ -1,0 +1,11 @@
+{
+  "schema": 1,
+  "package": "home-screen-install",
+  "source": "https://github.com/michaeltorbert/home-screen-install",
+  "version": "0.1.0",
+  "tag": "v0.1.0",
+  "commit": "d0ed46f56d8a93641e04b8332821c0ce94ff2ad9",
+  "format": "classic",
+  "file": "home-screen-install.js",
+  "sha256": "e9e5bf6a928cdc5175bd7ad7aa86ee8298714d67eefa832a43a8484a24c13822"
+}
