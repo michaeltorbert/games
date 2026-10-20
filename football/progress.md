@@ -2611,3 +2611,75 @@ shell, ran nothing, and made no commits.
   author record, actual-pixel review on all six targets in both engines,
   fresh independent review, PR, merge and live verification. #161 and broader
   #51 stay open. Browser results will be engine emulation only.
+
+## 2026-10-19 — #51 natural yardage questions (unreleased candidate)
+
+- **Request retained:** the user rejected "PLAY 5 / NEED 10", "could gain 5
+  and needs 10", "Which symbol makes 5 ? 10 true?" and yes/no first-down
+  checks, and approved "It's 3rd and 8. You complete a pass for 13 yards. How
+  far past the first-down marker did you get?" as the direction. The accepted
+  P2 policy makes the gain conditional ("If you complete a 13-yard pass…") and
+  asks one numeric distance. The learner is nearly done with Grade 1-A and 1-B;
+  no completion, default or saved progress was changed.
+- **Change (`contextual-questions.js`):**
+  - Shared copy states the real down and distance ("It's 3rd and 8", "Texas
+    has 2nd and 9", "It's 2nd and goal from the 7"), one conditional gain of
+    the frozen applied size (player passes are completions, runs are gains,
+    the opponent's private call stays a generic gain) and one numeric ask:
+    yards still needed (fourth down: yards short), yards past the first-down
+    marker, or yards from the end zone. Short and exact use the same wording.
+    Worked text says what the question's gain "would" do; Coach Replay's
+    football meaning names "the question's N-yard pass/run/gain".
+  - `line-to-gain-missing-part`, `-exact` and `-surplus` and the
+    `line-remaining-ch8`/`goal-remaining-ch8` families keep their IDs,
+    concepts, pages, operations, bindings, max-10 band and choice generator.
+    `line-remaining-ch8` now leaves goal to go to `goal-remaining-ch8`, so one
+    target has one wider owner. Every past-marker family declines touchdowns
+    and goal to go, even past an old marker short of the goal.
+  - New `line-to-gain-surplus-ch8` (Grade 1-B 131–143) and
+    `line-to-gain-surplus-ch8-ones-subtract` (110–111) reuse the Chapter 8
+    relation machinery with the `line-to-gain` concept, `surplus` operation
+    and core challenge role. They decline anything within 10 and gate each
+    operand pair by its printed page (18 − 7 p. 110, 13 − 8 and 20 − 7 p. 131,
+    24 − 10 p. 137, 30 − 7 p. 142). No global maximum changed.
+  - `gain-vs-needed-comparison` is retired from live inspection
+    (`retired-from-live-play`, before derive); its registry entry, direct
+    build, worked review and history decode are unchanged. Its call boosts
+    now go to reachable numeric short and past-marker families; affinities
+    stay weights and are checked for unique, unretired IDs.
+- **Change (`football.js`, renderer only):** the marker strip reads
+  "N-YARD PASS/RUN/GAIN − N YARDS TO GO = ? YARDS PAST".
+- **Change (`football.css`):** on phones the marker strip's worked state uses
+  the comparison's 276px field for its wrapped labels and sentence. A first
+  candidate run showed the yards-still-needed (`parts`) picture over the sound
+  toggle on iPhone 15 and its longer worked sentence 38px above the iPhone 17
+  Pro Max field. That picture now uses the label pictures' track left of the
+  toggle, and its worked state and the yardage equation's use the 276px
+  field. Question and retry fields keep their released height and fonts.
+- **Data:** `curriculum-progress.json` source-map family lists add the two new
+  IDs to their existing page rows; no dated or completion field changed.
+  `AGENTS.md` states the eight-family challenge map.
+- **Tests:** contextual domain cases write the expected copy from each
+  fixture across short, exact, past, goal to go, both directions, run, pass,
+  opponent, fourth down, zero and one, capped touchdowns and the per-pair
+  page boundaries, with four legal choices, no pre-evaluation result leak and
+  one owner per target. A scheduler case proves the retired comparison stays
+  out of the pool and draw even as a weak spot, with one scheduler draw and
+  unchanged literacy and ladder shares under a downshift. Workspace
+  comparison scenarios now cover the long-name, defense and offense numeric
+  questions through retry, worked, Replay, Back and Continue, and check that
+  a second miss commits its own result. Later offense cases start guided
+  because each earlier case commits a line-to-gain second miss. New
+  `tests/football-natural-yardage.spec.mjs` taps 13 − 8, 18 − 7 and 24 − 10
+  through the page gate, question, retry, worked, Replay and the committed
+  miss. It sits outside the release runner and needs its own run.
+- **Preview (author tooling, unreleased):**
+  `output/issue-51-natural-yardage-implementation/preview.html` opens the
+  actual candidate with an in-memory demo end-of-book page. Examples place
+  the ball through the existing test seam; the child taps the real call
+  card. The preview does not write the saved page or the sound preference.
+  `capture-natural-yardage.mjs` records matched before/candidate stages and,
+  with `--mix`, scheduler shares.
+- **Pending (none claimed here):** every domain and browser check, actual
+  before/after pixels on all six targets in Chromium and WebKit, the release
+  matrix, independent review, preview acceptance, version bump, PR and merge.

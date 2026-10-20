@@ -2070,9 +2070,19 @@ function renderMathVisual() {
     case 'fact-family':
       tokens = [data.knownPart, '+', visual.result ? visual.result.value : '?', '=', data.total];
       break;
-    case 'marker-strip':
-      tokens = [`NEED ${data.needed}`, `PLAY ${data.proposedGain}`, visual.result ? `PAST ${visual.result.value}` : 'PAST ?'];
+    case 'marker-strip': {
+      // #51: the question's gain minus the yards to go equals the yards past
+      // the marker, each with its unit, in place of NEED / PLAY / PAST.
+      const amount = value => `${value} ${value === 1 ? 'YARD' : 'YARDS'}`;
+      tokens = [
+        `${data.proposedGain}-YARD ${String(data.gainKind || 'gain').toUpperCase()}`,
+        '−',
+        `${amount(data.needed)} TO GO`,
+        '=',
+        visual.result ? `${amount(visual.result.value)} PAST` : '? YARDS PAST',
+      ];
       break;
+    }
     case 'base-ten-distance': {
       const tensUnit = data.tens === 1 ? 'TEN' : 'TENS';
       const onesUnit = data.ones === 1 ? 'ONE' : 'ONES';

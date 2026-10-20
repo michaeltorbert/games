@@ -98,9 +98,10 @@ repository-level `AGENTS.md`.
 
 ## Concept Challenge Preferences
 
-- `contextual-questions.js` owns the immutable six-family challenge map: only
+- `contextual-questions.js` owns the immutable eight-family challenge map: only
   independent line-to-gain and drive-distance have prerequisite/core/stretch
-  roles. Other concepts retain ordinary review; tier strings are not levels.
+  roles; the two wider past-marker variants are line-to-gain core. Other
+  concepts retain ordinary review; tier strings are not levels.
 - `learning.js` derives preferences from at most twelve valid committed results
   per concept in thirty days. Exact-zero prerequisite results cannot promote
   or recover. Promotion requires eight results, 80% first-try, five first-try

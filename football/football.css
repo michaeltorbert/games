@@ -4456,6 +4456,28 @@ body::after {
     height: 276px;
   }
 
+  /* #51: the marker picture's labeled gain, yards to go and yards past wrap
+     onto three lines, so its worked sentence needs the same taller field. */
+  #wrap[data-phase="explanation"]:has(#math-overlay[data-type="marker-strip"]) #field-wrap {
+    height: 276px;
+  }
+
+  /* #51: the yards-still-needed picture sits in the same track left of the
+     sound toggle. Its worked sentence, like the wider yardage equation's,
+     names the question's gain, so both worked states use the taller field.
+     Questions and retries keep the released field height. */
+  #wrap:is([data-phase="question"], [data-phase="explanation"]) #math-overlay[data-type="parts"],
+  #wrap[data-phase="explanation"] #math-overlay[data-type="arithmetic-equation"] {
+    left: calc(50% - 25.5px);
+    width: min(calc(94% - 51px), 380px);
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+
+  #wrap[data-phase="explanation"]:has(#math-overlay:is([data-type="parts"], [data-type="arithmetic-equation"])) #field-wrap {
+    height: 276px;
+  }
+
   #math-overlay[data-type="comparison"] .math-compare-row {
     grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
@@ -5186,6 +5208,10 @@ body::after {
 
   #wrap:is([data-phase="question"], [data-phase="explanation"]):has(#math-overlay:is([data-type="down-progression"], [data-type="marker-strip"])) #field-wrap {
     height: 230px;
+  }
+
+  #wrap[data-phase="explanation"]:has(#math-overlay[data-type="marker-strip"]) #field-wrap {
+    height: 276px;
   }
 
   #ui-desk[data-phase="fourth-down-decision"] #action-panel {

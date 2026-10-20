@@ -151,7 +151,7 @@
           "concepts": "Two-digit plus one-digit without regrouping; ones sum at most 9."
         },
         {
-          "families": ["score-difference-ch8-ones-subtract", "goal-remaining-ch8-ones-subtract", "line-remaining-ch8-ones-subtract"],
+          "families": ["score-difference-ch8-ones-subtract", "goal-remaining-ch8-ones-subtract", "line-remaining-ch8-ones-subtract", "line-to-gain-surplus-ch8-ones-subtract"],
           "introducedOnPage": 110,
           "coverageThroughPage": 111,
           "concepts": "Two-digit minuend through 99, single-digit subtrahend no larger than its ones digit; direct Subtract From the Ones lesson."
@@ -190,7 +190,8 @@
         },
         {
           "families": [
-            "line-remaining-ch8"
+            "line-remaining-ch8",
+            "line-to-gain-surplus-ch8"
           ],
           "introducedOnPage": 131,
           "coverageThroughPage": 143,

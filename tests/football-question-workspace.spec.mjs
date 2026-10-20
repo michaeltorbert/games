@@ -1,8 +1,11 @@
 import { test, expect } from './curriculum-fixture.mjs';
 
 // Issue #51 question workspace: real production questions of every choice
-// family (numbers, a three-choice comparison, four text labels, long
-// field-position labels, and a defense question) reached by real taps. These
+// family (numbers, natural yardage questions with long team names, four text
+// labels, long field-position labels, and a defense question) reached by real
+// taps. The symbol comparison is retired from live play, so its former
+// scenarios now cover the numeric short, exact, past-marker and goal-to-go
+// questions that replaced it. These
 // check what the new presentation must guarantee on every target: whole,
 // unclipped, non-overlapping 44px answers above the fold, a primary question,
 // readable contrast, unchanged retry and review semantics, and a Coach Replay
@@ -25,6 +28,7 @@ const MARKER_SEED = Object.freeze({
 
 // The #188 iPhone 15 defense capture whose comparison picture cropped PLAY 5:
 // Q2, 2nd & 10 at the 50, where the constant 0.2 football draw proposes 5.
+// #51 keeps it as the defense yards-still-needed source.
 const DEFENSE_COMPARISON_SEED = Object.freeze({
   possession: 'defense', direction: -1, quarter: 2, down: 2, yardsToGo: 10,
   yardLine: 50, firstDownLine: 40, driveStart: 50,
@@ -96,6 +100,47 @@ async function presentFamily(page, { seed, trigger, familyId }) {
   const question = await page.evaluate(() => window.__footballTest.activeContracts().questionInstance);
   expect(question.familyId).toBe(familyId);
   return question;
+}
+
+// #51: finds the yards to go at which the first call's frozen gain falls
+// short of, reaches, or passes (within 10) the marker, reading the gain from
+// the real tapped play; the opponent's call can depend on the distance.
+async function seedForRelation(page, base, relation) {
+  const seed = await page.evaluate(({ base, relation }) => {
+    window.__wsPrepare({ seed: base, draw: 0.5 });
+    for (let yardsToGo = 1; yardsToGo <= 10; yardsToGo++) {
+      const seed = { ...base, yardsToGo, firstDownLine: base.yardLine + base.direction * yardsToGo };
+      window.__wsPrepare({ seed, draw: 0.5 });
+      document.querySelector('#call-grid .call-btn').click();
+      const play = window.__footballTest.activeContracts().activePlay;
+      if (!play || play.proposal.resultKind === 'touchdown') continue;
+      const gain = play.proposal.appliedGain;
+      if (relation === 'short' ? gain < yardsToGo : relation === 'past' ? gain > yardsToGo && gain <= 10 : gain === yardsToGo) return seed;
+    }
+    return null;
+  }, { base, relation });
+  expect(seed, `a ${relation} gain is reachable from the first call`).not.toBeNull();
+  return seed;
+}
+
+// #51: the natural question written from the live play's raw facts.
+function expectedYardagePrompt(play) {
+  const c = play.context;
+  const gain = play.proposal.appliedGain;
+  const unit = value => `${value} ${value === 1 ? 'yard' : 'yards'}`;
+  const offense = c.possession === 'offense';
+  const team = c.match.opponent.shortName;
+  const subject = offense ? 'you' : team;
+  const goalToGo = c.firstDownLine === (c.direction === 1 ? 100 : 0);
+  const situation = `${offense ? "It's" : `${team} has`} ${['', '1st', '2nd', '3rd', '4th'][c.down]} and ${goalToGo ? `goal from the ${c.yardsToGo}` : c.yardsToGo}.`;
+  const pass = offense && /Pass$/.test(c.calls.offense);
+  const article = [8, 11, 18].includes(gain) || (gain >= 80 && gain <= 89) ? 'an' : 'a';
+  const conditional = !offense ? `If ${team} gains ${unit(gain)},` : pass ? `If you complete ${article} ${gain}-yard pass,` : `If you gain ${unit(gain)},`;
+  const ask = gain > c.yardsToGo ? `how far past the first-down marker would ${subject} get?`
+    : goalToGo ? `how many yards would ${subject} be from the end zone?`
+      : c.down === 4 ? `how many yards short of a first down would ${subject} be?`
+        : `how many more yards would ${subject} need for a first down?`;
+  return `${situation} ${conditional} ${ask}`;
 }
 
 function parseColor(value) {
@@ -376,79 +421,59 @@ async function assertCommittedFeedbackHidesInstructionalPicture(page, stage) {
   expect(result.scrollY, `${stage}: no automatic page scroll`).toBe(0);
 }
 
-// #51: what the comparison picture must say, derived from the live play's raw
-// facts rather than from the question copy.
-function expectedComparison(play) {
-  const c = play.context;
+// #51: the picture's tokens, written from the live play's raw facts. The
+// marker strip names the gain, the yards to go and the yards past, each with
+// its unit; the part-whole picture keeps its gain + ? = yards-needed equation.
+function expectedYardageTokens(play, question, support) {
   const gain = play.proposal.appliedGain;
-  const needed = c.yardsToGo;
-  const endZone = c.firstDownLine === (c.direction === 1 ? 100 : 0);
-  const amount = value => `${value} ${value === 1 ? 'YARD' : 'YARDS'}`;
-  return {
-    gain,
-    needed,
-    symbol: gain < needed ? '<' : gain > needed ? '>' : '=',
-    endZone,
-    team: c.possession === 'offense' ? c.match.player.displayName : c.match.opponent.shortName,
-    objective: endZone ? 'to reach the end zone' : 'for a first down',
-    captions: ['POSSIBLE GAIN', endZone ? 'TO THE END ZONE' : 'FOR A FIRST DOWN'],
-    amounts: [amount(gain), amount(needed)],
-  };
+  const needed = play.context.yardsToGo;
+  const shown = support === 'worked' ? String(question.answer.value) : '?';
+  const amount = value => `${value} ${Number(value) === 1 ? 'YARD' : 'YARDS'}`;
+  if (question.visuals[support].type === 'marker-strip') {
+    const kind = /Pass$/.test(play.context.calls.offense) && play.context.possession === 'offense' ? 'PASS'
+      : /Run$/.test(play.context.calls.offense) && play.context.possession === 'offense' ? 'RUN' : 'GAIN';
+    return [`${gain}-YARD ${kind}`, '−', `${amount(needed)} TO GO`, '=', support === 'worked' ? `${amount(shown)} PAST` : '? YARDS PAST'];
+  }
+  return [String(gain), '+', shown, '=', String(needed)];
 }
 
-// Each amount keeps its caption and unit, the middle is only ? or the revealed
-// symbol, and reading order runs gain, symbol, target in either layout.
-async function assertComparisonPicture(page, question, expected, support, stage) {
+// Tokens, stage, accessible name and worked sentence match the question's own
+// contract, the result stays hidden until worked, and no NEED / PLAY / PAST
+// shorthand remains.
+async function assertYardagePicture(page, play, question, support, stage) {
   const picture = await page.evaluate(() => {
     const overlay = document.getElementById('math-overlay');
-    const row = overlay.querySelector('.math-compare-row');
-    const all = selector => [...overlay.querySelectorAll(selector)];
-    const box = element => {
-      const rect = element.getBoundingClientRect();
-      return { top: rect.top, right: rect.right, bottom: rect.bottom, left: rect.left };
-    };
     return {
       type: overlay.dataset.type,
       support: overlay.dataset.support,
-      rowHidden: row?.getAttribute('aria-hidden') ?? null,
-      rowText: row?.textContent ?? '',
-      captions: all('.math-compare-caption').map(element => element.textContent.trim()),
-      captionBoxes: all('.math-compare-caption').map(box),
-      amounts: all('.math-context-token').map(element => element.textContent.trim()),
-      amountBoxes: all('.math-context-token').map(box),
-      marks: all('.math-compare-mark').map(element => element.textContent.trim()),
-      markBoxes: all('.math-compare-mark').map(box),
-      relationWordsOutsideRow: all('.math-context-link').length,
-      worked: all('.math-worked').map(element => element.textContent.trim()),
+      rowHidden: overlay.querySelector('.math-context-row')?.getAttribute('aria-hidden') ?? null,
+      tokens: [...overlay.querySelectorAll('.math-context-row > span')].map(element => element.textContent.trim()),
+      worked: [...overlay.querySelectorAll('.math-worked')].map(element => element.textContent.trim()),
+      text: overlay.textContent,
       ariaLabel: overlay.getAttribute('aria-label'),
     };
   });
-  expect(picture.type, `${stage}: comparison picture`).toBe('comparison');
+  expect(picture.type, `${stage}: picture type`).toBe(question.visuals[support].type);
   expect(picture.support, `${stage}: support stage`).toBe(support);
-  expect(picture.captions, `${stage}: captions name both amounts and the objective`).toEqual(expected.captions);
-  expect(picture.amounts, `${stage}: amounts carry the full unit`).toEqual(expected.amounts);
-  expect(picture.marks, `${stage}: middle shows only ? or the revealed symbol`).toEqual([support === 'worked' ? expected.symbol : '?']);
-  expect(picture.rowText, `${stage}: no relation word between the amounts`).not.toMatch(/less|greater|equal|than/i);
-  expect(picture.relationWordsOutsideRow, `${stage}: no label-word-label token run`).toBe(0);
+  expect(picture.tokens, `${stage}: labeled quantities`).toEqual(expectedYardageTokens(play, question, support));
   expect(picture.rowHidden, `${stage}: the picture row is decorative`).toBe('true');
   expect(picture.ariaLabel, `${stage}: picture name matches its support stage`).toBe(question.visuals[support].ariaLabel);
   expect(picture.worked, `${stage}: worked sentence only in the worked stage`)
     .toEqual(support === 'worked' ? [question.workedExplanation.text] : []);
-  const center = item => ({ x: (item.left + item.right) / 2, y: (item.top + item.bottom) / 2 });
-  const [gainBox, targetBox] = picture.amountBoxes.map(center);
-  const mark = center(picture.markBoxes[0]);
-  const sideBySide = Math.abs(gainBox.y - targetBox.y) <= EPS;
-  if (sideBySide) {
-    expect(gainBox.x < mark.x && mark.x < targetBox.x, `${stage}: gain, symbol, target read left to right`).toBe(true);
-  } else {
-    expect(gainBox.y < mark.y && mark.y < targetBox.y, `${stage}: gain, symbol, target read top to bottom`).toBe(true);
-  }
-  picture.captionBoxes.forEach((caption, index) => {
-    const amount = picture.amountBoxes[index];
-    const beside = caption.right <= amount.left + EPS && caption.top < amount.bottom && amount.top < caption.bottom;
-    const above = caption.bottom <= amount.top + EPS && caption.left < amount.right && amount.left < caption.right;
-    expect(beside || above, `${stage}: ${picture.captions[index]} sits with its own amount`).toBe(true);
-  });
+  expect(picture.text, `${stage}: no shorthand`).not.toMatch(/\bNEED\b|\bPLAY \d|\bPAST \d|\bPAST \?/);
+}
+
+// #51: Coach Replay repeats the question's own hint and worked sentence, and
+// its football meaning names the question's hypothetical gain.
+async function assertYardageReplay(page, play, question, label) {
+  await expect(page.locator('#worked-review-heading')).toHaveText(`Coach Replay: ${question.workedReview.title}`);
+  await expect(page.locator('#worked-review-content .worked-review-goal p')).toHaveText(question.workedReview.goal.text);
+  await expect(page.locator('#worked-review-content .worked-review-steps p'))
+    .toHaveText([question.hint.text, question.workedExplanation.text]);
+  await expect(page.locator('#worked-review-content .worked-review-meaning p')).toHaveText(question.workedReview.footballMeaning.text);
+  expect(question.workedReview.footballMeaning.text, `${label}: Replay names the question's gain`)
+    .toMatch(new RegExp(`^For the question's ${play.proposal.appliedGain}-yard (?:run|pass|gain), `));
+  expect(question.workedExplanation.text, `${label}: worked stays hypothetical`).toMatch(/\bwould\b/);
 }
 
 // One coached retry, then a correct retry that commits and shows feedback.
@@ -493,13 +518,22 @@ test.describe('football question workspace (#51)', () => {
     expect(errors).toEqual([]);
   });
 
-  test('three-choice comparison with a long prompt keeps one coached retry', async ({ page }) => {
+  test('a long opponent name in the natural yardage prompt keeps one coached retry', async ({ page }) => {
     const errors = watchErrors(page);
     await boot(page);
-    const question = await presentFamily(page, { seed: OFFENSE_SEED, trigger: CALL, familyId: 'gain-vs-needed-comparison' });
-    expect(question.choices).toHaveLength(3);
-    await expect(page.locator('#btn-row')).toHaveAttribute('data-choice-type', 'text');
-    await retryThenCorrect(page, question, 'comparison');
+    const seed = await seedForRelation(page, { ...DEFENSE_COMPARISON_SEED, rivalId: 'wake-forest' }, 'short');
+    const question = await presentFamily(page, { seed, trigger: CALL, familyId: 'line-to-gain-missing-part' });
+    const play = await page.evaluate(() => window.__footballTest.activeContracts().activePlay);
+    expect(play.context.match.opponent.shortName, 'longest public rival label').toBe('WAKE FOREST');
+    const prompt = await page.locator('#question').textContent();
+    expect(prompt).toBe(expectedYardagePrompt(play));
+    expect(prompt).toBe(question.prompt.text);
+    // The opponent has the ball and its call stays private.
+    expect(prompt).not.toMatch(/\byou\b|\byour\b|\bpass\b|\brun\b/i);
+    expect(question.choices).toHaveLength(4);
+    await expect(page.locator('#btn-row')).toHaveAttribute('data-choice-type', 'number');
+    await assertYardagePicture(page, play, question, 'initial', 'long-name question');
+    await retryThenCorrect(page, question, 'long-name yardage');
     expect(errors).toEqual([]);
   });
 
@@ -630,19 +664,25 @@ test.describe('football question workspace (#51)', () => {
     expect(errors).toEqual([]);
   });
 
-  test('marker-strip PLAY context stays visible through retry, feedback, worked explanation, and Replay', async ({ page }) => {
+  test('marker-strip gain, yards to go and yards past stay visible through retry, feedback, worked explanation, and Replay', async ({ page }) => {
     const errors = watchErrors(page);
     await boot(page);
     const options = { seed: MARKER_SEED, trigger: CALL, familyId: 'line-to-gain-surplus' };
     const question = await presentFamily(page, options);
+    const play = await page.evaluate(() => window.__footballTest.activeContracts().activePlay);
     expect(question.visuals.initial.type).toBe('marker-strip');
+    await expect(page.locator('#question')).toHaveText(expectedYardagePrompt(play));
+    // #51: labeled quantities replace NEED / PLAY / PAST.
+    const labels = ['-YARD RUN', 'YARD TO GO', 'PAST'];
     assertWorkspace(await workspaceMetrics(page), question, 'marker-strip question');
-    await assertPhoneFieldLabelsStayInsideField(page, 'marker-strip question', ['NEED', 'PLAY', 'PAST']);
+    await assertYardagePicture(page, play, question, 'initial', 'marker-strip question');
+    await assertPhoneFieldLabelsStayInsideField(page, 'marker-strip question', labels);
 
     const wrongId = question.choices.find(choice => choice.id !== question.correctChoiceId).id;
     await tapChoice(page, wrongId);
     await expectStatus(page, `Good try. ${question.hint.text}`);
-    await assertPhoneFieldLabelsStayInsideField(page, 'marker-strip coached retry', ['NEED', 'PLAY', 'PAST']);
+    await assertYardagePicture(page, play, question, 'guided', 'marker-strip coached retry');
+    await assertPhoneFieldLabelsStayInsideField(page, 'marker-strip coached retry', labels);
     await tapChoice(page, question.correctChoiceId);
     await expect(page.locator('#ui-desk')).toHaveAttribute('data-phase', 'feedback');
     await page.evaluate(() => clearTimeout(advTimer));
@@ -654,55 +694,58 @@ test.describe('football question workspace (#51)', () => {
     await tapChoice(page, wrongIds[0]);
     await tapChoice(page, wrongIds[1]);
     await expect(page.locator('#ui-desk')).toHaveAttribute('data-phase', 'explanation');
-    await assertPhoneFieldLabelsStayInsideField(page, 'marker-strip worked explanation', ['NEED', 'PLAY', 'PAST']);
+    await assertYardagePicture(page, play, workedQuestion, 'worked', 'marker-strip worked explanation');
+    await assertPhoneFieldLabelsStayInsideField(page, 'marker-strip worked explanation', labels);
     await page.locator('#question-learn-why').tap();
     await expect(page.locator('#worked-review')).toBeVisible();
-    await assertPhoneFieldLabelsStayInsideField(page, 'marker-strip Coach Replay', ['NEED', 'PLAY', 'PAST']);
+    await assertYardageReplay(page, play, workedQuestion, 'marker-strip');
+    await assertPhoneFieldLabelsStayInsideField(page, 'marker-strip Coach Replay', labels);
     expect(errors).toEqual([]);
   });
 
-  test('defense comparison captions, amounts and symbol stay whole through retry, feedback, worked explanation, Replay, Back and Continue', async ({ page }) => {
+  test('defense yards still needed stay whole through retry, feedback, worked explanation, Replay, Back and Continue', async ({ page }) => {
     const errors = watchErrors(page);
     await boot(page);
-    const options = { seed: DEFENSE_COMPARISON_SEED, trigger: CALL, familyId: 'gain-vs-needed-comparison' };
-    // #51: the user read "PLAY 5 ? NEED 10" and "Play 5 less than need 10" as
-    // nonsense; each amount now carries its meaning and unit.
-    const labels = ['POSSIBLE GAIN', '5 YARDS', 'FOR A FIRST DOWN', '10 YARDS'];
+    const options = { seed: DEFENSE_COMPARISON_SEED, trigger: CALL, familyId: 'line-to-gain-missing-part' };
+    // #51: the user read "PLAY 5 ? NEED 10" and its symbol comparison as
+    // nonsense; the same #188 play now asks one numeric football distance.
     const question = await presentFamily(page, options);
     const play = await page.evaluate(() => window.__footballTest.activeContracts().activePlay);
     expect(play.context.possession, '#188 source: defense').toBe('defense');
     expect(play.proposal.appliedGain, '#188 source: proposed 5').toBe(5);
     expect(play.context.yardsToGo, '#188 source: needed 10').toBe(10);
-    expect(question.visuals.initial.type).toBe('comparison');
-    const expected = expectedComparison(play);
-    expect(expected.endZone, '#188 source: ordinary first-down marker').toBe(false);
-    // The opponent has the ball, so the prompt names its need, never "you".
+    expect(question.answer.value).toBe(5);
+    expect(question.visuals.initial.type).toBe('parts');
+    const labels = ['5', '10'];
+    // The opponent has the ball, so the prompt names it, never "you", and
+    // keeps its private call out of the gain.
     const prompt = await page.locator('#question').textContent();
-    expect(prompt).toContain(`${expected.team} could gain 5 yards and needs 10 yards for a first down.`);
-    expect(prompt).not.toMatch(/\byou\b|\byour\b/i);
-    assertWorkspace(await workspaceMetrics(page), question, 'comparison question');
-    await assertComparisonPicture(page, question, expected, 'initial', 'comparison question');
-    await assertPhoneFieldLabelsStayInsideField(page, 'comparison question', labels);
+    expect(prompt).toBe(expectedYardagePrompt(play));
+    expect(prompt).toBe(`${play.context.match.opponent.shortName} has 2nd and 10. If ${play.context.match.opponent.shortName} gains 5 yards, how many more yards would ${play.context.match.opponent.shortName} need for a first down?`);
+    expect(prompt).not.toMatch(/\byou\b|\byour\b|\bpass\b|\brun\b/i);
+    assertWorkspace(await workspaceMetrics(page), question, 'yardage question');
+    await assertYardagePicture(page, play, question, 'initial', 'yardage question');
+    await assertPhoneFieldLabelsStayInsideField(page, 'yardage question', labels);
 
     const wrongId = question.choices.find(choice => choice.id !== question.correctChoiceId).id;
     await tapChoice(page, wrongId);
     await expectStatus(page, `Good try. ${question.hint.text}`);
-    assertWorkspace(await workspaceMetrics(page), question, 'comparison retry');
-    await assertComparisonPicture(page, question, expected, 'guided', 'comparison coached retry');
-    await assertPhoneFieldLabelsStayInsideField(page, 'comparison coached retry', labels);
+    assertWorkspace(await workspaceMetrics(page), question, 'yardage retry');
+    await assertYardagePicture(page, play, question, 'guided', 'yardage coached retry');
+    await assertPhoneFieldLabelsStayInsideField(page, 'yardage coached retry', labels);
     await tapChoice(page, question.correctChoiceId);
     await expect(page.locator('#ui-desk')).toHaveAttribute('data-phase', 'feedback');
     // Freeze only the already-committed result for stable layout assertions.
     await page.evaluate(() => clearTimeout(advTimer));
-    await assertCommittedFeedbackHidesInstructionalPicture(page, 'comparison feedback');
+    await assertCommittedFeedbackHidesInstructionalPicture(page, 'yardage feedback');
 
     const workedQuestion = await presentFamily(page, options);
     const wrongIds = workedQuestion.choices.filter(choice => choice.id !== workedQuestion.correctChoiceId).map(choice => choice.id);
     await tapChoice(page, wrongIds[0]);
     await tapChoice(page, wrongIds[1]);
     await expect(page.locator('#ui-desk')).toHaveAttribute('data-phase', 'explanation');
-    await assertComparisonPicture(page, workedQuestion, expected, 'worked', 'comparison worked explanation');
-    await assertPhoneFieldLabelsStayInsideField(page, 'comparison worked explanation', labels);
+    await assertYardagePicture(page, play, workedQuestion, 'worked', 'yardage worked explanation');
+    await assertPhoneFieldLabelsStayInsideField(page, 'yardage worked explanation', labels);
     await expect(page.locator('#film-room-summary-copy')).toHaveText(workedQuestion.workedExplanation.text);
 
     const learn = page.locator('#question-learn-why');
@@ -713,67 +756,77 @@ test.describe('football question workspace (#51)', () => {
     expect(learnBox.y + learnBox.height, 'Learn why above the fold').toBeLessThanOrEqual(page.viewportSize().height + EPS);
     await learn.tap();
     await expect(page.locator('#worked-review')).toBeVisible();
-    await expect(page.locator('#worked-review-heading')).toHaveText(`Coach Replay: ${workedQuestion.workedReview.title}`);
-    await assertComparisonPicture(page, workedQuestion, expected, 'worked', 'comparison Coach Replay');
-    await assertPhoneFieldLabelsStayInsideField(page, 'comparison Coach Replay', labels);
+    await assertYardageReplay(page, play, workedQuestion, 'defense yardage');
+    await assertYardagePicture(page, play, workedQuestion, 'worked', 'yardage Coach Replay');
+    await assertPhoneFieldLabelsStayInsideField(page, 'yardage Coach Replay', labels);
 
     await page.locator('#worked-review-back').tap();
     await expect(page.locator('#worked-review')).toBeHidden();
     await expect(page.locator('#question-continue')).toBeVisible();
-    await assertComparisonPicture(page, workedQuestion, expected, 'worked', 'comparison after Replay Back');
-    await assertPhoneFieldLabelsStayInsideField(page, 'comparison after Replay Back', labels);
+    await assertYardagePicture(page, play, workedQuestion, 'worked', 'yardage after Replay Back');
+    await assertPhoneFieldLabelsStayInsideField(page, 'yardage after Replay Back', labels);
     await page.locator('#question-continue').tap();
     await expect(page.locator('#ui-desk')).toHaveAttribute('data-phase', 'feedback');
-    await assertCommittedFeedbackHidesInstructionalPicture(page, 'comparison worked feedback');
+    await assertCommittedFeedbackHidesInstructionalPicture(page, 'yardage worked feedback');
     expect(errors).toEqual([]);
   });
 
-  test('offense comparison names the first-down marker or end zone for equal, greater and short gains through worked Replay', async ({ page }) => {
+  test('offense short, exact, past-marker and goal-to-go questions keep the hypothetical through worked Replay while the miss commits its own result', async ({ page }) => {
     const errors = watchErrors(page);
     await boot(page);
-    const familyId = 'gain-vs-needed-comparison';
     // The proposed gain comes from the first call and the constant football
     // draw; read it once, then place the marker to make each relation.
-    await presentFamily(page, { seed: OFFENSE_SEED, trigger: CALL, familyId });
+    await presentFamily(page, { seed: OFFENSE_SEED, trigger: CALL, familyId: 'line-to-gain-missing-part' });
     const gain = await page.evaluate(() => window.__footballTest.activeContracts().activePlay.proposal.appliedGain);
-    expect(gain >= 2 && gain <= 13, `first-call gain ${gain} leaves room for every relation`).toBe(true);
+    expect(gain >= 2 && gain <= 7, `first-call gain ${gain} leaves room for every relation`).toBe(true);
     const cases = [
-      { name: 'equal first-down marker', symbol: '=', endZone: false, seed: { ...OFFENSE_SEED, yardsToGo: gain, firstDownLine: 30 + gain } },
-      { name: 'greater first-down marker', symbol: '>', endZone: false, seed: { ...OFFENSE_SEED, yardsToGo: gain - 1, firstDownLine: 30 + gain - 1 } },
-      { name: 'equal end zone', symbol: '=', endZone: true, seed: { ...OFFENSE_SEED, yardLine: 100 - gain, yardsToGo: gain, firstDownLine: 100, driveStart: 60 } },
-      { name: 'short end zone', symbol: '<', endZone: true, seed: { ...OFFENSE_SEED, yardLine: 97 - gain, yardsToGo: gain + 3, firstDownLine: 100, driveStart: 60 } },
+      { name: 'short of the first-down marker', familyId: 'line-to-gain-missing-part', answer: 3, endZone: false,
+        seed: { ...OFFENSE_SEED, yardsToGo: gain + 3, firstDownLine: 30 + gain + 3 } },
+      { name: 'exactly to the first-down marker', familyId: 'line-to-gain-exact', answer: 0, endZone: false,
+        seed: { ...OFFENSE_SEED, yardsToGo: gain, firstDownLine: 30 + gain } },
+      { name: 'past the first-down marker', familyId: 'line-to-gain-surplus', answer: 1, endZone: false,
+        seed: { ...OFFENSE_SEED, yardsToGo: gain - 1, firstDownLine: 30 + gain - 1 } },
+      { name: 'goal to go, short of the end zone', familyId: 'line-to-gain-missing-part', answer: 3, endZone: true,
+        seed: { ...OFFENSE_SEED, yardLine: 97 - gain, yardsToGo: gain + 3, firstDownLine: 100, driveStart: 60 } },
     ];
-    for (const item of cases) {
+    for (const [index, item] of cases.entries()) {
       const label = `offense ${item.name}`;
+      // Every case is a line-to-gain ladder family and ends in a committed
+      // second miss. resetLearning() rebuilds the session from that committed
+      // history, so the ladder downshifts: the first case starts unsupported and
+      // every later case starts with the guided picture and hint.
+      const startSupport = index === 0 ? 'initial' : 'guided';
       await page.evaluate(() => clearTimeout(advTimer));
-      const question = await presentFamily(page, { seed: item.seed, trigger: CALL, familyId });
+      const question = await presentFamily(page, { seed: item.seed, trigger: CALL, familyId: item.familyId });
+      expect(question.challenge?.concept, `${label}: ladder family`).toBe('line-to-gain');
+      expect(question.support, `${label}: start support after ${index} committed second misses`).toBe(startSupport);
+      if (startSupport === 'guided') await expectStatus(page, question.hint.text);
       const play = await page.evaluate(() => window.__footballTest.activeContracts().activePlay);
-      const expected = expectedComparison(play);
       expect(play.context.possession, `${label}: offense`).toBe('offense');
-      expect([expected.symbol, expected.endZone], `${label}: intended relation and objective`).toEqual([item.symbol, item.endZone]);
-      expect(question.answer.value, `${label}: answer`).toBe(expected.symbol);
-      expect(question.choices.map(choice => choice.id).sort(), `${label}: stable symbol choices`).toEqual([
-        `${familyId}--choice-s-3c`, `${familyId}--choice-s-3d`, `${familyId}--choice-s-3e`,
-      ]);
+      expect(play.proposal.appliedGain, `${label}: same frozen gain`).toBe(gain);
+      expect(question.answer.value, `${label}: answer`).toBe(item.answer);
+      expect(question.choices).toHaveLength(4);
       const prompt = await page.locator('#question').textContent();
-      const yardsText = value => `${value} ${value === 1 ? 'yard' : 'yards'}`;
-      expect(prompt, `${label}: team, amounts and objective`)
-        .toContain(`${expected.team} could gain ${yardsText(gain)} and needs ${yardsText(expected.needed)} ${expected.objective}.`);
-      if (expected.endZone) expect(prompt, `${label}: no first-down promise`).not.toMatch(/first down/i);
+      expect(prompt, `${label}: one natural question`).toBe(expectedYardagePrompt(play));
+      // Short and exact ask the same question; nothing cues that none is left.
+      expect(prompt, `${label}: no answer cue`).not.toMatch(/exactly|this play/i);
+      if (item.endZone) expect(`${prompt} ${question.hint.text} ${question.workedExplanation.text}`, `${label}: no first-down promise`).not.toMatch(/first.down/i);
       assertWorkspace(await workspaceMetrics(page), question, `${label} question`);
-      await assertComparisonPicture(page, question, expected, 'initial', `${label} question`);
-      await assertPhoneFieldLabelsStayInsideField(page, `${label} question`, [...expected.captions, ...expected.amounts]);
+      await assertYardagePicture(page, play, question, startSupport, `${label} question`);
+      await assertPhoneFieldLabelsStayInsideField(page, `${label} question`, [String(gain)]);
 
       const wrongIds = question.choices.filter(choice => choice.id !== question.correctChoiceId).map(choice => choice.id);
       await tapChoice(page, wrongIds[0]);
       await expectStatus(page, `Good try. ${question.hint.text}`);
+      await assertYardagePicture(page, play, question, 'guided', `${label} coached retry`);
+      const before = JSON.parse(await page.evaluate(() => render_game_to_text()));
       await tapChoice(page, wrongIds[1]);
       await expect(page.locator('#ui-desk')).toHaveAttribute('data-phase', 'explanation');
-      await assertComparisonPicture(page, question, expected, 'worked', `${label} worked explanation`);
-      await assertPhoneFieldLabelsStayInsideField(page, `${label} worked explanation`, [...expected.captions, ...expected.amounts]);
+      await assertYardagePicture(page, play, question, 'worked', `${label} worked explanation`);
+      await assertPhoneFieldLabelsStayInsideField(page, `${label} worked explanation`, [String(gain)]);
       await expect(page.locator('#film-room-summary-copy')).toHaveText(question.workedExplanation.text);
       expect(question.workedExplanation.text, `${label}: worked target`)
-        .toMatch(expected.endZone ? /the end zone\.$/ : /the first-down marker\.$/);
+        .toMatch(item.endZone ? /the end zone\.$|touchdown\.$/ : /first-down marker(?: exactly)?\.$/);
       expect(await page.evaluate(() => JSON.parse(render_game_to_text()).outcomeCommitted), `${label}: worked stays uncommitted`).toBe(false);
 
       const learn = page.locator('#question-learn-why');
@@ -783,13 +836,9 @@ test.describe('football question workspace (#51)', () => {
       expect(learnBox.y + learnBox.height, `${label}: Learn why above the fold`).toBeLessThanOrEqual(page.viewportSize().height + EPS);
       await learn.tap();
       await expect(page.locator('#worked-review')).toBeVisible();
-      await expect(page.locator('#worked-review-heading')).toHaveText('Coach Replay: Compare the Yards');
-      await expect(page.locator('#worked-review-content .worked-review-goal p')).toHaveText(question.workedReview.goal.text);
-      await expect(page.locator('#worked-review-content .worked-review-steps p'))
-        .toHaveText([question.hint.text, question.workedExplanation.text]);
-      await expect(page.locator('#worked-review-content .worked-review-meaning p')).toHaveText(question.workedReview.footballMeaning.text);
-      await assertComparisonPicture(page, question, expected, 'worked', `${label} Coach Replay`);
-      await assertPhoneFieldLabelsStayInsideField(page, `${label} Coach Replay`, [...expected.captions, ...expected.amounts]);
+      await assertYardageReplay(page, play, question, label);
+      await assertYardagePicture(page, play, question, 'worked', `${label} Coach Replay`);
+      await assertPhoneFieldLabelsStayInsideField(page, `${label} Coach Replay`, [String(gain)]);
 
       await page.locator('#worked-review-back').tap();
       await expect(page.locator('#worked-review')).toBeHidden();
@@ -797,6 +846,10 @@ test.describe('football question workspace (#51)', () => {
       await page.locator('#question-continue').tap();
       await expect(page.locator('#ui-desk')).toHaveAttribute('data-phase', 'feedback');
       await assertCommittedFeedbackHidesInstructionalPicture(page, `${label} feedback`);
+      // The second short-run miss commits its own stuff, not the question's gain.
+      const after = JSON.parse(await page.evaluate(() => render_game_to_text()));
+      expect(after.totalYards.player - before.totalYards.player, `${label}: committed second-miss result`).toBe(-1);
+      expect(after.totalYards.player - before.totalYards.player, `${label}: actual differs from the question`).not.toBe(gain);
     }
     expect(errors).toEqual([]);
   });

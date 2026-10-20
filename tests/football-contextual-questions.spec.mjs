@@ -506,6 +506,8 @@ test('every family authors the exact evidence class and independent families hid
       'line-to-gain-missing-part',
       'line-to-gain-exact',
       'line-to-gain-surplus',
+      'line-to-gain-surplus-ch8',
+      'line-to-gain-surplus-ch8-ones-subtract',
       'line-to-gain-fact-family',
       'gain-vs-needed-comparison',
       'team-yards-past-100',
@@ -528,13 +530,17 @@ test('every family authors the exact evidence class and independent families hid
       [...expected[evidenceClass]].sort(),
     );
   }
-  // #186 deliberately adds the two player two-point challenge families.
-  assert.equal(registry.length, 40);
+  // #186 deliberately adds the two player two-point challenge families; #51
+  // adds the two wider past-marker yardage families.
+  assert.equal(registry.length, 42);
   assert.equal(Object.isFrozen(registry[0]), true);
 
+  const comparisonSource = makeSnap(domain, { yardsToGo: 14, firstDownLine: 44, scores: { player: 14, opponent: 7 } }, 7);
   const scenarios = [
     ...completedArithmeticSnaps(domain),
-    makeSnap(domain, { yardsToGo: 14, firstDownLine: 44, scores: { player: 14, opponent: 7 } }, 7),
+    comparisonSource,
+    makeSnap(domain, { down: 3, yardsToGo: 8, firstDownLine: 38 }, 13),
+    makeSnap(domain, { down: 3, yardsToGo: 7, firstDownLine: 37 }, 18),
     makeSnap(domain, {
       quarter: 3, down: 2, yardLine: 30, firstDownLine: 35, yardsToGo: 5,
       driveStart: 25, scores: { player: 3, opponent: 4 }, totalYards: { player: 83, opponent: 71 },
@@ -566,6 +572,11 @@ test('every family authors the exact evidence class and independent families hid
       }
     }
   }
+  // #51: live inspection no longer offers the retired comparison, but its
+  // direct build keeps the same classification for history and review.
+  assert.deepEqual(plain(questions.RETIRED_LIVE_FAMILIES), ['gain-vs-needed-comparison']);
+  assert.equal(builtById.has('gain-vs-needed-comparison'), false);
+  builtById.set('gain-vs-needed-comparison', questions.build(comparisonSource, 'gain-vs-needed-comparison'));
   for (const familyId of expected.independent) {
     const question = builtById.get(familyId);
     assert.ok(question, `build independent family ${familyId}`);
@@ -691,6 +702,8 @@ test('every exported family builds one exact, grounded, recursively frozen schem
       down: 4, yardLine: 95, firstDownLine: 100, yardsToGo: 5,
       driveStart: 90, scores: { player: 3, opponent: 4 },
     }, 10),
+    makeSnap(domain, { down: 3, yardsToGo: 8, firstDownLine: 38 }, 13),
+    makeSnap(domain, { down: 3, yardsToGo: 7, firstDownLine: 37 }, 18),
     makeSpecialPlay(domain, 'conversion', { possession: 'offense', attemptType: 'pat' }),
     makeSpecialPlay(domain, 'conversion', { possession: 'offense', attemptType: 'twoPoint' }),
     makeSpecialPlay(domain, 'fieldGoal', { possession: 'offense', yardLine: 60 }),
@@ -713,6 +726,8 @@ test('every exported family builds one exact, grounded, recursively frozen schem
     'line-to-gain-missing-part': ['line-to-gain', 'missingPart', ['yardsToGo', 'proposedGain']],
     'line-to-gain-exact': ['line-to-gain', 'exactRemainder', ['yardsToGo', 'proposedGain']],
     'line-to-gain-surplus': ['line-to-gain', 'surplus', ['yardsToGo', 'proposedGain']],
+    'line-to-gain-surplus-ch8': ['line-to-gain', 'surplus', ['yardsToGo', 'proposedGain']],
+    'line-to-gain-surplus-ch8-ones-subtract': ['line-to-gain', 'surplus', ['yardsToGo', 'proposedGain']],
     'line-to-gain-fact-family': ['line-to-gain', 'factFamilyMissingPart', ['yardsToGo', 'proposedGain']],
     'gain-vs-needed-comparison': ['line-to-gain-comparison', 'compare', ['proposedGain', 'yardsToGo']],
     'goal-distance-tens': ['place-value', 'tensOfDistance', ['ballYardLine', 'goalLine']],
@@ -745,8 +760,13 @@ test('every exported family builds one exact, grounded, recursively frozen schem
   assert.deepEqual(Object.keys(expected).sort(), exportedFamilyIds);
 
   for (const [familyId, [concept, operation, bindingIds]] of Object.entries(expected)) {
-    const source = scenarios.find((candidate) => questions.inspect(candidate).eligible
-      .some((entry) => entry.familyId === familyId));
+    // A retired family is never live-eligible; its direct build still works.
+    const retired = questions.RETIRED_LIVE_FAMILIES.includes(familyId);
+    const source = scenarios.find((candidate) => (retired
+      ? questions.inspect(candidate).declined.some((entry) => entry.familyId === familyId
+        && entry.reason.code === 'retired-from-live-play')
+        && (() => { try { questions.build(candidate, familyId); return true; } catch { return false; } })()
+      : questions.inspect(candidate).eligible.some((entry) => entry.familyId === familyId)));
     assert.ok(source, `${familyId}: deterministic representative source`);
     const question = questions.build(source, familyId, { presentationRng: () => 0.37 });
     verifyGrounding(questions, source, question);
@@ -1038,6 +1058,7 @@ test('player two-point tries present only the two challenge families while PAT a
   assert.deepEqual(Object.keys(questions.CHALLENGE_MAP).sort(), [
     'drive-distance-plus-whole-tens', 'drive-distance-scaffolded', 'line-to-gain-exact',
     'line-to-gain-fact-family', 'line-to-gain-missing-part', 'line-to-gain-surplus',
+    'line-to-gain-surplus-ch8', 'line-to-gain-surplus-ch8-ones-subtract',
   ]);
   assert.deepEqual(plain(questions.TWO_POINT_CHALLENGE), {
     schemaVersion: 1,
@@ -1740,7 +1761,7 @@ test('whole-ten movement families accept exact 10 and 20 yard moves but never by
   }
 });
 
-test('live comparison and approved later pages stay source-accurate and snap-grounded', () => {
+test('the retired comparison stays buildable but never live, and approved later pages stay source-accurate and snap-grounded', () => {
   const { domain, questions } = loadModules();
   const comparison = makeSnap(domain, {
     yardsToGo: 7, firstDownLine: 37, totalYards: { player: 83, opponent: 71 },
@@ -1754,7 +1775,6 @@ test('live comparison and approved later pages stay source-accurate and snap-gro
   }, 2);
 
   const cases = [
-    [comparison, ['gain-vs-needed-comparison']],
     [past100, ['team-yards-past-100']],
     [reversePast100, ['team-yards-past-100']],
   ];
@@ -1764,10 +1784,32 @@ test('live comparison and approved later pages stay source-accurate and snap-gro
       const candidate = inspection.eligible.find((entry) => entry.familyId === familyId);
       assert.ok(candidate, `${familyId} should be eligible`);
       assert.equal(candidate.curriculumSource, 'workbook');
-      if (familyId === 'gain-vs-needed-comparison') assert.equal(candidate.introducedOnPage, 39);
-      else assert.ok(candidate.introducedOnPage > questions.CURRENT_COMPLETED_PAGE);
+      assert.ok(candidate.introducedOnPage > questions.CURRENT_COMPLETED_PAGE);
       verifyGrounding(questions, snap, questions.build(snap, familyId, { support: 'guided' }));
     }
+  }
+
+  // #51: inspection declines the comparison before deriving it, on offense,
+  // defense and either objective. The registry entry, source page and a direct
+  // build stay valid, so old history and review still decode.
+  const comparisonEntry = questions.FAMILY_REGISTRY.scrimmage.find((entry) => entry.familyId === 'gain-vs-needed-comparison');
+  assert.equal(comparisonEntry.introducedOnPage, 39);
+  for (const snap of [
+    comparison,
+    makeSnap(domain, { possession: 'defense', direction: -1, yardLine: 50, yardsToGo: 10, firstDownLine: 40, driveStart: 50 }, 5),
+    makeSnap(domain, { yardLine: 92, yardsToGo: 8, firstDownLine: 100 }, 5),
+  ]) {
+    const inspection = questions.inspect(snap, questions.DEFAULT_PROFILE);
+    assert.equal(inspection.eligible.some((entry) => entry.familyId === 'gain-vs-needed-comparison'), false);
+    assert.deepEqual(plain(inspection.declined.find((entry) => entry.familyId === 'gain-vs-needed-comparison')?.reason.code), 'retired-from-live-play');
+    verifyGrounding(questions, snap, questions.build(snap, 'gain-vs-needed-comparison', { support: 'guided' }));
+  }
+  // Malformed sources still report their shape problem first.
+  const malformed = { ...plain(comparison), proposal: { ...plain(comparison.proposal), resultKind: 'maybe' } };
+  assert.equal(questions.inspect(malformed).declined.find((entry) => entry.familyId === 'gain-vs-needed-comparison').reason.code, 'invalid-result-kind');
+  for (const familyIds of Object.values(questions.CALL_AFFINITIES)) {
+    assert.equal(familyIds.includes('gain-vs-needed-comparison'), false);
+    assert.equal(new Set(familyIds).size, familyIds.length);
   }
 
   for (const [gain, expected] of [[4, '<'], [7, '='], [12, '>']]) {
@@ -1796,7 +1838,8 @@ test('live comparison and approved later pages stay source-accurate and snap-gro
     displayMax: 120,
   };
   const narrow = questions.inspect(past100, narrowProfile);
-  assert.equal(narrow.eligible.some((entry) => entry.familyId === 'gain-vs-needed-comparison'), true);
+  assert.equal(narrow.eligible.some((entry) => entry.familyId === 'gain-vs-needed-comparison'), false);
+  assert.equal(narrow.declined.find((entry) => entry.familyId === 'gain-vs-needed-comparison').reason.code, 'retired-from-live-play');
   assert.equal(narrow.eligible.some((entry) => entry.familyId === 'team-yards-past-100'), false);
   assert.ok(narrow.declined.some((entry) => entry.familyId === 'team-yards-past-100'
     && entry.reason.code === 'curriculum-not-included'));
@@ -2115,7 +2158,7 @@ test('singular boundary states use child-facing yard and space grammar', () => {
     yardsToGo: 2,
     driveStart: 29,
   }, 1), 'line-to-gain-missing-part');
-  assert.match(oneYardMissingPart.prompt.text, /gains 1 yard/i);
+  assert.match(oneYardMissingPart.prompt.text, /If you gain 1 yard,/);
   assert.match(oneYardMissingPart.visuals.initial.ariaLabel, /1 yard marked/i);
 
   const oneYardTeamGain = questions.build(makeSnap(domain, {
@@ -2475,8 +2518,15 @@ test('line and goal remainder variants respect the completed ones-subtraction bo
         : (possession === 'offense' ? 1 : 99);
       const snap = makeSnap(domain, { possession, yardLine, driveStart: yardLine, yardsToGo: a }, b);
       const entries = questions.inspect(snap).eligible.filter(row => row.concept === concept);
-      assert.equal(entries.length, suffix === 'excluded' ? 0 : 1, `${possession} ${concept} ${a}-${b}`);
-      if (suffix === 'excluded') continue;
+      // #51: 99 to go from the 1 is goal to go, so the goal family owns it.
+      const goalToGoLine = concept === 'line-remaining-ch8' && a === 99;
+      assert.equal(entries.length, suffix === 'excluded' || goalToGoLine ? 0 : 1, `${possession} ${concept} ${a}-${b}`);
+      if (goalToGoLine) {
+        assert.equal(snap.context.firstDownLine, possession === 'offense' ? 100 : 0);
+        assert.deepEqual(plain(questions.inspect(snap).eligible.filter(row => row.concept === 'goal-remaining-ch8').map(row => row.familyId)),
+          ['goal-remaining-ch8-ones-subtract'], `${possession} goal owns ${a}-${b}`);
+      }
+      if (suffix === 'excluded' || goalToGoLine) continue;
       const entry = entries[0];
       assert.equal(entry.familyId, suffix ? `${concept}-${suffix}` : concept);
       assert.equal(entry.weight, 2);
@@ -2566,7 +2616,15 @@ function assertCompletedModel(questions, snap, row, profile, label) {
   assert.deepEqual(plain(initial.visuals.worked.data), { a, b, operator }, `${label}: worked equation`);
   assert.equal(initial.visuals.worked.result.value, answer);
   assert.equal(initial.visuals.worked.ariaLabel, `${equation} equals ${answer}.`);
-  assert.equal(initial.explain, `${equation} = ${answer}.`);
+  // #51: yardage relations follow the equation with one football sentence
+  // about the question's hypothetical gain; other relations stay bare.
+  const yardage = /^(?:line-remaining|goal-remaining|line-to-gain-surplus)-ch8-/.test(row.familyId);
+  if (yardage) {
+    assert.ok(initial.explain.startsWith(`${equation} = ${answer}. `), `${label}: ${initial.explain}`);
+    assert.match(initial.explain.slice(`${equation} = ${answer}. `.length), / would (?:leave|take|reach) /, label);
+  } else {
+    assert.equal(initial.explain, `${equation} = ${answer}.`);
+  }
 
   const visual = initial.visuals.guided;
   const data = visual.data;
@@ -2614,9 +2672,19 @@ function assertCompletedModel(questions, snap, row, profile, label) {
   // New explanatory copy never names the computed result; the guided label
   // may repeat the original equation, which can legitimately equal it.
   const hint = COMPLETED_HINT_BY_MODEL[kind];
-  assert.equal(initial.hint.text, hint, label);
-  assert.doesNotMatch(initial.hint.text, /Work out/);
-  for (const [name, text] of [['caption', data.caption], ['description', data.description], ['hint', initial.hint.text]]) {
+  // A yardage hint leads with its football givens, then the same strategy.
+  const strategyText = yardage ? initial.hint.text.slice(-hint.length) : initial.hint.text;
+  assert.equal(strategyText, hint, label);
+  assert.doesNotMatch(strategyText, /Work out/);
+  if (yardage) {
+    const lead = initial.hint.text.slice(0, -hint.length - 1);
+    assert.equal(`${lead} ${hint}`, initial.hint.text, label);
+    assert.ok(containsNumberToken(lead, a) && containsNumberToken(lead, b), `${label}: hint lead names both givens: ${lead}`);
+    // Only the givens may appear; the lead never states the result.
+    const withoutGivens = lead.replace(new RegExp(`(^|[^0-9])(?:${a}|${b})(?=[^0-9]|$)`, 'g'), '$1');
+    assert.equal(containsNumberToken(withoutGivens, answer), false, `${label}: hint lead names ${answer}: ${lead}`);
+  }
+  for (const [name, text] of [['caption', data.caption], ['description', data.description], ['hint', strategyText]]) {
     assert.equal(containsNumberToken(text, answer), false, `${label}: ${name} names ${answer}: ${text}`);
   }
   const prefix = `${equation}. `;
@@ -2626,7 +2694,8 @@ function assertCompletedModel(questions, snap, row, profile, label) {
   assert.equal(initial.visuals.initial.ariaLabel, `${equation} equals an unknown number.`);
 
   // Coach Replay: the strategy sentence, then the unchanged full worked result.
-  assert.deepEqual(plain(initial.workedReview.steps.map(step => step.text)), [hint, `${equation} = ${answer}.`]);
+  assert.deepEqual(plain(initial.workedReview.steps.map(step => step.text)), [initial.hint.text, initial.explain]);
+  if (yardage) assert.match(initial.workedReview.footballMeaning.text, /^For the question's \d+-yard (?:run|pass|gain), /, label);
   return { kind, key: `${row.familyId}:${a},${b}` };
 }
 
@@ -2735,9 +2804,13 @@ test('every accepted line and goal remainder pair builds its guided model on bot
   const states = [];
   for (const possession of ['offense', 'defense']) {
     // Every yards to go, with a goal distance varied at or beyond the marker.
+    // #51: goal to go belongs to the goal family, so a varied goal that lands
+    // on the marker also gets the 99-yard field, short of the goal.
     for (let toGo = 1; toGo <= 99; toGo++) {
-      const goal = toGo + (toGo * 37) % (100 - toGo);
-      for (let gain = 0; gain <= goal; gain++) states.push({ possession, goal, toGo, gain });
+      const varied = toGo + (toGo * 37) % (100 - toGo);
+      for (const goal of varied === toGo && toGo < 99 ? [varied, 99] : [varied]) {
+        for (let gain = 0; gain <= goal; gain++) states.push({ possession, goal, toGo, gain });
+      }
     }
     // Every goal distance, with yards to go varied up to it.
     for (let goal = 1; goal <= 99; goal++) {
@@ -2762,10 +2835,13 @@ test('every accepted line and goal remainder pair builds its guided model on bot
     const expected = completedPairOracle(page);
     for (const possession of ['offense', 'defense']) for (const familyId of LINE_GOAL_COMPLETED_FAMILIES) {
       const keys = keysFor(seen[possession], familyId);
-      assert.deepEqual(keys, [...expected[familyId]].sort(), `p${page} ${possession} ${familyId} accepted pairs`);
-      assert.equal(keys.length, 494, `p${page} ${possession} ${familyId} count`);
-      for (const key of [':11,1', ':20,0', ':30,0', ':36,6', ':99,9']) assert.ok(keys.includes(`${familyId}${key}`), `${familyId}${key}`);
-      for (const key of [':10,0', ':36,7', ':40,1', ':19,10']) assert.ok(!keys.includes(`${familyId}${key}`), `${familyId}${key} excluded`);
+      // 99 to go is always goal to go, which only the goal family measures.
+      const line = familyId === 'line-remaining-ch8-ones-subtract';
+      const wanted = [...expected[familyId]].filter(key => !line || !key.startsWith(`${familyId}:99,`)).sort();
+      assert.deepEqual(keys, wanted, `p${page} ${possession} ${familyId} accepted pairs`);
+      assert.equal(keys.length, line ? 484 : 494, `p${page} ${possession} ${familyId} count`);
+      for (const key of [':11,1', ':20,0', ':30,0', ':36,6', ...(line ? [] : [':99,9'])]) assert.ok(keys.includes(`${familyId}${key}`), `${familyId}${key}`);
+      for (const key of [':10,0', ':36,7', ':40,1', ':19,10', ...(line ? [':99,9'] : [])]) assert.ok(!keys.includes(`${familyId}${key}`), `${familyId}${key} excluded`);
     }
   }
 });
@@ -2854,6 +2930,298 @@ test('Grade 1-B contextual arithmetic is completion-gated by the shared curricul
   for (const page of [113, 120, 137, 187]) for (const [a, b] of [[23, 14], [14, 7], [67, 24], [7, 6], [47, 5]]) {
     for (const row of questions.inspect(score(a, b), profile(page)).eligible) {
       if (row.worktext === 'Math Mammoth Grade 1-B' && row.familyId.startsWith('score-difference')) assert.ok(row.introducedOnPage <= page, `${row.familyId} ${page}`);
+    }
+  }
+});
+
+// #51 natural yardage. Expected copy here is written from the football facts
+// of each fixture, not read back from production.
+const PASS = { offense: 'mediumPass', defense: null, matchup: null };
+const RUN = { offense: 'shortRun', defense: null, matchup: null };
+// Families measuring to the line to gain, and to the end zone. Goal to go, the
+// two targets are the same line, so one family across both lists owns it.
+const LINE_OWNERS = ['line-to-gain-missing-part', 'line-to-gain-exact', 'line-to-gain-surplus',
+  'line-to-gain-surplus-ch8', 'line-to-gain-surplus-ch8-ones-subtract', 'line-remaining-ch8', 'line-remaining-ch8-ones-subtract'];
+const GOAL_OWNERS = ['goal-remaining-ch8', 'goal-remaining-ch8-ones-subtract'];
+
+async function loadSchedulerModules() {
+  const [curriculumSource, learningSource] = await Promise.all([
+    readFile(new URL('../shared/curriculum.js', import.meta.url), 'utf8'),
+    readFile(new URL('../football/learning.js', import.meta.url), 'utf8'),
+  ]);
+  const ctx = vm.createContext({});
+  for (const [source, filename] of [[curriculumSource, 'curriculum.js'], [opponentSource, 'opponent.js'],
+    [domainSource, 'football-domain.js'], [copySource, 'copy.js'], [learningSource, 'learning.js'],
+    [questionsSource, 'contextual-questions.js']]) vm.runInContext(source, ctx, { filename });
+  return {
+    questions: ctx.FOOTBALL_CONTEXTUAL_QUESTIONS,
+    domain: ctx.FOOTBALL_DOMAIN,
+    learning: vm.runInContext('FOOTBALL_LEARNING', ctx),
+  };
+}
+
+const bookPage = page => ({ worktexts: { 'Math Mammoth Grade 1-B': { edition: 2026, completedThroughPage: page } } });
+
+// Strips ordinals and every given number so only a stated result could remain.
+function namesResult(text, givens, answer) {
+  let rest = text.replace(/\b\d+(?:st|nd|rd|th)\b/g, ' ');
+  for (const given of givens) rest = rest.replace(new RegExp(`(^|[^0-9])${given}(?=[^0-9]|$)`, 'g'), '$1');
+  return containsNumberToken(rest, answer);
+}
+
+function expectNaturalYardage(questions, snap, familyId, expected, profile) {
+  const ids = plain(questions.inspect(snap, profile).eligible.map(row => row.familyId));
+  assert.ok(ids.includes(familyId), `${expected.label}: ${familyId} eligible in ${ids.join(', ')}`);
+  // One owner for one target: no other yardage family measures the same line.
+  const goalToGo = snap.context.firstDownLine === (snap.context.direction === 1 ? 100 : 0);
+  const owners = goalToGo ? [...LINE_OWNERS, ...GOAL_OWNERS] : GOAL_OWNERS.includes(familyId) ? GOAL_OWNERS : LINE_OWNERS;
+  assert.deepEqual(ids.filter(id => owners.includes(id)), [familyId], `${expected.label}: single owner`);
+  assert.equal(goalToGo, Boolean(expected.endZone), `${expected.label}: fixture objective`);
+  for (const support of ['initial', 'guided', 'worked']) {
+    verifyGrounding(questions, snap, questions.build(snap, familyId, { support, profile, presentationRng: () => 0.37 }));
+  }
+  const q = questions.build(snap, familyId, { profile, presentationRng: () => 0.37 });
+  assert.equal(q.answer.value, expected.answer, expected.label);
+  assert.equal(q.prompt.text, expected.prompt, expected.label);
+  if (expected.hint) assert.equal(q.hint.text, expected.hint, expected.label);
+  if (expected.explanation) assert.equal(q.workedExplanation.text, expected.explanation, expected.label);
+  if (expected.meaning) assert.equal(q.workedReview.footballMeaning.text, expected.meaning, expected.label);
+  // Four unique legal numeric choices including the answer.
+  assert.equal(q.choices.length, 4, expected.label);
+  assert.equal(new Set(q.choices.map(choice => choice.value)).size, 4, expected.label);
+  assert.ok(q.choices.every(choice => Number.isInteger(choice.value) && choice.value >= 0 && choice.value <= 100), expected.label);
+  // Before evaluation nothing states the result or cues an exact reach.
+  for (const [stage, text] of [['prompt', q.prompt.text], ['hint', q.hint.text],
+    ['initial aria', q.visuals.initial.ariaLabel], ['guided aria', q.visuals.guided.ariaLabel]]) {
+    assert.equal(namesResult(text, expected.givens, expected.answer), false, `${expected.label}: ${stage} names ${expected.answer}: ${text}`);
+    assert.doesNotMatch(text, /exactly|line up|no yards? (?:is |are )?left|would reach|would score/i, `${expected.label}: ${stage} cues the result: ${text}`);
+  }
+  for (const stage of ['initial', 'guided']) {
+    assert.equal(q.visuals[stage].result, null);
+    assert.equal(q.visuals[stage].revealsAnswer, false);
+  }
+  // The conditional gain is never promised, and the end zone is never a first down.
+  assert.match(q.prompt.text, /\bIf\b/);
+  assert.doesNotMatch(`${q.prompt.text} ${q.hint.text}`, /\bwill\b|this play/i, expected.label);
+  assert.match(q.workedExplanation.text, /\bwould\b/, expected.label);
+  assert.match(q.workedReview.footballMeaning.text, /^For the question's \d+-yard (?:run|pass|gain), /, expected.label);
+  assert.deepEqual(plain(q.workedReview.steps.map(step => step.text)), [q.hint.text, q.workedExplanation.text]);
+  if (expected.endZone) {
+    assert.doesNotMatch([q.prompt.text, q.hint.text, q.workedExplanation.text, q.workedReview.footballMeaning.text].join(' '), /first.down/i, expected.label);
+  }
+  assert.doesNotMatch(JSON.stringify(plain(q)), /past the end zone|beyond the end zone/i, expected.label);
+  assert.doesNotMatch(`${q.prompt.text} ${q.hint.text} ${q.workedExplanation.text}`, /\b1 yards\b|\b(?:[02-9]|[1-9]\d) yard\b(?!-)/, `${expected.label}: unit agrees with its number`);
+  return q;
+}
+
+test('#51 natural yardage asks one numeric football distance for short, exact, past and goal-to-go gains', async () => {
+  const { questions, domain } = await loadSchedulerModules();
+  const end = bookPage(187);
+  // Opponent cases use the helper's default public match (UNC) with its
+  // coherent private balanced snapshot; the copy names only the public UNC.
+  const cases = [
+    { familyId: 'line-to-gain-surplus-ch8', profile: bookPage(131), gain: 13,
+      overrides: { down: 3, yardsToGo: 8, firstDownLine: 38, calls: PASS },
+      expected: { label: 'approved 3rd and 8, 13-yard pass', answer: 5, givens: [13, 8],
+        prompt: "It's 3rd and 8. If you complete a 13-yard pass, how far past the first-down marker would you get?",
+        hint: 'The first 8 yards get you to the marker. Work out how much of the 13-yard pass is left. Use the tens and ones, or count on or back.',
+        explanation: '13 − 8 = 5. A 13-yard completion on 3rd and 8 would take you 5 yards past the first-down marker.',
+        meaning: "For the question's 13-yard pass, 8 yards reach the marker and 5 more go past it." } },
+    { familyId: 'line-to-gain-missing-part', gain: 5,
+      overrides: { down: 3, yardsToGo: 8, firstDownLine: 38, calls: RUN },
+      expected: { label: 'short run', answer: 3, givens: [5, 8],
+        prompt: "It's 3rd and 8. If you gain 5 yards, how many more yards would you need for a first down?",
+        hint: 'You need 8 yards. Count on from 5 to 8.',
+        explanation: '8 − 5 = 3. A 5-yard run on 3rd and 8 would leave you 3 yards short of the first-down marker.',
+        meaning: "For the question's 5-yard run, start with the 8 yards needed for a first down and take away the 5 yards gained: 3 yards are left." } },
+    { familyId: 'line-to-gain-exact', gain: 8,
+      overrides: { down: 3, yardsToGo: 8, firstDownLine: 38, calls: RUN },
+      expected: { label: 'exact run', answer: 0, givens: [8],
+        prompt: "It's 3rd and 8. If you gain 8 yards, how many more yards would you need for a first down?",
+        hint: 'You need 8 yards. Count on from 8 to 8.',
+        explanation: '8 − 8 = 0. An 8-yard run on 3rd and 8 would reach the first-down marker exactly.' } },
+    { familyId: 'line-to-gain-surplus-ch8-ones-subtract', profile: bookPage(110), gain: 18,
+      overrides: { down: 3, yardsToGo: 7, firstDownLine: 37, calls: PASS },
+      expected: { label: '3rd and 7, 18-yard pass', answer: 11, givens: [18, 7],
+        prompt: "It's 3rd and 7. If you complete an 18-yard pass, how far past the first-down marker would you get?",
+        hint: 'The first 7 yards get you to the marker. Work out how much of the 18-yard pass is left. Keep the tens. Take away the ones.' } },
+    { familyId: 'line-to-gain-missing-part', gain: 4,
+      overrides: { possession: 'defense', direction: -1, down: 2, yardLine: 60, yardsToGo: 9, firstDownLine: 51, driveStart: 70,
+        calls: { offense: 'longPass', defense: 'run', matchup: 'mismatch' } },
+      expected: { label: 'opponent 2nd and 9 keeps its call private', answer: 5, givens: [4, 9],
+        prompt: 'UNC has 2nd and 9. If UNC gains 4 yards, how many more yards would UNC need for a first down?',
+        hint: 'UNC needs 9 yards. Count on from 4 to 9.',
+        explanation: '9 − 4 = 5. A 4-yard gain on 2nd and 9 would leave UNC 5 yards short of the first-down marker.' } },
+    { familyId: 'line-to-gain-missing-part', gain: 4,
+      overrides: { down: 2, yardLine: 93, yardsToGo: 7, firstDownLine: 100, driveStart: 80, calls: RUN },
+      expected: { label: 'goal to go', answer: 3, givens: [4, 7], endZone: true,
+        prompt: "It's 2nd and goal from the 7. If you gain 4 yards, how many yards would you be from the end zone?",
+        hint: 'The end zone is 7 yards away. Count on from 4 to 7.',
+        explanation: '7 − 4 = 3. A 4-yard run on 2nd and goal from the 7 would leave you 3 yards from the end zone.' } },
+    { familyId: 'line-to-gain-surplus-ch8', profile: bookPage(137), gain: 24,
+      overrides: { down: 1, yardsToGo: 10, firstDownLine: 40, calls: { offense: 'longPass', defense: null, matchup: null } },
+      expected: { label: '1st and 10, 24-yard pass', answer: 14, givens: [24, 10],
+        prompt: "It's 1st and 10. If you complete a 24-yard pass, how far past the first-down marker would you get?" } },
+    { familyId: 'line-to-gain-missing-part', gain: 1,
+      overrides: { down: 4, yardsToGo: 3, firstDownLine: 33, calls: RUN },
+      expected: { label: 'fourth down never promises another down', answer: 2, givens: [1, 3],
+        prompt: "It's 4th and 3. If you gain 1 yard, how many yards short of a first down would you be?",
+        explanation: '3 − 1 = 2. A 1-yard run on 4th and 3 would leave you 2 yards short of the first-down marker.' } },
+    { familyId: 'line-to-gain-exact', gain: 5,
+      overrides: { down: 4, yardLine: 95, yardsToGo: 5, firstDownLine: 100, driveStart: 90, calls: RUN },
+      expected: { label: 'exact goal-line touchdown', answer: 0, givens: [5], endZone: true,
+        prompt: "It's 4th and goal from the 5. If you gain 5 yards, how many yards would you be from the end zone?",
+        explanation: '5 − 5 = 0. A 5-yard run on 4th and goal from the 5 would reach the end zone for a touchdown.' } },
+    { familyId: 'line-to-gain-surplus', gain: 9,
+      overrides: { possession: 'defense', direction: -1, down: 1, yardLine: 50, yardsToGo: 1, firstDownLine: 49, driveStart: 60 },
+      expected: { label: 'opponent past the marker by one-digit gains', answer: 8, givens: [9, 1],
+        prompt: 'UNC has 1st and 1. If UNC gains 9 yards, how far past the first-down marker would UNC get?',
+        hint: 'The first yard gets UNC to the marker. Work out how much of the 9-yard gain is left.',
+        meaning: "For the question's 9-yard gain, 1 yard reaches the marker and 8 more go past it." } },
+    { familyId: 'line-remaining-ch8-ones-subtract', gain: 2,
+      overrides: { down: 2, yardsToGo: 14, firstDownLine: 44, calls: RUN },
+      expected: { label: 'wider yards still needed', answer: 12, givens: [2, 14],
+        prompt: "It's 2nd and 14. If you gain 2 yards, how many more yards would you need for a first down?",
+        hint: 'You need 14 yards. Take the 2-yard run away from 14. Keep the tens. Take away the ones.' } },
+    { familyId: 'goal-remaining-ch8-ones-subtract', gain: 3,
+      overrides: { down: 2, yardLine: 86, yardsToGo: 14, firstDownLine: 100, driveStart: 70, calls: RUN },
+      expected: { label: 'wider goal to go belongs to the goal family', answer: 11, givens: [3, 14], endZone: true,
+        prompt: "It's 2nd and goal from the 14. If you gain 3 yards, how many yards would you be from the end zone?" } },
+    { familyId: 'goal-remaining-ch8', gain: 7,
+      overrides: { possession: 'defense', direction: -1, down: 1, yardLine: 40, yardsToGo: 10, firstDownLine: 30, driveStart: 60 },
+      expected: { label: 'opponent distance to the end zone', answer: 33, givens: [7, 10, 40], endZone: false,
+        prompt: 'UNC has 1st and 10, 40 yards from the end zone. If UNC gains 7 yards, how many yards would UNC be from the end zone?',
+        explanation: '40 − 7 = 33. A 7-yard gain from 40 yards out would leave UNC 33 yards from the end zone.' } },
+  ];
+  for (const { familyId, profile = end, gain, overrides, expected } of cases) {
+    const snap = makeSnap(domain, overrides, gain);
+    assert.equal(snap.proposal.appliedGain, gain, `${expected.label}: uncapped fixture`);
+    expectNaturalYardage(questions, snap, familyId, expected, profile);
+  }
+});
+
+test('#51 past-marker questions decline scoring plays while the old marker and capped gain stay frozen', async () => {
+  const { questions, domain } = await loadSchedulerModules();
+  const surplus = ['line-to-gain-surplus', 'line-to-gain-surplus-ch8', 'line-to-gain-surplus-ch8-ones-subtract'];
+  for (const [label, overrides, requested, applied] of [
+    // The old marker sits short of the goal, but the capped gain scores.
+    ['offense touchdown past an old marker', { yardLine: 93, yardsToGo: 3, firstDownLine: 96, driveStart: 80, calls: PASS }, 9, 7],
+    ['offense wider touchdown', { yardLine: 82, yardsToGo: 5, firstDownLine: 87, driveStart: 70, calls: PASS }, 25, 18],
+    ['defense touchdown past an old marker', { possession: 'defense', direction: -1, yardLine: 7, yardsToGo: 3, firstDownLine: 4, driveStart: 20 }, 9, 7],
+  ]) {
+    const snap = makeSnap(domain, overrides, requested);
+    assert.equal(snap.proposal.resultKind, 'touchdown', label);
+    assert.equal(snap.proposal.appliedGain, applied, `${label}: capped at the goal`);
+    assert.equal(snap.context.firstDownLine, overrides.firstDownLine, `${label}: old marker`);
+    const inspection = questions.inspect(snap, bookPage(187));
+    assert.equal(inspection.eligible.some(row => surplus.includes(row.familyId)), false, label);
+    if (applied <= 10) {
+      assert.equal(inspection.declined.find(row => row.familyId === 'line-to-gain-surplus').reason.code, 'scoring-play-has-no-surplus', label);
+    }
+    assert.ok(inspection.eligible.some(row => row.familyId === 'touchdown-base-points'), `${label}: pool keeps a truthful question`);
+  }
+  // A non-scoring gain beyond the same marker still asks how far past it.
+  const past = makeSnap(domain, { yardLine: 80, yardsToGo: 3, firstDownLine: 83, driveStart: 70, calls: PASS }, 9);
+  assert.equal(past.proposal.resultKind, 'firstDown');
+  assert.ok(questions.inspect(past, bookPage(187)).eligible.some(row => row.familyId === 'line-to-gain-surplus'));
+});
+
+test('#51 wider past-marker variants follow each operand pair page and leave within-10 work to the old family', async () => {
+  const { questions, domain } = await loadSchedulerModules();
+  const pass = (yardsToGo, gain) => makeSnap(domain, { down: 3, yardsToGo, firstDownLine: 30 + yardsToGo, calls: PASS }, gain);
+  for (const [gain, toGo, familyId, page] of [
+    [18, 7, 'line-to-gain-surplus-ch8-ones-subtract', 110],
+    [13, 8, 'line-to-gain-surplus-ch8', 131],
+    [20, 7, 'line-to-gain-surplus-ch8', 131],
+    [24, 10, 'line-to-gain-surplus-ch8', 137],
+    [30, 7, 'line-to-gain-surplus-ch8', 142],
+  ]) {
+    const snap = pass(toGo, gain);
+    const label = `${gain} − ${toGo}`;
+    const before = questions.inspect(snap, bookPage(page - 1));
+    assert.equal(before.eligible.some(row => row.familyId.startsWith('line-to-gain-surplus-ch8')), false, `${label} before p${page}`);
+    const reason = before.declined.find(row => row.familyId === familyId).reason.code;
+    assert.ok(['curriculum-not-included', 'curriculum-not-completed'].includes(reason), `${label}: ${reason}`);
+    const at = questions.inspect(snap, bookPage(page)).eligible.filter(row => row.familyId.startsWith('line-to-gain-surplus'));
+    assert.deepEqual(plain(at.map(row => row.familyId)), [familyId], `${label} at p${page}`);
+    const [entry] = at;
+    assert.deepEqual([entry.concept, entry.operationType, entry.purpose, entry.weight, entry.worktext, entry.evidenceClass],
+      ['line-to-gain', 'surplus', 'approvedExtension', 2, 'Math Mammoth Grade 1-B', 'independent']);
+    assert.deepEqual(plain(entry.challenge), { concept: 'line-to-gain', role: 'core' });
+    assert.deepEqual(plain(questions.sourceStatus(entry, bookPage(page))), { included: true, guided: false });
+    assert.equal(questions.build(snap, familyId, { profile: bookPage(page) }).answer.value, gain - toGo);
+  }
+  // Borrowing past a ten is never taught here, at any page.
+  assert.equal(questions.inspect(pass(7, 23), bookPage(187)).eligible.some(row => row.familyId.startsWith('line-to-gain-surplus')), false);
+  // Within 10 stays with the original family and its legacy Grade 1-A page.
+  for (const page of [113, 187]) {
+    const ids = questions.inspect(pass(3, 9), bookPage(page)).eligible.map(row => row.familyId);
+    assert.ok(ids.includes('line-to-gain-surplus'));
+    assert.equal(ids.some(id => id.startsWith('line-to-gain-surplus-ch8')), false);
+  }
+  const legacy = questions.FAMILY_REGISTRY.scrimmage.find(row => row.familyId === 'line-to-gain-surplus');
+  assert.deepEqual([legacy.worktext, legacy.introducedOnPage, legacy.tier, legacy.concept], ['Math Mammoth Grade 1-A', 110, 'within-10', 'line-to-gain']);
+  assert.equal(questions.DEFAULT_PROFILE.computationMax, 10);
+});
+
+test('#51 the retired comparison never reaches the live pool or scheduler, even as a weak spot', async (t) => {
+  const { questions, domain, learning } = await loadSchedulerModules();
+  const now = Date.parse('2026-10-19T12:00:00Z');
+  const snap = makeSnap(domain, { down: 3, yardsToGo: 8, firstDownLine: 38, calls: PASS }, 13);
+  const profile = bookPage(131);
+  const inspection = questions.inspect(snap, profile);
+  assert.equal(inspection.declined.find(row => row.familyId === 'gain-vs-needed-comparison').reason.code, 'retired-from-live-play');
+  // The pool production builds: every eligible family with its call weight.
+  const pool = inspection.eligible.map(entry => ({ ...entry, selectionMultiplier: questions.selectionFor(snap, entry.familyId).multiplier }));
+  assert.equal(pool.some(entry => entry.familyId === 'gain-vs-needed-comparison'), false);
+  assert.equal(pool.find(entry => entry.familyId === 'line-to-gain-surplus-ch8').selectionMultiplier, questions.CALL_AFFINITY_MULTIPLIER);
+
+  // Old comparison history decodes as a weak spot but is inert without a live entry.
+  const weak = { 'line-to-gain-comparison': { independent: { firstTryCorrect: 0, retryCorrect: 1, secondMiss: 5 } } };
+  const weakLast = { 'line-to-gain-comparison': { independent: { resolution: 'secondMiss', completedAt: new Date(now - 3600000).toISOString() } } };
+  const oldRow = { gameId: 'old', playId: 'old-play-1', playType: 'scrimmage', instructionalStatus: 'presented',
+    completedAt: new Date(now - 7200000).toISOString(), familyId: 'gain-vs-needed-comparison', concept: 'line-to-gain-comparison',
+    evidenceClass: 'independent', grading: 'gate', resolution: 'secondMiss',
+    attempts: [{ number: 1, correct: false, support: 'initial' }, { number: 2, correct: false, support: 'guided' }] };
+  const downshiftRow = { ...oldRow, playId: 'old-play-2', familyId: 'line-to-gain-surplus-ch8', concept: 'line-to-gain' };
+
+  const shares = (entries, session) => {
+    const counts = {};
+    const N = 20000;
+    for (let i = 0; i < N; i++) {
+      let draws = 0;
+      const picked = learning.weightedPick(entries, session, () => { draws++; return (i + 0.5) / N; });
+      assert.equal(draws, 1, 'one scheduler draw per pick');
+      counts[picked.familyId] = (counts[picked.familyId] || 0) + 1 / N;
+    }
+    return counts;
+  };
+  const sum = (entries, counts, predicate) => Object.entries(counts)
+    .filter(([id]) => predicate(entries.find(entry => entry.familyId === id)))
+    .reduce((total, [, share]) => total + share, 0);
+  assert.equal(learning.challengeStateFor(learning.createSession({}, {}, now, [oldRow, downshiftRow]), 'line-to-gain').preference, 'downshifted');
+  const shortPool = (() => {
+    const short = makeSnap(domain, { down: 3, yardsToGo: 8, firstDownLine: 38, calls: RUN }, 5);
+    return questions.inspect(short, profile).eligible
+      .map(entry => ({ ...entry, selectionMultiplier: questions.selectionFor(short, entry.familyId).multiplier }));
+  })();
+  for (const [label, entries] of [['13-yard pass', pool], ['5-yard run', shortPool]]) {
+    assert.equal(entries.some(entry => entry.familyId === 'gain-vs-needed-comparison'), false, label);
+    const baseline = shares(entries, learning.createSession(weak, weakLast, now, [oldRow]));
+    const downshifted = shares(entries, learning.createSession(weak, weakLast, now, [oldRow, downshiftRow]));
+    for (const counts of [baseline, downshifted]) assert.equal(counts['gain-vs-needed-comparison'], undefined, label);
+    // A downshift redistributes only inside the ladder's own budget, so the
+    // literacy share and the whole line-to-gain share stay put.
+    const literacy = counts => sum(entries, counts, entry => entry.evidenceClass === 'literacy');
+    const ladder = counts => sum(entries, counts, entry => entry.challenge?.concept === 'line-to-gain');
+    assert.ok(literacy(baseline) > 0, label);
+    assert.ok(Math.abs(literacy(baseline) - literacy(downshifted)) < 0.002, `${label}: literacy ${literacy(baseline)} vs ${literacy(downshifted)}`);
+    assert.ok(Math.abs(ladder(baseline) - ladder(downshifted)) < 0.002, `${label}: ladder ${ladder(baseline)} vs ${ladder(downshifted)}`);
+    t.diagnostic(`3rd and 8, ${label} at p131 baseline shares: ${JSON.stringify(Object.fromEntries(Object.entries(baseline).map(([id, share]) => [id, Number(share.toFixed(4))])))}`);
+    if (label === '5-yard run') {
+      // Inside the ladder, the downshift moves weight from stretch to core.
+      assert.ok(downshifted['line-to-gain-fact-family'] < baseline['line-to-gain-fact-family'], `${label}: stretch share falls`);
+      assert.ok(downshifted['line-to-gain-missing-part'] > baseline['line-to-gain-missing-part'], `${label}: core share rises`);
     }
   }
 });
