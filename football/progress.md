@@ -2882,3 +2882,25 @@ released, approved or verified; root runs every check on the exact artifact.
     state while blocked.
   - The `football.js` observers are unchanged. The Stats and Season stores are
     untouched; their similar pattern is a separate follow-up.
+
+## 2026-10-21 — Private learning report client, 1.34.22 CANDIDATE, UNRELEASED (#200)
+
+- Author: a new native Claude (Opus 5.5) session on dependency `b0f45ff` (the
+  #199 candidate). The author had no shell and ran nothing; the coordinator runs
+  and records checks outside this file. #199 and #200 release together. This
+  entry claims no release, and the version stays at the unreleased 1.34.22.
+- `index.html` loads `../shared/learning-reporting/config.js` and
+  `../shared/learning-sync.js` after the outbox and before `football.js`, at
+  `?v=1.34.22`. The shipped config has no service origin, so reporting stays
+  off: the Start markup, play, every RNG stream, Stats and Season are unchanged.
+- A device enrolled for several profiles gets a "Who's playing?" choice
+  (neutral Player 1, Player 2), inserted before the Start actions only on such
+  a device; it reuses the existing play-mode picker styles. One profile adds no
+  picker. Each question keeps the profile of its first recorded observation.
+- `football.js` passes the pinned profile (or this tab's choice) to
+  `LEARNING_OUTBOX.capture()` and nudges a sync after a recorded resolution.
+  Sync never blocks or delays play.
+- Tests created (not run by the author): `tests/learning-reporting-domain.spec.mjs`
+  (release domain list), `tests/learning-reporting-sync.spec.mjs` and
+  `tests/learning-reporting-ui.spec.mjs` (release browser list). Football cases
+  use the existing session mute fixture; no sound case was added.

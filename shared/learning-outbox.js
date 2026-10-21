@@ -7,6 +7,10 @@
   // its own key in one object store. Every mutation is one readwrite transaction.
   const DB_NAME = 'learningReporting', DB_VERSION = 1, STORE = 'records';
   const CONSENT_RECORD = 'enrollment', OUTBOX_RECORD = 'outbox';
+  // #200 records in the same store: the device credential, the sync state (bounded
+  // suppression and health) and the Facts question/profile binding. Stop removes all five.
+  const CREDENTIAL_RECORD = 'credential', SYNC_RECORD = 'sync', BINDING_RECORD = 'binding';
+  const RECORDS = [CONSENT_RECORD, OUTBOX_RECORD, CREDENTIAL_RECORD, SYNC_RECORD, BINDING_RECORD];
   // localStorage: the synchronous admission hint written by #200 (never authority), and
   // the never-released legacy outbox key (preserved and paused; only Stop removes it).
   const ENROLLMENT_KEY = 'learningReporting:enrollment:v1';
@@ -139,6 +143,15 @@
   const CONSENT_KEYS = ['schemaVersion', 'generation', 'deviceId', 'profileIds'];
   const LINK_KEYS = ['questionInstanceId', 'nonce', 'factId', 'serial', 'misses', 'helped', 'firstCorrect'];
   const LINK_KEY_KEYS = ['nonce', 'factId', 'serial'];
+  const CREDENTIAL_KEYS = ['schemaVersion', 'generation', 'deviceId', 'serviceOrigin', 'token'];
+  const SYNC_KEYS = ['schemaVersion', 'generation', 'suppressed', 'lastSuccessAt', 'notice'];
+  const BINDING_KEYS = ['schemaVersion', 'generation', 'facts'];
+  const BOUND_KEYS = ['nonce', 'factId', 'serial', 'profileId'];
+  // Device token: installation marker, then 256 random bits. Sent only in an Authorization header.
+  const TOKEN = /^lr1_[0-9a-f]{32}_[A-Za-z0-9_-]{43}$/;
+  const SUPPRESS_REASONS = ['invalid', 'conflict', 'unassigned'];
+  const NOTICES = ['credential-not-recognized', 'unsupported-version'];
+  const MAX_SUPPRESSED = MAX_EVENTS, MAX_SYNC_IDS = 20;
 
   function validateCatalog(catalog) {
     if (!exactKeys(catalog, ['schemaVersion', 'football', 'historicalFootball', 'facts']) || catalog.schemaVersion !== SCHEMA_VERSION
@@ -260,6 +273,31 @@
     return { state: 'ok', consent: value };
   }
 
+  // #200 service origin: https, or plain http on the loopback host for local tests only.
+  const SERVICE_ORIGIN = /^(https:\/\/[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*|http:\/\/(?:127\.0\.0\.1|localhost))(?::\d{1,5})?$/;
+  const serviceOriginValid = value => typeof value === 'string' && value.length <= 253 && SERVICE_ORIGIN.test(value);
+  const validateCredential = value => exactKeys(value, CREDENTIAL_KEYS) && value.schemaVersion === 1 && uuid(value.generation)
+    && uuid(value.deviceId) && serviceOriginValid(value.serviceOrigin) && typeof value.token === 'string' && TOKEN.test(value.token);
+  const validateSyncRecord = value => exactKeys(value, SYNC_KEYS) && value.schemaVersion === 1 && uuid(value.generation)
+    && Array.isArray(value.suppressed) && value.suppressed.length <= MAX_SUPPRESSED
+    && value.suppressed.every(item => exactKeys(item, ['eventId', 'reason']) && uuid(item.eventId) && SUPPRESS_REASONS.includes(item.reason))
+    && new Set(value.suppressed.map(item => item.eventId)).size === value.suppressed.length
+    && (value.lastSuccessAt === null || isoTime(value.lastSuccessAt)) && (value.notice === null || NOTICES.includes(value.notice));
+  const validateBinding = value => exactKeys(value, BINDING_KEYS) && value.schemaVersion === 1 && uuid(value.generation)
+    && (value.facts === null || (exactKeys(value.facts, BOUND_KEYS) && linkKeyValid(linkKey(value.facts)) && uuid(value.facts.profileId)));
+  // Strict, versioned parse of one #200 record; `generation` binds it to the current consent.
+  function parseRecord(raw, validate, generation) {
+    if (raw === null || raw === undefined) return { state: 'missing' };
+    if (typeof raw !== 'string') return { state: 'malformed' };
+    let value;
+    try { value = JSON.parse(raw); } catch (error) { return { state: 'malformed' }; }
+    if (newer(value?.schemaVersion)) return { state: 'future' };
+    if (!validate(value)) return { state: 'malformed' };
+    if (value.generation !== generation) return { state: 'foreign' };
+    return { state: 'ok', value };
+  }
+  const freshSync = generation => ({ schemaVersion: 1, generation, suppressed: [], lastSuccessAt: null, notice: null });
+
   // The synchronous admission hint. Read-only; it can refuse a capture but never authorizes a
   // write. Missing, malformed or future hints mean recording is off.
   function readEnrollment() {
@@ -297,16 +335,22 @@
   const haltedGeneration = generation => halted.has('*') || halted.has(generation);
 
   // Synchronous, at domain acceptance. Disabled means one enrollment read only.
-  function capture() {
-    const captured = captureEnrollment();
+  // `profileId` (#200) pins the capture to one profile the hint lists: the profile a
+  // question started with, or this document's who-is-playing choice. It never widens
+  // admission: an unlisted pin refuses, and the transaction still requires the consent.
+  function capture(profileId) {
+    const captured = captureEnrollment(profileId);
     count(captured ? 'captured' : 'refused');
     return captured;
   }
-  function captureEnrollment() {
+  function captureEnrollment(pinned) {
     try {
       if (!catalogValid || deletion) return null;
       const enrollment = readEnrollment();
-      if (!enrollment || !enrollment.profileId || haltedGeneration(enrollment.generation) || !idbFactory() || !uuidAvailable()) return null;
+      if (!enrollment) return null;
+      const profileId = pinned === undefined || pinned === null ? enrollment.profileId
+        : uuid(pinned) && enrollment.profileIds.includes(pinned) ? pinned : null;
+      if (!profileId || haltedGeneration(enrollment.generation) || !idbFactory() || !uuidAvailable()) return null;
       // A never-released localStorage outbox is preserved untouched and pauses recording.
       if (storage().getItem(LEGACY_OUTBOX_KEY) !== null) {
         lastState = 'legacy';
@@ -315,7 +359,7 @@
       return Object.freeze({
         generation: enrollment.generation,
         deviceId: enrollment.deviceId,
-        profileId: enrollment.profileId,
+        profileId,
         token: stopToken,
         recordedAt: new Date().toISOString(),
       });
@@ -325,14 +369,14 @@
   }
 
   const PLACEHOLDER_SEQ = 1;
-  function buildEvent(captured, template, identity) {
+  function buildEvent(captured, template, identity, profileId = captured.profileId) {
     const event = {
       schemaVersion: SCHEMA_VERSION,
       eventId: identity.eventId,
       deviceId: identity.deviceId,
       epochId: identity.epochId,
       seq: identity.seq,
-      profileId: captured.profileId,
+      profileId,
       game: template.game,
       gameVersion: template.gameVersion,
       recordedAt: captured.recordedAt,
@@ -408,29 +452,58 @@
   const sameKey = (a, b) => Boolean(a && b) && a.nonce === b.nonce && a.factId === b.factId && a.serial === b.serial;
   const forward = (from, to) => to.misses >= from.misses && (!from.helped || to.helped) && (from.firstCorrect === null || to.firstCorrect !== null);
 
-  function factsTemplates(envelope, op) {
+  // `bind` is the parsed #200 binding record and `consent` the fresh consent. A question
+  // keeps the profile it was first recorded for: this document's own link remembers it,
+  // and a durable link resumed after a reload or by another tab takes it from the binding
+  // record, which changes only together with `links.facts`. A resumed link without a
+  // matching binding, or whose profile the consent no longer lists, records nothing (null).
+  function factsTemplates(envelope, op, bind, consent) {
     const { before, after, durable } = op, links = envelope.links;
     const retired = durable && sameKey(links.factsRetired, before);
     const stored = durable && !retired && sameKey(links.facts, before) && forward(links.facts, before) ? links.facts : null;
     // A retired key is terminal: a delayed observation starts a new, unknown question.
     const mine = !retired && factsOwn && !factsOwn.closed && factsOwn.durable === durable && sameKey(factsOwn, before) ? factsOwn : null;
-    let questionInstanceId = null;
-    if (stored && (op.adoptable || mine?.questionInstanceId === stored.questionInstanceId)) questionInstanceId = stored.questionInstanceId;
-    else if (mine) questionInstanceId = mine.questionInstanceId;
+    const bound = bind.state === 'ok' && bind.value.facts && sameKey(bind.value.facts, before) ? bind.value.facts.profileId : null;
+    let questionInstanceId = null, profileId = null;
+    if (stored && (op.adoptable || mine?.questionInstanceId === stored.questionInstanceId)) {
+      questionInstanceId = stored.questionInstanceId;
+      if (mine?.questionInstanceId === questionInstanceId) profileId = bound === null || bound === mine.profileId ? mine.profileId : null;
+      else profileId = bound;
+      if (!profileId) return null;
+    } else if (mine) {
+      questionInstanceId = mine.questionInstanceId;
+      profileId = mine.profileId;
+    }
     // Only a linked attempt can be observed as left; an unlinked one stays unknown.
     if (op.replaced && !questionInstanceId) return [];
-    if (!questionInstanceId) questionInstanceId = newId();
+    // An unlinked question that already has accepted progress started without a recorded
+    // player (a lost commit, a refused capture, or practice before enrollment). With several
+    // consented profiles its first player is unknown, so it fails reporting closed rather
+    // than taking whoever is chosen now. With one profile the attribution is unambiguous.
+    const started = before.misses > 0 || before.helped || before.firstCorrect !== null;
+    if (!questionInstanceId && started && consent.profileIds.length > 1) return null;
+    if (!questionInstanceId) {
+      questionInstanceId = newId();
+      profileId = op.captured.profileId;
+    }
+    if (!consent.profileIds.includes(profileId)) return null;
     const terminal = op.replaced || op.items.some(item => item.template.kind === 'resolution');
-    factsOwn = { ...linkKey(before), questionInstanceId, durable, closed: terminal };
+    factsOwn = { ...linkKey(before), questionInstanceId, durable, closed: terminal, profileId };
+    let binding;
     if (durable && !retired) {
       if (terminal) {
         if (sameKey(links.facts, before)) links.facts = null;
         links.factsRetired = linkKey(before);
+        if (bound !== null) binding = null;
       } else if (!sameKey(links.facts, before) || forward(links.facts, after)) {
         links.facts = { questionInstanceId, ...linkKey(before), misses: after.misses, helped: after.helped, firstCorrect: after.firstCorrect };
+        if (bound !== profileId) binding = { ...linkKey(before), profileId };
       }
     }
-    return op.items.map(item => ({ template: { ...item.template, questionInstanceId }, eventId: item.eventId }));
+    return {
+      binding,
+      items: op.items.map(item => ({ template: { ...item.template, questionInstanceId }, eventId: item.eventId, profileId })),
+    };
   }
 
   function freshEnvelope(enrollment) {
@@ -555,9 +628,10 @@
     return connection;
   }
 
-  // One transaction over the consent and outbox records. `decide(consentRaw, outboxRaw)`
-  // runs synchronously in the last read's success handler (no await inside the live
-  // transaction) and may return {put}. Only oncomplete counts as committed; an abort
+  // One transaction over every owned record. `decide(records)` gets the raw values keyed
+  // by record name and runs synchronously in the last read's success handler (no await
+  // inside the live transaction). It may return {put} for the outbox and {writes} for the
+  // other records (a null value deletes). Only oncomplete counts as committed; an abort
   // rolls back every request in it.
   function transact(mode, decide) {
     return database().then(({ db, reason }) => {
@@ -569,12 +643,16 @@
           return;
         }
         const store = tx.objectStore(STORE);
-        const consent = store.get(CONSENT_RECORD);
-        const outbox = store.get(OUTBOX_RECORD);
-        outbox.onsuccess = () => {
+        const reads = RECORDS.map(key => store.get(key));
+        reads[reads.length - 1].onsuccess = () => {
           try {
-            decision = decide(consent.result, outbox.result);
+            decision = decide(Object.fromEntries(RECORDS.map((key, index) => [key, reads[index].result])));
             if (decision && decision.put !== undefined) store.put(decision.put, OUTBOX_RECORD);
+            for (const [key, value] of Object.entries(decision?.writes || {})) {
+              if (!RECORDS.includes(key) || (key === OUTBOX_RECORD && value !== null)) throw new TypeError('Not an owned record');
+              if (value === null) store.delete(key);
+              else store.put(value, key);
+            }
           } catch (error) {
             try { tx.abort(); } catch (abortError) { /* already finishing */ }
           }
@@ -586,7 +664,8 @@
   }
 
   // Pure decision for one batch against the freshly read records (inside the transaction).
-  function plan(consentRaw, outboxRaw, ops, failures) {
+  function plan(records, ops, failures) {
+    const consentRaw = records[CONSENT_RECORD], outboxRaw = records[OUTBOX_RECORD];
     const consentRead = parseConsent(consentRaw);
     // Without current authoritative consent a stale hint can never record or bootstrap.
     if (consentRead.state !== 'ok') return { state: consentRead.state === 'missing' ? 'no-consent' : consentRead.state, dropped: ops.length };
@@ -607,15 +686,29 @@
     else if (rewound(envelope.status)) rotate(envelope);
     const firstSeq = envelope.status.highestSeq + 1;
     const ids = new Set(envelope.events.map(event => event.eventId)), eventIds = [];
+    let bind = parseRecord(records[BINDING_RECORD], validateBinding, consent.generation), bindingRaw;
+    let unbound = 0;
     for (const op of valid) {
-      const items = op.type === 'facts' ? factsTemplates(envelope, op) : op.items;
-      for (const { template, eventId } of items) {
+      let items = op.items;
+      if (op.type === 'facts') {
+        const resolved = factsTemplates(envelope, op, bind, consent);
+        // Unknown or conflicting binding: this question fails reporting closed, play is unaffected.
+        if (resolved === null) { unbound++; continue; }
+        if (Array.isArray(resolved)) continue;
+        items = resolved.items;
+        // The binding changes only with links.facts, and only where it is ours to write.
+        if (resolved.binding !== undefined && (bind.state === 'ok' || bind.state === 'missing')) {
+          bind = { state: 'ok', value: { ...(bind.state === 'ok' ? bind.value : { schemaVersion: 1, generation: consent.generation }), facts: resolved.binding } };
+          bindingRaw = JSON.stringify(bind.value);
+        }
+      }
+      for (const { template, eventId, profileId } of items) {
         // Idempotent: a logical event already stored is never stored twice.
         if (ids.has(eventId)) continue;
         if (envelope.status.highestSeq >= COUNTER_MAX) rotate(envelope);
         const event = buildEvent(op.captured, template, {
           eventId, deviceId: consent.deviceId, epochId: envelope.status.epochId, seq: envelope.status.highestSeq + 1,
-        });
+        }, profileId);
         if (!validateEvent(event)) continue;
         envelope.status.highestSeq = event.seq;
         envelope.events.push(event);
@@ -626,11 +719,13 @@
     envelope.status.writeFailures = bump(envelope.status.writeFailures, failures);
     const text = fit(envelope);
     // Nothing to record (for example an unlinked replacement): never create or rewrite.
-    if (existed ? text === outboxRaw : !envelope.events.length && !failures && !envelope.links.facts && !envelope.links.factsRetired) {
-      return { state: 'unchanged', dropped };
+    if (bindingRaw === undefined
+      && (existed ? text === outboxRaw : !envelope.events.length && !failures && !envelope.links.facts && !envelope.links.factsRetired)) {
+      return { state: unbound ? 'unbound' : 'unchanged', dropped: dropped + unbound };
     }
     if (text.length > MAX_CHARS) throw new RangeError('Outbox envelope exceeds its bound');
-    return { state: 'recorded', put: text, dropped, status: { ...envelope.status }, read: readStatus, firstSeq, eventIds };
+    const writes = bindingRaw === undefined ? undefined : { [BINDING_RECORD]: bindingRaw };
+    return { state: 'recorded', put: text, writes, dropped: dropped + unbound, status: { ...envelope.status }, read: readStatus, firstSeq, eventIds };
   }
 
   // Not-committed outcomes that are pauses or refusals, not write failures.
@@ -645,9 +740,9 @@
     }
     const failures = pendingFailures;
     // The trace window runs from this transaction's read to its oncomplete.
-    return transact('readwrite', (consentRaw, outboxRaw) => {
+    return transact('readwrite', records => {
       const readAt = clock();
-      return { ...plan(consentRaw, outboxRaw, live, failures), readAt };
+      return { ...plan(records, live, failures), readAt };
     }).then(result => {
       if (result.complete) {
         const decision = result.decision;
@@ -679,8 +774,8 @@
   // current consent and supported envelope, and counts only on oncomplete.
   function countFailure() {
     const failures = pendingFailures;
-    return transact('readwrite', (consentRaw, outboxRaw) => {
-      const consent = parseConsent(consentRaw), read = classify(outboxRaw);
+    return transact('readwrite', records => {
+      const consent = parseConsent(records[CONSENT_RECORD]), read = classify(records[OUTBOX_RECORD]);
       if (consent.state !== 'ok' || read.state !== 'ok' || haltedGeneration(consent.consent.generation)
         || read.envelope.generation !== consent.consent.generation) return {};
       read.envelope.status.writeFailures = bump(read.envelope.status.writeFailures, failures);
@@ -694,31 +789,48 @@
     });
   }
 
-  // Transactional maintenance for #200 (acknowledge, reject-deleted, new epoch).
-  function maintain(update) {
+  // Transactional maintenance for #200 (acknowledge, reject-deleted, new epoch, sync results).
+  // With `expected` ({generation, deviceId, token}), the fresh consent and the stored
+  // credential must still be exactly the enrollment the caller used, inside this same
+  // transaction; otherwise nothing changes ('superseded'). A delayed response can therefore
+  // never touch a later enrollment.
+  function maintain(update, expected = null) {
     if (!idbFactory()) return Promise.resolve({ ok: false, reason: 'unavailable' });
     if (deletion) return Promise.resolve({ ok: false, reason: 'stopping' });
     const token = stopToken;
     const job = chain.then(() => {
       if (token !== stopToken) return { ok: false, reason: 'stopped' };
       const failures = pendingFailures;
-      return transact('readwrite', (consentRaw, outboxRaw) => {
-        const consent = parseConsent(consentRaw);
+      return transact('readwrite', records => {
+        const consent = parseConsent(records[CONSENT_RECORD]);
         if (consent.state !== 'ok') return { result: { ok: false, reason: consent.state === 'missing' ? 'no-consent' : consent.state } };
         if (haltedGeneration(consent.consent.generation)) return { result: { ok: false, reason: 'stopped' } };
-        const read = classify(outboxRaw);
+        let sync = null;
+        if (expected) {
+          const credential = parseRecord(records[CREDENTIAL_RECORD], validateCredential, consent.consent.generation);
+          if (consent.consent.generation !== expected.generation || consent.consent.deviceId !== expected.deviceId
+            || credential.state !== 'ok' || credential.value.token !== expected.token || credential.value.deviceId !== expected.deviceId) {
+            return { result: { ok: false, reason: 'superseded' } };
+          }
+          const syncRead = parseRecord(records[SYNC_RECORD], validateSyncRecord, consent.consent.generation);
+          if (syncRead.state !== 'ok' && syncRead.state !== 'missing') return { result: { ok: false, reason: `sync-${syncRead.state}` } };
+          sync = syncRead.state === 'ok' ? syncRead.value : freshSync(consent.consent.generation);
+        }
+        const read = classify(records[OUTBOX_RECORD]);
         if (read.state !== 'ok') return { result: { ok: false, reason: read.state } };
         const envelope = read.envelope;
         if (envelope.generation !== consent.consent.generation || envelope.status.deviceId !== consent.consent.deviceId) {
           return { result: { ok: false, reason: 'foreign' } };
         }
         remember(envelope.status);
-        const outcome = update(envelope);
-        if (!outcome.changed) return { result: { ok: true, ...outcome.value } };
+        const before = sync && JSON.stringify(sync);
+        const outcome = update(envelope, sync);
+        const writes = sync && JSON.stringify(sync) !== before ? { [SYNC_RECORD]: JSON.stringify(sync) } : undefined;
+        if (!outcome.changed) return { writes, result: { ok: true, ...outcome.value } };
         envelope.status.writeFailures = bump(envelope.status.writeFailures, failures);
         const text = JSON.stringify(envelope);
         if (text.length > MAX_CHARS) throw new RangeError('Outbox envelope exceeds its bound');
-        return { put: text, status: { ...envelope.status }, result: { ok: true, ...outcome.value } };
+        return { put: text, writes, status: { ...envelope.status }, result: { ok: true, ...outcome.value } };
       }).then(result => {
         if (!result.complete) {
           if (!NOT_FAILURES.includes(result.reason)) pendingFailures = bump(pendingFailures);
@@ -753,6 +865,101 @@
       rotate(envelope);
       return { changed: true, value: { epochId: envelope.status.epochId } };
     });
+  }
+
+  // ---- #200 sync maintenance. Every call names the enrollment it acted for. ----
+  const expectedValid = value => exactKeys(value, ['generation', 'deviceId', 'token']) && uuid(value.generation)
+    && uuid(value.deviceId) && typeof value.token === 'string' && TOKEN.test(value.token);
+  const uniqueIds = (ids, max) => idList(ids) && ids.length <= max && new Set(ids).size === ids.length;
+
+  // Applies one validated server response in one transaction: removes only submitted IDs the
+  // server acknowledged or reported deleted, keeps every other event (suppressing the ones
+  // the server refused, in a bounded list pruned to events still queued), rotates the epoch
+  // at most once and only while it is still the conflicting one, and records sync health.
+  function applySync(expected, outcome) {
+    if (!expectedValid(expected) || !exactKeys(outcome, ['submitted', 'remove', 'suppress', 'rotateEpoch', 'syncedAt', 'notice'])
+      || !uniqueIds(outcome.submitted, MAX_SYNC_IDS) || !uniqueIds(outcome.remove, MAX_SYNC_IDS) || !Array.isArray(outcome.suppress)
+      || !(outcome.rotateEpoch === null || uuid(outcome.rotateEpoch)) || !(outcome.syncedAt === null || isoTime(outcome.syncedAt))
+      || !(outcome.notice === null || NOTICES.includes(outcome.notice))) return Promise.resolve({ ok: false, reason: 'invalid-outcome' });
+    const submitted = new Set(outcome.submitted), remove = new Set(outcome.remove);
+    if (!outcome.remove.every(id => submitted.has(id))
+      || !outcome.suppress.every(item => exactKeys(item, ['eventId', 'reason']) && submitted.has(item.eventId)
+        && !remove.has(item.eventId) && SUPPRESS_REASONS.includes(item.reason))
+      || new Set(outcome.suppress.map(item => item.eventId)).size !== outcome.suppress.length) {
+      return Promise.resolve({ ok: false, reason: 'invalid-outcome' });
+    }
+    const suppress = outcome.suppress.map(item => ({ eventId: item.eventId, reason: item.reason }));
+    return maintain((envelope, sync) => {
+      const kept = envelope.events.filter(event => !remove.has(event.eventId));
+      const removed = envelope.events.length - kept.length;
+      envelope.events = kept;
+      const present = new Set(kept.map(event => event.eventId));
+      const suppressed = sync.suppressed.filter(item => present.has(item.eventId));
+      const known = new Set(suppressed.map(item => item.eventId));
+      for (const item of suppress) if (present.has(item.eventId) && !known.has(item.eventId)) suppressed.push(item);
+      sync.suppressed = suppressed.slice(-MAX_SUPPRESSED);
+      const rotated = outcome.rotateEpoch !== null && envelope.status.epochId === outcome.rotateEpoch;
+      if (rotated) rotate(envelope);
+      if (outcome.syncedAt !== null) sync.lastSuccessAt = outcome.syncedAt;
+      sync.notice = outcome.notice;
+      return { changed: removed > 0 || rotated, value: { removed, suppressed: sync.suppressed.length, rotated } };
+    }, expected);
+  }
+
+  // Automatic Stop after a server-proven revocation. Capture for that generation halts at
+  // once; then one transaction deletes every owned record only if the consent and credential
+  // are still that enrollment. A later enrollment is never touched ('superseded').
+  function stopGeneration(expected) {
+    if (!expectedValid(expected)) return Promise.resolve({ ok: false, reason: 'invalid' });
+    const wasHalted = halted.has(expected.generation);
+    halted.add(expected.generation);
+    if (deletion) return Promise.resolve({ ok: false, reason: 'pending', pending: true });
+    if (!idbFactory()) return Promise.resolve({ ok: false, reason: 'unavailable' });
+    const job = chain.then(() => transact('readwrite', records => {
+      const consent = parseConsent(records[CONSENT_RECORD]);
+      const same = consent.state === 'ok' && consent.consent.generation === expected.generation && consent.consent.deviceId === expected.deviceId;
+      const credential = same ? parseRecord(records[CREDENTIAL_RECORD], validateCredential, expected.generation) : null;
+      if (!same || credential.state !== 'ok' || credential.value.token !== expected.token) return { same, outcome: 'superseded' };
+      return { writes: Object.fromEntries(RECORDS.map(key => [key, null])), outcome: 'stopped' };
+    })).then(result => {
+      if (!result.complete) return { ok: false, reason: result.reason === 'missing' ? 'no-consent' : result.reason };
+      if (result.decision.outcome !== 'stopped') {
+        if (result.decision.same && !wasHalted) halted.delete(expected.generation);
+        return { ok: false, reason: 'superseded' };
+      }
+      factsOwn = null;
+      pendingFailures = 0;
+      lastState = 'stopped';
+      try {
+        if (readEnrollment()?.generation === expected.generation) storage().removeItem(ENROLLMENT_KEY);
+        return { ok: true };
+      } catch (error) {
+        return { ok: true, hintRemoved: false };
+      }
+    }, () => ({ ok: false, reason: 'stop-failed' }));
+    chain = job.then(() => undefined, () => undefined);
+    return job;
+  }
+
+  // Read-only view for #200's sync: the snapshot coherence rules plus the credential and
+  // sync records of the same consent, from one readonly transaction. A consent without a
+  // credential (the #199 test fixtures) is 'no-credential' and never uploads.
+  function syncView() {
+    let hint;
+    try { hint = readEnrollment(); } catch (error) { return Promise.resolve({ state: 'unavailable' }); }
+    if (!hint) return Promise.resolve({ state: 'disabled' });
+    return snapshotWith((records, consent) => {
+      const credential = parseRecord(records[CREDENTIAL_RECORD], validateCredential, consent.generation);
+      if (credential.state !== 'ok') return { state: credential.state === 'missing' ? 'no-credential' : `credential-${credential.state}` };
+      if (credential.value.deviceId !== consent.deviceId) return { state: 'credential-foreign' };
+      const sync = parseRecord(records[SYNC_RECORD], validateSyncRecord, consent.generation);
+      if (sync.state !== 'ok' && sync.state !== 'missing') return { state: `sync-${sync.state}` };
+      return {
+        generation: consent.generation, deviceId: consent.deviceId, profileIds: [...consent.profileIds],
+        serviceOrigin: credential.value.serviceOrigin, token: credential.value.token,
+        sync: sync.state === 'ok' ? clone(sync.value) : freshSync(consent.generation),
+      };
+    }, { allowMissingOutbox: true });
   }
 
   // Explicit stop: the one intentional deletion path, including future-schema bytes.
@@ -793,9 +1000,8 @@
           return;
         }
         const store = tx.objectStore(STORE);
-        // Consent and outbox go together, unparsed; success means oncomplete only.
-        store.delete(CONSENT_RECORD);
-        store.delete(OUTBOX_RECORD);
+        // Every owned record goes together, unparsed; success means oncomplete only.
+        for (const key of RECORDS) store.delete(key);
         tx.oncomplete = () => { db.close(); resolve(removeHints({ ok: true })); };
         tx.onabort = () => { db.close(); resolve({ ok: false, reason: 'delete-failed' }); };
       });
@@ -858,6 +1064,11 @@
   // The same coherence rules as the mutation path: a stale hint, another generation's
   // envelope or a legacy localStorage outbox never yields an `ok` view to upload.
   function snapshot() {
+    return snapshotWith(null);
+  }
+  // `extra(records, consent)` adds #200 fields to an otherwise ok view (or replaces it with a
+  // non-ok state); `allowMissingOutbox` reports a not-yet-written outbox as `envelope: null`.
+  function snapshotWith(extra, { allowMissingOutbox = false } = {}) {
     let hint, legacy;
     try {
       hint = readEnrollment();
@@ -870,27 +1081,33 @@
     if (haltedGeneration(hint.generation)) return Promise.resolve({ state: 'stopped' });
     if (legacy) return Promise.resolve({ state: 'legacy' });
     if (!idbFactory()) return Promise.resolve({ state: 'unavailable' });
-    return transact('readonly', (consentRaw, outboxRaw) => {
-      const consent = parseConsent(consentRaw);
+    return transact('readonly', records => {
+      const consent = parseConsent(records[CONSENT_RECORD]);
       if (consent.state !== 'ok') return { view: { state: consent.state === 'missing' ? 'no-consent' : consent.state } };
       const { generation, deviceId } = consent.consent;
       if (haltedGeneration(generation)) return { view: { state: 'stopped' } };
       if (hint.generation !== generation || hint.deviceId !== deviceId) return { view: { state: 'revoked' } };
-      const read = classify(outboxRaw);
-      if (read.state !== 'ok') return { view: { state: read.state } };
-      if (read.envelope.generation !== generation || read.envelope.status.deviceId !== deviceId) return { view: { state: 'foreign' } };
+      const read = classify(records[OUTBOX_RECORD]);
+      if (read.state !== 'ok' && !(allowMissingOutbox && read.state === 'missing')) return { view: { state: read.state } };
+      if (read.state === 'ok' && (read.envelope.generation !== generation || read.envelope.status.deviceId !== deviceId)) return { view: { state: 'foreign' } };
       // Reading is not writing, but an observed seq still makes a later rewind known.
-      remember(read.envelope.status);
-      return { view: { state: 'ok', envelope: clone(read.envelope) } };
+      if (read.state === 'ok') remember(read.envelope.status);
+      const view = { state: 'ok', envelope: read.state === 'ok' ? clone(read.envelope) : null };
+      if (!extra) return { view };
+      const added = extra(records, consent.consent);
+      return { view: added.state ? added : { ...view, ...added } };
     }).then(result => result.complete ? result.decision.view : { state: result.reason === 'missing' ? 'no-consent' : result.reason });
   }
 
   globalThis.LEARNING_OUTBOX = Object.freeze({
     SCHEMA_VERSION, DB_NAME, DB_VERSION, STORE, CONSENT_RECORD, OUTBOX_RECORD, ENROLLMENT_KEY, LEGACY_OUTBOX_KEY,
+    CREDENTIAL_RECORD, SYNC_RECORD, BINDING_RECORD, MAX_SYNC_IDS,
     MAX_EVENTS, MAX_CHARS, CATALOG, FIELDS,
     validateCatalog, validateEvent, validateStatus, validateEnvelope,
+    validateCredential, validateSyncRecord, validateBinding, serviceOriginValid,
     capture, newId, record, recordFacts,
     acknowledge: removeEvents, rejectDeleted: removeEvents, startNewEpoch, stop, snapshot,
+    applySync, stopGeneration, syncView,
     // #200 must not install a new enrollment while a Stop deletion is still pending.
     deletionPending: () => Boolean(deletion),
     // Settles after every queued write in this document; tests and #200 may await it.

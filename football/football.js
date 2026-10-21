@@ -710,7 +710,28 @@ function seasonActionLabel(snapshot) {
 }
 
 // Refreshes Start content in place; showStart() alone activates the modal.
+// Who-is-playing (#200): exists only on a device enrolled for several profiles, so the
+// default Start markup is unchanged. Neutral Player slots; the choice is kept per tab and
+// applies to the next question. It never changes play, stats or any RNG stream.
+let playerPicker = null;
+function renderPlayerPicker() {
+  if (playerPicker) {
+    playerPicker.refresh();
+    return;
+  }
+  if (typeof LEARNING_SYNC === 'undefined') return;
+  playerPicker = LEARNING_SYNC.buildPlayerPicker({
+    id: 'player-picker', legend: 'Who’s playing?', fieldsetClass: 'play-mode-picker player-picker',
+    optionsClass: 'play-mode-options', optionClass: 'play-mode-option', statusClass: 'team-status',
+    status: chosen => chosen ? '' : 'Choose who is playing so practice is reported for the right player.',
+  });
+  if (!playerPicker) return;
+  const actions = startOverlay().querySelector('.start-action-row');
+  actions.parentNode.insertBefore(playerPicker.element, actions);
+}
+
 function renderStartMode() {
+  renderPlayerPicker();
   const start = startOverlay();
   populateOverlay(start, {
     slots: { 'time-lab-action': { disabled: seasonActionBusy || sessionInitialized } },
@@ -1294,11 +1315,17 @@ function discardPendingStatsPlay() {
 // Learning-event outbox observer (#199). Dormant until a #200 enrollment exists.
 // It copies accepted primitives into the shared outbox and never awaits, so play,
 // every RNG stream and the stats store are unchanged. Links live in memory only:
-// a reload or close leaves the question pending/unknown.
+// a reload or close leaves the question pending/unknown. A question keeps the profile
+// of its first recorded observation (#200), never a later who-is-playing change.
 let outboxLink = null;
 
 function beginOutboxLink(activePlay, question) {
-  outboxLink = { question, playType: activePlay.playType, playId: activePlay.playId, questionInstanceId: null, closed: false };
+  outboxLink = { question, playType: activePlay.playType, playId: activePlay.playId, questionInstanceId: null, profileId: null, refused: false, closed: false };
+}
+
+// This tab's who-is-playing choice for a new question, or undefined (the enrollment decides).
+function chosenLearningPlayer() {
+  return typeof LEARNING_SYNC === 'undefined' ? undefined : LEARNING_SYNC.player() ?? undefined;
 }
 
 function outboxQuestionMetadata(question, playType) {
@@ -1316,12 +1343,19 @@ function reportLearningEvent(kind, fields = {}) {
   const link = outboxLink;
   if (!link || link.closed || link.question !== state.questionInstance || typeof LEARNING_OUTBOX === 'undefined') return;
   if (kind === 'resolution' || kind === 'leftUnfinished') link.closed = true;
+  // A question whose earlier observation was refused has no known first player: it stays
+  // unrecorded rather than starting part-way under whoever is enrolled or chosen later.
+  if (link.refused && !link.profileId) return;
   try {
-    const captured = LEARNING_OUTBOX.capture();
-    if (!captured) return;
+    const captured = LEARNING_OUTBOX.capture(link.profileId ?? chosenLearningPlayer());
+    if (!captured) {
+      link.refused = true;
+      return;
+    }
     const metadata = outboxQuestionMetadata(link.question, link.playType);
     if (!metadata) return;
     if (!link.questionInstanceId) link.questionInstanceId = LEARNING_OUTBOX.newId();
+    if (!link.profileId) link.profileId = captured.profileId;
     LEARNING_OUTBOX.record(captured, {
       game: 'football',
       gameVersion: GAME_VERSION,
@@ -1330,6 +1364,7 @@ function reportLearningEvent(kind, fields = {}) {
       ...metadata,
       ...fields,
     });
+    if (kind === 'resolution' && typeof LEARNING_SYNC !== 'undefined') LEARNING_SYNC.nudge();
   } catch (error) {
     // Reporting never participates in play.
   }

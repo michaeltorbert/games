@@ -6,8 +6,11 @@ Place Number facts. It sends nothing over the network. Enrollment, upload,
 acknowledgment and the parent report belong to #200. This file is the contract
 #200 consumes.
 
-Recording is **off by default**. The production build has no enrollment writer,
-installer, enrollment UI or network code. Until a valid enrollment hint exists,
+Recording is **off by default**. `shared/learning-outbox.js` itself has no enrollment
+writer, installer or network code; #200 adds them separately in
+`shared/learning-sync.js` (see "#200 enrollment and sync" below), and they stay inert
+while `shared/learning-reporting/config.js` has no service origin, as shipped. Until a
+valid enrollment hint exists,
 each observer call does one `localStorage.getItem` of the hint key and nothing
 else. One accepted action can make several observer calls, for example an
 attempt and the help it causes. There is no UUID, no IndexedDB open (so no
@@ -258,8 +261,8 @@ game. Parity tests bind it to the live `FAMILY_REGISTRY` and `PLACE_FACTS.catalo
      A missing database is never created (the upgrade is aborted), and the
      result is success.
   3. On a supported version-1 database, one `readwrite` transaction deletes
-     `enrollment` and `outbox` without parsing them. **Success means
-     `oncomplete`.**
+     `enrollment`, `outbox` and the #200 `credential`, `sync` and `binding` records
+     without parsing them. **Success means `oncomplete`.**
   4. A newer version or unsupported layout is opaque owned data, so `stop()`
      calls `deleteDatabase('learningReporting')`. `onsuccess` is success and
      `onerror` is failure. `onblocked` returns `{ok:false, reason:'blocked',
@@ -301,6 +304,54 @@ recreate nor resolve the link. Link updates run inside the transaction against
 its fresh read, so out-of-order callbacks never move a link backwards. Memory-mode
 documents keep their links in memory only and never read or replace
 `links.facts`; a link shared with storage is not continued in memory mode.
+
+## #200 enrollment and sync
+
+`shared/learning-sync.js` (plain global `LEARNING_SYNC`) loads after the outbox and
+`shared/learning-reporting/config.js` in both games and on the public device page
+`shared/learning-reporting/index.html`. The service is `services/learning-reporting`.
+
+- **Off unless configured.** With an empty `serviceUrl` nothing reads storage, opens
+  IndexedDB, sets a timer or sends a request. With a service origin but no hint, it reads
+  the hint once. The #199 consent-only test fixtures have no credential and never upload.
+- **Records.** Three more strings in the same `records` store (no layout change):
+  - `credential`: `{schemaVersion, generation, deviceId, serviceOrigin, token}`. The token
+    is sent only as `Authorization: Bearer`.
+  - `sync`: `{schemaVersion, generation, suppressed: [{eventId, reason}] (≤ 500), lastSuccessAt, notice}`.
+  - `binding`: `{schemaVersion, generation, facts: {nonce, factId, serial, profileId} | null}`.
+  Every #200 record names the consent's generation. `stop()` deletes all five records.
+- **Install.** The device page exchanges a one-time code, then one IndexedDB
+  transaction writes consent, credential and sync state (refusing if any owned record
+  exists or a Stop deletion is pending); the hint is written last.
+- **Profile attribution.** `capture(profileId)` pins a capture to a profile the hint lists
+  (an unlisted pin refuses). The who-is-playing choice is per tab (sessionStorage
+  `learningReporting:player:v1`) and shows only neutral slots (Player 1, Player 2); the
+  hint's `activeProfileId` is never rewritten. Football pins each question to its first
+  recorded profile in memory. A Facts question keeps the profile recorded for it first:
+  this document's own link remembers it, and a durable link resumed by a reload or another
+  tab takes it from `binding`, which changes only with `links.facts` in the same
+  transaction and only in writable (durable) documents. A resumed link without a matching
+  binding, or whose profile the consent no longer lists, records nothing for that
+  question; play is unaffected. On a consent with several profiles, an unlinked question
+  that already has accepted progress (a lost commit, a refused capture, or practice
+  before enrollment) also records nothing: its first player is unknown, and the current
+  choice must not be applied to it. With one profile the attribution is unambiguous and
+  the #199 behavior is unchanged. Football likewise leaves a question unrecorded after
+  any of its observations was refused.
+- **Upload.** Envelopes `{schemaVersion: 1, status, events}` of at most 20 unsuppressed
+  events / 64 KiB, in envelope order, on load, when online, soon after a resolution and
+  every 60 s while visible, with 30 s to 15 min jittered backoff and a 20 s deadline. A
+  Web Lock, where available, keeps one tab syncing at a time; without it, duplicate
+  uploads are harmless.
+- **Results are applied in one guarded transaction** (`applySync(expected, outcome)`):
+  the consent and credential must still be exactly the enrollment that sent the request,
+  removed IDs must be submitted and `accepted` or `deleted`, refused IDs are suppressed
+  (kept, not resent), and a `seq-conflict` in the still-current epoch rotates it once. A
+  response that does not name exactly the submitted events changes nothing.
+- **Revocation.** Only a 403 `revoked` (the server's proof) runs
+  `stopGeneration(expected)`. It halts that generation at once, then deletes every owned
+  record in one transaction only if they still belong to it, and removes the hint only if
+  it names that generation. A 401 keeps the queue and records a notice.
 
 ## #200-facing API (no production caller in #199)
 

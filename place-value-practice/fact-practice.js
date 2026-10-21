@@ -113,7 +113,19 @@
     LEARNING_OUTBOX.recordFacts(captured,{gameVersion:typeof GAME_VERSION==='string'?GAME_VERSION:null,durable:writable,adoptable,before,after:after||before,replaced,
       observations:replaced?[{kind:'leftUnfinished',fields:{factId:fact.id,family:fact.family}}]:observations});
   }
-  function outboxCapture(){return typeof LEARNING_OUTBOX==='undefined'?null:LEARNING_OUTBOX.capture();}
+  // #200: this tab's who-is-practicing choice applies to new questions; the outbox keeps a
+  // started question on the profile it was first recorded for (its persisted binding).
+  function outboxCapture(){return typeof LEARNING_OUTBOX==='undefined'?null:LEARNING_OUTBOX.capture(typeof LEARNING_SYNC==='undefined'?undefined:LEARNING_SYNC.player()??undefined);}
+  let playerPicker=null;
+  const attemptStarted=q=>!q.complete&&(q.misses>0||q.helped||q.firstCorrect!==null);
+  function renderPlayerPicker(){
+    if(!playerPicker&&typeof LEARNING_SYNC!=='undefined'){
+      playerPicker=LEARNING_SYNC.buildPlayerPicker({id:'facts-player',legend:'Who’s practicing?',fieldsetClass:'lr-player-picker',optionsClass:'lr-player-options',optionClass:'lr-player-option',statusClass:'lr-player-status',
+        status:chosen=>!chosen?'Choose who is practicing so practice is reported for the right player.':model&&attemptStarted(model.attempt)?'This question stays with the player who started it. The new choice starts with the next question.':''});
+      if(playerPicker)meta.prepend(playerPicker.element);
+    }
+    if(playerPicker)playerPicker.refresh();
+  }
   function outboxRepaired(before){
     if(before.complete)return;
     if(writable){outboxRepair={before,adoptable:outboxAdoptable(before)};return;}
@@ -138,6 +150,7 @@
         observations.push({kind:'resolution',fields:{...base,outcome:h.outcome,eligibleCheck:h.eligible,timingMs:h.ms,helped:after.helped}});
       }
       if(observations.length)outboxSend(captured,before,after,outboxAdoptable(before),observations);
+      if(after.complete&&typeof LEARNING_SYNC!=='undefined')LEARNING_SYNC.nudge();
     }catch{}
   }
   function readInitial(){
@@ -267,6 +280,7 @@
     recap.hidden=!done;recapText.textContent=done?`Nice practice! ${model.session.completed} completed. ${model.session.firstTry} first try. ${model.session.helped} after another try or shown answer.${model.session.bonusCompleted?` Plus ${model.session.bonusCompleted} extra-point question${model.session.bonusCompleted===1?'':'s'}.`:''}`:'';
     const storageMessage=[message,driveNotice].filter(Boolean).join(' ');
     if(storage.textContent!==storageMessage)storage.textContent=storageMessage;
+    renderPlayerPicker();
     renderReport();
     if(startTiming){invalidate();const token=renderToken,id=q.id;requestAnimationFrame(()=>requestAnimationFrame(()=>{
       if(active&&token===renderToken&&model.attempt.id===id&&!q.complete&&!q.helped&&q.firstCorrect===null&&equationVisible()&&!report.open){origin=performance.now();timingInvalid=false;}

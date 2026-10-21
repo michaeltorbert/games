@@ -36,6 +36,7 @@ const DOMAIN = [
   'tests/football-season-domain.spec.mjs',
   'tests/football-time-lab-domain.spec.mjs',
   'tests/learning-outbox-domain.spec.mjs',
+  'tests/learning-reporting-domain.spec.mjs',
   'tests/game-registry.spec.mjs',
 ];
 const BROWSER = [
@@ -64,6 +65,8 @@ const BROWSER = [
   'tests/football-season.spec.mjs',
   'tests/football-time-lab-ui.spec.mjs',
   'tests/football-learning-outbox.spec.mjs',
+  'tests/learning-reporting-sync.spec.mjs',
+  'tests/learning-reporting-ui.spec.mjs',
   'tests/football-release-matrix.spec.mjs',
 ];
 const PLANNED = ['enumerate', 'prepare', 'domain', ...BROWSER, 'case-union', 'verify'];
