@@ -344,7 +344,7 @@ export function dashboardClient() {
       out.replaceChildren();
       if (!r.ok) { status('Choose a device nickname and at least one profile.'); return; }
       out.append(el('p', 'On the device, open the games site’s “shared/learning-reporting/” page and enter:'), el('p', r.data.code, 'code'),
-        el('p', `Works once, until ${fmt(r.data.expiresAt)}. Players are shown on the device only as Player 1, Player 2… in the order checked.`, 'note'));
+        el('p', `Works once, until ${fmt(r.data.expiresAt)}. Players are shown on the device only as Player 1, Player 2… in the order listed above.`, 'note'));
       status('Code created.');
     });
     root.append(panel('Connect a device', [code, out]));

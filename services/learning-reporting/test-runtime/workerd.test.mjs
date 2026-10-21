@@ -93,6 +93,9 @@ before(async () => {
   mf = new Miniflare(convertV4MiniflareOptions({
     name: 'learning-reporting-runtime', modules: true, scriptPath: bundlePath, compatibilityDate: config.compatibility_date,
     rootPath: dist, resourcePersistencePath: dir, cf: false, log: new CaptureLog(LogLevel.DEBUG),
+    // Miniflare 5 routes workerd console output through structured logs, separately
+    // from its host Log. Capture the actual runtime messages and retain raw stdout.
+    handleStructuredLogs: entry => { logs.push(entry.message); console.log(entry.message); },
     bindings: { ...config.vars, REPORTING_ENABLED: 'true', ALLOWED_ORIGINS: GAME, ACCESS_TEAM_DOMAIN: TEAM, ACCESS_AUD: AUD, RETENTION_DAYS: '30' },
     d1Databases: { DB: 'learning-reporting-runtime' },
     ratelimits,
@@ -306,6 +309,59 @@ test('the cron handler retires expired events by receipt time; a resend is delet
   const health = await healthOf(dev);
   assert.deepEqual(health.epochs[0].unreceived, []);
   assert.deepEqual([health.received, health.retained], [4, 2]);
+});
+
+test('a 15,001-event local D1 backlog continues after the bounded cron and completes on the next invocation', async () => {
+  const dev = await enrolledDevice([A.profileId, B.profileId], 'Backlog tablet');
+  assert.deepEqual(dev.profileIds, [A.profileId, B.profileId], 'enrollment preserves the code request’s profile order');
+  assert.deepEqual(await rows('SELECT profile_id AS profileId, slot FROM device_profiles WHERE device_id = ?1 ORDER BY slot', dev.deviceId),
+    [{ profileId: A.profileId, slot: 1 }, { profileId: B.profileId, slot: 2 }]);
+  const first = factsEvent(dev, A.profileId);
+  const tail = factsEvent(dev, A.profileId, { seq: 15002 });
+  dev.seq = tail.seq;
+  assert.deepEqual(outcomes(await sync(dev, [first, tail])), ['accepted', 'accepted']);
+  // One local-only recursive INSERT creates the remaining 15,000 valid-shaped events.
+  // No network uploads, live D1 writes or per-row setup requests are used. This tests
+  // continuation and receipts, not hosted Free CPU or daily row allowance.
+  await db.prepare(`WITH RECURSIVE backlog(seq) AS (
+      SELECT 2 UNION ALL SELECT seq + 1 FROM backlog WHERE seq < 15001
+    ) INSERT INTO events (event_id, device_id, epoch_id, seq, profile_id, game, kind, recorded_at, received_at, payload)
+    SELECT printf('%08x-0000-4000-8000-%012x', seq, seq), ?1, ?2, seq, ?3,
+      'facts', 'leftUnfinished', ?4, 1000 + seq,
+      json_set(?5, '$.eventId', printf('%08x-0000-4000-8000-%012x', seq, seq), '$.seq', seq)
+    FROM backlog`).bind(dev.deviceId, dev.epochId, A.profileId, first.recordedAt, JSON.stringify(first)).run();
+  await db.prepare('UPDATE events SET received_at = 1001 WHERE event_id = ?1').bind(first.eventId).run();
+  assert.equal(await count('SELECT count(*) AS n FROM events WHERE device_id = ?1', dev.deviceId), 15002);
+  const logStart = logs.length;
+  await worker.scheduled({ cron: '17 3 * * *' });
+  assert.equal(await count('SELECT count(*) AS n FROM retired_events WHERE device_id = ?1', dev.deviceId), 15000);
+  assert.deepEqual((await rows('SELECT seq FROM events WHERE device_id = ?1 ORDER BY seq', dev.deviceId)).map(row => row.seq), [15001, 15002]);
+  assert.ok(logs.slice(logStart).some(line => {
+    const entry = parse(line);
+    return entry?.service === 'learning-reporting' && entry.route === 'scheduled'
+      && entry.outcome === 'retention-continues' && entry.status === 15;
+  }), 'the real runtime reports continuation after exactly 15 rounds');
+  let health = await healthOf(dev);
+  assert.deepEqual(health.epochs[0].unreceived, [], 'the bounded first run invents no gap');
+  assert.deepEqual([health.received, health.retained], [15002, 2]);
+  const last = JSON.parse((await rows('SELECT payload FROM events WHERE device_id = ?1 AND seq = 15001', dev.deviceId))[0].payload);
+  await worker.scheduled({ cron: '17 3 * * *' });
+  assert.deepEqual((await rows('SELECT seq FROM events WHERE device_id = ?1 ORDER BY seq', dev.deviceId)).map(row => row.seq), [15002]);
+  const receipts = await rows('SELECT * FROM retired_events WHERE device_id = ?1 ORDER BY seq', dev.deviceId);
+  assert.equal(receipts.length, 15001);
+  assert.ok(receipts.every((row, i) => row.seq === i + 1 && row.device_id === dev.deviceId && row.epoch_id === dev.epochId && row.reason === 'retention'));
+  assert.equal(receipts[0].event_id, first.eventId);
+  assert.equal(receipts.at(-1).event_id, last.eventId);
+  assert.ok(receipts.slice(1).every(row => row.event_id === `${row.seq.toString(16).padStart(8, '0')}-0000-4000-8000-${row.seq.toString(16).padStart(12, '0')}`), 'each receipt names exactly its original event');
+  assert.deepEqual(Object.keys(receipts[0]).sort(), ['device_id', 'epoch_id', 'event_id', 'reason', 'retired_at', 'seq'], 'ID-only receipts');
+  const replay = await sync(dev, [first, last, tail]);
+  assert.deepEqual(outcomes(replay), ['deleted', 'deleted', 'accepted']);
+  assert.deepEqual(replay.data.results.map(item => item.eventId), [first.eventId, last.eventId, tail.eventId]);
+  assert.equal(await count('SELECT count(*) AS n FROM events WHERE device_id = ?1', dev.deviceId), 1, 'replays cannot resurrect expired data');
+  assert.equal(await count('SELECT count(*) AS n FROM retired_events WHERE device_id = ?1', dev.deviceId), 15001, 'receipts remain idempotent');
+  health = await healthOf(dev);
+  assert.deepEqual(health.epochs[0].unreceived, []);
+  assert.deepEqual([health.received, health.retained], [15002, 1]);
 });
 
 test('export holds only the selected profile’s retained events and its devices’ shared status', async () => {

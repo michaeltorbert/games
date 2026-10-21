@@ -16,7 +16,9 @@ export const LIMITS = Object.freeze({
   gapRanges: 500,
   previewTtlMs: 5 * 60 * 1000,
   retentionBatch: 1000,
-  retentionRounds: 20,
+  // Three statements per round plus two cleanup statements: 47 total, below the
+  // shared 49-statement budget and Workers Free's 50-query invocation ceiling.
+  retentionRounds: 15,
 });
 
 // Documented report rules (README "Decisions").

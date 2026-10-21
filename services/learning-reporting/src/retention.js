@@ -25,7 +25,7 @@ export async function runRetention(env, now) {
     log('scheduled', 'retention-misconfigured', 0);
     throw new Error('RETENTION_DAYS is not a valid whole number of days');
   }
-  const db = createDb(env.DB, LIMITS.retentionRounds * 3 + 2);
+  const db = createDb(env.DB, LIMITS.statementBudget);
   const cutoff = now - config.retentionDays * 86400000;
   let rounds = 0, remaining = 0;
   do {

@@ -6,11 +6,12 @@ import { randomUUID } from 'node:crypto';
 import test from 'node:test';
 import { resetAccessCache, verifyAccess } from '../src/access.js';
 import { csrfToken, destructiveStatements } from '../src/admin.js';
-import { readConfig } from '../src/config.js';
+import { LIMITS, readConfig } from '../src/config.js';
 import { AUTH_SQL, SYNC_SQL, authenticateDevice, planSync } from '../src/device.js';
 import { createDb, SYSTEM } from '../src/db.js';
 import { base64url, newDeviceToken, newEnrollmentCode, sha256Hex, CODE } from '../src/tokens.js';
 import { handle } from '../src/worker.js';
+import { runRetention, RETENTION_SQL } from '../src/retention.js';
 
 const TEAM = 'https://synthetic-household.cloudflareaccess.com';
 const AUD = 'a'.repeat(64);
@@ -230,4 +231,15 @@ test('every destructive statement after the guard requires this operation’s ow
     assert.match(list.at(-1)[0], /^DELETE FROM operations/);
     assert.ok(list.length < 49);
   }
+});
+
+
+test('scheduled retention shares the 49-statement budget, stops at 47 queries and reports continuation', async () => {
+  const d1 = stubD1(sql => sql === RETENTION_SQL.remaining ? [{ remaining: 1 }] : []);
+  const result = await runRetention({ ...ENV, DB: d1 }, Date.now());
+  assert.deepEqual(result, { rounds: 15, remaining: 1 });
+  assert.equal(d1.log.length, 47, '15 rounds of three queries plus two cleanup queries');
+  assert.ok(d1.log.length <= LIMITS.statementBudget && LIMITS.statementBudget < 50);
+  assert.equal(d1.log.filter(sql => sql === RETENTION_SQL.receipts).length, 15);
+  assert.deepEqual(d1.log.slice(-2), [RETENTION_SQL.codes, RETENTION_SQL.operations]);
 });

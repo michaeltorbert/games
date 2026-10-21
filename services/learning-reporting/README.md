@@ -123,33 +123,107 @@ npm run test:runtime   # builds dist/ with a Wrangler dry run, then runs dist/wo
 all other outbound requests. It is evidence for local workerd and SQLite behavior, not
 for edge distribution, real Access, quotas or CPU limits.
 
-## Setup checklist (each step needs explicit authorization)
+## Setup and hosted qualification
 
-1. Check the Cloudflare account plan, D1 and Workers quotas, and that rate-limit
-   namespace IDs `2001` and `2002` are unused (change them if not).
-2. `npx wrangler d1 create learning-reporting`, then put the returned ID in
-   `wrangler.jsonc` and apply `npx wrangler d1 migrations apply learning-reporting --remote`.
-   The migration creates the random installation marker and confirmation key.
-3. Deploy with `REPORTING_ENABLED` still `"false"`.
-4. Create a self-hosted Access application for the Worker's host. Protect every path,
-   and add a bypass only for exactly `/v1/enroll` and `/v1/sync`. Limit the policy to the
-   household's grown-up identities. Set `ACCESS_TEAM_DOMAIN`
-   (`https://<team>.cloudflareaccess.com`) and `ACCESS_AUD` (the application's audience
-   tag). Verify that an unauthenticated request to `/` and `/api/session` is refused,
-   and that a forged `Cf-Access-Jwt-Assertion` header is refused.
-5. Set `ALLOWED_ORIGINS` to the exact game origin(s), set `RETENTION_DAYS` and
-   `DISPLAY_TIME_ZONE`, and set `REPORTING_ENABLED` to `"true"`. Deploy.
-6. Put the Worker origin in `shared/learning-reporting/config.js`, bump both games'
-   versions and cache keys together, and release through the games' gates.
-7. On the dashboard, add profiles, create a code, and connect one device at
-   `/shared/learning-reporting/` on the game site. Verify sync, the report, export,
-   revoke, device deletion, profile deletion and that the cron runs.
+The initial Access choice is **owner only**. Workers Free and Zero Trust Free are
+separate plans: first-time Zero Trust plan selection, payment details and terms must
+be completed directly by the owner in the verified account. Do not accept those on
+the owner's behalf, upgrade a plan or expand permissions. Existing task authorization
+covers the agreed setup and verification once its prerequisites are met.
+
+1. **Verify before deploying a Worker.** Confirm the target account, actual owner
+   identity, Access team issuer and root application's audience, plus current Workers,
+   D1, cron and rate-limit namespace capacity. Check daily usage as well as resource
+   counts; `2001`/`2002` must not collide with another deployment. Keep the Worker
+   undeployed until these checks and the Access configuration below are complete.
+2. **Prepare account-local configuration.** Keep the committed disabled template and
+   empty client URL unchanged. Use a private operational configuration selected
+   explicitly with Wrangler's `--config`; resolve its source and migration paths and
+   inspect the deployment target before use. Supply the real D1 binding,
+   `ACCESS_TEAM_DOMAIN` (`https://<team>.cloudflareaccess.com`), root `ACCESS_AUD`,
+   exact `ALLOWED_ORIGINS`, retention and time zone there. Keep credentials, owner
+   identity and private account/resource identifiers out of the public repository and
+   review packets. Retain `preview_urls: false`, observability off and
+   `REPORTING_ENABLED: "false"`. Explicitly set `triggers.crons` to `[]` for the first
+   deployment: the template contains a cron, and `scheduled()` runs retention
+   independently of `REPORTING_ENABLED`.
+3. **Configure Access before exposure.** Create a self-hosted root application for
+   the intended Worker host, protecting all paths with an Allow policy for only the
+   verified owner. Create two separate, more-specific public path applications for
+   `/v1/enroll` and `/v1/sync`, with policies that permit the device POSTs and required
+   OPTIONS requests. Do not put a bypass on the root policy or expose `/v1/*`.
+   Verify Cloudflare's current application/path matching and policy schema before
+   making writes: more-specific applications take precedence without inheriting the
+   root policy and may match descendants. The Worker accepts only the two exact
+   pathnames as public; its JWT verification protects every other path. Check trailing
+   slashes, child and nearby paths as well as `/`, assets and `/api/*`. Do not publish
+   a protected route or weaken Access to isolate a JWT test.
+4. **Provision the dedicated service.** After verifying target, absence and budget,
+   create only the task's separate D1 database and apply its migration using the
+   selected operational configuration. The migration creates the installation marker
+   and confirmation key. Verify the exact binding before deploying the reviewed
+   Worker with reporting disabled and cron absent. An initialized but wrong database
+   is not detected by its marker. Keep the games' service URL empty.
+5. **Qualify with synthetic data before household enrollment.** Verify actual owner
+   access and anonymous/forged-header/device-token refusal on private routes; verify
+   allowlisted and rejected browser origins, OPTIONS, invalid/revoked tokens, and
+   Origin/CSRF refusal for mutations. Attribute each result to the layer that answered:
+   an Access rejection is edge protection, not isolated proof of Worker JWT rejection.
+   Retain the local JWT tests as the separate Worker check. Enable reporting only for
+   controlled qualification, then use ordinary enrollment, sync and protected admin
+   paths with synthetic profiles and two clients. Check one-use/expired codes, listed
+   profile-slot assignment, exact committed receipts, repeated batches, post-commit
+   timeout/replay, invalid/conflicting events, gaps/fresh epochs and sync counters.
+   Verify profile-scoped export, shared-profile survival, revoke/device/all deletion,
+   and rejection of queued deleted data. Preserve local failure/transaction evidence
+   where a hosted fault cannot safely be induced; do not add a fault route or bypass.
+6. **Qualify retention and Free-plan fitness.** Budget synthetic growth before upload,
+   including D1 indexed row writes, reads, receipts, deletion and storage. Do not copy
+   the local 15,001-row backlog fixture onto Free blindly; it already proves local
+   continuation. After initial security/resource checks, deliberately enable the cron
+   in the operational configuration to obtain actual scheduled-run evidence with a
+   small eligible synthetic retention case. Verify expired removal, live-event
+   preservation, exact retired receipts/replay and no false gap. The current cap is
+   `15 * 3 + 2 = 47` statements, below the application's 49 budget and the current
+   Free 50-query ceiling; that does not establish CPU or daily row-budget fitness.
+   Measure actual hosted report, export, device-health, sync and cron CPU at meaningful
+   growth using supported privacy-safe aggregate dashboard metrics. Record units,
+   period, invocation outcomes and reservoir-sampling/quantile limits; neither a
+   sampled percentile nor the 50,000-row report cap guarantees capacity. Network/D1
+   wait and wall time are not CPU. Do not enable invocation logs, tail, per-event
+   telemetry or substitute custom wall-time metrics. Do not retry the denied billing
+   or GraphQL-budget methods. If meaningful CPU evidence is unavailable, record it as
+   unverified; do not waive the requirement or promise zero cost. ID-only receipts
+   continue growing until device/all deletion even after event retention.
+7. **Prove the useful remote outcome, then release together.** Clean synthetic data
+   through protected deletion. Obtain actual intended-device enrollment and remote
+   receipt of Football and Number facts in the combined private report; synthetic
+   two-client proof alone does not establish that household outcome, native behavior
+   or human comprehension. Use a reviewed controlled client candidate if needed while
+   the committed client URL remains empty. Only after useful hosted evidence and all
+   original outcomes are met or explicitly dispositioned, set the client origin and
+   coordinate both games' versions/cache keys, registry preservation, required gates,
+   fresh exact-head review, merge and merge-SHA Pages/live verification for #199/#200.
+   Preserve gameplay/RNG/local schedulers, privacy and separate evidence classes;
+   retain historical failures. Reuse unchanged game evidence; new game bytes require
+   their relevant gates. Do not present dormant infrastructure as the first useful
+   report delivery.
+
+Current primary references to recheck before operational writes: [Access application
+paths](https://developers.cloudflare.com/cloudflare-one/access-controls/policies/app-paths/),
+[Workers and Access](https://developers.cloudflare.com/workers/configuration/cloudflare-access/),
+[Workers limits](https://developers.cloudflare.com/workers/platform/limits/),
+[D1 limits](https://developers.cloudflare.com/d1/platform/limits/) and
+[D1 row pricing](https://developers.cloudflare.com/d1/platform/pricing/).
 
 ## Disable switch and recovery
 
 - **Stop uploads:** set `REPORTING_ENABLED` to `"false"` and deploy. Devices get 503 and
-  keep their queues; the dashboard, export and deletion still work.
-- **Stop the games from trying:** empty `shared/learning-reporting/config.js` and release.
+  keep their queues; the dashboard, export and deletion still work. This does **not**
+  stop retention: remove/disable the cron separately in the operational configuration
+  if scheduled work must stop, and verify the resulting trigger configuration.
+- **Stop the games from trying:** empty `shared/learning-reporting/config.js` through a
+  coordinated game release with the required versions/cache keys and release checks.
   Queued events stay on each device until it is re-enabled or stopped there.
 - **A device whose final setting was not saved** (the browser refused the last step of
   connecting): the device page then says the device is partly connected, and nothing is

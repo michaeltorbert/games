@@ -78,11 +78,25 @@ async function geometry(page, name) {
     // A checkbox or radio's touch target is its whole label.
     const target = element => (element.matches('input[type="checkbox"], input[type="radio"]') && element.closest('label')) || element;
     return {
+      usableViewport: { width: innerWidth, height: innerHeight },
+      screen: { width: window.screen.width, height: window.screen.height },
+      devicePixelRatio,
+      userAgent: navigator.userAgent,
+      maxTouchPoints: navigator.maxTouchPoints,
       overflow: document.documentElement.scrollWidth - innerWidth,
       small: controls.map(element => ({ tag: target(element).tagName, text: (element.textContent || element.getAttribute('aria-label') || element.value || '').trim().slice(0, 30), box: target(element).getBoundingClientRect().toJSON() }))
         .filter(item => item.box.height < 44 || (item.tag !== 'SUMMARY' && item.tag !== 'INPUT' && item.box.width < 44)),
     };
   });
+  const browser = page.context().browser();
+  result.emulation = {
+    engine: browser?.browserType().name() ?? 'not independently exposed',
+    engineVersion: browser?.version() ?? 'not independently exposed',
+    project: test.info().project.name,
+    isMobile: test.info().project.use.isMobile ?? false,
+    hasTouch: test.info().project.use.hasTouch ?? false,
+    limitations: 'Browser engine emulation; not physical-device, Apple Simulator, Safari chrome, keyboard or safe-area evidence. Touch flags alone do not prove interaction; the reverse-click mapping case drives transitions by tap.',
+  };
   await test.info().attach(`${name}-geometry.json`, { body: JSON.stringify(result, null, 2), contentType: 'application/json' });
   await test.info().attach(`${name}.png`, { body: await page.screenshot({ fullPage: true }), contentType: 'image/png' });
   expect(result.overflow, 'no horizontal overflow').toBeLessThanOrEqual(0);
@@ -106,6 +120,35 @@ async function expectOnlyView(page, active) {
     else await expect(page.locator(`#view-${name}`)).toBeHidden();
   }
 }
+
+test('reverse-clicked profiles keep listed Player slots in the code request and Devices mapping', async ({ page }) => {
+  // This dashboard has no audio source. Game-page tests keep their existing mute fixture.
+  await serveDashboard(page);
+  let selected;
+  await page.route(`${DASH}/api/codes`, async route => {
+    selected = route.request().postDataJSON();
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ code: 'SYNTHETIC', expiresAt: Date.parse('2026-10-26T12:10:00Z') }) });
+  });
+  await page.route(`${DASH}/api/devices`, route => {
+    // The real enrollment SQL uses the profile array index + 1 as the slot (covered
+    // separately against local D1); feed that captured request order to the real view.
+    const devices = health.devices.map(device => ({ ...device, profiles: selected.profileIds.map((profileId, index) => ({ profileId, slot: index + 1 })) }));
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ...health, devices }) });
+  });
+  await page.goto(`${DASH}/`);
+  await page.getByRole('button', { name: 'Setup', exact: true }).tap();
+  const form = page.locator('#view-setup form').filter({ has: page.getByRole('button', { name: 'Create one-time code' }) });
+  await form.getByLabel('Device nickname').fill('Reverse tablet');
+  await form.getByLabel('Synthetic Wren', { exact: true }).tap();
+  await form.getByLabel('Synthetic Lark', { exact: true }).tap();
+  await form.getByRole('button', { name: 'Create one-time code' }).tap();
+  await expect(page.locator('#view-setup')).toContainText('in the order listed above.');
+  expect(selected).toEqual({ deviceName: 'Reverse tablet', profileIds: [P1, P2] });
+  await geometry(page, 'dashboard-code-reverse-click');
+  await page.getByRole('button', { name: 'Devices', exact: true }).tap();
+  await expect(page.locator('#view-devices')).toContainText('Player 1: Synthetic Lark, Player 2: Synthetic Wren');
+  await geometry(page, 'dashboard-devices-reverse-click');
+});
 
 test('the dashboard report, devices and setup views fit every target with touch-size controls and the exact caveat', async ({ page }) => {
   await serveDashboard(page);
