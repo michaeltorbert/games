@@ -128,6 +128,36 @@
     }
     if(playerPicker)playerPicker.refresh();
   }
+  // Enrolled several-profile device with no choice yet: on the document's first Facts activation,
+  // drop the stale document selection that the page-completion dialog leaves behind (its input
+  // was select()ed, then the dialog was removed before Facts showed). In WebKit that selection
+  // was later revealed after Facts grew the page, scrolling past the choice; clearing it at this
+  // point prevented the scroll in every traced case (scroll-trace differential 20261021T181628Z,
+  // a selection-dependent bound, not engine-internal proof). Synchronous and first activation
+  // only, never during practice, only while nothing has focus and the selection is not inside an
+  // editable field. Focus, timing, answers and play are untouched. Single-profile and
+  // reporting-off pages have no picker and are unchanged.
+  function clearStaleSelection(){
+    if(!playerPicker||typeof LEARNING_SYNC==='undefined'||LEARNING_SYNC.player()!==null)return;
+    const focused=document.activeElement;
+    if(focused&&focused!==document.body&&focused!==document.documentElement)return;
+    const selection=typeof document.getSelection==='function'?document.getSelection():null;
+    if(!selection||!selection.rangeCount)return;
+    const node=selection.anchorNode,element=node&&(node.nodeType===1?node:node.parentElement);
+    if(element&&element.closest('input,textarea,[contenteditable]:not([contenteditable="false"])'))return;
+    selection.removeAllRanges();
+  }
+  // The page footer's privacy line: local-only unless this device reports Number facts results.
+  // Reporting never claims delivery; other Place practice is never sent.
+  const privacy=document.getElementById('practice-privacy'),LOCAL_ONLY=privacy?privacy.textContent:'';
+  const REPORTING='Number facts results on this device are kept here until they are sent to a private grown-up report. Other practice stays on this device.';
+  function renderPrivacy(){
+    if(!privacy)return;
+    const reporting=typeof LEARNING_SYNC!=='undefined'&&LEARNING_SYNC.players()!==null;
+    const text=reporting?REPORTING:LOCAL_ONLY;
+    if(privacy.textContent!==text)privacy.textContent=text;
+  }
+  renderPrivacy();
   function outboxRepaired(before){
     if(before.complete)return;
     if(writable){outboxRepair={before,adoptable:outboxAdoptable(before)};return;}
@@ -283,6 +313,7 @@
     const storageMessage=[message,driveNotice].filter(Boolean).join(' ');
     if(storage.textContent!==storageMessage)storage.textContent=storageMessage;
     renderPlayerPicker();
+    renderPrivacy();
     renderReport();
     if(startTiming){invalidate();const token=renderToken,id=q.id;requestAnimationFrame(()=>requestAnimationFrame(()=>{
       if(active&&token===renderToken&&model.attempt.id===id&&!q.complete&&!q.helped&&q.firstCorrect===null&&equationVisible()&&!report.open){origin=performance.now();timingInvalid=false;}
@@ -307,7 +338,7 @@
       if(sessionPage>=17&&message===EMPTY_MESSAGE)message='';
       // Re-check an existing prompt against the confirmed page on every activation; the next locked action saves a repair.
       if(first)readInitial();else{const id=model.attempt.id,before=outboxAttempt(model);api.repair(model);if(model.attempt.id!==id){input='';report.open=false;try{outboxRepaired(before);}catch{}}}
-      render(first&&savedRaw===null);}},
+      render(first&&savedRaw===null);if(first)clearStaleSelection();}},
     // Opening Practice options only discards this question's timing sample; help and report state are untouched.
     interrupt(){invalidate();},
     onUnavailable(listener){unavailable=listener;},

@@ -248,6 +248,22 @@ footballTest('Number facts shows the who-is-practicing choice before practice on
   expect((await page.evaluate(() => __factsTest.snapshot().attempt)).complete).toBe(true);
   await expect(page.locator('#facts-next')).toBeVisible();
   await layout('facts-player-after-answer');
+  // The footer never promises local-only practice on a reporting device, never claims delivery,
+  // and limits the claim to Number facts (F6-3).
+  const privacy = page.locator('#practice-privacy');
+  await expect(privacy).toHaveText('Number facts results on this device are kept here until they are sent to a private grown-up report. Other practice stays on this device.');
+  await expect(page.locator('body')).not.toContainText('Practice stays on this device.');
+  await privacy.scrollIntoViewIfNeeded();
+  await test.info().attach('facts-footer-reporting.png', { body: await page.screenshot(), contentType: 'image/png' });
+  // After Stop on the device page, the same footer is local-only again.
+  await page.goto('/shared/learning-reporting/');
+  await page.locator('#lr-stop-ask').tap();
+  await page.locator('#lr-stop-confirm').tap();
+  await expect(page.locator('#lr-stop-status')).toHaveText('Reporting stopped on this device.');
+  await page.goto('/place-value-practice/');
+  await expect(panel).toHaveAttribute('aria-busy', 'false');
+  await expect(privacy).toHaveText('Practice stays on this device.');
+  await expect(page.locator('#facts-player')).toHaveCount(0);
 });
 
 // ---- Only the latest report request may render (F-SOL-200-1) ----
@@ -428,7 +444,7 @@ footballTest('the Football start screen offers a tappable who-is-playing choice 
 // Rendered-box ownership on the public device page (F-SOL-200-3): `hidden` must remove a
 // region and everything in it from layout, not just set the attribute.
 async function deviceRegions(page) {
-  return page.evaluate(() => Object.fromEntries(['lr-health', 'lr-sync-actions', 'lr-setup', 'lr-stop', 'lr-stop-confirm', 'lr-stop-cancel'].map(id => {
+  return page.evaluate(() => Object.fromEntries(['lr-health', 'lr-sync-actions', 'lr-finish-actions', 'lr-setup', 'lr-stop', 'lr-stop-confirm', 'lr-stop-cancel'].map(id => {
     const element = document.getElementById(id), box = element.getBoundingClientRect();
     const boxed = [element, ...element.querySelectorAll('*')].filter(node => { const b = node.getBoundingClientRect(); return b.width > 0 || b.height > 0; }).length;
     return [id, { hidden: element.hidden, display: getComputedStyle(element).display, rendered: box.width > 0 && box.height > 0, boxed }];
@@ -441,6 +457,95 @@ async function expectRegions(page, shown) {
     else expect([region.hidden, region.display, region.boxed], `${id} is not rendered`).toEqual([true, 'none', 0]);
   }
 }
+
+// A refused final-setting write (F6-2): the page shows a partial enrollment after reload,
+// finishes it when the browser allows the write, or stops it, never spending another code.
+test('a device whose final setting was not saved can finish connecting or stop after a reload, without another code', async ({ page, context }) => {
+  const SERVICE_URL = 'http://127.0.0.1:8199';
+  const cors = origin => ({ 'Access-Control-Allow-Origin': origin, 'Access-Control-Allow-Methods': 'POST', 'Access-Control-Allow-Headers': 'Authorization, Content-Type', Vary: 'Origin' });
+  let enrollCalls = 0;
+  // Test-only fault: while this tab's sessionStorage flag is set, the hint write is refused.
+  await context.addInitScript(() => {
+    const setItem = Storage.prototype.setItem;
+    Storage.prototype.setItem = function (key, value) {
+      if (this === window.localStorage && key === 'learningReporting:enrollment:v1' && sessionStorage.getItem('__failHint') === '1') throw new DOMException('Refused', 'QuotaExceededError');
+      return setItem.call(this, key, value);
+    };
+  });
+  await context.route('**/shared/learning-reporting/config.js*', route => route.fulfill({
+    status: 200, contentType: 'application/javascript', body: `globalThis.LEARNING_REPORTING_CONFIG = Object.freeze({ serviceUrl: '${SERVICE_URL}' });`,
+  }));
+  await context.route(`${SERVICE_URL}/**`, route => {
+    const request = route.request(), origin = request.headers().origin;
+    if (request.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: cors(origin) });
+    if (new URL(request.url()).pathname === '/v1/enroll') {
+      enrollCalls++;
+      return route.fulfill({ status: 200, headers: cors(origin), contentType: 'application/json',
+        body: JSON.stringify({ schemaVersion: 1, token: `lr1_${'ab'.repeat(16)}_${randomBytes(32).toString('base64url')}`, deviceId: randomUUID(), profileIds: [randomUUID()] }) });
+    }
+    return route.fulfill({ status: 503, headers: cors(origin), contentType: 'application/json', body: '{"error":"unavailable"}' });
+  });
+  const records = () => page.evaluate(async () => {
+    const db = await new Promise(resolve => { const r = indexedDB.open('learningReporting'); r.onupgradeneeded = () => r.transaction.abort(); r.onsuccess = () => resolve(r.result); r.onerror = e => { e.preventDefault(); resolve(null); }; });
+    if (!db) return null;
+    const values = await new Promise(resolve => { const tx = db.transaction('records', 'readonly'), s = tx.objectStore('records');
+      const keys = ['enrollment', 'credential', 'sync', 'outbox', 'binding'], reads = keys.map(k => [k, s.get(k)]);
+      tx.oncomplete = () => resolve(Object.fromEntries(reads.map(([k, r]) => [k, r.result ?? null]))); });
+    db.close();
+    return values;
+  });
+  const connect = async () => {
+    await page.locator('#lr-code').fill('0123-4567-89ab-cdef-ghjk-mnpq-rs');
+    await page.locator('#lr-connect').tap();
+  };
+  const PARTIAL = 'This device is partly connected: the browser did not save the final setting, so practice is not recorded yet. Finish connecting, or stop reporting on this device.';
+
+  await page.goto('/shared/learning-reporting/');
+  await page.evaluate(() => sessionStorage.setItem('__failHint', '1'));
+  await connect();
+  await expect(page.locator('#lr-form-status')).toContainText('did not save the final setting');
+  await expect(page.locator('#lr-summary')).toHaveText(PARTIAL);
+  await expectRegions(page, ['lr-finish-actions', 'lr-stop']);
+  const installed = await records();
+  expect(installed.enrollment && installed.credential && installed.sync).toBeTruthy();
+  const generation = JSON.parse(installed.enrollment).generation;
+  await geometry(page, 'device-page-partial');
+  // Reload: still the same partial enrollment, not a blank device asking for a new code.
+  await page.reload();
+  await expect(page.locator('#lr-summary')).toHaveText(PARTIAL);
+  await expectRegions(page, ['lr-finish-actions', 'lr-stop']);
+  // Finishing while the write is still refused: truthful message, nothing changed.
+  await page.locator('#lr-finish').tap();
+  await expect(page.locator('#lr-finish-status')).toContainText('did not save the final setting');
+  expect(await records()).toEqual(installed);
+  // The browser allows the write again: the same enrollment is finished.
+  await page.evaluate(() => sessionStorage.removeItem('__failHint'));
+  await page.locator('#lr-finish').tap();
+  await expect(page.locator('#lr-summary')).toHaveText('Connected. Practice is sent automatically while a game is open.');
+  await expectRegions(page, ['lr-health', 'lr-sync-actions', 'lr-stop']);
+  expect(JSON.parse(await page.evaluate(() => localStorage.getItem('learningReporting:enrollment:v1'))).generation).toBe(generation);
+  expect(JSON.parse((await records()).enrollment).generation).toBe(generation);
+  expect(enrollCalls).toBe(1);
+  await geometry(page, 'device-page-finished');
+
+  // A second partial enrollment, stopped while the hint is still missing.
+  await page.locator('#lr-stop-ask').tap();
+  await page.locator('#lr-stop-confirm').tap();
+  await expect(page.locator('#lr-stop-status')).toHaveText('Reporting stopped on this device.');
+  await page.evaluate(() => sessionStorage.setItem('__failHint', '1'));
+  await connect();
+  await expect(page.locator('#lr-summary')).toHaveText(PARTIAL);
+  expect(enrollCalls).toBe(2);
+  await page.reload();
+  await page.locator('#lr-stop-ask').tap();
+  await page.locator('#lr-stop-confirm').tap();
+  await expect(page.locator('#lr-stop-status')).toHaveText('Reporting stopped on this device.');
+  await expect(page.locator('#lr-summary')).toHaveText('This device is not connected. Nothing is recorded or sent.');
+  await expectRegions(page, ['lr-setup']);
+  expect(Object.values(await records()).every(value => value === null)).toBe(true);
+  expect(enrollCalls).toBe(2);
+  await geometry(page, 'device-page-partial-stopped');
+});
 
 test('the public device page shows only the regions that apply: not set up, not connected, connected, and paused', async ({ page }) => {
   const DEVICE_SERVICE = 'http://127.0.0.1:8199';

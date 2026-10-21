@@ -182,32 +182,90 @@
       return false;
     }
   }
-  // Re-writes a missing hint from the installed consent (the hint is admission only).
-  async function repairHint() {
-    if (!O || typeof indexedDB === 'undefined') return false;
-    try { if (localStorage.getItem(O.ENROLLMENT_KEY) !== null) return false; } catch (error) { return false; }
+  // ---- A partial enrollment: records installed, final admission hint missing ----
+  // Used only by the enrollment page, and only when no hint exists. Read-only: it never
+  // creates a database (a missing one is not opened where it can be listed, and any upgrade
+  // of the fallback open is aborted) and never changes a record.
+  async function readOwnedRecords() {
     if (typeof indexedDB.databases === 'function') {
-      const listed = (await indexedDB.databases()).some(entry => entry.name === O.DB_NAME && entry.version === O.DB_VERSION);
-      if (!listed) return false;
+      let entry;
+      try { entry = (await indexedDB.databases()).find(item => item && item.name === O.DB_NAME); } catch (error) { entry = undefined; }
+      if (!entry || entry.version === 0) return null;
+      if (entry.version !== O.DB_VERSION) return { layout: 'future' };
     }
-    const { db } = await new Promise(resolve => {
-      const request = indexedDB.open(O.DB_NAME);
-      request.onupgradeneeded = () => request.transaction.abort();
-      request.onsuccess = () => resolve({ db: request.result });
-      request.onerror = event => { event.preventDefault(); resolve({ db: null }); };
+    const db = await new Promise(resolve => {
+      let request;
+      try { request = indexedDB.open(O.DB_NAME); } catch (error) { resolve(null); return; }
+      request.onupgradeneeded = () => { try { request.transaction.abort(); } catch (error) { /* the open then fails */ } };
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = event => { if (event && typeof event.preventDefault === 'function') event.preventDefault(); resolve(null); };
     });
-    if (!db) return false;
-    if (!db.objectStoreNames.contains(O.STORE)) { db.close(); return false; }
-    const raw = await new Promise(resolve => {
-      const tx = db.transaction(O.STORE, 'readonly'), consent = tx.objectStore(O.STORE).get(O.CONSENT_RECORD), credential = tx.objectStore(O.STORE).get(O.CREDENTIAL_RECORD);
-      tx.oncomplete = () => resolve({ consent: consent.result, credential: credential.result });
-      tx.onabort = () => resolve({});
+    if (!db) return null;
+    if (db.version !== O.DB_VERSION || db.objectStoreNames.length !== 1 || !db.objectStoreNames.contains(O.STORE)) { db.close(); return { layout: 'future' }; }
+    const values = await new Promise(resolve => {
+      let tx;
+      try { tx = db.transaction(O.STORE, 'readonly'); } catch (error) { resolve(null); return; }
+      const store = tx.objectStore(O.STORE), reads = RECORD_KEYS().map(key => [key, store.get(key)]);
+      tx.oncomplete = () => resolve(Object.fromEntries(reads.map(([key, read]) => [key, read.result])));
+      tx.onabort = () => resolve(null);
     });
     db.close();
-    let consent;
-    try { consent = JSON.parse(raw.consent); } catch (error) { return false; }
-    if (!exactKeys(consent, ['schemaVersion', 'generation', 'deviceId', 'profileIds']) || consent.schemaVersion !== 1 || raw.credential === undefined) return false;
-    return writeHint(consent);
+    return values ? { layout: 'ok', values } : null;
+  }
+  const parseString = raw => { if (typeof raw !== 'string') return undefined; try { return JSON.parse(raw); } catch (error) { return undefined; } };
+
+  // 'none' (no owned records), 'partial' (exactly one verified #200 enrollment whose hint is
+  // missing), or 'unknown' (anything else: future, malformed, mismatched or orphan records,
+  // which are left untouched and never admitted).
+  async function partialEnrollment() {
+    if (!O || typeof indexedDB === 'undefined' || !indexedDB) return { state: 'unavailable' };
+    try { if (localStorage.getItem(O.ENROLLMENT_KEY) !== null) return { state: 'hinted' }; } catch (error) { return { state: 'unavailable' }; }
+    const records = await readOwnedRecords();
+    if (!records) return { state: 'none' };
+    if (records.layout !== 'ok') return { state: 'unknown' };
+    const raw = records.values;
+    if (Object.values(raw).every(value => value === undefined)) return { state: 'none' };
+    const consent = parseString(raw[O.CONSENT_RECORD]), credential = parseString(raw[O.CREDENTIAL_RECORD]);
+    const consentValid = exactKeys(consent, ['schemaVersion', 'generation', 'deviceId', 'profileIds']) && consent.schemaVersion === 1
+      && uuid(consent.generation) && uuid(consent.deviceId) && Array.isArray(consent.profileIds) && consent.profileIds.length >= 1
+      && consent.profileIds.length <= 8 && consent.profileIds.every(uuid) && new Set(consent.profileIds).size === consent.profileIds.length;
+    if (!consentValid || !O.validateCredential(credential) || credential.generation !== consent.generation || credential.deviceId !== consent.deviceId) {
+      return { state: 'unknown' };
+    }
+    const same = value => value.generation === consent.generation;
+    const sync = raw[O.SYNC_RECORD], outbox = raw[O.OUTBOX_RECORD], binding = raw[O.BINDING_RECORD];
+    if (sync !== undefined && !(O.validateSyncRecord(parseString(sync)) && same(parseString(sync)))) return { state: 'unknown' };
+    if (binding !== undefined && !(O.validateBinding(parseString(binding)) && same(parseString(binding)))) return { state: 'unknown' };
+    if (outbox !== undefined) {
+      const envelope = parseString(outbox);
+      if (!(O.validateEnvelope(envelope) && same(envelope) && envelope.status.deviceId === consent.deviceId)) return { state: 'unknown' };
+    }
+    return {
+      state: 'partial', consent, profiles: consent.profileIds.length,
+      expected: { generation: consent.generation, deviceId: consent.deviceId, token: credential.token },
+      originMatches: credential.serviceOrigin === serviceOrigin(),
+    };
+  }
+
+  // Finishes a verified partial enrollment by writing its admission hint (re-verified now).
+  async function finishEnrollment() {
+    if (O && O.deletionPending()) return { ok: false, reason: 'stopping' };
+    const found = await partialEnrollment();
+    if (found.state !== 'partial') return { ok: false, reason: found.state };
+    if (!writeHint(found.consent)) return { ok: false, reason: 'hint-failed' };
+    started = false;
+    start();
+    return { ok: true };
+  }
+
+  // Stops a verified partial enrollment without a hint: the existing guarded Stop deletes the
+  // owned records only if the consent and credential are still exactly this enrollment.
+  async function stopPartialEnrollment() {
+    const found = await partialEnrollment();
+    if (found.state !== 'partial') return { ok: false, reason: found.state };
+    const result = await O.stopGeneration(found.expected);
+    if (result.ok) forgetPlayer();
+    return result;
   }
 
   const normalizeCode = value => String(value || '').toUpperCase().replace(/[\s-]/g, '').replace(/[IL]/g, '1').replace(/O/g, '0');
@@ -225,6 +283,11 @@
     } catch (error) {
       return { ok: false, reason: 'unavailable' };
     }
+    // Owned records already present (a partial install, or unknown data): install would refuse,
+    // so never spend a one-time code on it.
+    const existing = await partialEnrollment();
+    if (existing.state === 'partial') return { ok: false, reason: 'partial-enrollment' };
+    if (existing.state !== 'none') return { ok: false, reason: existing.state === 'unknown' ? 'unknown-records' : existing.state };
     const response = await post(`${origin}/v1/enroll`, JSON.stringify({ code }), null);
     if (response.kind !== 'response') return { ok: false, reason: response.kind };
     if (response.status !== 200) return { ok: false, reason: response.body?.error === 'invalid-code' ? 'invalid-code' : 'service' };
@@ -453,7 +516,7 @@
   globalThis.LEARNING_SYNC = Object.freeze({
     PLAYER_KEY,
     serviceOrigin, players, player, choosePlayer, buildPlayerPicker,
-    enroll, install, repairHint, stopThisDevice, health, normalizeCode,
+    enroll, install, partialEnrollment, finishEnrollment, stopPartialEnrollment, stopThisDevice, health, normalizeCode,
     start, nudge,
     // Runs one sync pass now (tests and the enrollment page's "Sync now").
     syncNow: () => { if (!started) start(); return started ? run() : Promise.resolve(); },

@@ -13,7 +13,9 @@
     legacy: 'An older, unsent practice record is on this device. Stop reporting first.',
     unavailable: 'This browser cannot keep reporting data, so this device cannot be connected.',
     future: 'A newer version of the games saved reporting data here. Update this page, or stop reporting first.',
-    'hint-failed': 'Connected, but this browser did not save the final setting. Reload this page to finish.',
+    'hint-failed': 'This browser did not save the final setting, so practice is not recorded yet. Choose Finish connecting to try again, or stop reporting on this device.',
+    'partial-enrollment': 'This device is already partly connected. Finish connecting it, or stop reporting on this device first. No code was used.',
+    'unknown-records': 'Reporting data that this page does not recognize is on this device. It is kept unchanged, and no code was used.',
     timeout: 'The report service did not answer in time. Check the connection and try again.',
     network: 'The report service could not be reached. Check the connection and try again.',
     service: 'The report service could not connect this device right now. Try again later.',
@@ -39,10 +41,28 @@
     return `${date.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}, ${date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}`;
   };
 
+  // A verified partial enrollment (records installed, final setting missing), if any.
+  let partial = null;
   async function render() {
     const configured = Boolean(S && S.serviceOrigin());
     const health = S ? await S.health() : { state: 'unavailable' };
     const enrolled = health.state === 'ok';
+    // Without a hint, check (read-only) for this device's own partly finished enrollment.
+    const found = health.state === 'disabled' && S ? await S.partialEnrollment() : { state: 'none' };
+    $('lr-summary').dataset.tone = '';
+    partial = found.state === 'partial' ? found : null;
+    $('lr-finish-actions').hidden = !partial;
+    if (partial || found.state === 'unknown') {
+      $('lr-setup').hidden = true;
+      $('lr-stop').hidden = !partial;
+      $('lr-health').hidden = true;
+      $('lr-sync-actions').hidden = true;
+      $('lr-summary').textContent = partial
+        ? 'This device is partly connected: the browser did not save the final setting, so practice is not recorded yet. Finish connecting, or stop reporting on this device.'
+        : 'Reporting data that this page does not recognize is on this device. It is kept unchanged.';
+      $('lr-summary').dataset.tone = 'alert';
+      return;
+    }
     $('lr-setup').hidden = enrolled || !['disabled', 'no-consent'].includes(health.state);
     $('lr-stop').hidden = health.state === 'disabled' || health.state === 'no-consent';
     $('lr-health').hidden = !enrolled;
@@ -87,6 +107,17 @@
       await render();
     }
   });
+  $('lr-finish').addEventListener('click', async () => {
+    $('lr-finish').disabled = true;
+    $('lr-finish-status').textContent = 'Finishing…';
+    try {
+      const result = await S.finishEnrollment();
+      $('lr-finish-status').textContent = result.ok ? 'Connected.' : MESSAGES[result.reason] ?? 'This device could not be finished. Try again, or stop reporting on this device.';
+    } finally {
+      $('lr-finish').disabled = false;
+      await render();
+    }
+  });
   $('lr-sync-now').addEventListener('click', async () => {
     $('lr-sync-now').disabled = true;
     try { await S.syncNow(); } finally { $('lr-sync-now').disabled = false; await render(); }
@@ -101,7 +132,8 @@
   $('lr-stop-confirm').addEventListener('click', async () => {
     asking(false);
     $('lr-stop-status').textContent = 'Stopping…';
-    const result = await S.stopThisDevice();
+    // A partial enrollment has no hint, so the guarded generation Stop removes exactly it.
+    const result = partial ? await S.stopPartialEnrollment() : await S.stopThisDevice();
     $('lr-stop-status').textContent = result.ok
       ? (result.hintRemoved === false ? 'Stopped. Reload this page to finish removing the setting.' : 'Reporting stopped on this device.')
       : result.pending ? 'Waiting for another open game tab to close before removal finishes.' : 'Reporting could not be stopped. Try again.';

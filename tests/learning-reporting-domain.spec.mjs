@@ -19,8 +19,14 @@ const token = (installation = 'ab'.repeat(16)) => `lr1_${installation}_${randomB
 const plain = value => JSON.parse(JSON.stringify(value));
 
 function makeStorage() {
-  const values = new Map();
-  return { getItem: key => (values.has(key) ? values.get(key) : null), setItem: (key, value) => values.set(key, String(value)), removeItem: key => values.delete(key), raw: key => values.get(key) ?? null };
+  const values = new Map(), failing = new Set();
+  return {
+    getItem: key => (values.has(key) ? values.get(key) : null),
+    // `failSet(key)` makes setItem for that key throw, as a refused browser write would.
+    setItem: (key, value) => { if (failing.has(key)) throw new Error('setItem refused'); values.set(key, String(value)); },
+    removeItem: key => values.delete(key), raw: key => values.get(key) ?? null,
+    failSet: (key, on = true) => (on ? failing.add(key) : failing.delete(key)),
+  };
 }
 function makeEnv() {
   return { storage: makeStorage(), idb: createFakeIndexedDB(), timers: [], requests: [], respond: null };
@@ -304,6 +310,101 @@ test('a lost first commit, a reload and another player: the started question rec
     await reloaded.O.idle();
     const next = envelope(env).events.filter(event => event.factId === 'add:7:6').slice(-2);
     assert.deepEqual(next.map(event => [event.kind, event.profileId]), [['attempt', later], ['resolution', later]]);
+  }
+});
+
+// ---- A failed final hint write: recover or Stop without another code (F6-2) ----
+const OWNED = ['enrollment', 'outbox', 'credential', 'sync', 'binding'];
+const ownedBytes = env => Object.fromEntries(OWNED.map(key => [key, env.idb.peek(DB, STORE, key)]));
+const enrollRequests = env => env.requests.filter(request => request.url === `${ORIGIN}/v1/enroll`).length;
+async function partialInstall(env, tab, profileIds = [randomUUID()]) {
+  env.storage.failSet(HINT);
+  env.respond = () => enrollReply(profileIds);
+  const result = plain(await tab.S.enroll('0123456789ABCDEFGHJKMNPQRS'));
+  assert.deepEqual([result.ok, result.reason, result.installed], [false, 'hint-failed', true]);
+  assert.equal(env.storage.raw(HINT), null);
+  return JSON.parse(env.idb.peek(DB, STORE, 'enrollment'));
+}
+
+test('a failed final hint leaves a verified partial enrollment that a reload can finish, without a second code', async () => {
+  const env = makeEnv(), tab = openTab(env);
+  const consent = await partialInstall(env, tab);
+  const installed = ownedBytes(env);
+  assert.ok(installed.enrollment && installed.credential && installed.sync);
+  // Nothing records without the hint (fail closed).
+  assert.equal(tab.O.capture(), null);
+  // "Reload": a fresh document sees the partial enrollment, not a blank device.
+  const reloaded = openTab(env);
+  const found = plain(await reloaded.S.partialEnrollment());
+  assert.equal(found.state, 'partial');
+  assert.deepEqual([found.expected.generation, found.expected.deviceId], [consent.generation, consent.deviceId]);
+  // A new code is refused before any exchange: no second code is spent.
+  assert.deepEqual(plain(await reloaded.S.enroll('0123456789ABCDEFGHJKMNPQRS')), { ok: false, reason: 'partial-enrollment' });
+  assert.equal(enrollRequests(env), 1);
+  // Finishing while the browser still refuses the write: honest failure, records untouched.
+  assert.deepEqual(plain(await reloaded.S.finishEnrollment()), { ok: false, reason: 'hint-failed' });
+  assert.deepEqual(ownedBytes(env), installed);
+  // The browser allows it again: the same enrollment is finished; generation and records unchanged.
+  env.storage.failSet(HINT, false);
+  assert.deepEqual(plain(await reloaded.S.finishEnrollment()), { ok: true });
+  const hint = JSON.parse(env.storage.raw(HINT));
+  assert.deepEqual([hint.generation, hint.deviceId, hint.profileIds], [consent.generation, consent.deviceId, consent.profileIds]);
+  assert.deepEqual(ownedBytes(env), installed);
+  assert.equal(enrollRequests(env), 1);
+  // Recording now works under that one generation.
+  await record(reloaded, 1);
+  assert.equal(envelope(env).generation, consent.generation);
+  assert.equal(plain(await reloaded.S.partialEnrollment()).state, 'hinted');
+});
+
+test('a partial enrollment can be stopped without a hint; a later enrollment then spends exactly one new code', async () => {
+  const env = makeEnv(), tab = openTab(env);
+  await partialInstall(env, tab);
+  const reloaded = openTab(env);
+  assert.deepEqual(plain(await reloaded.S.stopPartialEnrollment()), { ok: true });
+  for (const key of OWNED) assert.equal(env.idb.peek(DB, STORE, key), null, key);
+  assert.equal(plain(await reloaded.S.partialEnrollment()).state, 'none');
+  env.storage.failSet(HINT, false);
+  const fresh = openTab(env);
+  await enroll(env, fresh);
+  assert.equal(enrollRequests(env), 2);
+});
+
+test('unknown, mismatched, orphan or future records are never admitted, finished, stopped or overwritten, and spend no code', async () => {
+  const cases = {
+    'generation mismatch': env => {
+      const consent = { schemaVersion: 1, generation: randomUUID(), deviceId: randomUUID(), profileIds: [randomUUID()] };
+      env.idb.seed(DB, STORE, { enrollment: JSON.stringify(consent),
+        credential: JSON.stringify({ schemaVersion: 1, generation: randomUUID(), deviceId: consent.deviceId, serviceOrigin: ORIGIN, token: token() }) });
+    },
+    'orphan credential': env => env.idb.seed(DB, STORE, { credential: JSON.stringify({ schemaVersion: 1, generation: randomUUID(), deviceId: randomUUID(), serviceOrigin: ORIGIN, token: token() }) }),
+    'future credential': env => {
+      const consent = { schemaVersion: 1, generation: randomUUID(), deviceId: randomUUID(), profileIds: [randomUUID()] };
+      env.idb.seed(DB, STORE, { enrollment: JSON.stringify(consent),
+        credential: JSON.stringify({ schemaVersion: 2, generation: consent.generation, deviceId: consent.deviceId, serviceOrigin: ORIGIN, token: token() }) });
+    },
+    'consent without credential': env => env.idb.seed(DB, STORE, { enrollment: JSON.stringify({ schemaVersion: 1, generation: randomUUID(), deviceId: randomUUID(), profileIds: [randomUUID()] }) }),
+    'malformed sync': env => {
+      const consent = { schemaVersion: 1, generation: randomUUID(), deviceId: randomUUID(), profileIds: [randomUUID()] };
+      env.idb.seed(DB, STORE, { enrollment: JSON.stringify(consent), sync: '{bad',
+        credential: JSON.stringify({ schemaVersion: 1, generation: consent.generation, deviceId: consent.deviceId, serviceOrigin: ORIGIN, token: token() }) });
+    },
+    'future database': env => env.idb.seed(DB, STORE, { outbox: 'opaque future bytes' }, { version: 2 }),
+  };
+  for (const [name, seed] of Object.entries(cases)) {
+    const env = makeEnv();
+    seed(env);
+    const before = ownedBytes(env), version = env.idb.version(DB);
+    const tab = openTab(env);
+    assert.equal(plain(await tab.S.partialEnrollment()).state, 'unknown', name);
+    assert.equal(plain(await tab.S.finishEnrollment()).reason, 'unknown', name);
+    assert.equal(plain(await tab.S.stopPartialEnrollment()).reason, 'unknown', name);
+    env.respond = () => enrollReply([randomUUID()]);
+    assert.deepEqual(plain(await tab.S.enroll('0123456789ABCDEFGHJKMNPQRS')), { ok: false, reason: 'unknown-records' }, name);
+    assert.equal(env.requests.length, 0, `${name}: no code exchange`);
+    assert.equal(env.storage.raw(HINT), null, `${name}: never admitted`);
+    assert.deepEqual(ownedBytes(env), before, `${name}: records untouched`);
+    assert.equal(env.idb.version(DB), version, name);
   }
 });
 

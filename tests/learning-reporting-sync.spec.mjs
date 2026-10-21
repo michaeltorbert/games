@@ -216,11 +216,18 @@ test('the shipped config keeps reporting off: no picker, no timer-driven request
   // Reporting traffic: any non-GET, anything to the service or a /v1/ route, anything not a page asset.
   expect(requests.filter(request => request.method !== 'GET')).toEqual([]);
   expect(requests.filter(request => request.url.startsWith(SERVICE) || new URL(request.url).pathname.startsWith('/v1/'))).toEqual([]);
-  // The only other hosts are the existing web-font hosts these pages already declare in markup.
+  // The only other hosts are the existing web-font hosts the Football page declares in markup
+  // (read on the Football page itself; the Place page uses local fonts).
   const declared = await page.evaluate(() => [...document.querySelectorAll('link[href^="https://"]')].map(link => new URL(link.href).host));
   expect(declared).toContain('fonts.googleapis.com');
   const foreign = [...new Set(requests.map(request => new URL(request.url).host).filter(host => host !== '127.0.0.1:8090'))].sort();
   expect(foreign.every(host => host === 'fonts.googleapis.com' || host === 'fonts.gstatic.com'), JSON.stringify(foreign)).toBe(true);
+  // Reporting off: the Place footer keeps its local-only line (F6-3), even with a consent fixture present.
+  await page.goto('/place-value-practice/');
+  await expect(page.locator('#practice-privacy')).toHaveText('Practice stays on this device.');
+  // Still no reporting traffic across the whole run, including the Place visit.
+  expect(requests.filter(request => request.method !== 'GET')).toEqual([]);
+  expect(requests.filter(request => request.url.startsWith(SERVICE) || new URL(request.url).pathname.startsWith('/v1/'))).toEqual([]);
 });
 
 async function openFacts(page) {

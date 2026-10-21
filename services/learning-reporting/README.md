@@ -151,6 +151,11 @@ for edge distribution, real Access, quotas or CPU limits.
   keep their queues; the dashboard, export and deletion still work.
 - **Stop the games from trying:** empty `shared/learning-reporting/config.js` and release.
   Queued events stay on each device until it is re-enabled or stopped there.
+- **A device whose final setting was not saved** (the browser refused the last step of
+  connecting): the device page then says the device is partly connected, and nothing is
+  recorded yet. "Finish connecting" retries that last step for the same enrollment. "Stop
+  reporting" removes it without using another code. The page accepts only this device's own
+  matching records; any other reporting data is reported as unrecognized and left unchanged.
 - **A lost or replaced device:** delete it on the Devices page (its token is then
   revoked), then connect the new device with a new code.
 - **One device stopped locally** (the device page's "Stop reporting"): its unsent events
