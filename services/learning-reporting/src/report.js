@@ -19,7 +19,10 @@ const DAY_MS = 86400000;
 const SUPPORTED = ['guidedFirstTry', 'retryAfterHint', 'guidedRetry', 'secondMiss'];
 const RESOLVED = ['firstTry', ...SUPPORTED];
 const FOOTBALL_COUNTS = ['firstTry', 'guidedFirstTry', 'retryAfterHint', 'guidedRetry', 'secondMiss', 'secondMissWorked',
-  'helpWithoutAnswer', 'pending', 'leftUnfinished', 'partial'];
+  'guidedFirstNoAnswer', 'retryHintNoAnswer', 'guidedRetryNoAnswer', 'workedNoContinue', 'pending', 'leftUnfinished', 'partial'];
+// Help stages observed on questions left unfinished or still pending (each counted once per
+// question; a question can show more than one stage, so these are not added together).
+const LEFT_HELP = ['beforeFirstTry', 'onRetry', 'worked'];
 export const FOOTBALL_LABELS = Object.freeze({
   firstTry: 'Correct on the first try, no help',
   guidedFirstTry: 'Correct on the first try after help shown first',
@@ -27,11 +30,31 @@ export const FOOTBALL_LABELS = Object.freeze({
   guidedRetry: 'Correct on the retry, with help from the start',
   secondMiss: 'Second miss',
   secondMissWorked: 'Second miss, then the worked explanation',
-  helpWithoutAnswer: 'Help shown, no answer after it yet',
+  guidedFirstNoAnswer: 'Help shown before the first try, no answer after it yet',
+  retryHintNoAnswer: 'Hint shown on the retry, no answer after it yet',
+  guidedRetryNoAnswer: 'Help from the start and a hint on the retry, no answer after it yet',
+  workedNoContinue: 'Second miss with the worked explanation shown, not yet continued',
   pending: 'Started, no result reported yet',
   leftUnfinished: 'Left unfinished',
   partial: 'Partly reported',
 });
+export const LEFT_HELP_LABELS = Object.freeze({
+  beforeFirstTry: 'help had been shown before the first try',
+  onRetry: 'a hint had been shown on the retry',
+  worked: 'the worked explanation had been shown',
+});
+
+// The help stages a question's own events show. The stage comes from each help event's own
+// number and support (1 = before the first try; 2 guided = the retry hint; 2 worked = the
+// worked explanation), never from ordering across epochs or a partial date range.
+export function footballHelpStages(events) {
+  const helps = events.filter(event => event.kind === 'help');
+  return {
+    beforeFirstTry: helps.some(help => help.number === 1),
+    onRetry: helps.some(help => help.number === 2 && help.support === 'guided'),
+    worked: helps.some(help => help.number === 2 && help.support === 'worked'),
+  };
+}
 
 const humanize = id => id.replace(/-ch8$/, '').replace(/-/g, ' ').replace(/^./, char => char.toUpperCase());
 export function factEquation(factId) {
@@ -53,7 +76,8 @@ function groupQuestions(events) {
 
 // One Football question's outcome. A first-try success counts as unsupported only when
 // its own attempt 1 was reported with support 'initial'. Missing pieces make it partial,
-// never wrong. No resolution means pending (or help without an answer), never wrong.
+// never wrong. No resolution means unfinished, never wrong: left unfinished, help shown with
+// no answer after it (split by the stage that help was shown at), or simply pending.
 export function footballOutcome(events) {
   const attempts = new Map(), helps = [];
   let resolution = null, left = null;
@@ -77,8 +101,12 @@ export function footballOutcome(events) {
     return helps.some(help => help.number === 2 && help.support === 'worked') ? 'secondMissWorked' : 'secondMiss';
   }
   if (left) return 'leftUnfinished';
-  const lastHelp = helps.at(-1), lastAttempt = [...attempts.values()].at(-1);
-  if (lastHelp && (!lastAttempt || lastHelp.seq > lastAttempt.seq || lastHelp.epochId !== lastAttempt.epochId)) return 'helpWithoutAnswer';
+  const stages = footballHelpStages(events);
+  // The answer that would follow each help stage: attempt 1 after help before the first try,
+  // attempt 2 after the retry hint, the committed result after the worked explanation.
+  if (stages.worked) return 'workedNoContinue';
+  if (stages.onRetry && !second) return stages.beforeFirstTry ? 'guidedRetryNoAnswer' : 'retryHintNoAnswer';
+  if (stages.beforeFirstTry && !first) return 'guidedFirstNoAnswer';
   return 'pending';
 }
 const axisOf = event => (event.grading === 'noStakes' ? 'noStakes' : event.evidenceClass === 'literacy' ? 'literacy' : 'independent');
@@ -95,23 +123,31 @@ function footballSection(events, catalog) {
     if (!concept) continue;
     const resolution = question.events.find(event => event.kind === 'resolution');
     concept.questions.push({
-      key: question.key, axis: axisOf(head), outcome: footballOutcome(question.events),
+      key: question.key, axis: axisOf(head), outcome: footballOutcome(question.events), stages: footballHelpStages(question.events),
       recordedAt: (resolution ?? question.events.at(-1)).recordedAt, familyId: head.familyId,
     });
   }
   const rows = [], absent = [], recent = [];
   for (const concept of [...concepts.values()].sort((a, b) => a.name.localeCompare(b.name))) {
     if (!concept.questions.length) { absent.push(concept.name); continue; }
-    const counts = {};
-    for (const axis of ['independent', 'literacy', 'noStakes']) counts[axis] = Object.fromEntries(FOOTBALL_COUNTS.map(name => [name, 0]));
+    const counts = {}, leftHelp = {}, pendingHelp = {};
+    for (const axis of ['independent', 'literacy', 'noStakes']) {
+      counts[axis] = Object.fromEntries(FOOTBALL_COUNTS.map(name => [name, 0]));
+      leftHelp[axis] = Object.fromEntries(LEFT_HELP.map(name => [name, 0]));
+      pendingHelp[axis] = Object.fromEntries(LEFT_HELP.map(name => [name, 0]));
+    }
     for (const question of concept.questions) {
       counts[question.axis][question.outcome]++;
+      // Questions left unfinished or still pending keep the help observed in their own events
+      // (counted once per stage); nothing is inferred about missing hints, answers or results.
+      const keep = question.outcome === 'leftUnfinished' ? leftHelp : question.outcome === 'pending' ? pendingHelp : null;
+      if (keep) for (const stage of LEFT_HELP) if (question.stages[stage]) keep[question.axis][stage]++;
       if (SUPPORTED.includes(resolvedClass(question.outcome))) recent.push({ concept: concept.concept, name: concept.name, axis: question.axis, outcome: question.outcome, recordedAt: question.recordedAt, key: question.key });
     }
     const independent = concept.questions.filter(question => question.axis === 'independent' && RESOLVED.includes(resolvedClass(question.outcome))).sort(byTime);
     const latest = independent.slice(-RULES.recentWindow);
     rows.push({
-      concept: concept.concept, name: concept.name, counts,
+      concept: concept.concept, name: concept.name, counts, leftHelp, pendingHelp,
       independentResults: independent.length,
       status: independent.length < RULES.sparseMinimum ? 'sparse' : 'reported',
       statusLabel: independent.length < RULES.sparseMinimum ? SPARSE : null,
@@ -123,7 +159,7 @@ function footballSection(events, catalog) {
     });
   }
   recent.sort(byTime).reverse();
-  return { rows, absent, recent: recent.slice(0, RULES.recentSupported).map(({ key, ...item }) => item), labels: FOOTBALL_LABELS };
+  return { rows, absent, recent: recent.slice(0, RULES.recentSupported).map(({ key, ...item }) => item), labels: FOOTBALL_LABELS, leftHelpLabels: LEFT_HELP_LABELS };
 }
 
 function factsSection(events, catalog) {

@@ -2904,3 +2904,8 @@ released, approved or verified; root runs every check on the exact artifact.
   (release domain list), `tests/learning-reporting-sync.spec.mjs` and
   `tests/learning-reporting-ui.spec.mjs` (release browser list). Football cases
   use the existing session mute fixture; no sound case was added.
+
+
+## 2026-10-21 — #200 private reporting corrections (unreleased)
+
+The local reporting candidate preserves observed Football help stages separately from pending or left-unfinished status, including help before attempt one and on retry. Number facts places the enrolled multi-player choice ahead of practice; question binding and gameplay remain unchanged. Earlier stale report requests, sparse evidence and hidden-state defects were corrected. Current changes await exact-candidate checks and fresh independent review; no remote service, enrollment, merge or release is claimed. Retained failures and full acceptance evidence are indexed under `output/issue-200/`. PR #205 remains preserved and unmerged. This progress entry is a coordinator record of the authored changes, not an author or reviewer verdict.

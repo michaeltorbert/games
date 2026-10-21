@@ -122,7 +122,9 @@
     if(!playerPicker&&typeof LEARNING_SYNC!=='undefined'){
       playerPicker=LEARNING_SYNC.buildPlayerPicker({id:'facts-player',legend:'Who’s practicing?',fieldsetClass:'lr-player-picker',optionsClass:'lr-player-options',optionClass:'lr-player-option',statusClass:'lr-player-status',
         status:chosen=>!chosen?'Choose who is practicing so practice is reported for the right player.':model&&attemptStarted(model.attempt)?'This question stays with the player who started it. The new choice starts with the next question.':''});
-      if(playerPicker)meta.prepend(playerPicker.element);
+      // Shown before practice: after the panel heading, ahead of the drive field and the question dock.
+      // Play is never blocked; without a choice nothing is recorded (fail closed).
+      if(playerPicker)panel.insertBefore(playerPicker.element,drive);
     }
     if(playerPicker)playerPicker.refresh();
   }

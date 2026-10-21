@@ -45,6 +45,11 @@
   margin: 6px 0 0;
   min-height: 1.2em;
 }
+/* Number facts: the choice sits above the drive field and question, within the page width. */
+#facts-player {
+  margin: 10px clamp(16px, 4vw, 50px);
+  max-width: calc(100% - 2 * clamp(16px, 4vw, 50px));
+}
 
 /* ---- Enrollment page ---- */
 .lr-page {

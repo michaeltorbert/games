@@ -88,6 +88,22 @@ timed") and "another try" from reported results. It does not use the on-device l
 "quick and accurate on the latest two checks", because uploaded events do not carry the
 device's saved-versus-memory provenance or its exact latest-check view.
 
+Football questions without a result stay separate from completed results and keep the help
+they showed:
+- help shown before the first try with no answer yet;
+- a hint shown on the retry with no answer yet;
+- both of those;
+- a second miss whose worked explanation is shown but not yet continued;
+- a question left unfinished, with the help stages it had reached listed under it;
+- a question started with no result reported yet ("pending"), also with any help stages
+  its own events show listed under it. For example, help before the first try followed
+  by a missed first try, with no retry hint reported, stays pending with that one stage
+  shown.
+
+Each stage is read from the help event itself, never inferred from event order or from
+missing events. Unfinished questions never count toward completed or sparse-minimum
+results, and no wrong answer, mastery or timing is inferred.
+
 Received-ID receipts (`retired_events`) grow until their device or everything is
 deleted. They hold only IDs, seq and a reason, but they count against D1 storage.
 

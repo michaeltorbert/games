@@ -200,8 +200,12 @@ export function dashboardClient() {
       const li = el('li'), d = el('details');
       const ind = row.counts.independent;
       const helped = ind.guidedFirstTry + ind.retryAfterHint + ind.guidedRetry + ind.secondMiss + ind.secondMissWorked;
+      // Work-it-out questions without a result (help shown with no answer yet, pending, left
+      // unfinished) are listed apart and never counted as completed.
+      const unfinished = ind.guidedFirstNoAnswer + ind.retryHintNoAnswer + ind.guidedRetryNoAnswer + ind.workedNoContinue + ind.pending + ind.leftUnfinished;
       const summary = row.onlyLiteracyOrNoStakes ? 'No work-it-out questions reported (reading questions only)'
-        : `${plural(row.independentResults, 'completed work-it-out question')}: ${ind.firstTry} first try without help, ${helped} needed help or a second try`;
+        : `${plural(row.independentResults, 'completed work-it-out question')}: ${ind.firstTry} first try without help, ${helped} needed help or a second try`
+          + (unfinished ? `; ${plural(unfinished, 'more question')} without a result yet` : '');
       d.append(el('summary', `${row.name}: ${summary}${row.statusLabel ? ' · ' + row.statusLabel : ''}`));
       for (const [axis, title] of [['independent', 'Work-it-out questions (the child calculates or reasons the answer)'],
         ['literacy', 'Reading questions (the answer is read from the field or scoreboard; not counted as work-it-out)'],
@@ -210,7 +214,19 @@ export function dashboardClient() {
         if (!entries.length) continue;
         d.append(el('h3', title));
         const ul = el('ul', null, 'counts');
-        for (const [k, n] of entries) ul.append(el('li', `${fb.labels[k]}: ${n}`));
+        for (const [k, n] of entries) {
+          const item = el('li', `${fb.labels[k]}: ${plural(n, 'question')}`);
+          if (k === 'leftUnfinished' || k === 'pending') {
+            // Help observed on these questions, per stage; a question may show more than one stage.
+            const stages = Object.entries((k === 'pending' ? row.pendingHelp : row.leftHelp)[axis]).filter(([, count]) => count > 0);
+            if (stages.length) {
+              const sub = el('ul');
+              for (const [stage, count] of stages) sub.append(el('li', `${plural(count, 'question')} where ${fb.leftHelpLabels[stage]}`));
+              item.append(sub);
+            }
+          }
+          ul.append(item);
+        }
         d.append(ul);
       }
       li.append(d); list.append(li);

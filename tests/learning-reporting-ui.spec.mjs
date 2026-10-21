@@ -32,6 +32,17 @@ function fixtureEvents() {
     events.push({ ...base('attempt', 'facts', f, day), factId: 'add:7:6', family: 'family:6:7:13', number: 1, correct: true, helped: false },
       { ...base('resolution', 'facts', f, day), factId: 'add:7:6', family: 'family:6:7:13', outcome: 'first-correct', eligibleCheck: day > 10, timingMs: day > 18 ? null : 4200, helped: false });
   }
+  // Unfinished questions in a second concept (F-SOL-200-4): help before the first try with no
+  // answer, and a retry hint followed by leaving the question.
+  const SCORE = { familyId: 'committed-score-total', concept: 'committed-score', purpose: 'coreReview', tier: 'within-10', grading: 'gate', evidenceClass: 'independent' };
+  const before = randomUUID(), left = randomUUID(), pending = randomUUID();
+  // Pending: help before the first try, then a missed first try; no retry hint is reported.
+  events.push({ ...base('help', 'football', pending, 23), ...SCORE, number: 1, support: 'guided' },
+    { ...base('attempt', 'football', pending, 23), ...SCORE, number: 1, correct: false, support: 'guided' });
+  events.push({ ...base('help', 'football', before, 24), ...SCORE, number: 1, support: 'guided' },
+    { ...base('attempt', 'football', left, 25), ...SCORE, number: 1, correct: false, support: 'initial' },
+    { ...base('help', 'football', left, 25), ...SCORE, number: 2, support: 'guided' },
+    { ...base('leftUnfinished', 'football', left, 25), ...SCORE });
   return events;
 }
 const report = buildReport({ profile: { profileId: P1, label: 'Synthetic Lark' }, devices: [{ deviceId: DEVICE, name: 'Kitchen tablet', lastSyncAt: '2026-10-25T18:00:00.000Z', revokedAt: null, shared: true }],
@@ -110,8 +121,25 @@ test('the dashboard report, devices and setup views fit every target with touch-
   // Counts name their units, and first-try-without-help stays separate from helped answers.
   const facts = Object.keys(CATALOG.facts).length, concepts = new Set(Object.values(CATALOG.football).map(entry => entry.concept)).size;
   await expect(page.locator('body')).toContainText(`No reported practice in this range: ${facts - 1} of ${facts} facts`);
-  await expect(page.locator('body')).toContainText(`No reported practice in this range: ${concepts - 1} of ${concepts} Football concepts`);
+  await expect(page.locator('body')).toContainText(`No reported practice in this range: ${concepts - 2} of ${concepts} Football concepts`);
   await expect(page.locator('body')).toContainText('8 completed work-it-out questions: 4 first try without help, 4 needed help or a second try');
+  // Help stages on unfinished questions stay visible and are never counted as completed.
+  const score = page.locator('#view-report .list > li > details', { hasText: 'Committed score' });
+  await expect(score.locator('summary')).toHaveText('Committed score: 0 completed work-it-out questions: 0 first try without help, 0 needed help or a second try; 3 more questions without a result yet · Not enough reported evidence yet');
+  await score.locator('summary').tap();
+  await expect(score).toContainText('Help shown before the first try, no answer after it yet: 1 question');
+  const leftItem = score.locator('.counts > li', { hasText: 'Left unfinished' });
+  await expect(leftItem).toContainText('Left unfinished: 1 question');
+  await expect(leftItem).toContainText('1 question where a hint had been shown on the retry');
+  await expect(leftItem).not.toContainText('help had been shown before the first try');
+  // Pending stays pending and keeps its observed help before the first try; no retry hint,
+  // answer or result is inferred for it.
+  const pendingItem = score.locator('.counts > li', { hasText: 'Started, no result reported yet' });
+  await expect(pendingItem).toContainText('Started, no result reported yet: 1 question');
+  await expect(pendingItem).toContainText('1 question where help had been shown before the first try');
+  await expect(pendingItem).not.toContainText('hint had been shown on the retry');
+  await expect(score).not.toContainText(/Hint shown on the retry, no answer|Correct on|Second miss/);
+  await geometry(page, 'dashboard-report-unfinished-help');
   const select = await page.locator('select').boundingBox();
   expect(select.height, 'the profile select keeps a 44px touch target').toBeGreaterThanOrEqual(44);
   const football = page.locator('section.panel', { has: page.getByRole('heading', { name: 'Football' }) });
@@ -144,6 +172,82 @@ test('the dashboard report, devices and setup views fit every target with touch-
   const focus = await page.evaluate(() => { const style = getComputedStyle(document.activeElement); return { outline: style.outlineStyle, width: parseFloat(style.outlineWidth) }; });
   expect(focus.outline).not.toBe('none');
   expect(focus.width).toBeGreaterThanOrEqual(2);
+});
+
+// ---- Number facts who-is-practicing before practice, on every target (F-SOL-200-5) ----
+footballTest('Number facts shows the who-is-practicing choice before practice on every target, and practice stays usable', async ({ page, context }) => {
+  await context.addInitScript(() => {
+    localStorage.setItem('place-value-practice:mode:v1', 'arithmetic');
+    localStorage.setItem('place-value-practice:arithmetic-mode:v1', 'facts');
+  });
+  const [first, second] = await enrollTwoProfiles(page, context);
+  await page.goto('/place-value-practice/');
+  const panel = page.locator('#fact-practice'), picker = page.locator('#facts-player');
+  await expect(panel).toBeVisible();
+  await expect(panel).toHaveAttribute('aria-busy', 'false');
+  await expect(picker).toBeVisible();
+  await expect(picker.getByRole('radio')).toHaveCount(2);
+  await expect(picker).toContainText('Player 1');
+  await expect(picker).toContainText('Player 2');
+  await expect(picker).not.toContainText(/Synthetic/);
+  await expect(page.locator('#facts-player-status')).toContainText('Choose who is practicing');
+  const layout = async name => {
+    const result = await page.evaluate(() => {
+      const box = element => element.getBoundingClientRect().toJSON();
+      const picker = document.getElementById('facts-player'), dock = document.querySelector('.facts-dock'), drive = document.querySelector('.facts-drive');
+      return {
+        viewport: { width: innerWidth, height: innerHeight, scrollY },
+        overflow: document.documentElement.scrollWidth - innerWidth,
+        // DOM order: the choice precedes the drive field and the question dock.
+        beforeDock: Boolean(picker.compareDocumentPosition(dock) & Node.DOCUMENT_POSITION_FOLLOWING),
+        beforeDrive: Boolean(picker.compareDocumentPosition(drive) & Node.DOCUMENT_POSITION_FOLLOWING),
+        picker: box(picker), dock: box(dock), equation: box(document.getElementById('facts-equation')),
+        options: [...picker.querySelectorAll('label')].map(box),
+      };
+    });
+    await test.info().attach(`${name}-geometry.json`, { body: JSON.stringify(result, null, 2), contentType: 'application/json' });
+    await test.info().attach(`${name}.png`, { body: await page.screenshot(), contentType: 'image/png' });
+    return result;
+  };
+  // First screen, before any input: the choice is above the practice, fully within the viewport.
+  const firstScreen = await layout('facts-player-first-screen');
+  expect([firstScreen.beforeDock, firstScreen.beforeDrive]).toEqual([true, true]);
+  expect(firstScreen.picker.bottom, 'choice above the question').toBeLessThanOrEqual(firstScreen.dock.top);
+  expect(firstScreen.picker.top).toBeGreaterThanOrEqual(0);
+  expect(firstScreen.picker.bottom, 'choice visible on the first screen').toBeLessThanOrEqual(firstScreen.viewport.height);
+  expect(firstScreen.overflow, 'no horizontal overflow').toBeLessThanOrEqual(0);
+  for (const option of firstScreen.options) {
+    expect(option.height, 'each choice at least 44 CSS pixels').toBeGreaterThanOrEqual(44);
+    expect(option.width, 'each choice at least 44 CSS pixels').toBeGreaterThanOrEqual(44);
+  }
+  // Tap a player: the choice is stored for this tab and the prompt clears.
+  await picker.locator('label', { hasText: 'Player 1' }).tap();
+  await expect(picker.getByRole('radio', { name: 'Player 1' })).toBeChecked();
+  await expect(page.locator('#facts-player-status')).toHaveText('');
+  expect(await page.evaluate(() => LEARNING_SYNC.player())).toBe(first);
+  await layout('facts-player-chosen');
+  // Practice stays usable by tap: a wrong answer, then a change that waits for the next question.
+  const answer = await page.evaluate(() => PLACE_FACTS.byId[__factsTest.snapshot().attempt.factId].answer);
+  const keypad = page.locator('.facts-keypad');
+  await keypad.getByRole('button', { name: 'Clear', exact: true }).tap();
+  for (const digit of String((answer + 1) % 19)) await keypad.getByRole('button', { name: digit, exact: true }).tap();
+  await page.locator('#facts-check').tap();
+  await expect(panel).toHaveAttribute('aria-busy', 'false');
+  expect((await page.evaluate(() => __factsTest.snapshot().attempt)).misses).toBe(1);
+  await picker.locator('label', { hasText: 'Player 2' }).tap();
+  await expect(picker.getByRole('radio', { name: 'Player 2' })).toBeChecked();
+  await expect(page.locator('#facts-player-status')).toContainText('starts with the next question');
+  expect(await page.evaluate(() => LEARNING_SYNC.player())).toBe(second);
+  const pending = await layout('facts-player-change-pending');
+  expect(pending.overflow).toBeLessThanOrEqual(0);
+  for (const option of pending.options) expect(Math.min(option.height, option.width)).toBeGreaterThanOrEqual(44);
+  await keypad.getByRole('button', { name: 'Clear', exact: true }).tap();
+  for (const digit of String(answer)) await keypad.getByRole('button', { name: digit, exact: true }).tap();
+  await page.locator('#facts-check').tap();
+  await expect(panel).toHaveAttribute('aria-busy', 'false');
+  expect((await page.evaluate(() => __factsTest.snapshot().attempt)).complete).toBe(true);
+  await expect(page.locator('#facts-next')).toBeVisible();
+  await layout('facts-player-after-answer');
 });
 
 // ---- Only the latest report request may render (F-SOL-200-1) ----

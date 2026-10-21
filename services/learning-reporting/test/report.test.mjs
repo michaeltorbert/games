@@ -51,11 +51,60 @@ test('Football outcome classes stay distinct: unsupported first try, guided firs
   assert.equal(footballOutcome(retry(2)), 'retryAfterHint');
   assert.equal(footballOutcome(football([['help', { number: 1, support: 'guided' }], ['attempt', { number: 1, correct: false, support: 'guided' }], ['help', { number: 2, support: 'guided' }], ['attempt', { number: 2, correct: true, support: 'guided' }], ['resolution', { resolution: 'retryCorrect' }]], 2)), 'guidedRetry');
   assert.equal(footballOutcome(secondMiss(2)), 'secondMissWorked');
-  assert.equal(footballOutcome(workedNoAnswer(2)), 'helpWithoutAnswer');
+  assert.equal(footballOutcome(workedNoAnswer(2)), 'workedNoContinue');
   assert.equal(footballOutcome(football([['attempt', { number: 1, correct: false, support: 'initial' }]], 2)), 'pending');
   assert.equal(footballOutcome(football([['attempt', { number: 1, correct: false, support: 'initial' }], ['leftUnfinished', {}]], 2)), 'leftUnfinished');
   // A first-try resolution without its own unsupported attempt is partial, never independent or wrong.
   assert.equal(footballOutcome(football([['resolution', { resolution: 'firstTryCorrect' }]], 2)), 'partial');
+});
+
+test('Football help stages survive unfinished questions: before the first try vs on the retry, with no answer or left unfinished, never completed', () => {
+  const H1 = ['help', { number: 1, support: 'guided' }], H2 = ['help', { number: 2, support: 'guided' }], W = ['help', { number: 2, support: 'worked' }];
+  const A1wrongInitial = ['attempt', { number: 1, correct: false, support: 'initial' }], A1wrongGuided = ['attempt', { number: 1, correct: false, support: 'guided' }];
+  const A2wrong = ['attempt', { number: 2, correct: false, support: 'guided' }], LEFT = ['leftUnfinished', {}];
+  const sequences = {
+    beforeFirstNoAnswer: football([H1], 3),
+    retryHintNoAnswer: football([A1wrongInitial, H2], 4),
+    guidedRetryNoAnswer: football([H1, A1wrongGuided, H2], 5),
+    workedNoContinue: football([A1wrongInitial, H2, A2wrong, W], 6),
+    leftAfterBeforeFirst: football([H1, LEFT], 7),
+    leftAfterRetryHint: football([A1wrongInitial, H2, LEFT], 8),
+    leftAfterBothStages: football([H1, A1wrongGuided, H2, LEFT], 9),
+    leftAfterWorked: football([A1wrongInitial, H2, A2wrong, W, LEFT], 10),
+    // Help before the first try, then a missed first try whose retry hint is not in the report: no inferred stage.
+    helpThenAttemptOnly: football([H1, A1wrongGuided], 11),
+    // A started question with no help observed at all.
+    pendingNoHelp: football([A1wrongInitial], 11),
+    literacyLeftAfterHelp: football([H1, LEFT], 12, LIT),
+  };
+  assert.deepEqual(Object.fromEntries(Object.entries(sequences).map(([name, events]) => [name, footballOutcome(events)])), {
+    beforeFirstNoAnswer: 'guidedFirstNoAnswer', retryHintNoAnswer: 'retryHintNoAnswer', guidedRetryNoAnswer: 'guidedRetryNoAnswer',
+    workedNoContinue: 'workedNoContinue', leftAfterBeforeFirst: 'leftUnfinished', leftAfterRetryHint: 'leftUnfinished',
+    leftAfterBothStages: 'leftUnfinished', leftAfterWorked: 'leftUnfinished', helpThenAttemptOnly: 'pending', pendingNoHelp: 'pending',
+    literacyLeftAfterHelp: 'leftUnfinished',
+  });
+  // Existing completed flows alongside: three unsupported first tries, a guided first try, a retry, a second miss.
+  const r = report([...Object.values(sequences).flat(), ...firstTry(13), ...firstTry(14), ...firstTry(15), ...guidedFirst(16), ...retry(17), ...secondMiss(18)]);
+  const row = r.football.rows.find(item => item.concept === 'line-to-gain');
+  const ind = row.counts.independent;
+  assert.deepEqual([ind.guidedFirstNoAnswer, ind.retryHintNoAnswer, ind.guidedRetryNoAnswer, ind.workedNoContinue, ind.leftUnfinished, ind.pending], [1, 1, 1, 1, 4, 2]);
+  assert.deepEqual(row.leftHelp.independent, { beforeFirstTry: 2, onRetry: 3, worked: 1 });
+  // Pending stays pending, and the help it actually showed stays visible: exactly the one
+  // observed help before the first try. No retry hint, answer or result is inferred.
+  assert.deepEqual(row.pendingHelp.independent, { beforeFirstTry: 1, onRetry: 0, worked: 0 });
+  assert.deepEqual(row.pendingHelp.literacy, { beforeFirstTry: 0, onRetry: 0, worked: 0 });
+  assert.deepEqual(row.leftHelp.literacy, { beforeFirstTry: 1, onRetry: 0, worked: 0 });
+  assert.equal(row.counts.literacy.leftUnfinished, 1);
+  // Completed results only: unfinished and helped-without-answer questions never count as completed.
+  assert.deepEqual([ind.firstTry, ind.guidedFirstTry, ind.retryAfterHint, ind.secondMissWorked], [3, 1, 1, 1]);
+  assert.equal(row.independentResults, 6);
+  assert.equal(row.statusLabel, null);
+  assert.ok(r.football.recent.every(item => ['guidedFirstTry', 'retryAfterHint', 'guidedRetry', 'secondMiss', 'secondMissWorked'].includes(item.outcome)));
+  for (const key of ['guidedFirstNoAnswer', 'retryHintNoAnswer', 'guidedRetryNoAnswer', 'workedNoContinue', 'leftUnfinished']) assert.ok(r.football.labels[key]);
+  assert.match(r.football.labels.guidedFirstNoAnswer, /before the first try/);
+  assert.match(r.football.labels.retryHintNoAnswer, /on the retry/);
+  // No inferred wrong answers, mastery or Football timing anywhere in the section.
+  assert.equal(/timing|Ms"|seconds|mastery|wrong/i.test(JSON.stringify(r.football)), false);
 });
 
 test('literacy-only and sparse concepts show no independent evidence and are labeled; absent concepts are never "not practiced"', () => {
