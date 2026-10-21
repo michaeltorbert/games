@@ -66,6 +66,18 @@ repository-level `AGENTS.md`.
   own closed special-team context. The question gates that same frozen outcome;
   never substitute a random, merely football-themed, curriculum-only, or
   no-stakes question.
+- **Quarters and halves (#51).** Quarter/half families read only the frozen
+  live quarter and bind the fixed four-quarter regulation game as the rule
+  `game.regulationQuarters`; halves are its two equal parts, so halftime
+  follows quarter 2. Ask only what that quarter makes true ("It's the third
+  quarter", "When the first quarter ends", "At halftime" only during Q2);
+  never claim a clock, elapsed minutes, history, halftime now, or overtime.
+  Keep this whole separate from field pictures. Count/grouping families are
+  football-only; naming a part of the game and halves making the whole cite
+  Grade 1-B p. 68, and comparing a half with quarters cites p. 71. The first
+  try adds no picture; the retry shows unsolved equal pieces; only the worked
+  stage shades the answer. Scoreboard quarter-label reading is retired from
+  live play.
 - **Player two-point challenge (#186, user-requested exception).** The user
   asked that the player's own two-point tries use three-digit addition and
   subtraction. Only that try presents only the two challenge families
@@ -98,9 +110,10 @@ repository-level `AGENTS.md`.
 
 ## Concept Challenge Preferences
 
-- `contextual-questions.js` owns the immutable six-family challenge map: only
+- `contextual-questions.js` owns the immutable eight-family challenge map: only
   independent line-to-gain and drive-distance have prerequisite/core/stretch
-  roles. Other concepts retain ordinary review; tier strings are not levels.
+  roles; the two wider past-marker variants are line-to-gain core. Other
+  concepts retain ordinary review; tier strings are not levels.
 - `learning.js` derives preferences from at most twelve valid committed results
   per concept in thirty days. Exact-zero prerequisite results cannot promote
   or recover. Promotion requires eight results, 80% first-try, five first-try

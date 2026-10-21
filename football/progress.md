@@ -2611,3 +2611,227 @@ shell, ran nothing, and made no commits.
   author record, actual-pixel review on all six targets in both engines,
   fresh independent review, PR, merge and live verification. #161 and broader
   #51 stay open. Browser results will be engine emulation only.
+
+## 2026-10-19 — #51 natural yardage questions (unreleased candidate)
+
+- **Request retained:** the user rejected "PLAY 5 / NEED 10", "could gain 5
+  and needs 10", "Which symbol makes 5 ? 10 true?" and yes/no first-down
+  checks, and approved "It's 3rd and 8. You complete a pass for 13 yards. How
+  far past the first-down marker did you get?" as the direction. The accepted
+  P2 policy makes the gain conditional ("If you complete a 13-yard pass…") and
+  asks one numeric distance. The learner is nearly done with Grade 1-A and 1-B;
+  no completion, default or saved progress was changed.
+- **Change (`contextual-questions.js`):**
+  - Shared copy states the real down and distance ("It's 3rd and 8", "Texas
+    has 2nd and 9", "It's 2nd and goal from the 7"), one conditional gain of
+    the frozen applied size (player passes are completions, runs are gains,
+    the opponent's private call stays a generic gain) and one numeric ask:
+    yards still needed (fourth down: yards short), yards past the first-down
+    marker, or yards from the end zone. Short and exact use the same wording.
+    Worked text says what the question's gain "would" do; Coach Replay's
+    football meaning names "the question's N-yard pass/run/gain".
+  - `line-to-gain-missing-part`, `-exact` and `-surplus` and the
+    `line-remaining-ch8`/`goal-remaining-ch8` families keep their IDs,
+    concepts, pages, operations, bindings, max-10 band and choice generator.
+    `line-remaining-ch8` now leaves goal to go to `goal-remaining-ch8`, so one
+    target has one wider owner. Every past-marker family declines touchdowns
+    and goal to go, even past an old marker short of the goal.
+  - New `line-to-gain-surplus-ch8` (Grade 1-B 131–143) and
+    `line-to-gain-surplus-ch8-ones-subtract` (110–111) reuse the Chapter 8
+    relation machinery with the `line-to-gain` concept, `surplus` operation
+    and core challenge role. They decline anything within 10 and gate each
+    operand pair by its printed page (18 − 7 p. 110, 13 − 8 and 20 − 7 p. 131,
+    24 − 10 p. 137, 30 − 7 p. 142). No global maximum changed.
+  - `gain-vs-needed-comparison` is retired from live inspection
+    (`retired-from-live-play`, before derive); its registry entry, direct
+    build, worked review and history decode are unchanged. Its call boosts
+    now go to reachable numeric short and past-marker families; affinities
+    stay weights and are checked for unique, unretired IDs.
+- **Change (`football.js`, renderer only):** the marker strip reads
+  "N-YARD PASS/RUN/GAIN − N YARDS TO GO = ? YARDS PAST".
+- **Change (`football.css`):** on phones the marker strip's worked state uses
+  the comparison's 276px field for its wrapped labels and sentence. A first
+  candidate run showed the yards-still-needed (`parts`) picture over the sound
+  toggle on iPhone 15 and its longer worked sentence 38px above the iPhone 17
+  Pro Max field. That picture now uses the label pictures' track left of the
+  toggle, and its worked state and the yardage equation's use the 276px
+  field. Question and retry fields keep their released height and fonts.
+- **Data:** `curriculum-progress.json` source-map family lists add the two new
+  IDs to their existing page rows; no dated or completion field changed.
+  `AGENTS.md` states the eight-family challenge map.
+- **Tests:** contextual domain cases write the expected copy from each
+  fixture across short, exact, past, goal to go, both directions, run, pass,
+  opponent, fourth down, zero and one, capped touchdowns and the per-pair
+  page boundaries, with four legal choices, no pre-evaluation result leak and
+  one owner per target. A scheduler case proves the retired comparison stays
+  out of the pool and draw even as a weak spot, with one scheduler draw and
+  unchanged literacy and ladder shares under a downshift. Workspace
+  comparison scenarios now cover the long-name, defense and offense numeric
+  questions through retry, worked, Replay, Back and Continue, and check that
+  a second miss commits its own result. Later offense cases start guided
+  because each earlier case commits a line-to-gain second miss. New
+  `tests/football-natural-yardage.spec.mjs` taps 13 − 8, 18 − 7 and 24 − 10
+  through the page gate, question, retry, worked, Replay and the committed
+  miss. It sits outside the release runner and needs its own run.
+- **Preview (author tooling, unreleased):**
+  `output/issue-51-natural-yardage-implementation/preview.html` opens the
+  actual candidate with an in-memory demo end-of-book page. Examples place
+  the ball through the existing test seam; the child taps the real call
+  card. The preview does not write the saved page or the sound preference.
+  `capture-natural-yardage.mjs` records matched before/candidate stages and,
+  with `--mix`, scheduler shares.
+- **Pending (none claimed here):** every domain and browser check, actual
+  before/after pixels on all six targets in Chromium and WebKit, the release
+  matrix, independent review, preview acceptance, version bump, PR and merge.
+
+## 2026-10-20 — #51 quarter and half questions with staged hints (unreleased candidate)
+
+Original prompt: Looks good. Put these questions and hints in the game using
+your workflow.. btw once we have reporting/learning of what's right/wrong we
+should note if they missed or got it right after multiple attempts or
+whatever. we don't have that system in place but maybe make a not for the
+future
+
+- **Scope retained:** the learner is nearly through Math Mammoth Grade 1;
+  only wholes, halves and quarters of the one four-quarter regulation game,
+  modestly harder than reading Q1, in natural football wording. No thirds,
+  eighths, fraction notation or operations, fraction-of-yardage, unknown
+  wholes, clock, invented history or overtime. The natural-yardage candidate
+  above is carried forward unchanged. Completion, inclusion, dates and saved
+  preferences are untouched.
+- **Families (`contextual-questions.js`):** eight new independent scrimmage
+  families on offense and defense, bound to the frozen live quarter and the
+  new rule `game.regulationQuarters` (4):
+  - `quarters-still-to-come` Q1–Q4: "It's the first quarter. How many more
+    quarters come after this one?" (3/2/1/0).
+  - `quarters-before-halftime` Q1 only: "It's the first quarter. After this
+    quarter, how many more quarters will be played before halftime?" (1).
+  - `quarters-finished` Q3–Q4: "We're playing the third quarter. How many
+    quarters are completely finished?" (2/3).
+  - `quarters-in-half` Q1–Q2: "How many quarters make the first half of this
+    game?" (2; choices 1–4).
+  - `second-half-quarters` Q3–Q4: "Which two quarters make the second half
+    of this game?" (3rd and 4th; three ordered pairs).
+  - `game-part-boundary` Q1–Q3: "When the first quarter ends…finished?"
+    (one quarter), "At halftime…finished?" (one half, Q2 only), "When the
+    third quarter ends…left?" (one quarter); none in Q4.
+  - `halves-make-whole` Q1–Q4: "The first half and the second half together
+    make what?" (one whole game; three choices).
+  - `game-part-compare`: one half vs one quarter (Q1–Q2), two quarters vs one
+    half (Q3, same size), one half vs three quarters (Q4); the prompt names
+    both parts and asks "Which is bigger, or are they the same size?".
+  Count choices come from the existing generator over 0–4 and always include
+  the counting-the-current-quarter slip. **Reference change:** the approved
+  mock's comparison had two choices; this offers both parts plus "Same size",
+  so a retry still has a real choice and equality is answerable. Weights
+  .30/.15/.20/.15/.10/.20/.10/.20 plus `half-read` .40 sum to 1.50/1.35/
+  1.50/1.30 in Q1–Q4, all `coreReview`, one `quarter-half-structure` skill
+  and concept; no call affinity, no extra RNG draw. `half-read` keeps its ID,
+  binding, prompt, hint and choices with the new staged picture.
+  `quarter-read` joins `RETIRED_LIVE_FAMILIES`; direct builds, review and
+  history still decode.
+- **Sources:** counting/grouping families are `football-only`;
+  `game-part-boundary` and `halves-make-whole` cite Grade 1-B (2026) p. 68
+  and `game-part-compare` p. 71 (`curriculum-progress.json` source-map rows
+  added). Page 72 thirds stay excluded.
+- **Stages:** the first try adds no picture (`initial` type `none`, overlay
+  hidden and cleared). The retry draws unsolved equal pieces of the game in
+  the math overlay: labels and the quarter being played only; no shading,
+  result caption or halftime split where it would mark the answer. Worked
+  adds the solved gold pieces, the halftime split and half labels where they
+  explain the answer, and one result caption. Comparison strips share one
+  length. Coach Replay leaves the same frozen question's worked picture up.
+  Stage ARIA names no interpreted result before worked.
+- **Renderer/CSS (`football.js`, `football.css`):** `renderGameParts` draws
+  only the frozen stage data; the old `quarter-half` token case is removed.
+  Phones stack strip captions, keep the released field for a one-strip retry
+  and use 214/196/250px fields for the two-strip retry and the worked states.
+- **Evidence:** learning and stats code are unchanged; the new browser spec
+  asserts the existing attempts, resolutions and support for first-try,
+  retry, second-miss and guided-first results.
+- **Not in this scope (individually):** Q17 (one colored quarter of a split
+  field picture), Q18 (two colored pieces: quarter, half or whole), Q19 (part
+  left uncolored) and Q20 (which picture is in halves) were optional new
+  field-picture displays in the bank. After the user's later direction (no
+  picture before a miss) they would be unanswerable without their picture,
+  so they are rejected for this candidate, not left unfinished.
+- **Future reporting note:** per-attempt results already stay local; the
+  user's request to report multi-attempt outcomes in a future system is
+  recorded at https://github.com/michaeltorbert/games/issues/200#issuecomment-6303418279.
+- **Tests and tooling:** domain cases for every family, quarter, side, page
+  gate, budget and stage; the new `tests/football-quarter-half.spec.mjs` real
+  tap/keyboard flows; `scripts/run-football-release.mjs` now enumerates the
+  quarter-half, natural-yardage and question-workspace browser files. Author
+  tooling is under `output/football-fractions-implementation-20261020/`.
+- **Pending (none claimed here):** every domain, browser and release check,
+  actual before/after pixels on all six targets in Chromium and WebKit,
+  fresh independent review, version/cache/registry metadata, PR and merge.
+  #51 and #161 stay open.
+- **Correction 1 (failed runs retained):** the first domain run failed one
+  cross-realm deep-equality check (same values; the test now compares through
+  `plain()`). The first focused Chromium run flagged clipped picture labels
+  on iPhone 15. Bebas labels at `line-height: 1` overflowed their boxes, and
+  "NOW" ran into the current quarter's underline. Labels now use a normal line
+  box and pieces keep padding clear of the underline. The spec's no-clipping
+  check also measures real text bounds against each piece and the underline.
+  Not rerun yet.
+
+## 2026-10-20 — Football v1.34.21 (#51 quarters, halves and natural yardage, superseding release candidate)
+
+Frozen candidate for fresh independent review. It supersedes the pending
+notes in the two unreleased entries above (natural yardage on 2026-10-19 and
+quarter/half on 2026-10-20). Those entries stay as history. Nothing here is
+released, approved or verified; root runs every check on the exact artifact.
+
+- **Base:** `origin/main` f14648e (Football 1.34.20, unchanged upstream). The
+  candidate carries the natural-yardage commit c8b9214 and the quarter/half
+  work.
+- **Contents:** natural-yardage questions (see its entry), the eight
+  quarter/half families with staged no-picture/unsolved/solved hints, the
+  `half-read` staged picture, and the retirement of `quarter-read` from live
+  play (see the quarter/half entry).
+- **Release enumeration:** `scripts/run-football-release.mjs` now runs
+  `football-question-workspace`, `football-natural-yardage` and
+  `football-quarter-half` in the release matrix. This supersedes the
+  natural-yardage note that its spec sat outside the runner.
+- **Corrections after root's runs:** correction 1 is recorded in the
+  quarter/half entry above. Correction 2 comes from the first focused Chromium
+  rerun, which stopped on `halves-whole-q3` on iPhone 15: the guided panel
+  intersected the sound toggle. The two-halves strip is the only one-strip
+  picture with a caption, so it is taller than the quarter strips and reached
+  the toggle's corner in the released 142px phone field. Its retry now uses
+  the 196px phone field that worked strips already use; the clearance
+  assertion is unchanged. The failed runs are kept.
+- **Metadata:** `GAME_VERSION`, every Football cache key in
+  `football/index.html`, the Football registry entry in `games.js` and the
+  Football key in `version.json` move to `1.34.21`. Other games' descriptors
+  and versions, and the vendored home-screen installer, are unchanged.
+- **Original requested outcomes and status:**
+
+  | Outcome | Status |
+  |---|---|
+  | O1. Put the approved age-appropriate game-quarter/half families into normal play. | Implemented in source: 8 families covering Q01–Q16. Q17–Q20 rejected individually above. Awaiting verification. |
+  | O2. Match the visual sequence: no added model first, a helpful diagram after the first miss, the worked answer after the second; existing guided-first, attempts, Replay gates and outcomes preserved. | Implemented in source: `none`/unsolved/solved stages, retry and Replay policy unchanged. Awaiting verification and pixels. |
+  | O3. Simple navy/gold area, stable DOM controls, accessible stages, no ARIA leak, no redesign. | Implemented in source: b0–b3 reused, family-scoped CSS, stage ARIA. Awaiting six-viewport pixels in both engines. |
+  | O4. Truthful local evidence (first-try, retry, second miss, per-attempt support), no cloud reporting, future note linked. | Learning and stats code unchanged. The new spec asserts persisted attempts and resolutions. Future note: https://github.com/michaeltorbert/games/issues/200#issuecomment-6303418279. Awaiting verification. |
+  | O5. Carry forward the natural-yardage work. | Included unchanged in this candidate. Awaiting full review of the combined diff. |
+  | O6. Domain, focused tap/keyboard/visual and full Chromium/WebKit matrix checks; failed runs preserved; muted non-audio checks. | Domain run after correction 1 passed (root). Focused and full matrix runs pending after correction 2. Session-mute smoke client is a bounded reconstruction, not the installed client. |
+  | O7. Exact-artifact fresh Sol review, PR with one ai-author marker, keep #51 and #161 open. | Pending: fresh independent review, PR, merge and live checks. |
+- **Correction 3 (test only, failed run retained):** the second focused Chromium
+  run passed every phone stage, first-try and record assertion. It then failed
+  on the new spec's retry-correct case, which expected the feedback text "Great
+  retry.". That phrase was my invention: the existing commit path replaces the
+  retry message with outcome copy ("Correct.", "First down!", defense copy).
+  Production is unchanged.
+
+  The test now proves a retry by state:
+  - the same frozen question before the correct tap;
+  - the correct choice marked, and the miss marked and disabled;
+  - one committed outcome;
+  - the finalized row linked to that question instance;
+  - attempt events of exactly `[1 wrong initial, 2 correct guided]`;
+  - the existing exact persisted attempts, resolution `retryCorrect` and
+    support `guided`.
+
+  This does not weaken O2 or O4: neither requires new feedback copy, and the
+  retry evidence is asserted more exactly than before.

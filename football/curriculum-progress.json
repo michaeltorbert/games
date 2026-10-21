@@ -151,7 +151,7 @@
           "concepts": "Two-digit plus one-digit without regrouping; ones sum at most 9."
         },
         {
-          "families": ["score-difference-ch8-ones-subtract", "goal-remaining-ch8-ones-subtract", "line-remaining-ch8-ones-subtract"],
+          "families": ["score-difference-ch8-ones-subtract", "goal-remaining-ch8-ones-subtract", "line-remaining-ch8-ones-subtract", "line-to-gain-surplus-ch8-ones-subtract"],
           "introducedOnPage": 110,
           "coverageThroughPage": 111,
           "concepts": "Two-digit minuend through 99, single-digit subtrahend no larger than its ones digit; direct Subtract From the Ones lesson."
@@ -190,11 +190,24 @@
         },
         {
           "families": [
-            "line-remaining-ch8"
+            "line-remaining-ch8",
+            "line-to-gain-surplus-ch8"
           ],
           "introducedOnPage": 131,
           "coverageThroughPage": 143,
           "concepts": "Subtraction within 20, no-borrow subtraction, whole tens minus one digit. General borrowing excluded."
+        },
+        {
+          "families": ["game-part-boundary", "halves-make-whole"],
+          "introducedOnPage": 68,
+          "coverageThroughPage": 68,
+          "concepts": "Equal halves and quarters of one whole; two halves or four quarters make the whole. Applied to the four-quarter regulation game; thirds (p. 72) excluded."
+        },
+        {
+          "families": ["game-part-compare"],
+          "introducedOnPage": 71,
+          "coverageThroughPage": 71,
+          "concepts": "Compare one half with one, two, or three quarters of the same whole; two quarters equal one half."
         }
       ]
     }

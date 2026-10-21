@@ -1,4 +1,4 @@
-const GAME_VERSION = '1.34.20';
+const GAME_VERSION = '1.34.21';
 let prevPlayerScore = -1, prevOpponentScore = -1;
 let playerRunTimer = 0, playerCelebrateTimer = 0, playerCelebrateDelayTimer = 0;
 const EZ = 5;
@@ -2030,7 +2030,8 @@ function renderMathVisual() {
   const question = state.questionInstance;
   const support = state.questionUi?.support || 'initial';
   const visual = question?.visuals?.[support];
-  if (!overlay || !visual || ![PHASES.question, PHASES.explanation].includes(state.phase)) {
+  // #51: a 'none' stage adds no picture, and clears any earlier one.
+  if (!overlay || !visual || visual.type === 'none' || ![PHASES.question, PHASES.explanation].includes(state.phase)) {
     hideMathVisual();
     return;
   }
@@ -2046,6 +2047,11 @@ function renderMathVisual() {
   if (visual.type === 'column-arithmetic') {
     overlay.removeAttribute('data-model');
     overlay.replaceChildren(renderColumnArithmetic(data, visual.result));
+    return;
+  }
+  if (visual.type === 'game-parts') {
+    overlay.dataset.model = data.model === 'compare' ? 'compare' : 'strip';
+    overlay.replaceChildren(renderGameParts(data));
     return;
   }
   if (visual.type === 'comparison') {
@@ -2070,9 +2076,19 @@ function renderMathVisual() {
     case 'fact-family':
       tokens = [data.knownPart, '+', visual.result ? visual.result.value : '?', '=', data.total];
       break;
-    case 'marker-strip':
-      tokens = [`NEED ${data.needed}`, `PLAY ${data.proposedGain}`, visual.result ? `PAST ${visual.result.value}` : 'PAST ?'];
+    case 'marker-strip': {
+      // #51: the question's gain minus the yards to go equals the yards past
+      // the marker, each with its unit, in place of NEED / PLAY / PAST.
+      const amount = value => `${value} ${value === 1 ? 'YARD' : 'YARDS'}`;
+      tokens = [
+        `${data.proposedGain}-YARD ${String(data.gainKind || 'gain').toUpperCase()}`,
+        '−',
+        `${amount(data.needed)} TO GO`,
+        '=',
+        visual.result ? `${amount(visual.result.value)} PAST` : '? YARDS PAST',
+      ];
       break;
+    }
     case 'base-ten-distance': {
       const tensUnit = data.tens === 1 ? 'TEN' : 'TENS';
       const onesUnit = data.ones === 1 ? 'ONE' : 'ONES';
@@ -2113,9 +2129,6 @@ function renderMathVisual() {
       break;
     case 'scoreboard-read':
       tokens = [data.label || 'SCOREBOARD'];
-      break;
-    case 'quarter-half':
-      tokens = [`Q${data.quarter}`, visual.result ? String(visual.result.value).toUpperCase() : 'HALF ?'];
       break;
     case 'hundreds-move': {
       if (support === 'initial') {
@@ -2232,6 +2245,48 @@ function renderComparison(data, result) {
     side('target', data.rightCaption, data.rightValue),
   );
   return row;
+}
+
+// Issue #51: equal pieces of the one four-quarter game. The frozen question's
+// stage data decides every label, current quarter, shaded piece, halftime split
+// and caption; this only draws it, so a guided stage never shows a result.
+function renderGameParts(data) {
+  const make = (tag, className, text = null) => {
+    const element = document.createElement(tag);
+    element.className = className;
+    if (text !== null) element.textContent = text;
+    return element;
+  };
+  const figure = make('div', 'math-game-parts');
+  figure.setAttribute('aria-hidden', 'true');
+  for (const row of data.rows || []) {
+    const line = make('div', 'math-game-row');
+    if (row.caption) {
+      line.dataset.captioned = '';
+      line.appendChild(make('span', 'math-game-caption', row.caption));
+    }
+    const strip = make('div', 'math-game-strip');
+    const splitAfter = row.halftime ? row.pieces.length / 2 - 1 : -1;
+    row.pieces.forEach((piece, index) => {
+      const cell = make('span', 'math-game-piece');
+      cell.toggleAttribute('data-current', piece.current === true);
+      cell.toggleAttribute('data-shaded', piece.shaded === true);
+      if (piece.label) cell.appendChild(make('b', 'math-game-label', piece.label));
+      if (piece.current) cell.appendChild(make('small', 'math-game-now', 'NOW'));
+      strip.appendChild(cell);
+      if (index === splitAfter) strip.appendChild(make('i', 'math-game-split'));
+    });
+    line.appendChild(strip);
+    if (row.halftime || row.groups) {
+      const under = make('div', 'math-game-under');
+      (row.groups || ['', '']).forEach(text => under.appendChild(make('span', 'math-game-group', text)));
+      if (row.halftime) under.appendChild(make('span', 'math-game-halftime', 'HALFTIME'));
+      line.appendChild(under);
+    }
+    figure.appendChild(line);
+  }
+  if (data.caption) figure.appendChild(make('span', 'math-worked', data.caption));
+  return figure;
 }
 
 // Issue #138: static make-ten and tens-and-ones pictures for a guided retry.

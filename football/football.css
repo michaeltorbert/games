@@ -805,6 +805,134 @@ body::after {
   text-align: center;
 }
 
+/* #51 quarters and halves: equal navy pieces of the one game, the quarter
+   being played in blue with a light underline, solved pieces in gold. Rows in
+   one picture share a width, so halves and quarters compare at equal length.
+   Tablets put each strip's caption beside it; phones stack it above. */
+#math-overlay[data-type="game-parts"] {
+  width: min(78%, 640px);
+  min-height: 0;
+  grid-template-columns: minmax(0, 1fr);
+  justify-content: stretch;
+  padding: 10px 16px;
+}
+
+.math-game-parts {
+  display: grid;
+  gap: 6px;
+}
+
+.math-game-row {
+  display: grid;
+  gap: 3px;
+}
+
+.math-game-row[data-captioned] {
+  grid-template-columns: 168px minmax(0, 1fr);
+  align-items: center;
+  column-gap: 12px;
+}
+
+.math-game-row[data-captioned] > :not(.math-game-caption) {
+  grid-column: 2;
+}
+
+.math-game-caption {
+  color: #b9d7f1;
+  font-size: 15px;
+  letter-spacing: 0.04em;
+  line-height: 1.1;
+}
+
+.math-game-strip {
+  display: flex;
+  gap: 4px;
+}
+
+/* The current quarter's 4px underline sits inside the piece, so every piece
+   keeps bottom padding clear of it and NOW never runs into the line. */
+.math-game-piece {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 44px;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  padding: 2px 2px 6px;
+  border-radius: 3px;
+  background: #263c5c;
+  color: #fff;
+}
+
+.math-game-piece[data-current] {
+  background: #1d4384;
+  box-shadow: inset 0 -4px 0 #7bafd4;
+}
+
+.math-game-piece[data-shaded] {
+  background: #ffd62e;
+  color: #07152f;
+}
+
+/* A normal line box matches the label font's own ascent and descent, as for
+   the comparison mark, so glyphs never overflow their box in any engine. */
+.math-game-label {
+  font-family: 'Bebas Neue', 'Barlow Condensed', sans-serif;
+  font-size: 24px;
+  font-weight: 400;
+  line-height: normal;
+  letter-spacing: 0.02em;
+}
+
+.math-game-now {
+  color: #b9d7f1;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  line-height: normal;
+}
+
+.math-game-piece[data-shaded] .math-game-now {
+  color: #07152f;
+}
+
+.math-game-split {
+  flex: 0 0 3px;
+  margin: -3px 2px;
+  border-radius: 2px;
+  background: #fff;
+}
+
+.math-game-under {
+  position: relative;
+  display: flex;
+  gap: 4px;
+  min-height: 1.2em;
+  color: #ffd62e;
+  font-size: 14px;
+  letter-spacing: 0.08em;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+.math-game-group {
+  flex: 1 1 0;
+  text-align: center;
+}
+
+.math-game-halftime {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  transform: translateX(-50%);
+  color: #fff;
+}
+
+#math-overlay[data-type="game-parts"] .math-worked {
+  color: #ffd62e;
+  font-size: 20px;
+  letter-spacing: 0.02em;
+}
+
 #math-overlay[data-type="parts"] {
   grid-template-columns: auto auto auto;
 }
@@ -4456,6 +4584,28 @@ body::after {
     height: 276px;
   }
 
+  /* #51: the marker picture's labeled gain, yards to go and yards past wrap
+     onto three lines, so its worked sentence needs the same taller field. */
+  #wrap[data-phase="explanation"]:has(#math-overlay[data-type="marker-strip"]) #field-wrap {
+    height: 276px;
+  }
+
+  /* #51: the yards-still-needed picture sits in the same track left of the
+     sound toggle. Its worked sentence, like the wider yardage equation's,
+     names the question's gain, so both worked states use the taller field.
+     Questions and retries keep the released field height. */
+  #wrap:is([data-phase="question"], [data-phase="explanation"]) #math-overlay[data-type="parts"],
+  #wrap[data-phase="explanation"] #math-overlay[data-type="arithmetic-equation"] {
+    left: calc(50% - 25.5px);
+    width: min(calc(94% - 51px), 380px);
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+
+  #wrap[data-phase="explanation"]:has(#math-overlay:is([data-type="parts"], [data-type="arithmetic-equation"])) #field-wrap {
+    height: 276px;
+  }
+
   #math-overlay[data-type="comparison"] .math-compare-row {
     grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
@@ -4479,6 +4629,71 @@ body::after {
   #math-overlay[data-type="comparison"] .math-compare-mark {
     grid-column: 2;
     font-size: 30px;
+  }
+
+  /* #51 quarters and halves: captions stack above their strips. A one-strip
+     retry keeps the released field; the two-strip comparison and every worked
+     state, with its halftime labels and caption, use a taller field so the
+     PLAY and CURRENT labels stay clear above the picture. */
+  #math-overlay[data-type="game-parts"] {
+    width: min(86%, 380px);
+    padding: 6px 10px 8px;
+  }
+
+  .math-game-parts {
+    gap: 5px;
+  }
+
+  .math-game-row[data-captioned] {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .math-game-row[data-captioned] > :not(.math-game-caption) {
+    grid-column: 1;
+  }
+
+  .math-game-caption {
+    font-size: 13px;
+  }
+
+  .math-game-piece {
+    min-height: 40px;
+    padding: 1px 2px 5px;
+  }
+
+  .math-game-label {
+    font-size: 20px;
+  }
+
+  .math-game-now {
+    font-size: 10px;
+  }
+
+  .math-game-under {
+    font-size: 12px;
+    letter-spacing: 0.04em;
+  }
+
+  #math-overlay[data-type="game-parts"] .math-worked {
+    font-size: 16px;
+  }
+
+  #wrap[data-phase="question"]:has(#math-overlay[data-type="game-parts"][data-model="compare"]) #field-wrap {
+    height: 214px;
+  }
+
+  /* The one captioned strip (two halves) is taller than the quarter strips,
+     so its retry uses the worked strip's field to stay below the toggle. */
+  #wrap[data-phase="question"]:has(#math-overlay[data-type="game-parts"][data-model="strip"] .math-game-row[data-captioned]) #field-wrap {
+    height: 196px;
+  }
+
+  #wrap[data-phase="explanation"]:has(#math-overlay[data-type="game-parts"][data-model="strip"]) #field-wrap {
+    height: 196px;
+  }
+
+  #wrap[data-phase="explanation"]:has(#math-overlay[data-type="game-parts"][data-model="compare"]) #field-wrap {
+    height: 250px;
   }
 
   #version-display {
@@ -5186,6 +5401,10 @@ body::after {
 
   #wrap:is([data-phase="question"], [data-phase="explanation"]):has(#math-overlay:is([data-type="down-progression"], [data-type="marker-strip"])) #field-wrap {
     height: 230px;
+  }
+
+  #wrap[data-phase="explanation"]:has(#math-overlay[data-type="marker-strip"]) #field-wrap {
+    height: 276px;
   }
 
   #ui-desk[data-phase="fourth-down-decision"] #action-panel {

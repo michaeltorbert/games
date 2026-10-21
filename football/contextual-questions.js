@@ -72,6 +72,14 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
     'conversionValue',
     'tryMarkerForDirection',
     'subtract',
+    'quartersAfterCurrent',
+    'quartersBeforeHalftime',
+    'quartersFinished',
+    'quartersInHalf',
+    'secondHalfQuarters',
+    'gamePartAtBoundary',
+    'halvesMakeWhole',
+    'compareGameParts',
   ]);
 
   const ANSWER_EXPOSURE_POLICIES = Object.freeze([
@@ -118,6 +126,9 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
     'game.patPoints': 1,
     'game.twoPointPoints': 2,
     'game.fieldGoalPoints': 3,
+    // #51: the whole is one four-quarter regulation game; overtime is never
+    // counted. Halves are its two equal parts, so halftime follows quarter 2.
+    'game.regulationQuarters': 4,
   });
 
   const SPECIAL_CONTEXT_KEYS = deepFreeze({
@@ -166,17 +177,27 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
   // This central map lives beside the family registry so every family reference
   // can be validated at module initialization. UI call-key coverage is pinned
   // against the production registries through the football test seam.
+  // #51: the retired comparison boost now favors the numeric short, exact and
+  // past-marker questions each call's gains can actually reach. A boost is a
+  // weight; eligibility still comes only from each family's own derive.
   const CALL_AFFINITIES = deepFreeze({
-    'offense:shortRun': ['yards-to-go-read', 'line-to-gain-missing-part', 'line-to-gain-exact', 'line-to-gain-surplus', 'line-to-gain-fact-family', 'gain-vs-needed-comparison', 'team-yards-past-100'],
-    'offense:shortPass': ['yards-to-go-read', 'line-to-gain-missing-part', 'line-to-gain-exact', 'line-to-gain-surplus', 'line-to-gain-fact-family', 'gain-vs-needed-comparison', 'next-down'],
-    'offense:longRun': ['gain-vs-needed-comparison', 'drive-distance-scaffolded', 'next-down', 'touchdown-base-points'],
-    'offense:mediumPass': ['gain-vs-needed-comparison', 'goal-distance-tens', 'goal-distance-ones', 'next-down', 'touchdown-base-points'],
-    'offense:longPass': ['gain-vs-needed-comparison', 'goal-distance-tens', 'goal-distance-ones', 'goal-distance-minus-whole-tens', 'drive-distance-plus-whole-tens', 'touchdown-base-points'],
-    'defense:run': ['yards-to-go-read', 'line-to-gain-missing-part', 'line-to-gain-exact', 'line-to-gain-surplus', 'line-to-gain-fact-family', 'gain-vs-needed-comparison'],
-    'defense:shortPass': ['yards-to-go-read', 'line-to-gain-missing-part', 'line-to-gain-exact', 'line-to-gain-surplus', 'gain-vs-needed-comparison', 'next-down'],
-    'defense:mediumPass': ['gain-vs-needed-comparison', 'next-down'],
+    'offense:shortRun': ['yards-to-go-read', 'line-to-gain-missing-part', 'line-to-gain-exact', 'line-to-gain-surplus', 'line-to-gain-fact-family', 'line-remaining-ch8-ones-subtract', 'team-yards-past-100'],
+    'offense:shortPass': ['yards-to-go-read', 'line-to-gain-missing-part', 'line-to-gain-exact', 'line-to-gain-surplus', 'line-to-gain-fact-family', 'line-remaining-ch8-ones-subtract', 'next-down'],
+    'offense:longRun': ['line-to-gain-surplus', 'line-to-gain-surplus-ch8-ones-subtract', 'line-to-gain-surplus-ch8', 'drive-distance-scaffolded', 'next-down', 'touchdown-base-points'],
+    'offense:mediumPass': ['line-to-gain-surplus', 'line-to-gain-surplus-ch8-ones-subtract', 'line-to-gain-surplus-ch8', 'goal-distance-tens', 'goal-distance-ones', 'next-down', 'touchdown-base-points'],
+    'offense:longPass': ['line-to-gain-surplus-ch8-ones-subtract', 'line-to-gain-surplus-ch8', 'goal-distance-tens', 'goal-distance-ones', 'goal-distance-minus-whole-tens', 'drive-distance-plus-whole-tens', 'touchdown-base-points'],
+    'defense:run': ['yards-to-go-read', 'line-to-gain-missing-part', 'line-to-gain-exact', 'line-to-gain-surplus', 'line-to-gain-fact-family', 'line-remaining-ch8-ones-subtract'],
+    'defense:shortPass': ['yards-to-go-read', 'line-to-gain-missing-part', 'line-to-gain-exact', 'line-to-gain-surplus', 'line-remaining-ch8-ones-subtract', 'next-down'],
+    'defense:mediumPass': ['line-to-gain-surplus', 'line-to-gain-surplus-ch8-ones-subtract', 'line-to-gain-surplus-ch8', 'next-down'],
     'defense:deepPass': ['goal-distance-tens', 'goal-distance-ones', 'touchdown-base-points'],
   });
+
+  // #51: the user rejected the symbol comparison as live instruction, and
+  // copying the scoreboard quarter label as too easy beside the quarter and
+  // half reasoning families. Both stay registered so direct builds, worked
+  // review and old history still decode, but live inspection never offers
+  // them, whatever their weak-spot evidence.
+  const RETIRED_LIVE_FAMILIES = Object.freeze(['gain-vs-needed-comparison', 'quarter-read']);
 
   const DEFAULT_PROFILE = deepFreeze({
     completedThroughPage: CURRENT_COMPLETED_PAGE,
@@ -385,6 +406,98 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
     return snap.context.firstDownLine === goalLine(snap)
       ? { caption: 'TO THE END ZONE', need: 'to reach the end zone', place: 'the end zone' }
       : { caption: 'FOR A FIRST DOWN', need: 'for a first down', place: 'the first-down marker' };
+  }
+
+  // #51 natural yardage: the real down and distance, one conditional gain of
+  // the frozen applied size, and one numeric distance. Player passes are
+  // completions and runs are gains; the opponent's call is private, so its
+  // gain stays generic. Copy never says the play will gain that distance.
+  function yardArticle(value) {
+    return value === 8 || value === 11 || value === 18 || (value >= 80 && value <= 89) ? 'an' : 'a';
+  }
+
+  function capitalize(text) {
+    return text.charAt(0).toUpperCase() + text.slice(1);
+  }
+
+  function yardsLeft(value) {
+    return `${yards(value)} ${isOrAre(value)} left`;
+  }
+
+  function yardageScene(snap) {
+    const c = snap.context;
+    const offense = c.possession === 'offense';
+    const team = offense ? null : publicTeamLabels(snap).opponent;
+    const gain = appliedGain(snap);
+    const call = offense && typeof c.calls?.offense === 'string' ? c.calls.offense : '';
+    const kind = !offense || gain === 0 ? 'gain' : /Pass$/.test(call) ? 'pass' : /Run$/.test(call) ? 'run' : 'gain';
+    const goalToGo = c.firstDownLine === goalLine(snap);
+    const downAndDistance = `${ordinal(c.down)} and ${goalToGo ? `goal from the ${c.yardsToGo}` : c.yardsToGo}`;
+    const subject = offense ? 'you' : team;
+    return {
+      gain, kind, goalToGo, subject, downAndDistance,
+      situation: offense ? `It's ${downAndDistance}` : `${team} has ${downAndDistance}`,
+      ifGain: !offense ? `If ${team} gains ${yards(gain)}`
+        : kind === 'pass' ? `If you complete ${yardArticle(gain)} ${gain}-yard pass` : `If you gain ${yards(gain)}`,
+      // "A 13-yard completion", "a 5-yard run", or a generic gain.
+      playNoun: `${yardArticle(gain)} ${gain}-yard ${kind === 'pass' ? 'completion' : kind}`,
+      questionPlay: `the question's ${gain}-yard ${kind}`,
+    };
+  }
+
+  // Yards still needed to the old line to gain. Goal to go names the end zone;
+  // fourth down asks how far short rather than promising another down.
+  function remainingYardageCopy(snap, needed, gain, answer) {
+    const s = yardageScene(snap);
+    const target = s.goalToGo ? 'to the end zone' : 'needed for a first down';
+    const ask = s.goalToGo ? `how many yards would ${s.subject} be from the end zone?`
+      : snap.context.down === 4 ? `how many yards short of a first down would ${s.subject} be?`
+        : `how many more yards would ${s.subject} need for a first down?`;
+    const outcome = s.goalToGo
+      ? (answer === 0 ? 'reach the end zone for a touchdown' : `leave ${s.subject} ${yards(answer)} from the end zone`)
+      : (answer === 0 ? 'reach the first-down marker exactly' : `leave ${s.subject} ${yards(answer)} short of the first-down marker`);
+    const need = s.goalToGo ? `The end zone is ${yards(needed)} away.`
+      : `${capitalize(s.subject)} need${s.subject === 'you' ? '' : 's'} ${yards(needed)}.`;
+    return {
+      scene: s,
+      prompt: `${s.situation}. ${s.ifGain}, ${ask}`,
+      // Count on for the within-10 part-whole picture; take away for the
+      // wider Chapter 8 equation.
+      hint: `${need} Count on from ${gain} to ${needed}.`,
+      takeAwayHint: `${need} Take the ${gain}-yard ${s.kind} away from ${needed}.`,
+      explanation: `${needed} − ${gain} = ${answer}. ${capitalize(s.playNoun)} on ${s.downAndDistance} would ${outcome}.`,
+      reviewMeaning: `For ${s.questionPlay}, start with the ${yards(needed)} ${target} and take away the ${yards(gain)} gained: ${yardsLeft(answer)}.`,
+    };
+  }
+
+  // Yards past the old marker. Callers decline scoring and goal-to-go plays,
+  // so there is never a distance past the end zone.
+  function surplusYardageCopy(snap, needed, gain, answer) {
+    const s = yardageScene(snap);
+    return {
+      scene: s,
+      prompt: `${s.situation}. ${s.ifGain}, how far past the first-down marker would ${s.subject} get?`,
+      hint: `The first ${needed === 1 ? 'yard gets' : `${needed} yards get`} ${s.subject} to the marker. Work out how much of the ${gain}-yard ${s.kind} is left.`,
+      explanation: `${gain} − ${needed} = ${answer}. ${capitalize(s.playNoun)} on ${s.downAndDistance} would take ${s.subject} ${yards(answer)} past the first-down marker.`,
+      reviewMeaning: `For ${s.questionPlay}, ${needed === 1 ? '1 yard reaches' : `${needed} yards reach`} the marker and ${answer} more ${answer === 1 ? 'goes' : 'go'} past it.`,
+    };
+  }
+
+  // Yards from the end zone after the gain, from any field position.
+  function goalYardageCopy(snap, distance, gain, answer) {
+    const s = yardageScene(snap);
+    const from = s.goalToGo ? `on ${s.downAndDistance}` : `from ${yards(distance)} out`;
+    return {
+      scene: s,
+      prompt: `${s.situation}${s.goalToGo ? '' : `, ${yards(distance)} from the end zone`}. ${s.ifGain}, how many yards would ${s.subject} be from the end zone?`,
+      hint: `Start with the ${yards(distance)} to the end zone. Take away the ${gain}-yard ${s.kind}.`,
+      explanation: `${distance} − ${gain} = ${answer}. ${capitalize(s.playNoun)} ${from} would leave ${s.subject} ${yards(answer)} from the end zone.`,
+      reviewMeaning: `For ${s.questionPlay}, start with the ${yards(distance)} to the end zone and take away the ${yards(gain)} gained: ${yardsLeft(answer)}.`,
+    };
+  }
+
+  function scoresOrGoalToGo(snap) {
+    return snap.proposal.resultKind === 'touchdown' || snap.context.firstDownLine === goalLine(snap);
   }
 
   function sourcePlayType(source) {
@@ -634,6 +747,9 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
     'line-to-gain-exact': { concept: 'line-to-gain', role: 'prerequisite' },
     'line-to-gain-missing-part': { concept: 'line-to-gain', role: 'core' },
     'line-to-gain-surplus': { concept: 'line-to-gain', role: 'core' },
+    // #51: wider past-marker yardage keeps the same core role and budget.
+    'line-to-gain-surplus-ch8': { concept: 'line-to-gain', role: 'core' },
+    'line-to-gain-surplus-ch8-ones-subtract': { concept: 'line-to-gain', role: 'core' },
     'line-to-gain-fact-family': { concept: 'line-to-gain', role: 'stretch' },
     'drive-distance-scaffolded': { concept: 'drive-distance', role: 'core' },
     'drive-distance-plus-whole-tens': { concept: 'drive-distance', role: 'stretch' },
@@ -722,14 +838,19 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
     visualData,
     guidedVisualType = null,
     guidedVisualData = null,
+    initialVisualType = null,
+    workedVisualData = null,
     choicePresentation = null,
     challengeFixture = null,
+    reviewMeaning = null,
     initialAriaLabel,
     guidedAriaLabel,
     workedAriaLabel,
   }) {
     return {
       ...(challengeFixture ? { challengeFixture } : {}),
+      // Optional play-specific Coach Replay meaning; otherwise the family's.
+      ...(reviewMeaning ? { reviewMeaning } : {}),
       bindings,
       operation: { type: operationType, operandIds: [...operandIds] },
       answer,
@@ -742,6 +863,10 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
       visualData,
       // Optional retry-only picture; initial and worked keep visualType.
       ...(guidedVisualType ? { guidedVisualType, guidedVisualData } : {}),
+      // #51 quarters and halves: 'none' adds no picture to the first try, and
+      // the worked stage alone draws the solved data.
+      ...(initialVisualType ? { initialVisualType } : {}),
+      ...(workedVisualData ? { workedVisualData } : {}),
       choicePresentation,
       visualAriaLabels: {
         initial: initialAriaLabel,
@@ -893,14 +1018,27 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
       relation(snap) { return { a: teamTotalYards(snap), b: appliedGain(snap),
         bindings: [teamTotalYardsBinding(snap), contextBinding(snap, 'proposedGain', '/proposal/appliedGain')],
         operands: ['teamTotalYards', 'proposedGain'], context: 'The team with the ball has this many total yards, then gains more:', ask: 'What would its total yards be?' }; } },
+    // #51: goal to go, the line to gain is the goal line; goal-remaining owns
+    // that distance so one target never has two wider owners.
     { id: 'line-remaining-ch8', operation: 'missingPart', page: 131, through: 143,
-      relation(snap) { return { a: snap.context.yardsToGo, b: appliedGain(snap), bindings: lineBindings(snap),
-        operands: ['yardsToGo', 'proposedGain'], context: 'Yards needed for this first down, minus the gain:', ask: 'How many yards would still be needed?' }; } },
+      relation(snap) { if (snap.context.firstDownLine === goalLine(snap)) return null;
+        return { a: snap.context.yardsToGo, b: appliedGain(snap), bindings: lineBindings(snap),
+          operands: ['yardsToGo', 'proposedGain'] }; },
+      copy(snap, a, b, answer) { const copy = remainingYardageCopy(snap, a, b, answer); return { ...copy, hint: copy.takeAwayHint }; } },
     { id: 'goal-remaining-ch8', operation: 'goalDistanceAfterGain', page: 110, through: 143,
       relation(snap) { if (snap.proposal.resultKind === 'touchdown') return null;
         return { a: goalDistance(snap), b: appliedGain(snap),
           bindings: [...goalBindings(snap), contextBinding(snap, 'proposedGain', '/proposal/appliedGain')],
-          operands: ['ballYardLine', 'goalLine', 'proposedGain'], context: 'Distance to the goal, minus this gain:', ask: 'How many yards would remain to the goal?' }; } },
+          operands: ['ballYardLine', 'goalLine', 'proposedGain'] }; },
+      copy: goalYardageCopy },
+    // #51: wider past-marker yardage (13 - 8, 24 - 10) joins the line-to-gain
+    // ladder as core work. Scoring and goal-to-go plays have nothing past the
+    // marker to count, even when the old marker sat short of the goal.
+    { id: 'line-to-gain-surplus-ch8', concept: 'line-to-gain', operation: 'surplus', page: 131, through: 143,
+      relation(snap) { if (scoresOrGoalToGo(snap) || appliedGain(snap) <= snap.context.yardsToGo) return null;
+        return { a: appliedGain(snap), b: snap.context.yardsToGo, bindings: lineBindings(snap),
+          operands: ['proposedGain', 'yardsToGo'] }; },
+      copy(snap, a, b, answer) { return surplusYardageCopy(snap, b, a, answer); } },
   ];
   // These disjoint domains retain each relation's concept and selection budget.
   // Later Chapter 8 arithmetic remains in the original guided family.
@@ -970,7 +1108,7 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
     const domains = COMPLETED_ARITHMETIC_DOMAINS[spec.operation === 'add' ? 'add' : 'subtract'];
     return [null, ...domains].map((domain) => ({
       meta: makeMeta({ familyId: domain ? `${spec.id}-${domain.suffix}` : spec.id, skill: spec.operation === 'add' ? 'addition' : 'difference',
-        concept: spec.id, purpose: 'approvedExtension', tier: 'chapter-8-arithmetic', weight: 2,
+        concept: spec.concept || spec.id, purpose: 'approvedExtension', tier: 'chapter-8-arithmetic', weight: 2,
         operationType: spec.operation, answerExposure: 'modeled-with-result-hidden', evidenceClass: 'independent',
         curriculumSource: 'workbook', worktext: 'Math Mammoth Grade 1-B', edition: 2026,
         introducedOnPage: domain?.page ?? spec.page, coverageThroughPage: domain?.through ?? spec.through }),
@@ -990,10 +1128,16 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
         }
         const equation = `${a} ${operator} ${b}`;
         const model = domain ? completedArithmeticModel(domain, a, b) : null;
+        // #51: yardage relations ask one natural football question; the
+        // equation picture and domain strategy stay the same.
+        const natural = spec.copy ? spec.copy(snap, a, b, answer) : null;
+        const strategy = domain ? domain.strategyHint : 'Use the tens and ones, or count on or back.';
         return eligible(makeSemantic({ bindings: relation.bindings, operationType: spec.operation,
-          operandIds: relation.operands, answer, prompt: `${relation.context} ${equation}. ${relation.ask}`,
-          hint: domain ? domain.strategyHint : `Work out ${equation}. Use the tens and ones or count on or back.`,
-          explanation: `${equation} = ${answer}.`, choiceSpec: numericChoiceSpec(0, 100),
+          operandIds: relation.operands, answer, prompt: natural ? natural.prompt : `${relation.context} ${equation}. ${relation.ask}`,
+          hint: natural ? `${natural.hint} ${strategy}`
+            : domain ? domain.strategyHint : `Work out ${equation}. Use the tens and ones or count on or back.`,
+          explanation: natural ? natural.explanation : `${equation} = ${answer}.`,
+          reviewMeaning: natural ? natural.reviewMeaning : null, choiceSpec: numericChoiceSpec(0, 100),
           visualType: 'arithmetic-equation', visualData: { a, b, operator },
           ...(model ? { guidedVisualType: 'arithmetic-model', guidedVisualData: { a, b, operator, ...model } } : {}),
           initialAriaLabel: `${equation} equals an unknown number.`,
@@ -1049,6 +1193,294 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
     },
   }));
 
+  // #51 quarters and halves. Every family reasons about the same fixed
+  // four-quarter regulation game, bound as a rule, and reads only the frozen
+  // live quarter; nothing claims a clock, halftime now, or overtime. Pictures
+  // are equal pieces of that one game. Guided pieces show labels and the
+  // quarter being played, never the counted set, a result, or a halftime
+  // split that would mark it; the worked stage alone adds the solved shading,
+  // split and caption.
+  const QUARTER_WORDS = Object.freeze({ 1: 'first', 2: 'second', 3: 'third', 4: 'fourth' });
+  const GAME_PART_NAMES = Object.freeze({ 1: 'One quarter', 2: 'One half', 3: 'Three quarters' });
+  const HALF_GROUPS = Object.freeze(['1st half', '2nd half']);
+
+  function quarterBindings(snap) {
+    return [
+      contextBinding(snap, 'quarter', '/context/quarter'),
+      ruleBinding('regulationQuarters', 'game.regulationQuarters'),
+    ];
+  }
+
+  function quarterRange(from, to) {
+    return Array.from({ length: Math.max(0, to - from + 1) }, (_, index) => from + index);
+  }
+
+  function quarterList(quarters) {
+    const labels = quarters.map((quarter) => `Q${quarter}`);
+    return labels.length < 2 ? labels.join('') : `${labels.slice(0, -1).join(', ')} and ${labels.at(-1)}`;
+  }
+
+  function quarterRow(regulation, { current = null, shaded = [], halftime = false, groups = null, labels = true, caption = null } = {}) {
+    return {
+      caption,
+      pieces: quarterRange(1, regulation).map((quarter) => ({
+        label: labels ? `Q${quarter}` : null, current: quarter === current, shaded: shaded.includes(quarter),
+      })),
+      halftime,
+      groups: groups ? [...groups] : null,
+    };
+  }
+
+  function halfRow({ shaded = [], labels = true, caption = null } = {}) {
+    return {
+      caption,
+      pieces: [1, 2].map((half) => ({ label: labels ? HALF_GROUPS[half - 1] : null, current: false, shaded: shaded.includes(half) })),
+      halftime: false,
+      groups: null,
+    };
+  }
+
+  function gameParts(rows, caption = null) {
+    return { model: rows.length > 1 ? 'compare' : 'strip', rows, caption };
+  }
+
+  function quarterNotEligible(detail) {
+    return { decline: decline('quarter-not-eligible', detail, ['/context/quarter']) };
+  }
+
+  function quarterHalfMeta(familyId, weight, operationType, source = { curriculumSource: 'football-only' }) {
+    return makeMeta({ familyId, skill: 'quarter-half-structure', concept: 'quarter-half-structure', purpose: 'coreReview',
+      tier: 'football-context', weight, operationType, answerExposure: 'modeled-with-result-hidden',
+      evidenceClass: 'independent', ...source });
+  }
+
+  // Grade 1-B (2026): halves, quarters and the whole on p. 68; comparing a half
+  // with one, two or three quarters on p. 71.
+  const HALVES_QUARTERS_PAGE = Object.freeze({ curriculumSource: 'workbook', worktext: 'Math Mammoth Grade 1-B', edition: 2026, introducedOnPage: 68, coverageThroughPage: 68 });
+  const COMPARE_PARTS_PAGE = Object.freeze({ curriculumSource: 'workbook', worktext: 'Math Mammoth Grade 1-B', edition: 2026, introducedOnPage: 71, coverageThroughPage: 71 });
+
+  const QUARTER_HALF_FAMILIES = [
+    {
+      meta: quarterHalfMeta('quarters-still-to-come', 0.3, 'quartersAfterCurrent'),
+      derive(snap) {
+        const quarter = snap.context.quarter;
+        const regulation = RULES['game.regulationQuarters'];
+        const later = quarterRange(quarter + 1, regulation);
+        const answer = later.length;
+        const come = answer === 1 ? 'comes' : 'come';
+        return eligible(makeSemantic({
+          bindings: quarterBindings(snap),
+          operationType: 'quartersAfterCurrent', operandIds: ['quarter', 'regulationQuarters'], answer,
+          prompt: `It's the ${QUARTER_WORDS[quarter]} quarter. How many more quarters come after this one?`,
+          hint: "Count the quarters after the one we're playing. Don't include the current quarter.",
+          explanation: answer === 0
+            ? `Q${quarter} is the last of the game's ${regulation} quarters, so 0 quarters come after this one.`
+            : `The game has ${regulation} quarters. After Q${quarter} ${come} ${quarterList(later)}, so ${countNoun(answer, 'quarter')} ${come} after this one.`,
+          choiceSpec: numericChoiceSpec(0, regulation),
+          visualType: 'game-parts', initialVisualType: 'none',
+          visualData: gameParts([quarterRow(regulation, { current: quarter })]),
+          workedVisualData: gameParts([quarterRow(regulation, { current: quarter, shaded: later })], `${countNoun(answer, 'quarter')} after Q${quarter}`),
+          initialAriaLabel: `The game is in Q${quarter}; the number of quarters after it is hidden.`,
+          guidedAriaLabel: `Four equal quarter boxes, Q1 to Q4, with Q${quarter} marked now. Count the boxes after Q${quarter}; the count stays hidden.`,
+          workedAriaLabel: answer === 0
+            ? `Q${quarter} is now, and no quarter box comes after it: 0 quarters.`
+            : `Q${quarter} is now. ${quarterList(later)} ${come} after it: ${countNoun(answer, 'quarter')}.`,
+        }));
+      },
+    },
+    {
+      meta: quarterHalfMeta('quarters-before-halftime', 0.15, 'quartersBeforeHalftime'),
+      derive(snap) {
+        const quarter = snap.context.quarter;
+        if (quarter !== 1) return quarterNotEligible('Only the first quarter has another whole quarter to play before halftime.');
+        const regulation = RULES['game.regulationQuarters'];
+        const lastBeforeHalftime = regulation / 2;
+        const before = quarterRange(quarter + 1, lastBeforeHalftime);
+        const answer = before.length;
+        return eligible(makeSemantic({
+          bindings: quarterBindings(snap),
+          operationType: 'quartersBeforeHalftime', operandIds: ['quarter', 'regulationQuarters'], answer,
+          prompt: `It's the ${QUARTER_WORDS[quarter]} quarter. After this quarter, how many more quarters will be played before halftime?`,
+          hint: 'Halftime splits the four quarters into two equal halves. Count the quarters after this one that come before halftime.',
+          explanation: `Halftime comes after Q${lastBeforeHalftime}. After Q${quarter}, only ${quarterList(before)} is played before halftime, so ${countNoun(answer, 'quarter')}.`,
+          choiceSpec: numericChoiceSpec(0, regulation),
+          visualType: 'game-parts', initialVisualType: 'none',
+          visualData: gameParts([quarterRow(regulation, { current: quarter })]),
+          workedVisualData: gameParts([quarterRow(regulation, { current: quarter, shaded: before, halftime: true })], `${countNoun(answer, 'quarter')} before halftime`),
+          initialAriaLabel: `The game is in Q${quarter}; the number of quarters before halftime is hidden.`,
+          guidedAriaLabel: `Four equal quarter boxes, Q1 to Q4, with Q${quarter} marked now. Find where halftime splits them into two equal halves; the count stays hidden.`,
+          workedAriaLabel: `Halftime comes after Q${lastBeforeHalftime}. ${quarterList(before)} is the ${countNoun(answer, 'quarter')} after Q${quarter} before halftime.`,
+        }));
+      },
+    },
+    {
+      meta: quarterHalfMeta('quarters-finished', 0.2, 'quartersFinished'),
+      derive(snap) {
+        const quarter = snap.context.quarter;
+        if (quarter < 3) return quarterNotEligible('Finished-quarter counting is asked in the third and fourth quarters.');
+        const regulation = RULES['game.regulationQuarters'];
+        const done = quarterRange(1, quarter - 1);
+        const answer = done.length;
+        return eligible(makeSemantic({
+          bindings: quarterBindings(snap),
+          operationType: 'quartersFinished', operandIds: ['quarter'], answer,
+          prompt: `We're playing the ${QUARTER_WORDS[quarter]} quarter. How many quarters are completely finished?`,
+          hint: "Count only the quarters before the one we're playing. The quarter we're playing isn't finished yet.",
+          explanation: `Q${quarter} is still being played. ${quarterList(done)} ${isOrAre(answer)} finished, so ${countNoun(answer, 'quarter')} ${isOrAre(answer)} completely finished.`,
+          choiceSpec: numericChoiceSpec(0, regulation),
+          visualType: 'game-parts', initialVisualType: 'none',
+          visualData: gameParts([quarterRow(regulation, { current: quarter })]),
+          workedVisualData: gameParts([quarterRow(regulation, { current: quarter, shaded: done })], `${countNoun(answer, 'quarter')} finished`),
+          initialAriaLabel: `The game is in Q${quarter}; the number of finished quarters is hidden.`,
+          guidedAriaLabel: `Four equal quarter boxes, Q1 to Q4, with Q${quarter} marked now. Count the boxes before Q${quarter}; the count stays hidden.`,
+          workedAriaLabel: `Q${quarter} is still being played. ${quarterList(done)} ${isOrAre(answer)} finished: ${countNoun(answer, 'quarter')}.`,
+        }));
+      },
+    },
+    {
+      meta: quarterHalfMeta('quarters-in-half', 0.15, 'quartersInHalf'),
+      derive(snap) {
+        if (snap.context.quarter > 2) return quarterNotEligible('The first-half quarter count is asked during the first half.');
+        const regulation = RULES['game.regulationQuarters'];
+        const firstHalf = quarterRange(1, regulation / 2);
+        const answer = firstHalf.length;
+        return eligible(makeSemantic({
+          bindings: quarterBindings(snap),
+          operationType: 'quartersInHalf', operandIds: ['regulationQuarters'], answer,
+          prompt: 'How many quarters make the first half of this game?',
+          hint: 'The game has four equal quarters. The first half is one of two equal parts of the game.',
+          explanation: `The ${regulation} quarters split into two equal halves. ${quarterList(firstHalf)} make the first half, so ${countNoun(answer, 'quarter')} make the first half.`,
+          choiceSpec: fixedChoiceSpec([1, 2, 3, 4]),
+          visualType: 'game-parts', initialVisualType: 'none',
+          visualData: gameParts([quarterRow(regulation)]),
+          workedVisualData: gameParts([quarterRow(regulation, { shaded: firstHalf, halftime: true, groups: HALF_GROUPS })], `${countNoun(answer, 'quarter')} in the first half`),
+          initialAriaLabel: 'The number of quarters in the first half is hidden.',
+          guidedAriaLabel: 'Four equal quarter boxes, Q1 to Q4, with no split marked. Split them into two equal halves; the count stays hidden.',
+          workedAriaLabel: `Halftime splits the four quarters into two equal halves. ${quarterList(firstHalf)} make the first half: ${countNoun(answer, 'quarter')}.`,
+        }));
+      },
+    },
+    {
+      meta: quarterHalfMeta('second-half-quarters', 0.1, 'secondHalfQuarters'),
+      derive(snap) {
+        if (snap.context.quarter < 3) return quarterNotEligible('The second-half quarters are asked during the second half.');
+        const regulation = RULES['game.regulationQuarters'];
+        const firstHalf = quarterRange(1, regulation / 2);
+        const secondHalf = quarterRange(regulation / 2 + 1, regulation);
+        const answer = `${ordinal(secondHalf[0])} and ${ordinal(secondHalf.at(-1))}`;
+        return eligible(makeSemantic({
+          bindings: quarterBindings(snap),
+          operationType: 'secondHalfQuarters', operandIds: ['regulationQuarters'], answer,
+          prompt: 'Which two quarters make the second half of this game?',
+          hint: 'The game has four equal quarters. Split them in order into two equal halves. The second half comes after halftime.',
+          explanation: `${quarterList(firstHalf)} make the first half, and ${quarterList(secondHalf)} make the second half: the ${answer} quarters.`,
+          choiceSpec: fixedChoiceSpec(['1st and 2nd', '2nd and 3rd', '3rd and 4th']),
+          visualType: 'game-parts', initialVisualType: 'none',
+          visualData: gameParts([quarterRow(regulation)]),
+          workedVisualData: gameParts([quarterRow(regulation, { shaded: secondHalf, halftime: true, groups: HALF_GROUPS })], `The ${answer} quarters`),
+          initialAriaLabel: 'The two quarters in the second half are hidden.',
+          guidedAriaLabel: 'Four equal quarter boxes, Q1 to Q4, with no split marked. Split them in order into two equal halves; the second-half quarters stay hidden.',
+          workedAriaLabel: `Halftime splits the four quarters into two equal halves. ${quarterList(secondHalf)} make the second half.`,
+        }));
+      },
+    },
+    {
+      meta: quarterHalfMeta('game-part-boundary', 0.2, 'gamePartAtBoundary', HALVES_QUARTERS_PAGE),
+      derive(snap) {
+        const quarter = snap.context.quarter;
+        const regulation = RULES['game.regulationQuarters'];
+        // The fourth quarter has no later boundary inside regulation to ask about.
+        if (quarter >= regulation) return quarterNotEligible('The fourth quarter has no later quarter boundary inside regulation.');
+        const asksLeft = quarter === regulation - 1;
+        const counted = asksLeft ? quarterRange(quarter + 1, regulation) : quarterRange(1, quarter);
+        const answer = GAME_PART_NAMES[counted.length];
+        const halftime = quarter === regulation / 2;
+        const when = halftime ? 'At halftime' : `When the ${QUARTER_WORDS[quarter]} quarter ends`;
+        const status = asksLeft ? 'left' : 'finished';
+        const part = answer.toLowerCase();
+        return eligible(makeSemantic({
+          bindings: quarterBindings(snap),
+          operationType: 'gamePartAtBoundary', operandIds: ['quarter', 'regulationQuarters'], answer,
+          prompt: `${when}, what part of this four-quarter game is ${status}?`,
+          hint: halftime
+            ? 'Halftime comes when the second quarter ends. Count the finished quarters, then name that part of the four-quarter game.'
+            : `The game has four equal quarters. Count the quarters ${asksLeft ? 'still to play' : 'that are finished'} when this quarter ends, then name that part of the game.`,
+          explanation: halftime
+            ? `At halftime, ${quarterList(counted)} are finished: ${counted.length} of the ${regulation} equal quarters. Two quarters make ${part} of the game.`
+            : asksLeft
+              ? `When Q${quarter} ends, only ${quarterList(counted)} is left: ${counted.length} of the ${regulation} equal quarters. That is ${part} of the game.`
+              : `When Q${quarter} ends, ${counted.length} of the ${regulation} equal quarters ${isOrAre(counted.length)} finished. That is ${part} of the game.`,
+          choiceSpec: fixedChoiceSpec(['One quarter', 'One half', 'Three quarters', 'The whole game']),
+          visualType: 'game-parts', initialVisualType: 'none',
+          visualData: gameParts([quarterRow(regulation, { current: quarter })]),
+          workedVisualData: gameParts([quarterRow(regulation, { current: quarter, shaded: counted, halftime, groups: halftime ? HALF_GROUPS : null })], `${answer} ${status}`),
+          initialAriaLabel: `The game is in Q${quarter}; the part of the game ${status} is hidden.`,
+          guidedAriaLabel: `Four equal quarter boxes, Q1 to Q4, with Q${quarter} marked now. Count the boxes ${status} ${halftime ? 'at halftime' : `when Q${quarter} ends`}; the part stays hidden.`,
+          workedAriaLabel: `${quarterList(counted)} ${counted.length === 1 ? 'is' : 'are'} ${status} ${halftime ? 'at halftime' : `when Q${quarter} ends`}: ${counted.length} of ${regulation} equal quarters, ${part} of the game.`,
+        }));
+      },
+    },
+    {
+      meta: quarterHalfMeta('halves-make-whole', 0.1, 'halvesMakeWhole', HALVES_QUARTERS_PAGE),
+      derive(snap) {
+        const answer = 'One whole game';
+        const caption = 'This game · two equal halves';
+        return eligible(makeSemantic({
+          bindings: quarterBindings(snap),
+          operationType: 'halvesMakeWhole', operandIds: ['regulationQuarters'], answer,
+          prompt: 'The first half and the second half together make what?',
+          hint: 'A half is one of two equal parts. Put the first half and the second half together, then see how much of the game they cover.',
+          explanation: 'The first half and the second half are the two equal parts of this game. Together they make one whole game.',
+          choiceSpec: fixedChoiceSpec(['One quarter', 'One half', 'One whole game']),
+          visualType: 'game-parts', initialVisualType: 'none',
+          visualData: gameParts([halfRow({ caption })]),
+          workedVisualData: gameParts([halfRow({ caption, shaded: [1, 2] })], answer),
+          initialAriaLabel: 'What the two halves make together is hidden.',
+          guidedAriaLabel: 'This game as two equal halves, 1st half and 2nd half, with nothing shaded; what they make together stays hidden.',
+          workedAriaLabel: 'Both halves are shaded: the first half and the second half together make one whole game.',
+        }));
+      },
+    },
+    {
+      meta: quarterHalfMeta('game-part-compare', 0.2, 'compareGameParts', COMPARE_PARTS_PAGE),
+      derive(snap) {
+        const quarter = snap.context.quarter;
+        const regulation = RULES['game.regulationQuarters'];
+        const half = { name: 'one half', quarters: regulation / 2, row: 'halves' };
+        // One variant per quarter, so no extra draw: a half against one, two or three quarters.
+        const [first, second] = quarter <= 2
+          ? [half, { name: 'one quarter', quarters: 1, row: 'quarters' }]
+          : quarter === 3
+            ? [{ name: 'two quarters', quarters: 2, row: 'quarters' }, half]
+            : [half, { name: 'three quarters', quarters: 3, row: 'quarters' }];
+        const quarterPart = first.row === 'quarters' ? first : second;
+        const answer = first.quarters === second.quarters ? 'Same size'
+          : capitalize(first.quarters > second.quarters ? first.name : second.name);
+        const conclusion = answer === 'Same size' ? 'They are the same size.' : `${answer} is bigger.`;
+        const row = (part, solved) => (part.row === 'halves'
+          ? halfRow({ labels: false, caption: 'Same game · two equal halves', shaded: solved ? [1] : [] })
+          : quarterRow(regulation, { labels: false, caption: 'Same game · four equal quarters', shaded: solved ? quarterRange(1, part.quarters) : [] }));
+        const halfCovers = `One half covers ${half.quarters} of the ${regulation} equal quarters`;
+        return eligible(makeSemantic({
+          bindings: quarterBindings(snap),
+          operationType: 'compareGameParts', operandIds: ['quarter', 'regulationQuarters'], answer,
+          prompt: `Compare ${first.name} and ${second.name} of this same game. Which is bigger, or are they the same size?`,
+          hint: 'Picture this game split into two equal halves and into four equal quarters. Both strips are the same length. Compare how much of the game each part covers.',
+          explanation: answer === 'Same size'
+            ? `${halfCovers}, the same as ${quarterPart.name}. ${conclusion}`
+            : `${halfCovers}. ${capitalize(quarterPart.name)} covers ${quarterPart.quarters}. ${conclusion}`,
+          choiceSpec: fixedChoiceSpec([capitalize(first.name), capitalize(second.name), 'Same size']),
+          visualType: 'game-parts', initialVisualType: 'none',
+          visualData: gameParts([row(first, false), row(second, false)]),
+          workedVisualData: gameParts([row(first, true), row(second, true)], conclusion),
+          initialAriaLabel: `Comparing ${first.name} and ${second.name} of this game; the bigger part is hidden.`,
+          guidedAriaLabel: 'This game drawn twice at the same length, once as two equal halves and once as four equal quarters, with nothing shaded; which part is bigger stays hidden.',
+          workedAriaLabel: `${capitalize(first.name)} is shaded on one strip and ${second.name} on the other. ${conclusion}`,
+        }));
+      },
+    },
+  ];
+
   const FAMILY_DEFINITIONS = [
     ...ARITHMETIC_FAMILIES,
     {
@@ -1081,17 +1513,19 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
         if (!(gain > 0 && gain < needed)) return { decline: decline('not-short-of-marker', 'This proposal is not a positive gain short of the old marker.', ['/proposal/appliedGain', '/context/yardsToGo']) };
         const answer = needed - gain;
         if (!inComputationBand(profile, needed, gain, answer)) return { decline: decline('outside-computation-band', 'The entire missing-part relation must fit the completed computation band.') };
+        const copy = remainingYardageCopy(snap, needed, gain, answer);
         return eligible(makeSemantic({
           bindings: lineBindings(snap),
           operationType: 'missingPart', operandIds: ['yardsToGo', 'proposedGain'], answer,
-          prompt: `${yards(needed)} ${isOrAre(needed)} needed. If this play gains ${yards(gain)}, how many more yards are still needed?`,
-          hint: `Start with ${spaces(needed)} and mark the ${spaces(gain)} the play could cover. Count the unmarked spaces.`,
-          explanation: `${needed} - ${gain} = ${answer}, so ${answer} yard${answer === 1 ? '' : 's'} would still be needed.`,
+          prompt: copy.prompt,
+          hint: copy.hint,
+          explanation: copy.explanation,
+          reviewMeaning: copy.reviewMeaning,
           choiceSpec: numericChoiceSpec(0, 10), visualType: 'parts',
           visualData: { total: needed, knownPart: gain, missingPart: null },
-          initialAriaLabel: `${spaces(needed)} in all with ${yards(gain)} marked for this play; the remaining part is hidden.`,
+          initialAriaLabel: `${spaces(needed)} in all with ${yards(gain)} marked for the ${gain}-yard ${copy.scene.kind}; the yards still left are hidden.`,
           guidedAriaLabel: `${spaces(needed)} in all. ${gain} ${isOrAre(gain)} filled. Count the empty spaces without naming the result yet.`,
-          workedAriaLabel: `${needed} splits into ${gain} and ${answer}; the missing part is ${answer}.`,
+          workedAriaLabel: `${needed} splits into ${gain} and ${answer}; ${yardsLeft(answer)}.`,
         }));
       },
     },
@@ -1102,16 +1536,20 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
         const gain = appliedGain(snap);
         if (gain !== needed) return { decline: decline('not-exact', 'The proposed gain does not exactly reach the old marker.', ['/proposal/appliedGain', '/context/yardsToGo']) };
         if (!inComputationBand(profile, needed, gain)) return { decline: decline('outside-computation-band', 'The exact relation must fit the completed computation band.') };
+        // #51: the same question as a short gain, so the wording gives no cue
+        // that nothing is left.
+        const copy = remainingYardageCopy(snap, needed, gain, 0);
         return eligible(makeSemantic({
           bindings: lineBindings(snap), operationType: 'exactRemainder', operandIds: ['yardsToGo', 'proposedGain'], answer: 0,
-          prompt: `${yards(needed)} ${isOrAre(needed)} needed. If this play gains exactly ${yards(gain)}, how many yards short would it be?`,
-          hint: 'Match each needed yard with one yard this play could gain.',
-          explanation: `${needed} - ${gain} = 0. The play would reach the marker exactly.`,
+          prompt: copy.prompt,
+          hint: copy.hint,
+          explanation: copy.explanation,
+          reviewMeaning: copy.reviewMeaning,
           choiceSpec: numericChoiceSpec(0, 10), visualType: 'parts',
           visualData: { total: needed, knownPart: gain, missingPart: null },
-          initialAriaLabel: `${spaces(needed)} needed and ${spaces(gain)} this play could gain line up; the remainder is hidden.`,
-          guidedAriaLabel: 'Pair every needed space with one space this play could gain, then check whether any space is left.',
-          workedAriaLabel: `${needed} minus ${gain} is 0; no yard is left short.`,
+          initialAriaLabel: `${spaces(needed)} in all with ${yards(gain)} marked for the ${gain}-yard ${copy.scene.kind}; the yards still left are hidden.`,
+          guidedAriaLabel: `${spaces(needed)} in all. ${gain} ${isOrAre(gain)} filled. Count the empty spaces without naming the result yet.`,
+          workedAriaLabel: `${needed} minus ${gain} is 0; no yard is left.`,
         }));
       },
     },
@@ -1121,18 +1559,23 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
         const needed = snap.context.yardsToGo;
         const gain = appliedGain(snap);
         if (gain <= needed) return { decline: decline('no-surplus', 'The proposed gain does not pass the old marker.', ['/proposal/appliedGain', '/context/yardsToGo']) };
+        // #51: a scoring play has no distance past the marker to count.
+        if (scoresOrGoalToGo(snap)) return { decline: decline('scoring-play-has-no-surplus', 'A touchdown or goal-to-go play is not measured past the first-down marker.', ['/proposal/resultKind', '/context/firstDownLine']) };
         const answer = gain - needed;
         if (!inComputationBand(profile, gain, needed, answer)) return { decline: decline('outside-computation-band', 'Gain, need, and surplus must all fit within 10.') };
+        const copy = surplusYardageCopy(snap, needed, gain, answer);
+        const kind = copy.scene.kind;
         return eligible(makeSemantic({
           bindings: lineBindings(snap), operationType: 'surplus', operandIds: ['proposedGain', 'yardsToGo'], answer,
-          prompt: `${yards(needed)} ${isOrAre(needed)} needed. If this play gains ${yards(gain)}, how many yards past the marker would it go?`,
-          hint: `Use ${needed} of the ${yards(gain)} to reach the marker. Count what remains.`,
-          explanation: `${gain} - ${needed} = ${answer}, so the play would go ${answer} yard${answer === 1 ? '' : 's'} past the marker.`,
+          prompt: copy.prompt,
+          hint: copy.hint,
+          explanation: copy.explanation,
+          reviewMeaning: copy.reviewMeaning,
           choiceSpec: numericChoiceSpec(0, 10), visualType: 'marker-strip',
-          visualData: { needed, proposedGain: gain, surplus: null },
-          initialAriaLabel: `${gain} possible yard spaces with the marker after ${needed}; the distance past it is hidden.`,
-          guidedAriaLabel: `Count the spaces after the marker at ${needed}, without naming the result yet.`,
-          workedAriaLabel: `${gain} minus ${needed} is ${answer}; the surplus is ${answer}.`,
+          visualData: { needed, proposedGain: gain, gainKind: kind, surplus: null },
+          initialAriaLabel: `The ${gain}-yard ${kind}, with the first-down marker ${yards(needed)} ahead; the yards past the marker are hidden.`,
+          guidedAriaLabel: `Count the yards of the ${gain}-yard ${kind} after the marker at ${needed}, without naming the result yet.`,
+          workedAriaLabel: `${gain} minus ${needed} is ${answer}; the ${kind} would go ${yards(answer)} past the first-down marker.`,
         }));
       },
     },
@@ -1146,7 +1589,7 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
         if (!inComputationBand(profile, total, part, answer)) return { decline: decline('outside-computation-band', 'Every fact-family number must fit within 10.') };
         return eligible(makeSemantic({
           bindings: lineBindings(snap), operationType: 'factFamilyMissingPart', operandIds: ['yardsToGo', 'proposedGain'], answer,
-          prompt: `${part} + ? = ${total}. What missing part would finish the yards needed for the first down?`,
+          prompt: `${part} + ? = ${total}. What missing part would finish the yards needed ${snap.context.firstDownLine === goalLine(snap) ? 'to reach the end zone' : 'for the first down'}?`,
           hint: `The known part is ${part}, and both parts must join to make ${total}.`,
           explanation: `${part} + ${answer} = ${total}. The matching subtraction fact is ${total} - ${part} = ${answer}.`,
           choiceSpec: numericChoiceSpec(0, 10), visualType: 'fact-family',
@@ -1394,20 +1837,27 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
       derive(snap) {
         const quarter = snap.context.quarter;
         const answer = quarter <= 2 ? '1st half' : '2nd half';
+        // #51: the same staged game-parts picture as the quarter families, with
+        // its existing binding, prompt and choices.
+        const regulation = RULES['game.regulationQuarters'];
+        const halfQuarters = quarter <= regulation / 2 ? quarterRange(1, regulation / 2) : quarterRange(regulation / 2 + 1, regulation);
         return eligible(makeSemantic({
           bindings: [contextBinding(snap, 'quarter', '/context/quarter')],
           operationType: 'halfFromQuarter', operandIds: ['quarter'], answer,
           prompt: `The scoreboard shows Q${quarter}. What part of the game is it?`,
           hint: `Split the four quarters into two equal groups in order, then place Q${quarter} in its group.`,
           explanation: `Q1 and Q2 make the 1st half. Q3 and Q4 make the 2nd half. Q${quarter} is in the ${answer}.`,
-          choiceSpec: fixedChoiceSpec(['1st half', 'Halftime', '2nd half', 'Final']), visualType: 'quarter-half',
-          visualData: { quarter },
+          choiceSpec: fixedChoiceSpec(['1st half', 'Halftime', '2nd half', 'Final']),
+          visualType: 'game-parts', initialVisualType: 'none',
+          visualData: gameParts([quarterRow(regulation, { current: quarter })]),
+          workedVisualData: gameParts([quarterRow(regulation, { current: quarter, shaded: halfQuarters, halftime: true, groups: HALF_GROUPS })], `Q${quarter} is in the ${answer}`),
           initialAriaLabel: `Scoreboard quarter Q${quarter}; the matching half is hidden.`,
           guidedAriaLabel: `Group Q1 and Q2 together, then Q3 and Q4 together; the half for Q${quarter} remains hidden.`,
           workedAriaLabel: `Q${quarter} is in the ${answer}.`,
         }));
       },
     },
+    ...QUARTER_HALF_FAMILIES,
     {
       meta: makeMeta({ familyId: 'next-down', skill: 'football-number-sense', concept: 'down-progression', purpose: 'coreReview', tier: 'football-context', weight: 1.1, operationType: 'ordinal', answerExposure: 'modeled-with-result-hidden', evidenceClass: 'independent', curriculumSource: 'football-only' }),
       derive(snap) {
@@ -1728,8 +2178,19 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
   // state. The two worked steps reuse each family's guided hint and worked
   // explanation; the surrounding goal and football meaning make that model
   // useful without adding another source of numeric truth.
+  const YARDAGE_REVIEW_SPECS = {
+    'line-remaining-ch8': { title: 'Find What Is Left', goal: 'Take the gain away from the yards needed for a first down.', footballMeaning: 'What is left is how far short of the first-down marker the gain would stop.' },
+    'goal-remaining-ch8': { title: 'Find the Distance Left', goal: 'Take the gain away from the distance to the end zone.', footballMeaning: 'What is left is how far from the end zone the gain would stop.' },
+    'line-to-gain-surplus-ch8': { title: 'Count Past the Marker', goal: 'Use the yards needed to reach the marker, then find what is left of the gain.', footballMeaning: 'What is left of the gain is how far past the first-down marker it would go.' },
+  };
   const WORKED_REVIEW_SPECS = deepFreeze({
     ...Object.fromEntries(ARITHMETIC_FAMILIES.map(({ meta }) => [meta.familyId, { title: 'Work Out the Play Numbers', goal: 'Calculate with the public score or yardage facts.', footballMeaning: 'The equation uses the scores or yards from this exact play.' }])),
+    // #51: the yardage relations name their football target. Each question
+    // also supplies its own meaning for the hypothetical gain it asked about.
+    ...Object.fromEntries(ARITHMETIC_FAMILIES.flatMap(({ meta }) => {
+      const spec = YARDAGE_REVIEW_SPECS[meta.familyId.replace(/-ones-subtract$/, '')];
+      return spec ? [[meta.familyId, spec]] : [];
+    })),
     'yards-to-go-read': {
       title: 'Read the Distance',
       goal: 'Find the yards needed on the scoreboard.',
@@ -1809,6 +2270,46 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
       title: 'Find the Half',
       goal: 'Use the quarter number to decide whether the game is in the first or second half.',
       footballMeaning: 'Quarters one and two make the first half; quarters three and four make the second.',
+    },
+    'quarters-still-to-come': {
+      title: 'Count the Quarters Left',
+      goal: 'Count the quarters that come after the one being played.',
+      footballMeaning: 'A game has four quarters, so the quarters after this one are the rest of the game.',
+    },
+    'quarters-before-halftime': {
+      title: 'Count to Halftime',
+      goal: 'Count the quarters after this one that come before halftime.',
+      footballMeaning: 'Halftime splits the four quarters into two equal halves, so the first half ends after the second quarter.',
+    },
+    'quarters-finished': {
+      title: 'Count the Finished Quarters',
+      goal: 'Count only the quarters before the one being played.',
+      footballMeaning: 'The quarter being played is not finished until it ends, so only the earlier quarters count.',
+    },
+    'quarters-in-half': {
+      title: 'Find the First Half',
+      goal: 'Split the four quarters into two equal halves and count the first half.',
+      footballMeaning: 'The first half is the part of the game before halftime.',
+    },
+    'second-half-quarters': {
+      title: 'Find the Second Half',
+      goal: 'Split the four quarters in order into two equal halves and name the second one.',
+      footballMeaning: 'The second half is the part of the game after halftime.',
+    },
+    'game-part-boundary': {
+      title: 'Name the Part of the Game',
+      goal: 'Count the finished or remaining quarters and name that part of the four-quarter game.',
+      footballMeaning: 'One quarter is one of four equal parts of the game. One half is one of two equal parts.',
+    },
+    'halves-make-whole': {
+      title: 'Put the Halves Together',
+      goal: 'Join the first half and the second half of the game.',
+      footballMeaning: 'The two equal halves together are the whole game.',
+    },
+    'game-part-compare': {
+      title: 'Compare Parts of the Game',
+      goal: 'Compare two parts of the same four-quarter game.',
+      footballMeaning: 'One half of the game is the same as two quarters, so it is bigger than one quarter and smaller than three quarters.',
     },
     'next-down': {
       title: 'Find the Next Down',
@@ -1898,7 +2399,12 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
       if (FAMILY_BY_ID.get(familyId).meta.playType !== 'scrimmage') {
         throw new Error(`Call affinity references non-scrimmage family ${familyId}.`);
       }
+      if (RETIRED_LIVE_FAMILIES.includes(familyId)) throw new Error(`Call affinity boosts retired family ${familyId}.`);
     }
+    if (new Set(familyIds).size !== familyIds.length) throw new Error('Call affinity family IDs must be unique.');
+  }
+  for (const familyId of RETIRED_LIVE_FAMILIES) {
+    if (!FAMILY_BY_ID.has(familyId)) throw new Error(`Unknown retired family ${familyId}.`);
   }
 
   function selectionFor(source, familyId) {
@@ -1940,6 +2446,9 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
       if (playType && meta.playType !== playType) continue;
       let reason = commonReason;
       let result = null;
+      if (!reason && RETIRED_LIVE_FAMILIES.includes(meta.familyId)) {
+        reason = decline('retired-from-live-play', `${meta.familyId} is kept for direct builds and history but is no longer offered during play.`);
+      }
       if (!reason && !sourceStatus(meta, profile).included) {
         reason = decline('curriculum-not-included', `Family requires ${meta.worktext} (${meta.edition}) through page ${meta.coverageThroughPage}; that source is outside the requested curriculum scope.`);
       }
@@ -2040,8 +2549,11 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
     const stage = (name) => {
       const revealsAnswer = name === 'worked' || visibleAtSource;
       const guidedModel = name === 'guided' && Boolean(semantic.guidedVisualType);
-      const type = guidedModel ? semantic.guidedVisualType : semantic.visualType;
-      const data = clone(guidedModel ? semantic.guidedVisualData : semantic.visualData);
+      const noInitialPicture = name === 'initial' && semantic.initialVisualType === 'none';
+      const solvedData = name === 'worked' && semantic.workedVisualData;
+      const type = noInitialPicture ? 'none' : guidedModel ? semantic.guidedVisualType : semantic.visualType;
+      const data = noInitialPicture ? {}
+        : clone(guidedModel ? semantic.guidedVisualData : solvedData ? semantic.workedVisualData : semantic.visualData);
       if (!revealsAnswer && ['base-ten-distance', 'base-ten-score'].includes(type)) {
         if (data.targetPlace === 'tens') data.tens = null;
         if (data.targetPlace === 'ones') data.ones = null;
@@ -2090,7 +2602,7 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
           ...groundedCopy(semantic.explanation, semantic.explanation, bindingIds, answerId),
         },
       ],
-      footballMeaning: groundedCopy(spec.footballMeaning, spec.footballMeaning, bindingIds, answerId),
+      footballMeaning: groundedCopy(semantic.reviewMeaning || spec.footballMeaning, null, bindingIds, answerId),
     };
   }
 
@@ -2198,6 +2710,7 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
     CHALLENGE_MAP,
     CALL_AFFINITY_MULTIPLIER,
     CALL_AFFINITIES,
+    RETIRED_LIVE_FAMILIES,
     TWO_POINT_CHALLENGE,
     twoPointChallengeFor,
     selectionFor,
