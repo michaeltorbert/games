@@ -43,6 +43,8 @@ body { margin: 0; background: var(--cream); color: var(--ink); font: 16px/1.45 s
 .tab[aria-pressed="true"] { background: var(--cream); color: var(--navy); }
 main { max-width: 1120px; margin: 0 auto; padding: 16px; display: grid; gap: 14px; }
 .view { display: grid; gap: 14px; min-width: 0; }
+/* An author display rule beats the UA [hidden] style, which left inactive views visible. */
+[hidden] { display: none !important; }
 .panel { background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; min-width: 0; }
 .panel h2 { margin: 0 0 8px; font-size: 18px; }
 .panel h3 { margin: 12px 0 6px; font-size: 16px; }
@@ -103,7 +105,14 @@ export function dashboardClient() {
   const labelOf = id => state.overview.profiles.find(p => p.profileId === id)?.label ?? 'Deleted profile';
   const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
+  // Every render and view change takes a new token. An awaited response may touch the page
+  // (status, panels, busy state) only while its token is still the latest: a slower earlier
+  // request for another profile, range or view can never append to or overwrite the current one.
+  let renderToken = 0;
+  const current = token => token === renderToken;
+
   function show(view) {
+    renderToken++;
     state.view = view;
     for (const tab of document.querySelectorAll('.tab')) tab.setAttribute('aria-pressed', String(tab.dataset.view === view));
     for (const name of ['report', 'devices', 'setup']) $(`view-${name}`).hidden = name !== view;
@@ -114,8 +123,10 @@ export function dashboardClient() {
 
   // ---- Report ----
   async function renderReport() {
+    const token = ++renderToken;
     const root = $('view-report');
     root.replaceChildren();
+    root.removeAttribute('aria-busy');
     const profiles = state.overview.profiles;
     if (!profiles.length) { root.append(panel('No profiles yet', [el('p', 'Add a profile and connect a device in Setup.')])); status(''); return; }
     if (!state.profile || !profiles.some(p => p.profileId === state.profile)) state.profile = profiles[0].profileId;
@@ -136,7 +147,16 @@ export function dashboardClient() {
     const head = panel(profiles.find(p => p.profileId === state.profile).label, [controls]);
     root.append(head);
     status('Loading report…');
-    const result = await api(`/api/report?profile=${encodeURIComponent(state.profile)}&from=${state.from}&to=${state.to}`);
+    root.setAttribute('aria-busy', 'true');
+    let result;
+    try {
+      result = await api(`/api/report?profile=${encodeURIComponent(state.profile)}&from=${state.from}&to=${state.to}`);
+    } catch (error) {
+      result = { ok: false, status: 0 };
+    }
+    // A newer render (another profile, range or view) owns the page now: drop this response.
+    if (!current(token)) return;
+    root.removeAttribute('aria-busy');
     if (!result.ok) { status(result.status === 400 ? 'Check the dates: From must be on or before To.' : 'The report could not be loaded.'); return; }
     status('');
     const r = result.data;
@@ -236,10 +256,13 @@ export function dashboardClient() {
 
   // ---- Devices ----
   async function renderDevices() {
+    const token = ++renderToken;
     const root = $('view-devices');
     root.replaceChildren();
     status('Loading devices…');
-    const result = await api('/api/devices');
+    let result;
+    try { result = await api('/api/devices'); } catch (error) { result = { ok: false, status: 0 }; }
+    if (!current(token)) return;
     if (!result.ok) { status('Devices could not be loaded.'); return; }
     status('');
     root.append(panel('Device health', [el('p', 'Unreceived numbers below the highest received are possibly pending, delayed or lost, not proven lost. Losses after the last received event, and devices that never sent anything, cannot be detected. Intentionally deleted events are not shown as gaps.', 'note')]));

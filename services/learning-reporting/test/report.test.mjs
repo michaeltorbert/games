@@ -96,6 +96,44 @@ test('Facts: eligible checks, null timing reads "not timed", another try is from
   assert.equal(row('add:3:4').statusLabel, SPARSE, 'two completions are below the documented minimum of three');
 });
 
+test('the Facts sparse minimum counts only independent eligible checks; supported completions stay counted and suggested', () => {
+  const supported = (factId, family, startDay) => [
+    ...fact(factId, family, 'retry', startDay), ...fact(factId, family, 'shown', startDay + 1), ...fact(factId, family, 'retry', startDay + 2)];
+  const r = report([
+    // Zero independent checks, three supported completions (the latest one supported).
+    ...supported('add:7:6', 'family:6:7:13', 10),
+    // Two independent checks (one timed, one not timed) and three supported completions.
+    ...fact('add:3:4', 'family:3:4:7', 'first-correct', 2, { eligible: true, timingMs: 2500 }),
+    ...fact('add:3:4', 'family:3:4:7', 'first-correct', 3, { eligible: true, timingMs: null }),
+    ...supported('add:3:4', 'family:3:4:7', 12),
+    // A first-try completion the game did not count as an eligible check is not independent evidence either.
+    ...fact('add:3:4', 'family:3:4:7', 'first-correct', 16, { eligible: false, timingMs: null }),
+    // Exactly the minimum: three independent checks (one not timed), after four supported completions.
+    ...supported('add:1:1', 'family:1:1:2', 2), ...fact('add:1:1', 'family:1:1:2', 'retry', 5),
+    ...fact('add:1:1', 'family:1:1:2', 'first-correct', 6, { eligible: true, timingMs: 1800 }),
+    ...fact('add:1:1', 'family:1:1:2', 'first-correct', 7, { eligible: true, timingMs: null }),
+    ...fact('add:1:1', 'family:1:1:2', 'first-correct', 8, { eligible: true, timingMs: 2200 }),
+  ]);
+  const row = id => r.facts.rows.find(item => item.factId === id);
+  // Zero independent checks: sparse, although three completions exist; still suggested.
+  assert.deepEqual([row('add:7:6').completed, row('add:7:6').afterRetry, row('add:7:6').answerShown, row('add:7:6').eligibleChecks], [3, 2, 1, 0]);
+  assert.equal(row('add:7:6').statusLabel, SPARSE);
+  assert.equal(row('add:7:6').anotherTry, true);
+  assert.ok(r.suggestions.some(item => item.item === '7 + 6' && item.kind === 'practice'));
+  assert.ok(r.facts.noEligibleCheck.includes('7 + 6'));
+  // Below the minimum: two eligible checks plus three supported and one ineligible first-try completion.
+  assert.deepEqual([row('add:3:4').completed, row('add:3:4').firstTry, row('add:3:4').eligibleChecks], [6, 3, 2]);
+  assert.equal(row('add:3:4').statusLabel, SPARSE);
+  assert.deepEqual([row('add:3:4').eligibleTimed, row('add:3:4').eligibleNotTimed], [1, 1]);
+  // At the minimum: three eligible checks (one not timed) are enough; the supported ones remain visible.
+  assert.deepEqual([row('add:1:1').completed, row('add:1:1').afterRetry, row('add:1:1').answerShown, row('add:1:1').eligibleChecks], [7, 3, 1, 3]);
+  assert.equal(row('add:1:1').statusLabel, null);
+  assert.equal(row('add:1:1').status, 'reported');
+  assert.equal(row('add:1:1').latestEligibleTiming, '2.2 s entry');
+  assert.equal(row('add:1:1').anotherTry, false);
+  assert.equal(r.facts.caveat, TIMING_CAVEAT);
+});
+
 test('pre-enrollment and unsynced practice are simply absent: no item reads "not practiced" or "never checked"', () => {
   // The device practiced add:2:2 before enrollment and add:5:5 while offline; neither was reported.
   const r = report([...fact('add:1:1', 'family:1:1:2', 'first-correct', 3, { eligible: true, timingMs: 2000 })]);

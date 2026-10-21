@@ -73,7 +73,7 @@ deploying.
 | Profiles / devices | 8 profiles, 16 active devices |
 | Retention | 90 days by server receipt (`RETENTION_DAYS`), daily cron `17 3 * * *` UTC |
 | Access identities | The household's grown-up identities, configured only in the Access policy (not in this repository) |
-| Sparse-evidence minimum | 3 completed independent results per Football concept, 3 completed checks per fact |
+| Sparse-evidence minimum | 3 independent results per item, or the item reads "Not enough reported evidence yet". Number facts: 3 reported eligible checks (unsupported first-try checks); completions after a retry or a shown answer are still shown and still drive suggestions, but never count toward the minimum. Football: 3 completed questions of the independent (work-it-out) evidence class; reading and no-stakes questions never count |
 | Suggestions | At most 6, including at most 2 easy-review items, deterministic (see `src/report.js`) |
 | Outbox cap and cadence | 500 events / 262,144 UTF-16 units on the device; upload on load, online, after a resolution and every 60 s while visible; backoff 30 s doubling to 15 min with random jitter |
 | Upload batch | 20 events, 64 KiB |

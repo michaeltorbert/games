@@ -78,9 +78,28 @@ async function geometry(page, name) {
   expect(result.small, 'every control at least 44 CSS pixels').toEqual([]);
 }
 
+// Exactly one view is rendered: the inactive ones carry `hidden`, compute to display:none,
+// and none of their content has a box (candidate 3 left them visible under a .view rule).
+async function expectOnlyView(page, active) {
+  const views = await page.evaluate(() => ['report', 'devices', 'setup'].map(name => {
+    const view = document.getElementById(`view-${name}`);
+    const boxed = [...view.querySelectorAll('*')].filter(node => { const box = node.getBoundingClientRect(); return box.width > 0 || box.height > 0; }).length;
+    return { name, hidden: view.hidden, display: getComputedStyle(view).display, boxed };
+  }));
+  for (const view of views) {
+    if (view.name === active) expect([view.hidden, view.display === 'none'], `${view.name} is shown`).toEqual([false, false]);
+    else expect([view.hidden, view.display, view.boxed], `${view.name} is not rendered`).toEqual([true, 'none', 0]);
+  }
+  for (const name of ['report', 'devices', 'setup']) {
+    if (name === active) await expect(page.locator(`#view-${name}`)).toBeVisible();
+    else await expect(page.locator(`#view-${name}`)).toBeHidden();
+  }
+}
+
 test('the dashboard report, devices and setup views fit every target with touch-size controls and the exact caveat', async ({ page }) => {
   await serveDashboard(page);
   await page.goto(`${DASH}/`);
+  await expectOnlyView(page, 'report');
   await expect(page.getByRole('heading', { name: 'Number facts' })).toBeVisible();
   await expect(page.getByText(TIMING_CAVEAT, { exact: true })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Football' })).toBeVisible();
@@ -101,9 +120,10 @@ test('the dashboard report, devices and setup views fit every target with touch-
   await page.locator('summary').filter({ hasText: '7 + 6' }).first().tap();
   await geometry(page, 'dashboard-report-expanded');
   await page.getByRole('button', { name: 'Devices' }).tap();
-  await expect(page.locator('body')).toContainText('possibly pending, delayed or lost');
-  await expect(page.locator('body')).toContainText('A fresh log started');
-  await expect(page.locator('body')).toContainText('cannot be detected');
+  await expect(page.locator('#view-devices')).toContainText('possibly pending, delayed or lost');
+  await expect(page.locator('#view-devices')).toContainText('A fresh log started');
+  await expect(page.locator('#view-devices')).toContainText('cannot be detected');
+  await expectOnlyView(page, 'devices');
   await geometry(page, 'dashboard-devices');
   await page.getByRole('button', { name: 'Delete device…' }).tap();
   const confirm = page.locator('.confirm');
@@ -112,12 +132,117 @@ test('the dashboard report, devices and setup views fit every target with touch-
   await expect(confirm).toBeFocused();
   await geometry(page, 'dashboard-confirm');
   await page.getByRole('button', { name: 'Setup' }).tap();
-  await expect(page.locator('body')).toContainText('Use a nickname, not a full name.');
+  await expect(page.locator('#view-setup')).toContainText('Use a nickname, not a full name.');
+  await expectOnlyView(page, 'setup');
   await geometry(page, 'dashboard-setup');
+  // Back to Report: the report alone is rendered again, with its own geometry.
+  await page.getByRole('button', { name: 'Report' }).tap();
+  await expect(page.getByRole('heading', { name: 'Number facts' })).toBeVisible();
+  await expectOnlyView(page, 'report');
+  await geometry(page, 'dashboard-report-again');
   await page.keyboard.press('Tab');
   const focus = await page.evaluate(() => { const style = getComputedStyle(document.activeElement); return { outline: style.outlineStyle, width: parseFloat(style.outlineWidth) }; });
   expect(focus.outline).not.toBe('none');
   expect(focus.width).toBeGreaterThanOrEqual(2);
+});
+
+// ---- Only the latest report request may render (F-SOL-200-1) ----
+// Report responses are held and released in a chosen order. Profile B's fixture has only
+// the fact 3 + 4; profile A's only 7 + 6, so mixed rendering is detectable.
+function reportFor(profileId, label, factId, family) {
+  const qid = randomUUID();
+  const events = [{ ...base('attempt', 'facts', qid, 12), profileId, factId, family, number: 1, correct: true, helped: false },
+    { ...base('resolution', 'facts', qid, 12), profileId, factId, family, outcome: 'first-correct', eligibleCheck: true, timingMs: 3100, helped: false }];
+  return buildReport({ profile: { profileId, label }, devices: [{ deviceId: DEVICE, name: 'Kitchen tablet', lastSyncAt: '2026-10-25T18:00:00.000Z', revokedAt: null, shared: true }],
+    events, from: '2026-09-27', to: '2026-10-26', truncated: false, catalog: CATALOG, retentionDays: 90, timeZone: 'UTC', now: Date.parse('2026-10-26T12:00:00Z') });
+}
+const REPORT_A = reportFor(P1, 'Synthetic Lark', 'add:7:6', 'family:6:7:13');
+const REPORT_B = reportFor(P2, 'Synthetic Wren', 'add:3:4', 'family:3:4:7');
+async function holdReports(page) {
+  const held = [];
+  // Registered after serveDashboard, so it handles /api/report first.
+  await page.route(`${DASH}/api/report**`, route => new Promise(done => {
+    held.push({ url: new URL(route.request().url()), respond: async (status, body) => { await route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) }); done(); } });
+  }));
+  return held;
+}
+const factRows = page => page.locator('#view-report .list > li > details > summary').allTextContents();
+async function expectOnlyReportB(page) {
+  await expect(page.locator('#view-report h2').first()).toHaveText('Synthetic Wren');
+  await expect(page.getByRole('heading', { name: 'Number facts' })).toHaveCount(1);
+  await expect(page.getByRole('heading', { name: 'Football' })).toHaveCount(1);
+  const rows = await factRows(page);
+  expect(rows.some(text => text.startsWith('3 + 4:'))).toBe(true);
+  expect(rows.some(text => text.startsWith('7 + 6:')), 'nothing from the superseded request').toBe(false);
+  await expect(page.locator('#status')).toHaveText('');
+  await expect(page.locator('#view-report')).not.toHaveAttribute('aria-busy', 'true');
+}
+
+test('a slower earlier report never mixes into a newer profile, range or view, and its failure never replaces the current status', async ({ page }) => {
+  await serveDashboard(page);
+  const held = await holdReports(page);
+  await page.goto(`${DASH}/`);
+  // A: the first profile's report is in flight; the page says it is loading.
+  await expect.poll(() => held.length).toBe(1);
+  expect(held[0].url.searchParams.get('profile')).toBe(P1);
+  await expect(page.locator('#status')).toHaveText('Loading report…');
+  await expect(page.locator('#view-report')).toHaveAttribute('aria-busy', 'true');
+  // Switch to profile B while A is pending; resolve B, then A.
+  await page.locator('#view-report select').selectOption(P2);
+  await expect.poll(() => held.length).toBe(2);
+  expect(held[1].url.searchParams.get('profile')).toBe(P2);
+  await held[1].respond(200, REPORT_B);
+  await expectOnlyReportB(page);
+  await held[0].respond(200, REPORT_A);
+  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve, 50))));
+  await expectOnlyReportB(page);
+  await geometry(page, 'dashboard-report-after-stale-success');
+
+  // An earlier request for another range fails after the newer range succeeded.
+  await page.locator('#view-report input[type="date"]').first().fill('2026-10-01');
+  await expect.poll(() => held.length).toBe(3);
+  await page.locator('#view-report input[type="date"]').first().fill('2026-10-02');
+  await expect.poll(() => held.length).toBe(4);
+  expect([held[2].url.searchParams.get('from'), held[3].url.searchParams.get('from')]).toEqual(['2026-10-01', '2026-10-02']);
+  await held[3].respond(200, REPORT_B);
+  await expectOnlyReportB(page);
+  await held[2].respond(500, { error: 'unavailable' });
+  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve, 50))));
+  await expectOnlyReportB(page);
+
+  // Navigating away: a pending report must not append, change status or stay busy for Devices.
+  await page.locator('#view-report input[type="date"]').first().fill('2026-10-03');
+  await expect.poll(() => held.length).toBe(5);
+  await page.getByRole('button', { name: 'Devices' }).tap();
+  await expect(page.locator('#view-devices')).toContainText('possibly pending, delayed or lost');
+  await expectOnlyView(page, 'devices');
+  await expect(page.locator('#status')).toHaveText('');
+  await held[4].respond(500, { error: 'unavailable' });
+  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve, 50))));
+  await expect(page.locator('#status')).toHaveText('');
+  await expect(page.locator('#view-report')).toBeHidden();
+  // The hidden report view keeps only the header panel of its last render; no late result panels.
+  await expect(page.locator('#view-report .panel')).toHaveCount(1);
+  expect(await factRows(page)).toEqual([]);
+  await expectOnlyView(page, 'devices');
+  // Back to Report: a fresh request renders normally.
+  await page.getByRole('button', { name: 'Report' }).tap();
+  await expect.poll(() => held.length).toBe(6);
+  await held[5].respond(200, REPORT_B);
+  await expectOnlyReportB(page);
+  await expectOnlyView(page, 'report');
+  // Setup while a report is pending, then a late success: Setup's status and view stay intact.
+  await page.locator('#view-report input[type="date"]').first().fill('2026-10-04');
+  await expect.poll(() => held.length).toBe(7);
+  await page.getByRole('button', { name: 'Setup' }).tap();
+  await expect(page.locator('#view-setup')).toContainText('Use a nickname, not a full name.');
+  await expectOnlyView(page, 'setup');
+  await held[6].respond(200, REPORT_A);
+  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve, 50))));
+  await expect(page.locator('#status')).toHaveText('');
+  expect(await factRows(page)).toEqual([]);
+  await expectOnlyView(page, 'setup');
+  await geometry(page, 'dashboard-setup-after-stale-report');
 });
 
 // ---- Football who-is-playing picker on every target (a device enrolled for two profiles) ----

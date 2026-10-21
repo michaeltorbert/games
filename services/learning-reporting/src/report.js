@@ -171,8 +171,11 @@ function factsSection(events, catalog) {
       latestAt: latest?.recordedAt ?? null,
       anotherTry,
       anotherTryLabel: anotherTry ? 'Another try due, from the reported checks' : null,
-      status: resolutions.length < RULES.sparseMinimum ? 'sparse' : 'reported',
-      statusLabel: resolutions.length < RULES.sparseMinimum ? SPARSE : null,
+      // The sparse minimum counts independent evidence only: reported eligible checks (an
+      // unsupported first-try completion the game counted as a check). Completions after a
+      // retry or a shown answer stay counted above, but never satisfy this minimum.
+      status: eligible.length < RULES.sparseMinimum ? 'sparse' : 'reported',
+      statusLabel: eligible.length < RULES.sparseMinimum ? SPARSE : null,
     });
   }
   return {

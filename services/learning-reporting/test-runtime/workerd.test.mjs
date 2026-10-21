@@ -31,17 +31,22 @@ class CaptureLog extends Log { logWithLevel(level, message) { logs.push(String(m
 const b64 = bytes => Buffer.from(bytes).toString('base64url');
 let key, mf, db, worker, dir, bundlePath, bundleHash, bundle, session, A, B;
 
+// One stable grown-up Access session for the whole suite, as a real Access cookie carries
+// one JWT with a fixed iat. Candidate 3 minted a new iat per request (floor(now) - 5), so
+// crossing a second boundary silently changed the session and its CSRF binding mid-suite.
+// Other sessions are minted only where a test means to (see the CSRF/session case).
+const SESSION_START = Math.floor(Date.now() / 1000);
+const SESSION_CLAIMS = Object.freeze({ iss: TEAM, aud: [AUD], sub: 'synthetic-grown-up', iat: SESSION_START - 5, exp: SESSION_START + 3600 });
 async function jwt(overrides = {}) {
-  const now = Math.floor(Date.now() / 1000);
   const head = b64(enc.encode(JSON.stringify({ alg: 'RS256', kid: 'runtime-k1', typ: 'JWT' })));
-  const body = b64(enc.encode(JSON.stringify({ iss: TEAM, aud: [AUD], sub: 'synthetic-grown-up', iat: now - 5, exp: now + 900, ...overrides })));
+  const body = b64(enc.encode(JSON.stringify({ ...SESSION_CLAIMS, ...overrides })));
   const sig = new Uint8Array(await subtle.sign('RSASSA-PKCS1-v1_5', key.privateKey, enc.encode(`${head}.${body}`)));
   return `${head}.${body}.${b64(sig)}`;
 }
 const parse = text => { try { return JSON.parse(text); } catch (error) { return text; } };
-async function admin(path, body) {
-  const headers = { 'Cf-Access-Jwt-Assertion': await jwt() };
-  if (body !== undefined) Object.assign(headers, { 'Content-Type': 'application/json', Origin: HOST, 'Sec-Fetch-Site': 'same-origin', 'X-CSRF-Token': session.csrf });
+async function admin(path, body, { claims = {}, csrf } = {}) {
+  const headers = { 'Cf-Access-Jwt-Assertion': await jwt(claims) };
+  if (body !== undefined) Object.assign(headers, { 'Content-Type': 'application/json', Origin: HOST, 'Sec-Fetch-Site': 'same-origin', 'X-CSRF-Token': csrf ?? session.csrf });
   const response = await mf.dispatchFetch(`${HOST}${path}`, body === undefined ? { headers } : { method: 'POST', headers, body: JSON.stringify(body) });
   return { status: response.status, data: parse(await response.text()), headers: response.headers };
 }
@@ -140,6 +145,18 @@ test('dashboard, reads, export and admin are denied without a valid Access JWT; 
   const crossSite = await mf.dispatchFetch(`${HOST}/api/preview`, { method: 'POST', body: JSON.stringify({ action: 'delete-all', target: null }),
     headers: { 'Cf-Access-Jwt-Assertion': await jwt(), 'Content-Type': 'application/json', Origin: 'https://evil.example', 'X-CSRF-Token': session.csrf } });
   assert.equal(crossSite.status, 403, 'cross-site delete refused');
+  // The CSRF token is bound to one Access session: another valid session (a later sign-in,
+  // or another grown-up) cannot use it, and receives its own token from /api/session.
+  const preview = { action: 'delete-all', target: null };
+  for (const claims of [{ iat: SESSION_CLAIMS.iat + 60 }, { sub: 'synthetic-other-grown-up' }]) {
+    const reused = await admin('/api/preview', preview, { claims });
+    assert.deepEqual([reused.status, reused.data.error], [403, 'csrf'], JSON.stringify(claims));
+    const own = (await admin('/api/session', undefined, { claims })).data.csrf;
+    assert.notEqual(own, session.csrf);
+    assert.equal((await admin('/api/preview', preview, { claims, csrf: own })).status, 200);
+    assert.deepEqual((await admin('/api/preview', preview, { csrf: own })).data, { error: 'csrf' }, 'and theirs is refused for this session');
+  }
+  assert.equal((await admin('/api/preview', preview)).status, 200, 'the stable session’s own token works');
   assert.equal((await device('/v1/enroll', { code: 'X' }, null, 'https://evil.example')).status, 403, 'foreign game origin');
 });
 
