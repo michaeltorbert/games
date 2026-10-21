@@ -62,6 +62,10 @@
   font: 17px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 .lr-page *, .lr-page *::before, .lr-page *::after { box-sizing: border-box; }
+/* The page's class display rules (.lr-facts grid, .lr-actions flex) outrank the UA [hidden]
+   style; enroll.js hides health and Send now in states where they do not apply. Scoped to
+   this page only: the game pickers and game styles are unaffected. */
+.lr-page [hidden] { display: none !important; }
 .lr-bar {
   background: var(--lr-navy);
   color: var(--lr-cream);

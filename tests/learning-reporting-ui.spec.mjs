@@ -321,8 +321,95 @@ footballTest('the Football start screen offers a tappable who-is-playing choice 
   await test.info().attach('football-after-start.png', { body: await page.screenshot(), contentType: 'image/png' });
 });
 
-test('the public device page fits every target and shows no profile labels', async ({ page }) => {
+// Rendered-box ownership on the public device page (F-SOL-200-3): `hidden` must remove a
+// region and everything in it from layout, not just set the attribute.
+async function deviceRegions(page) {
+  return page.evaluate(() => Object.fromEntries(['lr-health', 'lr-sync-actions', 'lr-setup', 'lr-stop', 'lr-stop-confirm', 'lr-stop-cancel'].map(id => {
+    const element = document.getElementById(id), box = element.getBoundingClientRect();
+    const boxed = [element, ...element.querySelectorAll('*')].filter(node => { const b = node.getBoundingClientRect(); return b.width > 0 || b.height > 0; }).length;
+    return [id, { hidden: element.hidden, display: getComputedStyle(element).display, rendered: box.width > 0 && box.height > 0, boxed }];
+  })));
+}
+async function expectRegions(page, shown) {
+  const regions = await deviceRegions(page);
+  for (const [id, region] of Object.entries(regions)) {
+    if (shown.includes(id)) expect([region.hidden, region.rendered], `${id} is shown`).toEqual([false, true]);
+    else expect([region.hidden, region.display, region.boxed], `${id} is not rendered`).toEqual([true, 'none', 0]);
+  }
+}
+
+test('the public device page shows only the regions that apply: not set up, not connected, connected, and paused', async ({ page }) => {
+  const DEVICE_SERVICE = 'http://127.0.0.1:8199';
+  let serviceUrl = null;
+  const profileIds = [randomUUID(), randomUUID()];
+  const cors = origin => ({ 'Access-Control-Allow-Origin': origin, 'Access-Control-Allow-Methods': 'POST', 'Access-Control-Allow-Headers': 'Authorization, Content-Type', Vary: 'Origin' });
+  // 1. The shipped, unconfigured page: summary and a disabled form only; no health, no Send now, no Stop.
   await page.goto('/shared/learning-reporting/');
   await expect(page.locator('#lr-summary')).toHaveText('Reporting is not set up for this site.');
-  await geometry(page, 'device-page');
+  await expectRegions(page, ['lr-setup']);
+  await expect(page.locator('#lr-connect')).toBeDisabled();
+  await expect(page.locator('#lr-code')).toBeDisabled();
+  await geometry(page, 'device-page-not-set-up');
+
+  // The synthetic service: a routed config origin and a loopback-only mock (no real service).
+  await page.route('**/shared/learning-reporting/config.js*', route => route.fulfill({
+    status: 200, contentType: 'application/javascript', body: `globalThis.LEARNING_REPORTING_CONFIG = Object.freeze({ serviceUrl: '${serviceUrl ?? ''}' });`,
+  }));
+  const syncs = [];
+  await page.route(`${DEVICE_SERVICE}/**`, route => {
+    const request = route.request(), origin = request.headers().origin;
+    if (request.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: cors(origin) });
+    const body = request.postDataJSON();
+    if (new URL(request.url()).pathname === '/v1/enroll') {
+      return route.fulfill({ status: 200, headers: cors(origin), contentType: 'application/json',
+        body: JSON.stringify({ schemaVersion: 1, token: `lr1_${'ab'.repeat(16)}_${randomBytes(32).toString('base64url')}`, deviceId: randomUUID(), profileIds }) });
+    }
+    syncs.push(body);
+    return route.fulfill({ status: 200, headers: cors(origin), contentType: 'application/json',
+      body: JSON.stringify({ schemaVersion: 1, results: body.events.map(event => ({ eventId: event.eventId, outcome: 'accepted' })) }) });
+  });
+
+  // 2. Configured but not connected: the code form works; still no health, Send now or Stop.
+  serviceUrl = DEVICE_SERVICE;
+  await page.reload();
+  await expect(page.locator('#lr-summary')).toHaveText('This device is not connected. Nothing is recorded or sent.');
+  await expectRegions(page, ['lr-setup']);
+  await expect(page.locator('#lr-connect')).toBeEnabled();
+  await geometry(page, 'device-page-not-connected');
+
+  // 3. Connected with the matching origin: health and Send now shown; the form is gone; Stop is offered.
+  await page.locator('#lr-code').fill('0123-4567-89ab-cdef-ghjk-mnpq-rs');
+  await page.locator('#lr-connect').tap();
+  await expect(page.locator('#lr-form-status')).toHaveText('Connected.');
+  await expect(page.locator('#lr-summary')).toHaveText('Connected. Practice is sent automatically while a game is open.');
+  await expectRegions(page, ['lr-health', 'lr-sync-actions', 'lr-stop']);
+  await expect(page.locator('#lr-players')).toHaveText('Player 1, Player 2');
+  await expect(page.locator('#lr-waiting')).toHaveText('0 practice events');
+  await expect(page.locator('body')).not.toContainText(/Synthetic/);
+  await geometry(page, 'device-page-connected');
+  // Send now and the two-step Stop are usable by tap.
+  await page.locator('#lr-sync-now').tap();
+  await expect(page.locator('#lr-sync-now')).toBeEnabled();
+  await expect(page.locator('#lr-summary')).toHaveText('Connected. Practice is sent automatically while a game is open.');
+  await page.locator('#lr-stop-ask').tap();
+  await expectRegions(page, ['lr-health', 'lr-sync-actions', 'lr-stop', 'lr-stop-confirm', 'lr-stop-cancel']);
+  await expect(page.locator('#lr-stop-confirm')).toBeFocused();
+  await geometry(page, 'device-page-stop-confirm');
+  await page.locator('#lr-stop-cancel').tap();
+  await expectRegions(page, ['lr-health', 'lr-sync-actions', 'lr-stop']);
+  await expect(page.locator('#lr-stop-ask')).toBeVisible();
+
+  // 4. Connected, but this site's report origin changed: health shown, Send now hidden, sending paused.
+  serviceUrl = 'http://127.0.0.1:8197';
+  const serviceRequests = [];
+  page.on('request', request => { if (/^http:\/\/127\.0\.0\.1:(8197|8199)\//.test(request.url())) serviceRequests.push(request.url()); });
+  await page.reload();
+  await expect(page.locator('#lr-summary')).toHaveText('Connected, but sending is paused because this site’s report setting changed. Waiting practice is kept.');
+  await expectRegions(page, ['lr-health', 'lr-stop']);
+  await geometry(page, 'device-page-paused');
+  // Nothing was sent to either origin from the paused page.
+  const sent = syncs.length;
+  await page.waitForTimeout(2500);
+  expect(syncs.length).toBe(sent);
+  expect(serviceRequests).toEqual([]);
 });
