@@ -2835,3 +2835,50 @@ released, approved or verified; root runs every check on the exact artifact.
 
   This does not weaken O2 or O4: neither requires new feedback copy, and the
   retry evidence is asserted more exactly than before.
+
+## 2026-10-21 — Learning-event outbox foundation, 1.34.22 CANDIDATE, UNRELEASED (#199)
+
+- Request: "Implement #199 without further input; use full Opus lane." Author: a
+  new native Claude (Opus 5.5) session on exact base `358fe90` (Football
+  1.34.21). The author had no shell and ran nothing. This entry is a candidate
+  record, not a release: no merge, deployment or production release is
+  requested, and the first useful delivery still waits for #200.
+- Added `shared/learning-outbox.js` (plain global `LEARNING_OUTBOX`) and its
+  contract `shared/LEARNING_EVENTS.md`, which documents the per-game domain
+  versus outbox write boundary. It loads after `contextual-questions.js` and
+  before `football.js`.
+- `football.js` observers, all after the existing guards and in-memory records,
+  synchronous and never awaited: guided help after a successful
+  `prepareQuestion`, each accepted `handleAnswer` attempt, retry help after the
+  hint is shown, worked help after the worked explanation is shown, resolution
+  only from the accepted commit, and `leftUnfinished` only when recovery
+  discards a presented, unresolved question. Question links are in memory, so
+  a reload leaves a question pending. No timing key is ever recorded.
+- Recording is off until a #200 enrollment record exists; there is no
+  enrollment writer or UI. Disabled play reads one enrollment key and nothing
+  else. RNG streams, opponent plans, proposals, families, commits, scores,
+  stats and focus/timers are unchanged.
+- Metadata: `GAME_VERSION`, every Football `?v=` key, `games.js` and
+  `version.json` advance to 1.34.22. Place by Place moves to 1.9.2 in the same
+  candidate because the shared script changes its cache keys too.
+- Tests: `tests/learning-outbox-domain.spec.mjs` joins the release domain list
+  and `tests/football-learning-outbox.spec.mjs` the release browser list.
+- Pending: both release gates in Chromium and WebKit, the two-target registry
+  gate, Football DOM smoke, fresh independent review and the dormant PR. This
+  entry claims none of them.
+- **Storage protocol correction (supersedes the storage parts of this entry, still
+  a candidate).**
+  - The original exclusive Web Lock plus `localStorage` envelope lost accepted
+    batches between two Playwright WebKit pages (`repeat-webkit-1`: 14 of 30
+    failed). The Chromium control passed 30 of 30. This is stress evidence, not
+    a Safari or production-frequency claim.
+  - Both planners agreed the correction. The outbox now lives in IndexedDB
+    (`learningReporting` v1, store `records`), holding an authoritative consent
+    record and the unchanged envelope string. Every mutation is one readwrite
+    transaction, counted only at `oncomplete`.
+  - The outbox Web Lock is gone, there is no installer, and nothing is created
+    from the hint. `snapshot()` is now async. Stop deletes the consent and
+    outbox transactionally, or deletes a future database with an honest pending
+    state while blocked.
+  - The `football.js` observers are unchanged. The Stats and Season stores are
+    untouched; their similar pattern is a separate follow-up.

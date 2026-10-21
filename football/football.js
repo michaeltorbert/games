@@ -1,4 +1,4 @@
-const GAME_VERSION = '1.34.21';
+const GAME_VERSION = '1.34.22';
 let prevPlayerScore = -1, prevOpponentScore = -1;
 let playerRunTimer = 0, playerCelebrateTimer = 0, playerCelebrateDelayTimer = 0;
 const EZ = 5;
@@ -1286,7 +1286,53 @@ function markStatsBypassed(activePlay, links = {}) {
 function discardPendingStatsPlay() {
   const pending = pendingStatsPlay;
   pendingStatsPlay = null;
+  // An unresolved, successfully presented question discarded by recovery is an observed leave.
+  if (pending && outboxLink && outboxLink.playId === state.activePlay?.playId) reportLearningEvent('leftUnfinished');
   return pending ? FOOTBALL_STATS.discardPlay(pending) : false;
+}
+
+// Learning-event outbox observer (#199). Dormant until a #200 enrollment exists.
+// It copies accepted primitives into the shared outbox and never awaits, so play,
+// every RNG stream and the stats store are unchanged. Links live in memory only:
+// a reload or close leaves the question pending/unknown.
+let outboxLink = null;
+
+function beginOutboxLink(activePlay, question) {
+  outboxLink = { question, playType: activePlay.playType, playId: activePlay.playId, questionInstanceId: null, closed: false };
+}
+
+function outboxQuestionMetadata(question, playType) {
+  const entry = FOOTBALL_CONTEXTUAL_QUESTIONS.FAMILY_REGISTRY[playType]?.find(item => item.familyId === question.familyId);
+  if (!entry) return null;
+  const metadata = {};
+  for (const key of ['familyId', 'concept', 'purpose', 'tier', 'grading', 'evidenceClass']) {
+    if (question[key] !== entry[key]) return null;
+    metadata[key] = entry[key];
+  }
+  return metadata;
+}
+
+function reportLearningEvent(kind, fields = {}) {
+  const link = outboxLink;
+  if (!link || link.closed || link.question !== state.questionInstance || typeof LEARNING_OUTBOX === 'undefined') return;
+  if (kind === 'resolution' || kind === 'leftUnfinished') link.closed = true;
+  try {
+    const captured = LEARNING_OUTBOX.capture();
+    if (!captured) return;
+    const metadata = outboxQuestionMetadata(link.question, link.playType);
+    if (!metadata) return;
+    if (!link.questionInstanceId) link.questionInstanceId = LEARNING_OUTBOX.newId();
+    LEARNING_OUTBOX.record(captured, {
+      game: 'football',
+      gameVersion: GAME_VERSION,
+      kind,
+      questionInstanceId: link.questionInstanceId,
+      ...metadata,
+      ...fields,
+    });
+  } catch (error) {
+    // Reporting never participates in play.
+  }
 }
 
 function finalizeStatsPlay(activePlay, transition, outcome) {
@@ -3330,6 +3376,8 @@ function prepareQuestion(bundle, labelHtml, feedbackCopy = '') {
   }
   markStatsPresented(question);
   FOOTBALL_LEARNING.recordPresented(learningSession, question, learningEventPlayScope(activePlay));
+  beginOutboxLink(activePlay, question);
+  if (state.questionUi.support === 'guided') reportLearningEvent('help', { number: 1, support: 'guided' });
 }
 
 function restoreCallAfterInvalid(opponentSnapshot = null) {
@@ -3717,6 +3765,11 @@ function handleAnswer(idx) {
     correct: isCorrect,
     support: state.questionUi.support,
   });
+  reportLearningEvent('attempt', {
+    number: state.questionUi.attempt,
+    correct: isCorrect,
+    support: state.questionUi.support,
+  });
 
   if (isCorrect) {
     completeCorrectAnswer(btn, question);
@@ -3783,6 +3836,7 @@ function handleInstructionalMiss(btn, choice, question) {
       ? (state.possession === POSSESSIONS.offense ? 'retryOffense' : 'retryDefense')
       : (state.possession === POSSESSIONS.offense ? 'specialRetryOffense' : 'specialRetryDefense'));
     setFeedback(`Good try. ${question.hint.text}`, 'info');
+    reportLearningEvent('help', { number: 2, support: state.questionUi.support });
     const next = [0, 1, 2, 3]
       .map(i => document.getElementById('b' + i))
       .find(button => button && !button.disabled && !button.classList.contains('hidden'));
@@ -3803,6 +3857,7 @@ function handleInstructionalMiss(btn, choice, question) {
     : (state.possession === POSSESSIONS.offense ? 'specialExplainOffense' : 'specialExplainDefense'));
   setFeedback(question.workedExplanation.text, 'info');
   showWorkedReviewSummary();
+  reportLearningEvent('help', { number: 2, support: 'worked' });
 }
 
 function recordQuestionResolution(result) {
@@ -3816,6 +3871,7 @@ function recordQuestionResolution(result) {
     support: state.questionUi.support,
   });
   FOOTBALL_STATS.recordResolution(pendingStatsPlay, result);
+  reportLearningEvent('resolution', { resolution: result });
   return true;
 }
 
