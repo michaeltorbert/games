@@ -6,10 +6,16 @@ separate from `services/kayak-reporting`: its own Worker, its own D1 database, n
 tables and no Google APIs. Only Kayak's deployment and configuration conventions are
 reused.
 
-**Status: local candidate only. Not deployed, not configured, nothing enrolled.** The
-committed `wrangler.jsonc` is a fail-closed template: reporting is disabled, the Access
-values are empty, the D1 ID is all zeros, and the games' service origin
-(`shared/learning-reporting/config.js`) is empty, so the games send nothing.
+**Status: not released and not delivering household data.** A separate operator reports a
+hosted Worker built from source `1e921b1` with reporting disabled and no cron, and an
+owner login that showed the dashboard tabs with no errors and no profiles or devices.
+That is operator-reported and has not been verified independently here. No owner session
+is available for a recheck, and the owner-only Access policy contents are unverified (a
+listing that shows no Access applications is a scope gap, not proof about the policy). No
+device is enrolled. The committed `wrangler.jsonc` stays a fail-closed template:
+reporting is disabled, the Access values are empty and the D1 ID is all zeros. The
+games' service origin (`shared/learning-reporting/config.js`) is empty, so the games
+send nothing.
 
 Upkeep: this Worker and D1 database, a Cloudflare Access application and policy, device
 enrollment and revocation, schema migrations, and noticing sync failures on the Devices
@@ -122,6 +128,49 @@ npm run test:runtime   # builds dist/ with a Wrangler dry run, then runs dist/wo
 `test:runtime` serves synthetic Access keys through a local outbound handler and denies
 all other outbound requests. It is evidence for local workerd and SQLite behavior, not
 for edge distribution, real Access, quotas or CPU limits.
+
+### Combined local trial
+
+`test-runtime/combined-trial.test.mjs` (also run by `test:runtime`; needs Playwright
+WebKit) drives one synthetic profile through the actual built Worker and local D1: the
+owner uses the real dashboard controls to add the profile and two codes, two separate
+iPad-sized touch WebKit contexts enroll through the real device page, one answers a
+Football question and one a Number facts question by tapping, and the real outboxes
+upload. It checks that the browser-submitted, stored and acknowledged event IDs match
+exactly, that both outboxes empty, and the rendered report and device health (iPad and
+phone screenshots). It then deletes everything through the dashboard confirmation.
+
+```sh
+LR_RUNTIME_ROOT=<dir with the pinned miniflare> \
+LR_DASHBOARD_BUNDLE=<built worker.js> LR_EXPECTED_BUNDLE_SHA256=<its reviewed hash> \
+LR_COMBINED_ARTIFACTS=<output dir> LR_COMBINED_ENGINES=webkit \
+node --test test-runtime/combined-trial.test.mjs
+```
+
+The game files are served byte for byte at a synthetic HTTPS origin, and only
+`config.js` is overridden, in the browser context; the committed client URL stays
+empty. The two web-font stylesheets the source declares (Football's markup link and
+the `shared/fonts.css` import) are answered locally with an empty stylesheet; any other
+font query or remote host is denied, so pages use fallback fonts and font rendering is
+not covered. Pinned Playwright's WebKit screenshot preparation briefly inserts a
+nonce-less inline style, which the dashboard CSP refuses; at most one exact refusal on
+the owner page during each screenshot call is recorded separately as a capture artifact.
+Every other console error still fails, and the production CSP is unchanged. The receipt
+holds IDs, counts and evidence classes; codes,
+tokens and keys stay in memory, and a failure is reported only as a sanitized message.
+Limits:
+- It is local proof with the actual client and built Worker. The synthetic JWT is
+  checked by the Worker; it is not a Cloudflare Access policy and says nothing about
+  owner-only access.
+- Requests pass through Playwright interception, not a native network path, so it is
+  not evidence of a CORS preflight or origin refusal (AC03/AC04 rely on other tests).
+- It is not evidence of hosted CPU, quotas, billing or daily row usage, physical
+  devices, a household or human comprehension. The hosted deployment stays with
+  reporting off and no cron, and the public client URL stays blank; this test changes
+  neither. The conservative 8 ms growth pause stays in force: this test neither lifts
+  nor crosses it. Hosted and household steps remain held.
+- The original outcomes O1–O13 and AC01–AC30 remain pending, and no exception is
+  accepted for release.
 
 ## Setup and hosted qualification
 
