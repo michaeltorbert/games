@@ -6,22 +6,40 @@ separate from `services/kayak-reporting`: its own Worker, its own D1 database, n
 tables and no Google APIs. Only Kayak's deployment and configuration conventions are
 reused.
 
-**Status: not released and not delivering household data.** A separate operator reports a
-hosted Worker built from source `1e921b1` with reporting disabled and no cron, and an
-owner login that showed the dashboard tabs with no errors and no profiles or devices.
-That is operator-reported and has not been verified independently here. No owner session
-is available for a recheck, and the owner-only Access policy contents are unverified (a
-listing that shows no Access applications is a scope gap, not proof about the policy). No
-device is enrolled. The committed `wrangler.jsonc` stays a fail-closed template:
-reporting is disabled, the Access values are empty and the D1 ID is all zeros. The
-games' service origin (`shared/learning-reporting/config.js`) is empty, so the games
-send nothing.
+**Status: not live, not released and not delivering household data.** The remaining
+steps, their order, budget, stop rules and rollbacks are in [GO-LIVE.md](GO-LIVE.md).
+What is established so far, all operator-reported rather than observed independently:
+
+- A dedicated Worker and D1 database are deployed from source `1e921b1` with uploads off
+  (`REPORTING_ENABLED: "false"`) and no cron (`triggers.crons: []`). The dashboard
+  loaded through an existing owner Access session with no profiles or devices. The
+  served `app.js` was not hashed.
+- Access policy contents (operator dashboard readback, 2026-10-22 02:36 UTC): one
+  self-hosted application on the whole Worker host whose only policy allows exactly one
+  owner email, with no exclude or require rules; two Bypass applications for exactly
+  `/v1/enroll` and `/v1/sync`; no other applications, wildcards or overlap. The edge
+  bypass also matches descendants and case variants (`/v1/sync/child`, `/V1/sync`):
+  those reach the Worker, which refuses them with 401 because only the two exact
+  pathnames are public. They are protected by the Worker, not the edge. Whether
+  one-time PIN login is enabled is not visible; with a single-email include rule it
+  admits no one else.
+- Still pending: a fresh normal owner login with a current product response, today's
+  account-wide usage, hosted qualification, the paired game release and actual
+  intended-device receipt.
+
+The committed `wrangler.jsonc` stays a fail-closed template: reporting is disabled, the
+Access values are empty and the D1 ID is all zeros. The games' service origin
+(`shared/learning-reporting/config.js`) is empty, so the games send nothing. No device
+is enrolled.
 
 Upkeep: this Worker and D1 database, a Cloudflare Access application and policy, device
 enrollment and revocation, schema migrations, and noticing sync failures on the Devices
 page. There are no per-answer emails or notifications. No cost or free-tier promise is
-made; check the account plan, Workers/D1 quotas and the rate-limit namespaces before
-deploying.
+made. The plan is Workers Free; today's account-wide usage is read by the owner in their
+own dashboard before any synthetic growth (GO-LIVE.md). The committed rate-limit
+namespaces (`2001`, `2002`) do not collide with the other Worker configured in this
+repository (`services/kayak-reporting`); other Workers on the account are not visible
+here.
 
 ## Routes
 
@@ -165,20 +183,45 @@ Limits:
 - Requests pass through Playwright interception, not a native network path, so it is
   not evidence of a CORS preflight or origin refusal (AC03/AC04 rely on other tests).
 - It is not evidence of hosted CPU, quotas, billing or daily row usage, physical
-  devices, a household or human comprehension. The hosted deployment stays with
-  reporting off and no cron, and the public client URL stays blank; this test changes
-  neither. The conservative 8 ms growth pause stays in force: this test neither lifts
-  nor crosses it. Hosted and household steps remain held.
+  devices, a household or human comprehension. It changes no hosted setting and leaves
+  the public client URL blank.
 - The original outcomes O1–O13 and AC01–AC30 remain pending, and no exception is
   accepted for release.
 
-## Setup and hosted qualification
+### Hosted-check tool test
 
-The initial Access choice is **owner only**. Workers Free and Zero Trust Free are
-separate plans: first-time Zero Trust plan selection, payment details and terms must
-be completed directly by the owner in the verified account. Do not accept those on
-the owner's behalf, upgrade a plan or expand permissions. Existing task authorization
-covers the agreed setup and verification once its prerequisites are met.
+`scripts/hosted-check.mjs` is the bounded device-API helper used in GO-LIVE.md (probe,
+synthetic corpus, protocol cases, code expiry and an offline export check).
+`test-runtime/hosted-check.test.mjs` (also run by `test:runtime`) runs the actual tool
+against the built Worker and local D1 on a loopback port, plus loopback stub servers. It
+checks the tool's refusals (target, drift, budget, phase, output path, typed-ahead input),
+that redirects are not followed and nothing is retried, that failures report no body or
+cause, the probe's layer attribution, exact acknowledgments against D1, a replayed batch
+stored once, an aged batch answered `deleted` with no gap, and that nothing it prints or
+writes holds a code, token, label or payload. It uploads 80 events, not the 3,600-event
+corpus (whose allocation it checks without uploading). This tests the tool. It is not
+hosted, Access, CPU, quota, household or real-client evidence.
+
+## Setup and go-live
+
+The Access choice is **owner only**. Workers Free and Zero Trust Free are separate
+plans; plan selection, payment details and terms are the owner's own actions. Do not
+accept those on the owner's behalf, upgrade a plan, reset usage or expand permissions.
+
+Steps 1–4 below are the one-time setup. They are reported done (see Status) and are
+kept as the rules for checking drift or redoing setup. The hosted qualification,
+retention check, release and intended-device receipt that used to be steps 5–7 are now
+[GO-LIVE.md](GO-LIVE.md). That runbook supersedes the earlier text in three reviewed
+ways:
+- The universal "pause growth at 8 ms" rule is replaced by explicit stop conditions.
+  8 ms and 10 ms aggregate readings are recorded as warnings, neither failure nor
+  acceptance. CPU that cannot be attributed to a route stays unverified, and its effect
+  gets an explicit reviewed disposition before release.
+- Hosted retention evidence comes from aging exactly 20 synthetic rows with reviewed
+  guarded SQL and observing one real scheduled run. The 90-day setting stays unchanged.
+- One paired public client release may precede the intended-device receipt. It is then
+  recorded as "client released; intended-device receipt pending", and nothing is
+  called live, and no issue is closed, until that receipt exists.
 
 1. **Verify before deploying a Worker.** Confirm the target account, actual owner
    identity, Access team issuer and root application's audience, plus current Workers,
@@ -213,50 +256,14 @@ covers the agreed setup and verification once its prerequisites are met.
    and confirmation key. Verify the exact binding before deploying the reviewed
    Worker with reporting disabled and cron absent. An initialized but wrong database
    is not detected by its marker. Keep the games' service URL empty.
-5. **Qualify with synthetic data before household enrollment.** Verify actual owner
-   access and anonymous/forged-header/device-token refusal on private routes; verify
-   allowlisted and rejected browser origins, OPTIONS, invalid/revoked tokens, and
-   Origin/CSRF refusal for mutations. Attribute each result to the layer that answered:
-   an Access rejection is edge protection, not isolated proof of Worker JWT rejection.
-   Retain the local JWT tests as the separate Worker check. Enable reporting only for
-   controlled qualification, then use ordinary enrollment, sync and protected admin
-   paths with synthetic profiles and two clients. Check one-use/expired codes, listed
-   profile-slot assignment, exact committed receipts, repeated batches, post-commit
-   timeout/replay, invalid/conflicting events, gaps/fresh epochs and sync counters.
-   Verify profile-scoped export, shared-profile survival, revoke/device/all deletion,
-   and rejection of queued deleted data. Preserve local failure/transaction evidence
-   where a hosted fault cannot safely be induced; do not add a fault route or bypass.
-6. **Qualify retention and Free-plan fitness.** Budget synthetic growth before upload,
-   including D1 indexed row writes, reads, receipts, deletion and storage. Do not copy
-   the local 15,001-row backlog fixture onto Free blindly; it already proves local
-   continuation. After initial security/resource checks, deliberately enable the cron
-   in the operational configuration to obtain actual scheduled-run evidence with a
-   small eligible synthetic retention case. Verify expired removal, live-event
-   preservation, exact retired receipts/replay and no false gap. The current cap is
-   `15 * 3 + 2 = 47` statements, below the application's 49 budget and the current
-   Free 50-query ceiling; that does not establish CPU or daily row-budget fitness.
-   Measure actual hosted report, export, device-health, sync and cron CPU at meaningful
-   growth using supported privacy-safe aggregate dashboard metrics. Record units,
-   period, invocation outcomes and reservoir-sampling/quantile limits; neither a
-   sampled percentile nor the 50,000-row report cap guarantees capacity. Network/D1
-   wait and wall time are not CPU. Do not enable invocation logs, tail, per-event
-   telemetry or substitute custom wall-time metrics. Do not retry the denied billing
-   or GraphQL-budget methods. If meaningful CPU evidence is unavailable, record it as
-   unverified; do not waive the requirement or promise zero cost. ID-only receipts
-   continue growing until device/all deletion even after event retention.
-7. **Prove the useful remote outcome, then release together.** Clean synthetic data
-   through protected deletion. Obtain actual intended-device enrollment and remote
-   receipt of Football and Number facts in the combined private report; synthetic
-   two-client proof alone does not establish that household outcome, native behavior
-   or human comprehension. Use a reviewed controlled client candidate if needed while
-   the committed client URL remains empty. Only after useful hosted evidence and all
-   original outcomes are met or explicitly dispositioned, set the client origin and
-   coordinate both games' versions/cache keys, registry preservation, required gates,
-   fresh exact-head review, merge and merge-SHA Pages/live verification for #199/#200.
-   Preserve gameplay/RNG/local schedulers, privacy and separate evidence classes;
-   retain historical failures. Reuse unchanged game evidence; new game bytes require
-   their relevant gates. Do not present dormant infrastructure as the first useful
-   report delivery.
+
+Constants that still hold for every later phase: the scheduled retention cap is
+`15 * 3 + 2 = 47` statements, below the application's 49 budget and the current Free
+50-query ceiling; that does not establish CPU or daily row-budget fitness. Do not copy the
+local 15,001-row backlog fixture to the hosted database; it already proves local
+continuation. Network/D1 wait and wall time are not CPU. Do not enable invocation logs,
+`wrangler tail` or per-event telemetry. ID-only receipts keep growing after event
+retention until their device or everything is deleted.
 
 Current primary references to recheck before operational writes: [Access application
 paths](https://developers.cloudflare.com/cloudflare-one/access-controls/policies/app-paths/),
@@ -271,6 +278,11 @@ paths](https://developers.cloudflare.com/cloudflare-one/access-controls/policies
   keep their queues; the dashboard, export and deletion still work. This does **not**
   stop retention: remove/disable the cron separately in the operational configuration
   if scheduled work must stop, and verify the resulting trigger configuration.
+- **Stop scheduled retention:** deploy with `triggers.crons: []`. This leaves uploads as
+  they are; the two switches are independent.
+- **Undo a bad deploy:** redeploy the previous reviewed operational configuration, or roll
+  the Worker back to its previous version. Record the resulting version ID. Neither
+  touches stored data.
 - **Stop the games from trying:** empty `shared/learning-reporting/config.js` through a
   coordinated game release with the required versions/cache keys and release checks.
   Queued events stay on each device until it is re-enabled or stopped there.
@@ -285,6 +297,9 @@ paths](https://developers.cloudflare.com/cloudflare-one/access-controls/policies
   are gone, and the service still lists it; delete or revoke it on the Devices page.
 - **Delete everything** erases every user row and rotates the installation marker. Old
   device tokens are then answered `revoked`, and every device must be connected again.
+  It is the synthetic-data cleanup before household enrollment. Once household data
+  exists, never use it as routine cleanup: delete the specific profile or device, and
+  export first.
 - Deletion cannot be undone. Export first. Never restore an old database copy over a
   newer one: that could bring back deleted data.
 - A missing marker or schema answers 503; the Worker never initializes itself. A wrong
