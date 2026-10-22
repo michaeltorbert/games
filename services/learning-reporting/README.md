@@ -194,11 +194,17 @@ Limits:
 synthetic corpus, protocol cases, code expiry and an offline export check).
 `test-runtime/hosted-check.test.mjs` (also run by `test:runtime`) runs the actual tool
 against the built Worker and local D1 on a loopback port, plus loopback stub servers. It
-checks the tool's refusals (target, drift, budget, phase, output path, typed-ahead input),
-that redirects are not followed and nothing is retried, that failures report no body or
-cause, the probe's layer attribution, exact acknowledgments against D1, a replayed batch
-stored once, an aged batch answered `deleted` with no gap, and that nothing it prints or
-writes holds a code, token, label or payload. It uploads 80 events, not the 3,600-event
+checks:
+- the tool's refusals: target, drift, budget, phase, output path and typed-ahead input;
+- that redirects are not followed and nothing is retried;
+- that failures report no body or cause, and that malformed answers yield only
+  closed-list labels;
+- the probe's layer attribution;
+- exact acknowledgments against D1, and a replayed batch stored once;
+- the retention continuation after a simulated overnight wait: no request without a
+  fresh usage reading and the recorded cron deployment, and with them an aged batch
+  answered `deleted` with no gap;
+- that nothing it prints or writes holds a code, token, label or payload. It uploads 80 events, not the 3,600-event
 corpus (whose allocation it checks without uploading). This tests the tool. It is not
 hosted, Access, CPU, quota, household or real-client evidence.
 

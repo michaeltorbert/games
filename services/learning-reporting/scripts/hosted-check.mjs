@@ -7,7 +7,9 @@
 // Redirects are never followed, nothing is retried, requests are paced, and the first
 // unexpected answer stops the run. One-time codes are read from stdin only while the tool
 // is waiting for one; codes and device tokens stay in memory and are never written.
-// Output holds IDs, counts and hashes, never event payloads, codes or tokens.
+// Output holds IDs, counts, hashes and closed-list labels, never response text, event
+// payloads, codes or tokens. The owner's usage reading is checked again at every request;
+// the manifest is the operator's binding to the deployment, not a live check of it.
 //
 // Its events are synthetic. They are not a child's practice, a real game client, browser
 // CORS or Access-policy evidence.
@@ -16,9 +18,9 @@
 //   node scripts/hosted-check.mjs seed ... --await-retention    (keeps running for the retention replay)
 //   node scripts/hosted-check.mjs verify-export --ids <ids.jsonl> --export <file> --profile <A|B|P|Q> [--expect-missing <ids.json>] --out <dir>
 //
-// --loopback-tool-test (with --loopback-pace-ms, --loopback-max-batches) exists only for
-// test-runtime/hosted-check.test.mjs: it accepts only http://127.0.0.1 or localhost
-// targets, and refuses every remote one.
+// --loopback-tool-test (with --loopback-pace-ms, --loopback-max-batches and
+// --loopback-clock-shift-ms) exists only for test-runtime/hosted-check.test.mjs: it accepts
+// only http://127.0.0.1 or localhost targets, and refuses every remote one.
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { basename, isAbsolute, relative, resolve, sep } from 'node:path';
@@ -47,6 +49,9 @@ export const HEADROOM = Object.freeze({
   seed: Object.freeze({ rowsWritten: 75000, rowsRead: 2500000, requests: 1000 }),
   protocol: Object.freeze({ rowsWritten: 2000, rowsRead: 50000, requests: 100 }),
   expiry: Object.freeze({ rowsWritten: 100, rowsRead: 1000, requests: 10 }),
+  // The retention replay after the wait: two small requests, but the stored corpus still
+  // needs its cleanup (fixture reserve: at least 24,000 writes), so the reserve is kept.
+  continuation: Object.freeze({ rowsWritten: 25000, rowsRead: 100000, requests: 100 }),
 });
 const ATTESTATION_MAX_AGE_MS = 3 * 3600000;
 const GAME_VERSIONS = Object.freeze({ football: '1.34.22', facts: '1.9.2' });
@@ -78,19 +83,26 @@ const USAGE = new Set(['USAGE', 'LOOPBACK_ONLY', 'LOOPBACK_ONLY_OPTION', 'TARGET
 
 const sha = value => createHash('sha256').update(value).digest('hex');
 const sleep = ms => new Promise(done => setTimeout(done, ms));
-const word = value => typeof value === 'string' && /^[a-z][a-z-]{0,39}$/.test(value) ? value : 'unrecognized';
-const SAFE = /^[A-Za-z0-9:_/.-]{0,80}$/;
+// Response text never becomes output. Only these closed lists can name an answer; any other
+// string, number or object is counted or labelled as 'unrecognized'.
+export const OUTCOMES = Object.freeze(['accepted', 'deleted', 'seq-conflict', 'conflict', 'invalid', 'unassigned', 'revoked']);
+export const ERRORS = Object.freeze(['unauthorized', 'unavailable', 'disabled', 'origin', 'method', 'rate-limited', 'invalid-code',
+  'invalid-credential', 'revoked', 'malformed', 'malformed-status', 'unsupported-schema', 'too-many-events', 'too-large',
+  'content-type', 'csrf', 'not-found']);
+const known = (value, list) => typeof value === 'string' && list.includes(value) ? value : 'unrecognized';
+const SAFE = /^[A-Za-z0-9:_/.-]{0,80}$/, KEY = /^[A-Za-z][A-Za-z0-9-]{0,39}$/;
 function clean(detail) {
   const out = {};
   for (const [key, value] of Object.entries(isRecord(detail) ? detail : {})) {
+    if (!KEY.test(key)) continue;
     if (typeof value === 'number' || typeof value === 'boolean' || value === null) out[key] = value;
     else if (typeof value === 'string') out[key] = SAFE.test(value) ? value : 'redacted';
     else if (isRecord(value)) out[key] = clean(value);
   }
   return out;
 }
-const tally = list => (Array.isArray(list) ? list : []).reduce((counts, item) => {
-  const outcome = typeof item === 'string' ? item : word(item?.outcome);
+export const tally = list => (Array.isArray(list) ? list : []).reduce((counts, item) => {
+  const outcome = known(typeof item === 'string' ? item : item?.outcome, OUTCOMES);
   counts[outcome] = (counts[outcome] ?? 0) + 1;
   return counts;
 }, {});
@@ -100,8 +112,10 @@ const tally = list => (Array.isArray(list) ? list : []).reduce((counts, item) =>
 const FLAGS = Object.freeze({
   '--manifest': 'value', '--target': 'value', '--out': 'value', '--ids': 'value', '--export': 'value', '--profile': 'value',
   '--expect-missing': 'value', '--await-retention': 'flag', '--loopback-tool-test': 'flag', '--loopback-pace-ms': 'value', '--loopback-max-batches': 'value',
+  '--loopback-clock-shift-ms': 'value',
 });
-const NETWORK_FLAGS = ['--manifest', '--target', '--out', '--await-retention', '--loopback-tool-test', '--loopback-pace-ms', '--loopback-max-batches'];
+const LOOPBACK_OPTIONS = ['--loopback-pace-ms', '--loopback-max-batches', '--loopback-clock-shift-ms'];
+const NETWORK_FLAGS = ['--manifest', '--target', '--out', '--await-retention', '--loopback-tool-test', ...LOOPBACK_OPTIONS];
 const EXPORT_FLAGS = ['--ids', '--export', '--profile', '--expect-missing', '--out'];
 
 // Never echoes an argument: a pasted code or token must not reach the output.
@@ -123,10 +137,10 @@ export function parseArgs(argv) {
   if (required.some(key => !Object.hasOwn(options, key))) throw new Stop('USAGE', { reason: 'missing' });
   if (options['--await-retention'] && mode !== 'seed') throw new Stop('USAGE', { reason: 'flag-for-mode' });
   options.loopback = options['--loopback-tool-test'] === true;
-  for (const key of ['--loopback-pace-ms', '--loopback-max-batches']) {
+  for (const key of LOOPBACK_OPTIONS) {
     if (!Object.hasOwn(options, key)) continue;
     if (!options.loopback) throw new Stop('LOOPBACK_ONLY_OPTION');
-    if (!/^\d{1,6}$/.test(options[key])) throw new Stop('USAGE', { reason: 'number' });
+    if (!/^\d{1,9}$/.test(options[key])) throw new Stop('USAGE', { reason: 'number' });
     options[key] = Number(options[key]);
   }
   return options;
@@ -175,21 +189,53 @@ async function loadManifest(options, now) {
   return { manifest, manifestSha256: sha(bytes), budget };
 }
 
+// Why a usage reading no longer describes the allowance at `now`, or null while it does:
+// at most 3 hours old and from the same UTC day (the free allowance resets at 00:00 UTC,
+// so a reading from another UTC day says nothing about today).
+export function budgetStale(observedAtUtc, now) {
+  const at = typeof observedAtUtc === 'string' && /Z$/.test(observedAtUtc) ? Date.parse(observedAtUtc) : NaN;
+  if (!Number.isFinite(at) || at > now || now - at > ATTESTATION_MAX_AGE_MS) return 'stale';
+  if (new Date(at).toISOString().slice(0, 10) !== new Date(now).toISOString().slice(0, 10)) return 'other-utc-day';
+  return null;
+}
+
 // The owner's own reading of today's account-wide usage. Never assumed, never fetched here.
 export function checkBudget(budget, mode, now) {
   const need = HEADROOM[mode];
   if (!isRecord(budget) || Object.keys(budget).sort().join() !== 'observedAtUtc,remaining,source,wholeAccount') throw new Stop('BUDGET', { reason: 'missing' });
   if (budget.source !== 'owner-dashboard' || budget.wholeAccount !== true) throw new Stop('BUDGET', { reason: 'source' });
-  const at = typeof budget.observedAtUtc === 'string' && /Z$/.test(budget.observedAtUtc) ? Date.parse(budget.observedAtUtc) : NaN;
-  if (!Number.isFinite(at) || at > now || now - at > ATTESTATION_MAX_AGE_MS) throw new Stop('BUDGET', { reason: 'stale' });
-  // The free allowance resets at 00:00 UTC; a reading from another UTC day says nothing about today.
-  if (new Date(at).toISOString().slice(0, 10) !== new Date(now).toISOString().slice(0, 10)) throw new Stop('BUDGET', { reason: 'other-utc-day' });
+  const stale = budgetStale(budget.observedAtUtc, now);
+  if (stale) throw new Stop('BUDGET', { reason: stale });
   const remaining = budget.remaining;
   if (!isRecord(remaining)) throw new Stop('BUDGET', { reason: 'remaining' });
   for (const [key, minimum] of Object.entries(need)) {
     if (!Number.isInteger(remaining[key]) || remaining[key] < minimum) throw new Stop('BUDGET', { reason: key, minimum });
   }
   return { observedAtUtc: budget.observedAtUtc, remaining: Object.fromEntries(Object.keys(need).map(key => [key, remaining[key]])), required: need };
+}
+
+// The retention replay continues the same finite task after a wait of up to 30 hours. It
+// needs the operator's refreshed manifest: a new owner usage reading taken after the wait
+// began, with the continuation headroom (the corpus cleanup reserve stays required), and the
+// reviewed cron deployment that phase 6 records (new version and config hash). Target,
+// origins, phase, source and the tool and contract bytes must be unchanged. The tool cannot
+// check the live deployment: the manifest is the operator's binding. Any failure means no
+// replay request is sent.
+export function validateContinuation(original, refreshed, { toolSha256, contractSha256, waitStartedAt, now }) {
+  const fail = reason => new Stop('CONTINUATION_EVIDENCE', { reason });
+  if (!isRecord(refreshed) || refreshed.schemaVersion !== 1 || !isRecord(refreshed.expected)) throw fail('manifest');
+  for (const key of ['target', 'gameOrigin', 'phase']) if (refreshed[key] !== original[key]) throw fail(key);
+  const was = original.expected, next = refreshed.expected;
+  if (Object.keys(next).sort().join() !== 'configSha256,contractSha256,sourceCommit,toolSha256,workerVersion') throw fail('expected');
+  if (next.sourceCommit !== was.sourceCommit) throw fail('source');
+  if (next.toolSha256 !== was.toolSha256 || next.toolSha256 !== toolSha256) throw fail('tool');
+  if (next.contractSha256 !== was.contractSha256 || next.contractSha256 !== contractSha256) throw fail('contract');
+  if (!isUuid(next.workerVersion) || !/^[0-9a-f]{64}$/.test(next.configSha256)) throw fail('expected');
+  if (next.workerVersion === was.workerVersion || next.configSha256 === was.configSha256) throw fail('deployment-unchanged');
+  let budget;
+  try { budget = checkBudget(refreshed.budget, 'continuation', now); } catch (error) { throw fail(`budget-${error.detail?.reason ?? 'invalid'}`); }
+  if (Date.parse(refreshed.budget.observedAtUtc) < waitStartedAt) throw fail('budget-not-refreshed');
+  return budget;
 }
 
 async function outputDir(path) {
@@ -234,11 +280,15 @@ async function readCapped(response, max) {
 
 // One request to a fixed path of the exact target. No redirect is followed and nothing is
 // retried. A network failure reports only its class, never the error message or cause.
+// The usage reading in force is rechecked at the moment of dispatch, after any pacing or
+// prompt: a reading that has gone stale or crossed 00:00 UTC stops the run before sending.
 async function request(ctx, kind, method, path, { headers = {}, body } = {}) {
   if (!PATHS.has(path)) throw new Stop('PATH');
   if (ctx.requests >= ctx.maxRequests) throw new Stop('REQUEST_CAP', { cap: ctx.maxRequests });
   const wait = (ctx.last[kind] ?? -Infinity) + (ctx.paceMs ?? PACE_MS[kind]) - Date.now();
   if (wait > 0) await sleep(wait);
+  const stale = ctx.budget ? budgetStale(ctx.budget.observedAtUtc, ctx.now()) : null;
+  if (stale) throw new Stop('BUDGET_EXPIRED', { reason: stale, path });
   ctx.last[kind] = Date.now();
   ctx.requests++;
   let response;
@@ -262,7 +312,7 @@ async function request(ctx, kind, method, path, { headers = {}, body } = {}) {
 // Worker (its JSON error). Locations and bodies are classified, never reported.
 export function layer(answer) {
   if (answer.redirect) return answer.redirect === 'access-login' ? 'edge:access-login' : `redirect:${answer.redirect}`;
-  if (answer.type === 'json' && isRecord(answer.data) && typeof answer.data.error === 'string') return `worker:${word(answer.data.error)}`;
+  if (answer.type === 'json' && isRecord(answer.data) && typeof answer.data.error === 'string') return `worker:${known(answer.data.error, ERRORS)}`;
   if ((answer.status === 401 || answer.status === 403) && answer.type !== 'json') return 'edge:refusal';
   return `other:${answer.status}`;
 }
@@ -281,7 +331,7 @@ async function probe(ctx) {
     const ok = item.kind === 'protected'
       ? (answer.status < 200 || answer.status >= 300) && ['edge:access-login', 'edge:refusal', 'worker:unauthorized'].includes(where)
       : !answer.cors && (ctx.phase === 'disabled' ? answer.status === 503 && where === 'worker:disabled' : answer.status === 403 && where === 'worker:origin');
-    if (!ok) throw new Stop('UNEXPECTED', { step: `${item.method} ${item.path}`, status: answer.status, layer: where });
+    if (!ok) throw new Stop('UNEXPECTED', { step: `${item.method}:${item.path}`, status: answer.status, layer: where });
   }
 }
 
@@ -426,12 +476,29 @@ async function seed(ctx, io) {
     await step(ctx, `replay-${round}`, dev, batch, batch.map(() => 'accepted'), { status: statusOf(dev, sent.get(dev)) });
   }
   if (!ctx.awaitRetention) return;
-  // Tokens exist only in this process, so the hosted retention replay happens here: the
-  // operator ages exactly batch-1 with the reviewed SQL, waits for one scheduled run, then
-  // answers. Aged IDs must come back 'deleted' (never restored) and a live batch 'accepted'.
+  // Tokens exist only in this process, so the hosted retention replay happens here, as a
+  // bounded continuation of the same task (no re-seed, no reset counters, same request
+  // cap plus two). The operator ages exactly batch-1 with the reviewed SQL, waits for one
+  // scheduled run, refreshes the manifest (new usage reading, cron deployment), then answers.
+  // Aged IDs must come back 'deleted' (never restored) and a live batch 'accepted'.
+  const waitStartedAt = ctx.now();
+  const answer = await io.choose('retention', 'Leave this running. After the reviewed aging of batch-1, one scheduled retention run and a refreshed manifest (new usage reading, cron deployment), type done; type skip to end without the replay.', ['done', 'skip'], LIMITS.retentionWaitMs);
+  ctx.shift = ctx.clockShiftMs ?? 0;
+  if (answer === 'skip') { ctx.steps.push({ step: 'retention-replay', notRun: 'skipped' }); ctx.incomplete = 'retention-replay-skipped'; return; }
+  try {
+    let refreshed;
+    try { refreshed = JSON.parse(await readFile(ctx.manifestPath, 'utf8')); } catch (error) { throw new Stop('CONTINUATION_EVIDENCE', { reason: 'manifest' }); }
+    ctx.budget = validateContinuation(ctx.manifest, refreshed, {
+      toolSha256: sha(await readFile(SELF)), contractSha256: sha(await readFile(CONTRACT)), waitStartedAt, now: ctx.now(),
+    });
+    ctx.continuation = { budget: ctx.budget, workerVersion: refreshed.expected.workerVersion, configSha256: refreshed.expected.configSha256 };
+  } catch (error) {
+    // Nothing is sent. The IDs and receipts so far stay; the retention check is incomplete.
+    ctx.steps.push({ step: 'retention-replay', notRun: error instanceof Stop ? error.code : 'error' });
+    ctx.incomplete = 'retention-replay-not-run';
+    throw error;
+  }
   ctx.maxRequests += 2;
-  const answer = await io.choose('retention', 'Leave this running. After the reviewed aging of batch-1 and one scheduled retention run, type done; type skip to end without the replay.', ['done', 'skip'], LIMITS.retentionWaitMs);
-  if (answer === 'skip') { ctx.steps.push({ step: 'retention-replay', skipped: true }); return; }
   await step(ctx, 'retention-aged', dev, batch, batch.map(() => 'deleted'), { status: statusOf(dev, sent.get(dev)) });
   const [live, tail] = plan[1];
   await step(ctx, 'retention-live', live, tail, tail.map(() => 'accepted'), { status: statusOf(live, sent.get(live)) });
@@ -615,6 +682,11 @@ export async function run(argv) {
         target: manifest.target, gameOrigin: manifest.gameOrigin, phase: manifest.phase, loopback: options.loopback,
         paceMs: options.loopback ? options['--loopback-pace-ms'] ?? null : null, maxBatches: options.loopback ? options['--loopback-max-batches'] ?? null : null,
         awaitRetention: options['--await-retention'] === true,
+        // The budget-gating clock. Only the loopback tool test may move it, and only once the
+        // retention prompt is answered, to stand in for an overnight wait.
+        clockShiftMs: options.loopback ? options['--loopback-clock-shift-ms'] ?? null : null, shift: 0,
+        now() { return Date.now() + this.shift; },
+        manifest, manifestPath: options['--manifest'], budget,
         maxRequests: REQUEST_CAPS[options.mode] ?? 2, last: {}, requests: 0, generated: 0, steps: [], outcomes: {}, ids: new Set(),
         profiles: {}, secrets: new Set(), idsFile: resolve(out, `ids-${options.mode}-${runId}.jsonl`),
       };
@@ -631,9 +703,10 @@ export async function run(argv) {
         await { seed, protocol, expiry }[options.mode](ctx, io);
       }
     }
-    receipt.result = 'passed';
+    receipt.result = ctx?.incomplete ? 'incomplete' : 'passed';
   } catch (error) {
-    const stop = error instanceof Stop ? error : new Stop('INTERNAL', { name: word(String(error?.name ?? 'error').toLowerCase()) });
+    // An unexpected exception reports only its constructor class, from a closed list.
+    const stop = error instanceof Stop ? error : new Stop('INTERNAL', { name: known(error?.name, ['TypeError', 'RangeError', 'SyntaxError']) });
     exit = USAGE.has(stop.code) ? 2 : 1;
     if (receipt) Object.assign(receipt, { result: 'stopped', stop: { code: stop.code, detail: clean(stop.detail) } });
     else receipt = { result: 'stopped', stop: { code: stop.code, detail: clean(stop.detail) } };
@@ -643,6 +716,7 @@ export async function run(argv) {
   if (ctx) Object.assign(receipt, {
     finishedAt: new Date().toISOString(), requests: ctx.requests, generatedEvents: ctx.generated, outcomes: ctx.outcomes,
     uniqueEventIds: ctx.ids.size, idSetSha256: sha([...ctx.ids].sort().join('\n')), steps: ctx.steps,
+    ...(ctx.incomplete ? { incomplete: ctx.incomplete } : {}), ...(ctx.continuation ? { continuation: ctx.continuation } : {}),
   });
   let file = null;
   try {

@@ -7,7 +7,7 @@
 // few batches of the corpus, never the whole corpus, and repeats no growth experiment.
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { createHash, randomUUID, webcrypto } from 'node:crypto';
+import { createHash, randomBytes, randomUUID, webcrypto } from 'node:crypto';
 import { mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { createRequire } from 'node:module';
@@ -15,7 +15,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { after, before, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { buildCorpus, LIMITS, originKind, PROBES } from '../scripts/hosted-check.mjs';
+import { budgetStale, buildCorpus, LIMITS, originKind, PROBES, tally, validateContinuation } from '../scripts/hosted-check.mjs';
 import { validateEvent } from '../src/validator.js';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
@@ -102,6 +102,15 @@ function manifest(overrides = {}) {
     ...overrides,
   };
 }
+// A stand-in for an overnight retention wait: the tool's budget clock moves this far once
+// the retention prompt is answered (loopback tool test only). Nothing waits for real.
+const OVERNIGHT_MS = 26 * 3600000;
+// The operator's refreshed manifest after the wait: a new usage reading and the cron
+// deployment's binding; everything else unchanged.
+const refreshedManifest = (original, cron, observedAt) => ({
+  ...original, expected: { ...original.expected, ...cron },
+  budget: { ...original.budget, observedAtUtc: new Date(observedAt).toISOString(), remaining: { rowsWritten: 40000, rowsRead: 2000000, requests: 4000 } },
+});
 let serial = 0;
 async function inputFile(name, value) {
   const file = join(work, `input-${++serial}-${name}`);
@@ -190,6 +199,39 @@ test('the fixed corpus is the retained 3,600-event allocation: 3,000 hot and 600
   assert.throws(() => buildCorpus({ generated: 1 }, { X: { ...X, seq: 0 }, Y: { ...Y, seq: 0 }, A, B, now: at }), { code: 'EVENT_CAP' }, 'never more than 3,600 events per run');
 });
 
+test('budget readings expire at dispatch time, and a retention continuation needs a fresh reading and the recorded cron deployment', () => {
+  const day = Date.parse('2026-10-22T12:00:00.000Z');
+  assert.equal(budgetStale('2026-10-22T10:00:00.000Z', day), null, 'same UTC day, two hours old');
+  assert.equal(budgetStale('2026-10-22T08:59:59.000Z', day), 'stale', 'over three hours old');
+  assert.equal(budgetStale('2026-10-22T12:00:01.000Z', day), 'stale', 'from the future');
+  assert.equal(budgetStale('2026-10-21T23:30:00.000Z', Date.parse('2026-10-22T00:30:00.000Z')), 'other-utc-day', 'one hour old but before 00:00 UTC');
+
+  const original = { ...manifest(), target: 'https://reports.synthetic.test', budget: { observedAtUtc: '2026-10-21T13:00:00.000Z', source: 'owner-dashboard', wholeAccount: true, remaining: { rowsWritten: 90000, rowsRead: 3000000, requests: 5000 } } };
+  const waitStartedAt = Date.parse('2026-10-21T13:20:00.000Z'), now = Date.parse('2026-10-22T03:40:00.000Z');
+  const cron = { workerVersion: randomUUID(), configSha256: 'd'.repeat(64) };
+  const fresh = refreshedManifest(original, cron, Date.parse('2026-10-22T03:30:00.000Z'));
+  const hashes = { toolSha256: toolSha, contractSha256: contractSha, waitStartedAt, now };
+  assert.equal(validateContinuation(original, fresh, hashes).remaining.rowsWritten, 40000, 'a fresh reading with the cron binding continues');
+  const refused = (value, reason, extra = {}) => assert.throws(() => validateContinuation(original, value, { ...hashes, ...extra }),
+    error => error.code === 'CONTINUATION_EVIDENCE' && error.detail.reason === reason, reason);
+  refused({ ...fresh, budget: original.budget }, 'budget-stale');
+  refused(refreshedManifest(original, cron, Date.parse('2026-10-21T23:50:00.000Z')), 'budget-other-utc-day', { now: Date.parse('2026-10-22T00:20:00.000Z') });
+  refused(refreshedManifest(original, cron, Date.parse('2026-10-21T13:10:00.000Z')), 'budget-not-refreshed', { now: Date.parse('2026-10-21T14:00:00.000Z') });
+  refused({ ...fresh, budget: { ...fresh.budget, remaining: { ...fresh.budget.remaining, rowsWritten: 24999 } } }, 'budget-rowsWritten');
+  refused({ ...fresh, budget: undefined }, 'budget-missing');
+  refused({ ...fresh, expected: { ...fresh.expected, workerVersion: original.expected.workerVersion } }, 'deployment-unchanged');
+  refused({ ...fresh, expected: { ...fresh.expected, sourceCommit: 'e'.repeat(40) } }, 'source');
+  refused(fresh, 'tool', { toolSha256: 'f'.repeat(64) });
+  refused({ ...fresh, target: 'https://other.synthetic.test' }, 'target');
+  refused({ ...fresh, phase: 'production' }, 'phase');
+});
+
+test('receipt outcome labels come only from the closed list', () => {
+  assert.deepEqual(tally(['accepted', 'RESPONSE-BODY-MARKER', { outcome: 'deleted' }, { outcome: 'LABEL-MARKER' }, { outcome: { nested: 'OBJECT-MARKER' } }, 7, null, '__proto__']),
+    { accepted: 1, deleted: 1, unrecognized: 6 });
+  assert.deepEqual(tally({ results: 'not a list' }), {});
+});
+
 test('target, option, drift, budget, phase, output-path and input guards refuse before any request', async () => {
   const counting = await stub((req, res) => res.writeHead(500).end());
   try {
@@ -251,6 +293,39 @@ test('a redirect is never followed, nothing is retried, and failures report no b
   } finally { await Promise.all([elsewhere, redirect, failing, reset].map(server => server.close())); }
 });
 
+test('malformed answers with arbitrary strings or objects stop after one request and reach no output', async () => {
+  const MARKERS = ['RESPONSE-BODY-MARKER', 'LABEL-MARKER-OUTCOME', 'OBJECT-MARKER', 'zz-label-marker'];
+  const A = randomUUID(), B = randomUUID();
+  let enrolls = 0;
+  // A device API that enrolls normally, then answers the first upload with junk results.
+  const junk = await stub((req, res) => {
+    const reply = (status, body) => res.writeHead(status, { 'Content-Type': 'application/json' }).end(JSON.stringify(body));
+    if (req.url === '/v1/enroll') return reply(200, { schemaVersion: 1, token: `lr1_${'ab'.repeat(16)}_${randomBytes(32).toString('base64url')}`, deviceId: randomUUID(), profileIds: ++enrolls === 1 ? [A, B] : [A] });
+    reply(200, { schemaVersion: 1, results: ['RESPONSE-BODY-MARKER', { eventId: randomUUID(), outcome: 'LABEL-MARKER-OUTCOME' }, { outcome: { label: 'OBJECT-MARKER' } }] });
+  });
+  // An error string outside the closed list.
+  const label = await stub((req, res) => res.writeHead(401, { 'Content-Type': 'application/json' }).end(JSON.stringify({ error: 'zz-label-marker' })));
+  try {
+    const out = join(work, 'junk');
+    const code = '0123456789ABCDEFGHJKMNPQRS';
+    const result = await tool(await networkArgs('seed', manifest({ target: junk.origin }), { out }), { 'code-X': async () => `${code}\n`, 'code-Y': async () => `${code}\n` });
+    assert.deepEqual([result.exit, result.summary.stop?.code, result.summary.requests], [1, 'UNEXPECTED', 3]);
+    assert.deepEqual(junk.hits, ['POST /v1/enroll', 'POST /v1/enroll', 'POST /v1/sync'], 'one upload, no retry');
+    const files = await outputs(result, out);
+    assert.deepEqual(receiptOf(files).stop.detail.outcomes, { unrecognized: 3 });
+    for (const marker of MARKERS) assert.equal(files.text.includes(marker), false, `no response text: ${marker}`);
+    assertNoLeak(files.text, [code]);
+
+    const labelOut = join(work, 'label');
+    const probe = await tool(await networkArgs('probe', manifest({ target: label.origin }), { out: labelOut }));
+    assert.deepEqual([probe.exit, probe.summary.requests], [1, 1]);
+    const labelFiles = await outputs(probe, labelOut);
+    assert.equal(receiptOf(labelFiles).stop.detail.layer, 'worker:unrecognized');
+    for (const marker of MARKERS) assert.equal(labelFiles.text.includes(marker), false, `no response text: ${marker}`);
+    assert.equal(label.hits.length, 1);
+  } finally { await Promise.all([junk.close(), label.close()]); }
+});
+
 test('probe: every protected and nearby path is refused by the built Worker; exact device paths refuse a missing Origin', async () => {
   const out = join(work, 'probe');
   const result = await tool(await networkArgs('probe', manifest(), { out }));
@@ -272,15 +347,20 @@ test('seed: real enrollment, exact acknowledgments for every uploaded ID, replay
   const codes = [await code('Seed X', [A, B]), await code('Seed Y', [A])];
   const out = join(work, 'seed');
   let aged = null;
-  const result = await tool([...await networkArgs('seed', manifest(), { out }), '--loopback-max-batches', '2', '--await-retention'], {
+  const original = manifest(), args = await networkArgs('seed', original, { out });
+  const cron = { workerVersion: randomUUID(), configSha256: 'd'.repeat(64) };
+  const result = await tool([...args, '--loopback-max-batches', '2', '--await-retention', '--loopback-clock-shift-ms', String(OVERNIGHT_MS)], {
     'code-X': async () => `${codes[0]}\n`, 'code-Y': async () => `${codes[1]}\n`,
-    // Stands in for the reviewed aging SQL and one scheduled run: batch-1's 20 IDs only.
+    // Stands in for the reviewed aging SQL, one scheduled run, and the operator's refreshed
+    // manifest after an overnight wait: a usage reading taken "now" on the shifted clock and
+    // the cron deployment's version and config hash.
     'retention': async () => {
       const [first] = (await readdir(out)).filter(file => file.startsWith('ids-'));
       aged = (await readFile(join(out, first), 'utf8')).trim().split('\n').map(line => JSON.parse(line)).find(line => line.step === 'batch-1').events.map(event => event.eventId);
       const changed = await db.prepare('UPDATE events SET received_at = 1000 WHERE event_id IN (SELECT value FROM json_each(?1))').bind(JSON.stringify(aged)).run();
       assert.equal(changed.meta.changes, 20);
       await (await mf.getWorker()).scheduled({ cron: '17 3 * * *' });
+      await writeFile(args[2], JSON.stringify(refreshedManifest(original, cron, Date.now() + OVERNIGHT_MS)));
       return 'done\n';
     },
   });
@@ -288,6 +368,8 @@ test('seed: real enrollment, exact acknowledgments for every uploaded ID, replay
   const files = await outputs(result, out);
   assertNoLeak(files.text, codes);
   const receipt = receiptOf(files), lines = idLines(files);
+  assert.equal(receipt.result, 'passed');
+  assert.deepEqual([receipt.continuation.workerVersion, receipt.continuation.configSha256], [cron.workerVersion, cron.configSha256], 'the continuation records the refreshed binding');
   assert.equal(receipt.requests, 2 + 4 + LIMITS.replays + 2);
   assert.deepEqual(receipt.outcomes, { accepted: 80 + 20 * LIMITS.replays + 20, deleted: 20 });
   assert.deepEqual(lines.filter(line => line.kind === 'device').map(line => [line.label, line.profiles]), [['X', { A, B }], ['Y', { A }]]);
@@ -335,6 +417,34 @@ test('seed: real enrollment, exact acknowledgments for every uploaded ID, replay
   // A foreign profile's export never passes as this one's.
   const foreign = await inputFile('foreign.json', (await admin(`/api/export?profile=${B}`)).data);
   assert.equal((await tool(['verify-export', '--ids', ids, '--export', foreign, '--profile', 'A', '--out', join(work, 'verify-foreign')])).exit, 1);
+  await remove('delete-profile', A);
+  await remove('delete-profile', B);
+});
+
+test('after an overnight retention wait, a continuation without a fresh usage reading sends nothing and keeps its evidence', async () => {
+  const A = await profile(LABELS.A), B = await profile(LABELS.B);
+  const codes = [await code('Wait X', [A, B]), await code('Wait Y', [A])];
+  const out = join(work, 'wait');
+  const original = manifest(), args = await networkArgs('seed', original, { out });
+  const before = (await rows('SELECT count(*) AS n FROM events'))[0].n;
+  const result = await tool([...args, '--loopback-max-batches', '1', '--await-retention', '--loopback-clock-shift-ms', String(OVERNIGHT_MS)], {
+    'code-X': async () => `${codes[0]}\n`, 'code-Y': async () => `${codes[1]}\n`,
+    // The cron deployment is recorded, but the usage reading is still yesterday's.
+    'retention': async () => {
+      await writeFile(args[2], JSON.stringify({ ...original, expected: { ...original.expected, workerVersion: randomUUID(), configSha256: 'd'.repeat(64) } }));
+      return 'done\n';
+    },
+  });
+  assert.deepEqual([result.exit, result.summary.stop?.code, result.summary.result], [1, 'CONTINUATION_EVIDENCE', 'stopped']);
+  const files = await outputs(result, out);
+  assertNoLeak(files.text, codes);
+  const receipt = receiptOf(files);
+  assert.equal(receipt.stop.detail.reason, 'budget-stale');
+  assert.equal(receipt.requests, 2 + 2 + LIMITS.replays, 'no request after the wait');
+  assert.deepEqual([receipt.incomplete, receipt.steps.at(-1)], ['retention-replay-not-run', { step: 'retention-replay', notRun: 'CONTINUATION_EVIDENCE' }]);
+  const lines = idLines(files);
+  assert.equal(lines.filter(line => line.kind === 'ack').flatMap(line => line.results).length, 40 + 20 * LIMITS.replays, 'the acknowledged IDs stay recorded');
+  assert.equal((await rows('SELECT count(*) AS n FROM events'))[0].n - before, 40, 'nothing re-seeded or removed');
   await remove('delete-profile', A);
   await remove('delete-profile', B);
 });

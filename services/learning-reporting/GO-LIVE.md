@@ -9,10 +9,18 @@ and every original outcome has a recorded disposition.
 Placeholders: `<service-origin>` is the already deployed and approved Worker host (no
 new hostname). `<games-origin>` is the public Pages origin that serves the games.
 `<private-config>` is the account-local Wrangler configuration, and `<evidence-dir>` is a
-private directory outside the repository (or under the ignored `output/`). The repository,
-issue text and review packets never contain the owner's identity, account or resource
-IDs, Access team or audience, the hostname, version IDs, codes or tokens. Those go only
-in private evidence.
+private directory outside the repository (or under the ignored `output/`).
+
+What stays private, and what is public:
+- **Never** in the repository, issue text or review packets: credentials, one-time codes,
+  device tokens, Access JWTs or cookies, the owner's identity, account and database IDs,
+  the Access team and audience, and the private operational configuration itself.
+- **Public by design:** `<service-origin>`. It is the approved deployed host, and phase 8
+  commits it to `shared/learning-reporting/config.js` so the games can reach the device
+  endpoints, which Access and the Worker protect. No other hostname is chosen.
+- **Sanitized operational metadata** (source commits, bundle and config hashes, Worker
+  version IDs, UTC windows, counts) may appear in evidence summaries. Version IDs are
+  deployment metadata, not credentials.
 
 ## 1. Where things stand (2026-10-22)
 
@@ -89,16 +97,31 @@ household notes, not fixed in this work.
 - Retry nothing that was denied or throttled (billing, GraphQL budget, account dashboard
   browsing), and do not reach it another way.
 - Keep Workers observability, invocation logs and `wrangler tail` off.
-- Run the **drift guard** before every hosted action and record it in the evidence:
-  1. Source: `git rev-parse HEAD`, a clean `git status`, and the reviewed commit. Run
-     `npm run build`, then `sha256sum dist/worker.js`; it must equal the reviewed bundle hash.
+- **Drift guard.** Run it once at each phase or mutation boundary, not per request,
+  probe or page load. That means before each deploy, each tool run, the phase 6 SQL and
+  the retention continuation, after each deploy, and after any long wait. Record it in the
+  evidence.
+  1. Source (immutable, recorded once per reviewed commit): the reviewed commit, its
+     clean checkout, and the `sha256sum dist/worker.js` of the build that is deployed.
+     Reuse that record later. Rebuild only to deploy a different reviewed commit.
+     Re-confirm `git rev-parse HEAD` and a clean status at each boundary; that does not
+     need a rebuild.
   2. Config: `sha256sum <private-config>` must equal the hash recorded with the reviewed
-     sanitized delta. Inspect it: the Worker name, the dedicated D1 binding and ID, no
-     `routes` or custom domains, `preview_urls: false`, `workers_dev` matching the approved
-     host, observability off, `triggers.crons` and `vars` as reviewed.
-  3. Version: record the version ID printed by `wrangler deploy --config <private-config>`.
-     Every later hosted-check manifest names that version, the source commit and the
-     config hash.
+     sanitized delta for this phase. When the delta is first reviewed, inspect it: the
+     Worker name, the dedicated D1 binding and ID, no `routes` or custom domains,
+     `preview_urls: false`, `workers_dev` matching the approved host, observability off,
+     `triggers.crons` and `vars`.
+  3. Deployed version: the version ID that `wrangler deploy --config <private-config>`
+     printed for this phase's deploy. Before a later mutation or after a wait, compare the
+     currently deployed version with that record, using the same Wrangler channel's
+     read of the Worker's deployments, where that channel already permits it. If it
+     does not, record the comparison as not done rather than finding another route. Do not
+     redeploy just to obtain a version ID.
+
+  The hosted-check manifest copies these values in. The tool checks its own bytes and the
+  event contract against them. It cannot check the deployment: the manifest's
+  `workerVersion` and `configSha256` are the operator's recorded binding, not a live
+  comparison, and are only as current as this guard.
 - The hosted-check manifest (`<evidence-dir>/manifest.json`, never committed):
 
   ```json
@@ -117,12 +140,15 @@ household notes, not fixed in this work.
   The tool refuses a run if its own bytes or the event contract differ from the reviewed
   hashes, if `--target` differs from `target`, if uploads are attempted outside
   `qualification`, or if the budget reading is missing, stale, from another UTC day, not
-  account-wide, or below the mode's minimum. A reading is never assumed, and a run is
-  never split across UTC days to fit an allowance.
+  account-wide, or below the mode's minimum. It rechecks the reading's age and UTC day
+  immediately before every request, after any pacing or prompt. A reading that has gone
+  stale or crossed 00:00 UTC stops the run (`BUDGET_EXPIRED`) before anything is sent. A
+  reading is never assumed, and a run is never split across UTC days to fit an allowance.
 - Every run: `node scripts/hosted-check.mjs <mode> --manifest <evidence-dir>/manifest.json
   --target <service-origin> --out <evidence-dir>`. Type a one-time code only when the
   tool shows `WAITING:`. It does not echo the code on a terminal, and it refuses input
-  typed ahead. The receipt and ID manifest hold IDs, counts and hashes only.
+  typed ahead. The receipt and ID manifest hold IDs, counts, hashes and labels from fixed
+  lists only. Any response text outside those lists is recorded as `unrecognized`.
 
 ## 4. Finite budget (whole task)
 
@@ -137,12 +163,20 @@ household notes, not fixed in this work.
 | 7 cleanup | a few | about 18,500 | Delete everything (synthetic only) |
 | **Ceiling** | **≤ 500** | **≤ 60,000** | Reads ≤ 1,500,000; storage growth ≤ 12 MiB |
 
-These are forecasts from the retained fixture budget, not observed usage. The UTC reset
-never enlarges the ceiling. Before the seed, the owner's same-day account-wide reading
-must show at least 75,000 rows written, 2,500,000 rows read and 1,000 requests still
-available. Protocol needs 2,000 / 50,000 / 100, and expiry 100 / 1,000 / 10. If the
-reading is not available, hosted growth does not happen. O2's daily-usage line then
-stays unmet, with that exact gap recorded.
+These are forecasts from the retained fixture budget, not observed usage. The ceilings
+cover the whole task, including the overnight retention wait. The 00:00 UTC reset never
+enlarges them and never resets the task's counts.
+
+Before the seed, the owner's same-day account-wide reading must show at least 75,000 rows
+written, 2,500,000 rows read and 1,000 requests still available. Protocol needs 2,000 /
+50,000 / 100, and expiry 100 / 1,000 / 10. The retention continuation (phase 6) needs a
+new reading taken after the wait, of at least 25,000 / 100,000 / 100. It sends only two
+requests, but it keeps the reserve for cleaning up the stored corpus. If a reading is not
+available, the hosted step does not happen. O2's daily-usage line then stays unmet, with
+that exact gap recorded.
+
+Waiting overnight for one scheduled run is part of the task, not a split to fit an
+allowance. The seed is never divided across days, and nothing is re-seeded.
 
 ## 5. Phases
 
@@ -272,13 +306,23 @@ evidence, never as a substitute pass, and no other size is run. **Undo:** stop t
    `wrangler d1 execute <database> --remote --config <private-config> --file <reviewed.sql>`
    and confirm exactly 20 changed rows. Any other count is a **stop**, with no second
    attempt.
-3. After the next 03:17 UTC run, observed once and not polled, answer `done` to the
-   waiting seed run. Batch 1 must come back `deleted` (not restored), and Y's batch 1 must
-   come back `accepted`. Then run `verify-export ... --expect-missing <aged.json>`: the
-   aged IDs are absent and every other ID is present. The Devices page shows no gap for
-   seq 1–20.
-4. If the seed run was lost, record the hosted replay as not run, with the local evidence
-   in its place. Do not re-seed.
+3. After the next 03:17 UTC run (observed once, not polled), prepare the bounded
+   continuation of the same task before answering the waiting seed run:
+   - Run the drift guard. The deployed version must be the cron deploy from step 1.
+   - The owner takes a new account-wide usage reading on that UTC day; it must meet the
+     continuation minimum.
+   - Update the same manifest file with that `budget` and the cron deploy's `workerVersion`
+     and `configSha256`. Leave target, origins, phase, source, tool and contract unchanged.
+
+   Then answer `done`. The tool sends nothing unless that refreshed evidence is present,
+   current, sufficient and records a new deployment (`CONTINUATION_EVIDENCE`). Batch 1 must
+   come back `deleted` (not restored), and Y's batch 1 must come back `accepted`. Then run
+   `verify-export ... --expect-missing <aged.json>`: the aged IDs are absent and every other
+   ID is present. The Devices page shows no gap for seq 1–20.
+4. If the refreshed evidence is missing, stale, drifted or insufficient, or the seed run
+   was lost, no replay request is sent. Keep the receipt and ID manifest; the receipt
+   marks `incomplete: retention-replay-not-run`. Record the hosted replay as not run, with
+   the local evidence in its place. Do not re-seed, and do not reuse yesterday's reading.
 
 **Undo:** `triggers.crons: []`. The 90-day setting never changed.
 
