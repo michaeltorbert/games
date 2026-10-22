@@ -8,7 +8,7 @@
     "types": "wrangler types",
     "dev": "wrangler dev",
     "build": "wrangler deploy --dry-run --outdir dist",
-    "test:runtime": "npm run build && node --test test-runtime/workerd.test.mjs"
+    "test:runtime": "npm run build && node --test test-runtime/*.test.mjs"
   },
   "devDependencies": {
     "@types/node": "26.6.3",
