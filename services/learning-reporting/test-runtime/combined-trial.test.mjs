@@ -92,6 +92,7 @@ async function published(pathname) {
   try { return { rel, body: await readFile(file) }; } catch (error) { return null; }
 }
 const CONFIG_OVERRIDE = `globalThis.LEARNING_REPORTING_CONFIG = Object.freeze({ serviceUrl: '${HOST}' });`;
+const UNCONFIGURED_OVERRIDE = "globalThis.LEARNING_REPORTING_CONFIG = Object.freeze({ serviceUrl: '' });";
 const HOP = new Set(['host', 'connection', 'content-length', 'keep-alive', 'transfer-encoding', 'upgrade', 'te', 'trailer', 'proxy-connection']);
 const IPAD = { viewport: { width: 1180, height: 820 }, screen: { width: 1180, height: 820 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2, serviceWorkers: 'block',
   userAgent: 'Mozilla/5.0 (iPad; CPU OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1' };
@@ -168,10 +169,11 @@ for (const name of engineNames) {
       for (const event of sent.events ?? []) submitted.set(event.eventId, { ...event, label });
       if (answer.status === 200) for (const item of got.results ?? []) { acks.set(item.eventId, item.outcome); outcomes.push(item.outcome); }
     }
+    let configOverride = UNCONFIGURED_OVERRIDE;
     const deviceRoute = label => async route => {
       const req = route.request(), url = new URL(req.url());
       if (url.origin === GAME) {
-        if (url.pathname === '/shared/learning-reporting/config.js') return route.fulfill({ status: 200, contentType: TYPES['.js'], body: CONFIG_OVERRIDE });
+        if (url.pathname === '/shared/learning-reporting/config.js') return route.fulfill({ status: 200, contentType: TYPES['.js'], body: configOverride });
         const file = await published(url.pathname);
         if (!file) { missing.push(url.pathname); return route.fulfill({ status: 404, body: '' }); }
         served[file.rel] ??= hash(file.body);
@@ -252,8 +254,7 @@ for (const name of engineNames) {
     let browser, failureCaptureFrom = Infinity;
     try {
       if (process.env.LR_EXPECTED_BUNDLE_SHA256) assert.equal(bundleHash, process.env.LR_EXPECTED_BUNDLE_SHA256, 'bundle bound to the reviewed source build');
-      assert.match(await readFile(resolve(repo, 'shared/learning-reporting/config.js'), 'utf8'), /serviceUrl: ''/, 'shipped client config stays empty');
-      receipt.config = { shippedServiceUrl: 'empty', override: 'browser-context route of config.js only', serviceOrigin: HOST, gameOrigin: GAME };
+      receipt.config = { unconfiguredFixture: 'explicit empty config route, verified before enrollment', override: 'browser-context route of config.js only', serviceOrigin: HOST, gameOrigin: GAME };
       if (output) await mkdir(output, { recursive: true });
       await mf.ready;
       const db = (await mf.getBindings()).DB;
@@ -285,6 +286,20 @@ for (const name of engineNames) {
         await context.route('**/*', deviceRoute(DEVICES[index]));
       }
 
+      // The off-state fixture is explicit; the shipped production origin is never used.
+      stage('unconfigured-fixture');
+      const pageA = watch(await contexts[0].newPage(), DEVICES[0]);
+      const pageB = watch(await contexts[1].newPage(), DEVICES[1]);
+      await pageA.goto(`${GAME}/shared/learning-reporting/`);
+      await pageA.waitForFunction(() => document.getElementById('lr-summary').textContent === 'Reporting is not set up for this site.');
+      assert.equal(await pageA.locator('#lr-connect').isDisabled(), true, 'unconfigured fixture cannot enroll');
+      assert.equal(await pageA.locator('#lr-code').isDisabled(), true, 'unconfigured fixture does not accept a code');
+      assert.deepEqual(await pageA.evaluate(() => ({ origin: LEARNING_SYNC.serviceOrigin(), started: LEARNING_SYNC.diagnostics().started })),
+        { origin: null, started: false }, 'explicit empty fixture has no sync engine');
+      assert.deepEqual(deviceCalls, [], 'unconfigured fixture sends no service request');
+      assertClean('unconfigured fixture');
+      configOverride = CONFIG_OVERRIDE;
+
       stage('owner-setup');
       const owner = watch(await ownerContext.newPage(), 'owner');
       await owner.goto(HOST);
@@ -310,8 +325,6 @@ for (const name of engineNames) {
       assertClean('owner setup');
 
       stage('enroll');
-      const [deviceA, deviceB] = contexts.map(async (context, index) => watch(await context.newPage(), DEVICES[index]));
-      const pageA = await deviceA, pageB = await deviceB;
       await enroll(pageA, codes[0]);
       await enroll(pageB, codes[1]);
       codes.length = 0;
