@@ -149,7 +149,20 @@ async function playScript(page, { enrolled = null, failOutbox = false, offline =
   expect(await deleteOutboxDatabase(page)).toBe('deleted');
   page.on('request', onRequest);
   page.on('pageerror', onError);
+  // The production updater makes its startup request after 3 seconds. End each
+  // run only after observing that same startup boundary: a fast recording-off
+  // script otherwise omits it while a slower enrolled script includes it.
+  // Keep this real request in the unfiltered privacy comparison below.
+  const origin = new URL(page.url()).origin;
+  const startupVersionResponse = page.waitForResponse(response => {
+    const url = new URL(response.url());
+    return url.origin === origin && url.pathname === '/version.json' && response.status() === 200;
+  });
   await page.goto(BOOT);
+  const versionResponse = await startupVersionResponse;
+  expect(requests).toContain('GET /version.json');
+  const startupVersion = { url: versionResponse.url(), status: versionResponse.status() };
+
   if (enrolled) await enroll(page, enrolled);
   if (failOutbox) await page.evaluate(() => { window.__failOutbox = true; });
   if (offline) await page.context().setOffline(true);
@@ -173,7 +186,7 @@ async function playScript(page, { enrolled = null, failOutbox = false, offline =
   if (offline) await page.context().setOffline(false);
   page.off('request', onRequest);
   page.off('pageerror', onError);
-  return { ...result, steps, secrets, requests, errors, outbox: await readOutbox(page) };
+  return { ...result, steps, secrets, requests, startupVersion, errors, outbox: await readOutbox(page) };
 }
 
 // Expected per-question events from the domain-accepted script.
@@ -199,13 +212,18 @@ function byQuestion(events) {
   return [...groups.values()];
 }
 
-test('seeded play is identical with recording off, on, offline and failing; recorded events are valid and private', async ({ page }) => {
+test('seeded play is identical with recording off, on, offline and failing; recorded events are valid and private', async ({ page }, testInfo) => {
   // Counts indexedDB.open calls; __failOutbox aborts the outbox transaction after its put succeeds.
   await page.addInitScript(outboxSpyScript);
   const off = await playScript(page);
   const on = await playScript(page, { enrolled: enrollmentFor() });
   const offline = await playScript(page, { enrolled: enrollmentFor(), offline: true });
   const failing = await playScript(page, { enrolled: enrollmentFor(), failOutbox: true });
+  await testInfo.attach('recording-network-comparison.json', {
+    body: JSON.stringify(Object.fromEntries(Object.entries({ off, on, offline, failing }).map(([name, run]) =>
+      [name, { startupVersion: run.startupVersion, requests: run.requests }]))),
+    contentType: 'application/json',
+  });
 
   // Disabled (the default): no new key, no IndexedDB open or database, no extra request.
   expect(off.keys.filter(key => key.startsWith('learningReporting:'))).toEqual([]);
