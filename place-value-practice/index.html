@@ -1824,7 +1824,7 @@
     </main>
 
     <footer class="app-footer">
-      <p>Practice stays on this device.</p>
+      <p id="practice-privacy">Practice stays on this device.</p>
       <p id="game-version"></p>
     </footer>
   </div>
@@ -1980,15 +1980,15 @@
     </form>
   </dialog>
 
-  <link rel="stylesheet" href="../shared/curriculum.css?v=1.9.1">
-  <script src="../shared/curriculum.js?v=1.9.1"></script>
-  <script src="../shared/curriculum-ui.js?v=1.9.1"></script>
-  <script src="arithmetic-domain.js?v=1.9.1"></script>
-  <script src="worked-explanation.js?v=1.9.1"></script>
+  <link rel="stylesheet" href="../shared/curriculum.css?v=1.9.2">
+  <script src="../shared/curriculum.js?v=1.9.2"></script>
+  <script src="../shared/curriculum-ui.js?v=1.9.2"></script>
+  <script src="arithmetic-domain.js?v=1.9.2"></script>
+  <script src="worked-explanation.js?v=1.9.2"></script>
   <script>
     "use strict";
 
-    const GAME_VERSION = "1.9.1";
+    const GAME_VERSION = "1.9.2";
     (() => {
       document.getElementById('game-version').textContent = `Version ${GAME_VERSION}`;
       const SCHEMA_VERSION = 1;
@@ -6738,14 +6738,18 @@
       if (window.__placePracticeMode === 'place-value') window.__placeValueActivate();
     })();
   </script>
-  <script src="fact-practice-domain.js?v=1.9.1"></script>
-  <script src="fact-practice.js?v=1.9.1"></script>
-  <link rel="stylesheet" href="practice-field.css?v=1.9.1">
-  <script src="practice-field.js?v=1.9.1"></script>
-  <link rel="stylesheet" href="book-practice.css?v=1.9.1">
-  <script src="book-practice-domain.js?v=1.9.1"></script>
-  <script src="book-practice.js?v=1.9.1"></script>
-  <script src="arithmetic.js?v=1.9.1"></script>
-  <script src="../shared/updater.js?v=1.9.1"></script>
+  <script src="fact-practice-domain.js?v=1.9.2"></script>
+  <script src="../shared/learning-outbox.js?v=1.9.2"></script>
+  <link rel="stylesheet" href="../shared/learning-reporting.css?v=1.9.2">
+  <script src="../shared/learning-reporting/config.js?v=1.9.2"></script>
+  <script src="../shared/learning-sync.js?v=1.9.2"></script>
+  <script src="fact-practice.js?v=1.9.2"></script>
+  <link rel="stylesheet" href="practice-field.css?v=1.9.2">
+  <script src="practice-field.js?v=1.9.2"></script>
+  <link rel="stylesheet" href="book-practice.css?v=1.9.2">
+  <script src="book-practice-domain.js?v=1.9.2"></script>
+  <script src="book-practice.js?v=1.9.2"></script>
+  <script src="arithmetic.js?v=1.9.2"></script>
+  <script src="../shared/updater.js?v=1.9.2"></script>
 </body>
 </html>

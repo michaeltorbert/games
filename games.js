@@ -7,7 +7,7 @@ const GAMES = [
     color: '#12285c',
     accent: '#ffd700',
     url: 'football/',
-    version: '1.34.21',
+    version: '1.34.22',
   },
   {
     id: 'kayak',
@@ -37,6 +37,6 @@ const GAMES = [
     color: '#315f7d',
     accent: '#d9e5ec',
     url: 'place-value-practice/',
-    version: '1.9.1',
+    version: '1.9.2',
   },
 ];

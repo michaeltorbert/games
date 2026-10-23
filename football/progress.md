@@ -2835,3 +2835,88 @@ released, approved or verified; root runs every check on the exact artifact.
 
   This does not weaken O2 or O4: neither requires new feedback copy, and the
   retry evidence is asserted more exactly than before.
+
+## 2026-10-21 — Learning-event outbox foundation, 1.34.22 CANDIDATE, UNRELEASED (#199)
+
+- Request: "Implement #199 without further input; use full Opus lane." Author: a
+  new native Claude (Opus 5.5) session on exact base `358fe90` (Football
+  1.34.21). The author had no shell and ran nothing. This entry is a candidate
+  record, not a release: no merge, deployment or production release is
+  requested, and the first useful delivery still waits for #200.
+- Added `shared/learning-outbox.js` (plain global `LEARNING_OUTBOX`) and its
+  contract `shared/LEARNING_EVENTS.md`, which documents the per-game domain
+  versus outbox write boundary. It loads after `contextual-questions.js` and
+  before `football.js`.
+- `football.js` observers, all after the existing guards and in-memory records,
+  synchronous and never awaited: guided help after a successful
+  `prepareQuestion`, each accepted `handleAnswer` attempt, retry help after the
+  hint is shown, worked help after the worked explanation is shown, resolution
+  only from the accepted commit, and `leftUnfinished` only when recovery
+  discards a presented, unresolved question. Question links are in memory, so
+  a reload leaves a question pending. No timing key is ever recorded.
+- Recording is off until a #200 enrollment record exists; there is no
+  enrollment writer or UI. Disabled play reads one enrollment key and nothing
+  else. RNG streams, opponent plans, proposals, families, commits, scores,
+  stats and focus/timers are unchanged.
+- Metadata: `GAME_VERSION`, every Football `?v=` key, `games.js` and
+  `version.json` advance to 1.34.22. Place by Place moves to 1.9.2 in the same
+  candidate because the shared script changes its cache keys too.
+- Tests: `tests/learning-outbox-domain.spec.mjs` joins the release domain list
+  and `tests/football-learning-outbox.spec.mjs` the release browser list.
+- Pending: both release gates in Chromium and WebKit, the two-target registry
+  gate, Football DOM smoke, fresh independent review and the dormant PR. This
+  entry claims none of them.
+- **Storage protocol correction (supersedes the storage parts of this entry, still
+  a candidate).**
+  - The original exclusive Web Lock plus `localStorage` envelope lost accepted
+    batches between two Playwright WebKit pages (`repeat-webkit-1`: 14 of 30
+    failed). The Chromium control passed 30 of 30. This is stress evidence, not
+    a Safari or production-frequency claim.
+  - Both planners agreed the correction. The outbox now lives in IndexedDB
+    (`learningReporting` v1, store `records`), holding an authoritative consent
+    record and the unchanged envelope string. Every mutation is one readwrite
+    transaction, counted only at `oncomplete`.
+  - The outbox Web Lock is gone, there is no installer, and nothing is created
+    from the hint. `snapshot()` is now async. Stop deletes the consent and
+    outbox transactionally, or deletes a future database with an honest pending
+    state while blocked.
+  - The `football.js` observers are unchanged. The Stats and Season stores are
+    untouched; their similar pattern is a separate follow-up.
+
+## 2026-10-21 — Private learning report client, 1.34.22 CANDIDATE, UNRELEASED (#200)
+
+- Author: a new native Claude (Opus 5.5) session on dependency `b0f45ff` (the
+  #199 candidate). The author had no shell and ran nothing; the coordinator runs
+  and records checks outside this file. #199 and #200 release together. This
+  entry claims no release, and the version stays at the unreleased 1.34.22.
+- `index.html` loads `../shared/learning-reporting/config.js` and
+  `../shared/learning-sync.js` after the outbox and before `football.js`, at
+  `?v=1.34.22`. The shipped config has no service origin, so reporting stays
+  off: the Start markup, play, every RNG stream, Stats and Season are unchanged.
+- A device enrolled for several profiles gets a "Who's playing?" choice
+  (neutral Player 1, Player 2), inserted before the Start actions only on such
+  a device; it reuses the existing play-mode picker styles. One profile adds no
+  picker. Each question keeps the profile of its first recorded observation.
+- `football.js` passes the pinned profile (or this tab's choice) to
+  `LEARNING_OUTBOX.capture()` and nudges a sync after a recorded resolution.
+  Sync never blocks or delays play.
+- Tests created (not run by the author): `tests/learning-reporting-domain.spec.mjs`
+  (release domain list), `tests/learning-reporting-sync.spec.mjs` and
+  `tests/learning-reporting-ui.spec.mjs` (release browser list). Football cases
+  use the existing session mute fixture; no sound case was added.
+
+
+## 2026-10-21 — #200 private reporting corrections (unreleased)
+
+The local reporting candidate preserves observed Football help stages separately from pending or left-unfinished status, including help before attempt one and on retry. Number facts places the enrolled multi-player choice ahead of practice; question binding and gameplay remain unchanged. Earlier stale report requests, sparse evidence and hidden-state defects were corrected. Current changes await exact-candidate checks and fresh independent review; no remote service, enrollment, merge or release is claimed. Retained failures and full acceptance evidence are indexed under `output/issue-200/`. PR #205 remains preserved and unmerged. This progress entry is a coordinator record of the authored changes, not an author or reviewer verdict.
+
+The same local candidate also adds reachable recovery and Stop for a partially saved enrollment, truthful connected-reporting privacy wording, and a bounded initial reveal of the unchosen multi-player Facts choice after the curriculum dialog. These authored corrections remain unverified until the current checks and a new independent review complete. No remote delivery or release is claimed.
+
+- Unreleased private-report correction: the initial multi-profile Number facts choice now clears only stale startup selection on its first activation. Differential WebKit evidence reproduced the unwanted scroll and isolated selection dependence; focused verification and independent review remain pending. Reporting-off startup behavior is outside this correction.
+
+## 2026-10-22 — Private learning reports, 1.34.22 (superseding release candidate)
+
+- The paired #199/#200 candidate connects to the approved private reporting service through the shared configuration. Recording and sending remain opt-in: unenrolled play creates no reporting storage or timers, makes no service request, and is never backfilled. An enrolled shared-device question keeps its selected profile.
+- The combined report separates independent, supported, sparse, pending and unfinished evidence. Football remains untimed; Number facts retains its existing guarded timing or an explicit untimed result. Local gameplay, scoring, RNG, schedulers, Stats, Season and on-device reports are unchanged. Recovery and Stop remain available.
+- Football remains at 1.34.22, paired with Place by Place 1.9.2. Existing version and cache keys are retained. PR #207 includes the #205 ancestor for one paired release; other games are unchanged. This supersedes the earlier empty-service draft description.
+- Qualification, exact-head release checks, production configuration and deployment status are recorded under `output/issue-200/go-live/`; this entry does not assert an unrecorded pass or deployment. Only after verified deployment use **"client released; intended-device receipt pending"**. #199/#200 remain open until intended-device combined receipt and usability are verified. Hosted load evidence does not establish CPU margin or wider capacity. Physical phone/iPad usability remains unverified; #161, #203 and #206 retain their unresolved evidence.

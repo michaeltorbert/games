@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="referrer" content="no-referrer">
+<meta name="robots" content="noindex">
+<title>Learning reports on this device</title>
+<link rel="stylesheet" href="../learning-reporting.css?v=1.0.0">
+</head>
+<body class="lr-page">
+<header class="lr-bar"><h1>Learning reports on this device</h1></header>
+<main class="lr-main">
+  <section class="lr-section" aria-labelledby="lr-status-title">
+    <h2 id="lr-status-title">Status</h2>
+    <p class="lr-status" id="lr-summary" role="status" aria-live="polite">Checking this device…</p>
+    <dl class="lr-facts" id="lr-health" hidden>
+      <dt>Players</dt><dd id="lr-players"></dd>
+      <dt>Last successful send</dt><dd id="lr-last"></dd>
+      <dt>Waiting to send</dt><dd id="lr-waiting"></dd>
+      <dt>Held back</dt><dd id="lr-held"></dd>
+      <dt>Lost on this device</dt><dd id="lr-lost"></dd>
+    </dl>
+    <div class="lr-actions" id="lr-finish-actions" hidden>
+      <button class="lr-button" id="lr-finish" type="button">Finish connecting</button>
+      <p class="lr-status" id="lr-finish-status" role="status" aria-live="polite"></p>
+    </div>
+    <div class="lr-actions" id="lr-sync-actions" hidden>
+      <button class="lr-button lr-button--quiet" id="lr-sync-now" type="button">Send now</button>
+    </div>
+  </section>
+
+  <section class="lr-section" id="lr-setup" aria-labelledby="lr-setup-title" hidden>
+    <h2 id="lr-setup-title">Connect this device</h2>
+    <p>A grown-up creates a one-time code on the private learning report. Enter it within 10 minutes.</p>
+    <form class="lr-form" id="lr-form" novalidate>
+      <label for="lr-code">One-time code</label>
+      <input class="lr-input" id="lr-code" name="code" autocomplete="off" autocapitalize="characters" spellcheck="false" inputmode="text" maxlength="40" aria-describedby="lr-form-status">
+      <button class="lr-button" id="lr-connect" type="submit">Connect this device</button>
+      <p class="lr-status" id="lr-form-status" role="status" aria-live="polite"></p>
+    </form>
+    <p class="lr-note">Practice is reported only after this device is connected. Earlier practice stays on this device.</p>
+  </section>
+
+  <section class="lr-section" id="lr-stop" aria-labelledby="lr-stop-title" hidden>
+    <h2 id="lr-stop-title">Stop reporting on this device</h2>
+    <p>This removes the connection and any practice still waiting to send from this device. Reports already received stay in the private report until a grown-up deletes this device there.</p>
+    <div class="lr-actions">
+      <button class="lr-button lr-button--danger" id="lr-stop-ask" type="button">Stop reporting…</button>
+      <button class="lr-button lr-button--danger" id="lr-stop-confirm" type="button" hidden>Yes, stop and remove waiting practice</button>
+      <button class="lr-button lr-button--quiet" id="lr-stop-cancel" type="button" hidden>Keep reporting</button>
+    </div>
+    <p class="lr-status" id="lr-stop-status" role="status" aria-live="polite"></p>
+  </section>
+</main>
+<script src="../learning-outbox.js?v=1.0.0"></script>
+<script src="config.js?v=1.0.0"></script>
+<script src="../learning-sync.js?v=1.0.0"></script>
+<script src="enroll.js?v=1.0.0"></script>
+</body>
+</html>

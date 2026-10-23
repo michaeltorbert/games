@@ -1,4 +1,4 @@
-const GAME_VERSION = '1.34.21';
+const GAME_VERSION = '1.34.22';
 let prevPlayerScore = -1, prevOpponentScore = -1;
 let playerRunTimer = 0, playerCelebrateTimer = 0, playerCelebrateDelayTimer = 0;
 const EZ = 5;
@@ -710,7 +710,28 @@ function seasonActionLabel(snapshot) {
 }
 
 // Refreshes Start content in place; showStart() alone activates the modal.
+// Who-is-playing (#200): exists only on a device enrolled for several profiles, so the
+// default Start markup is unchanged. Neutral Player slots; the choice is kept per tab and
+// applies to the next question. It never changes play, stats or any RNG stream.
+let playerPicker = null;
+function renderPlayerPicker() {
+  if (playerPicker) {
+    playerPicker.refresh();
+    return;
+  }
+  if (typeof LEARNING_SYNC === 'undefined') return;
+  playerPicker = LEARNING_SYNC.buildPlayerPicker({
+    id: 'player-picker', legend: 'Who’s playing?', fieldsetClass: 'play-mode-picker player-picker',
+    optionsClass: 'play-mode-options', optionClass: 'play-mode-option', statusClass: 'team-status',
+    status: chosen => chosen ? '' : 'Choose who is playing so practice is reported for the right player.',
+  });
+  if (!playerPicker) return;
+  const actions = startOverlay().querySelector('.start-action-row');
+  actions.parentNode.insertBefore(playerPicker.element, actions);
+}
+
 function renderStartMode() {
+  renderPlayerPicker();
   const start = startOverlay();
   populateOverlay(start, {
     slots: { 'time-lab-action': { disabled: seasonActionBusy || sessionInitialized } },
@@ -1286,7 +1307,67 @@ function markStatsBypassed(activePlay, links = {}) {
 function discardPendingStatsPlay() {
   const pending = pendingStatsPlay;
   pendingStatsPlay = null;
+  // An unresolved, successfully presented question discarded by recovery is an observed leave.
+  if (pending && outboxLink && outboxLink.playId === state.activePlay?.playId) reportLearningEvent('leftUnfinished');
   return pending ? FOOTBALL_STATS.discardPlay(pending) : false;
+}
+
+// Learning-event outbox observer (#199). Dormant until a #200 enrollment exists.
+// It copies accepted primitives into the shared outbox and never awaits, so play,
+// every RNG stream and the stats store are unchanged. Links live in memory only:
+// a reload or close leaves the question pending/unknown. A question keeps the profile
+// of its first recorded observation (#200), never a later who-is-playing change.
+let outboxLink = null;
+
+function beginOutboxLink(activePlay, question) {
+  outboxLink = { question, playType: activePlay.playType, playId: activePlay.playId, questionInstanceId: null, profileId: null, refused: false, closed: false };
+}
+
+// This tab's who-is-playing choice for a new question, or undefined (the enrollment decides).
+function chosenLearningPlayer() {
+  return typeof LEARNING_SYNC === 'undefined' ? undefined : LEARNING_SYNC.player() ?? undefined;
+}
+
+function outboxQuestionMetadata(question, playType) {
+  const entry = FOOTBALL_CONTEXTUAL_QUESTIONS.FAMILY_REGISTRY[playType]?.find(item => item.familyId === question.familyId);
+  if (!entry) return null;
+  const metadata = {};
+  for (const key of ['familyId', 'concept', 'purpose', 'tier', 'grading', 'evidenceClass']) {
+    if (question[key] !== entry[key]) return null;
+    metadata[key] = entry[key];
+  }
+  return metadata;
+}
+
+function reportLearningEvent(kind, fields = {}) {
+  const link = outboxLink;
+  if (!link || link.closed || link.question !== state.questionInstance || typeof LEARNING_OUTBOX === 'undefined') return;
+  if (kind === 'resolution' || kind === 'leftUnfinished') link.closed = true;
+  // A question whose earlier observation was refused has no known first player: it stays
+  // unrecorded rather than starting part-way under whoever is enrolled or chosen later.
+  if (link.refused && !link.profileId) return;
+  try {
+    const captured = LEARNING_OUTBOX.capture(link.profileId ?? chosenLearningPlayer());
+    if (!captured) {
+      link.refused = true;
+      return;
+    }
+    const metadata = outboxQuestionMetadata(link.question, link.playType);
+    if (!metadata) return;
+    if (!link.questionInstanceId) link.questionInstanceId = LEARNING_OUTBOX.newId();
+    if (!link.profileId) link.profileId = captured.profileId;
+    LEARNING_OUTBOX.record(captured, {
+      game: 'football',
+      gameVersion: GAME_VERSION,
+      kind,
+      questionInstanceId: link.questionInstanceId,
+      ...metadata,
+      ...fields,
+    });
+    if (kind === 'resolution' && typeof LEARNING_SYNC !== 'undefined') LEARNING_SYNC.nudge();
+  } catch (error) {
+    // Reporting never participates in play.
+  }
 }
 
 function finalizeStatsPlay(activePlay, transition, outcome) {
@@ -3330,6 +3411,8 @@ function prepareQuestion(bundle, labelHtml, feedbackCopy = '') {
   }
   markStatsPresented(question);
   FOOTBALL_LEARNING.recordPresented(learningSession, question, learningEventPlayScope(activePlay));
+  beginOutboxLink(activePlay, question);
+  if (state.questionUi.support === 'guided') reportLearningEvent('help', { number: 1, support: 'guided' });
 }
 
 function restoreCallAfterInvalid(opponentSnapshot = null) {
@@ -3717,6 +3800,11 @@ function handleAnswer(idx) {
     correct: isCorrect,
     support: state.questionUi.support,
   });
+  reportLearningEvent('attempt', {
+    number: state.questionUi.attempt,
+    correct: isCorrect,
+    support: state.questionUi.support,
+  });
 
   if (isCorrect) {
     completeCorrectAnswer(btn, question);
@@ -3783,6 +3871,7 @@ function handleInstructionalMiss(btn, choice, question) {
       ? (state.possession === POSSESSIONS.offense ? 'retryOffense' : 'retryDefense')
       : (state.possession === POSSESSIONS.offense ? 'specialRetryOffense' : 'specialRetryDefense'));
     setFeedback(`Good try. ${question.hint.text}`, 'info');
+    reportLearningEvent('help', { number: 2, support: state.questionUi.support });
     const next = [0, 1, 2, 3]
       .map(i => document.getElementById('b' + i))
       .find(button => button && !button.disabled && !button.classList.contains('hidden'));
@@ -3803,6 +3892,7 @@ function handleInstructionalMiss(btn, choice, question) {
     : (state.possession === POSSESSIONS.offense ? 'specialExplainOffense' : 'specialExplainDefense'));
   setFeedback(question.workedExplanation.text, 'info');
   showWorkedReviewSummary();
+  reportLearningEvent('help', { number: 2, support: 'worked' });
 }
 
 function recordQuestionResolution(result) {
@@ -3816,6 +3906,7 @@ function recordQuestionResolution(result) {
     support: state.questionUi.support,
   });
   FOOTBALL_STATS.recordResolution(pendingStatsPlay, result);
+  reportLearningEvent('resolution', { resolution: result });
   return true;
 }
 

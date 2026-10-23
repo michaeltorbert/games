@@ -97,10 +97,98 @@
   function equationVisible(){const r=equation.getBoundingClientRect();return document.visibilityState==='visible'&&r.top>=0&&r.bottom<=innerHeight&&r.left>=0&&r.right<=innerWidth;}
   function memory(reason='Your fact progress and drive yards stay in memory for this visit.'){writable=false;message=reason;invalidate();}
   function parse(raw){try{return raw===null?null:JSON.parse(raw);}catch{return null;}}
+  // Learning-event outbox observer (#199). Dormant until a #200 enrollment exists. It copies
+  // accepted primitives after the unchanged domain save and never awaits, so busy, focus,
+  // rendering and the save order are unchanged. Only a persisted, normalized attempt may
+  // resume a durable question link; a repair is reported once its replacement is saved.
+  // outboxAnswered marks an accepted answer explicitly: at the 99-miss cap a wrong answer
+  // is accepted without changing the miss count, so it cannot be inferred from progress.
+  let outboxRestored=null,outboxRepair=null,outboxAnswered=false;
+  const outboxAttempt=s=>{const q=s.attempt;return {nonce:q.id,factId:q.factId,serial:s.serial,misses:q.misses,helped:q.helped,firstCorrect:q.firstCorrect,complete:q.complete};};
+  const outboxAdoptable=before=>writable&&!!outboxRestored&&outboxRestored.nonce===before.nonce&&outboxRestored.factId===before.factId&&outboxRestored.serial===before.serial;
+  function outboxSend(captured,before,after,adoptable,observations){
+    const fact=api.byId[before.factId];
+    if(!fact)return;
+    const replaced=!after;
+    LEARNING_OUTBOX.recordFacts(captured,{gameVersion:typeof GAME_VERSION==='string'?GAME_VERSION:null,durable:writable,adoptable,before,after:after||before,replaced,
+      observations:replaced?[{kind:'leftUnfinished',fields:{factId:fact.id,family:fact.family}}]:observations});
+  }
+  // #200: this tab's who-is-practicing choice applies to new questions; the outbox keeps a
+  // started question on the profile it was first recorded for (its persisted binding).
+  function outboxCapture(){return typeof LEARNING_OUTBOX==='undefined'?null:LEARNING_OUTBOX.capture(typeof LEARNING_SYNC==='undefined'?undefined:LEARNING_SYNC.player()??undefined);}
+  let playerPicker=null;
+  const attemptStarted=q=>!q.complete&&(q.misses>0||q.helped||q.firstCorrect!==null);
+  function renderPlayerPicker(){
+    if(!playerPicker&&typeof LEARNING_SYNC!=='undefined'){
+      playerPicker=LEARNING_SYNC.buildPlayerPicker({id:'facts-player',legend:'Who’s practicing?',fieldsetClass:'lr-player-picker',optionsClass:'lr-player-options',optionClass:'lr-player-option',statusClass:'lr-player-status',
+        status:chosen=>!chosen?'Choose who is practicing so practice is reported for the right player.':model&&attemptStarted(model.attempt)?'This question stays with the player who started it. The new choice starts with the next question.':''});
+      // Shown before practice: after the panel heading, ahead of the drive field and the question dock.
+      // Play is never blocked; without a choice nothing is recorded (fail closed).
+      if(playerPicker)panel.insertBefore(playerPicker.element,drive);
+    }
+    if(playerPicker)playerPicker.refresh();
+  }
+  // Enrolled several-profile device with no choice yet: on the document's first Facts activation,
+  // drop the stale document selection that the page-completion dialog leaves behind (its input
+  // was select()ed, then the dialog was removed before Facts showed). In WebKit that selection
+  // was later revealed after Facts grew the page, scrolling past the choice; clearing it at this
+  // point prevented the scroll in every traced case (scroll-trace differential 20261021T181628Z,
+  // a selection-dependent bound, not engine-internal proof). Synchronous and first activation
+  // only, never during practice, only while nothing has focus and the selection is not inside an
+  // editable field. Focus, timing, answers and play are untouched. Single-profile and
+  // reporting-off pages have no picker and are unchanged.
+  function clearStaleSelection(){
+    if(!playerPicker||typeof LEARNING_SYNC==='undefined'||LEARNING_SYNC.player()!==null)return;
+    const focused=document.activeElement;
+    if(focused&&focused!==document.body&&focused!==document.documentElement)return;
+    const selection=typeof document.getSelection==='function'?document.getSelection():null;
+    if(!selection||!selection.rangeCount)return;
+    const node=selection.anchorNode,element=node&&(node.nodeType===1?node:node.parentElement);
+    if(element&&element.closest('input,textarea,[contenteditable]:not([contenteditable="false"])'))return;
+    selection.removeAllRanges();
+  }
+  // The page footer's privacy line: local-only unless this device reports Number facts results.
+  // Reporting never claims delivery; other Place practice is never sent.
+  const privacy=document.getElementById('practice-privacy'),LOCAL_ONLY=privacy?privacy.textContent:'';
+  const REPORTING='Number facts results on this device are kept here until they are sent to a private grown-up report. Other practice stays on this device.';
+  function renderPrivacy(){
+    if(!privacy)return;
+    const reporting=typeof LEARNING_SYNC!=='undefined'&&LEARNING_SYNC.players()!==null;
+    const text=reporting?REPORTING:LOCAL_ONLY;
+    if(privacy.textContent!==text)privacy.textContent=text;
+  }
+  renderPrivacy();
+  function outboxRepaired(before){
+    if(before.complete)return;
+    if(writable){outboxRepair={before,adoptable:outboxAdoptable(before)};return;}
+    try{const captured=outboxCapture();if(captured)outboxSend(captured,before,null,false);}catch{}
+  }
+  function outboxLoaded(loaded){
+    outboxRepair=null;outboxRestored=loaded&&writable?loaded:null;
+    try{if(loaded&&model.attempt.id!==loaded.nonce)outboxRepaired(loaded);}catch{}
+  }
+  function reportFacts(before,prior){
+    const repair=outboxRepair,answered=outboxAnswered;outboxRepair=null;outboxAnswered=false;
+    try{
+      const captured=outboxCapture();if(!captured)return;
+      if(repair&&writable)outboxSend(captured,repair.before,null,repair.adoptable);
+      if(before.complete)return;
+      if(model.attempt!==prior){outboxSend(captured,before,null,outboxAdoptable(before));return;}
+      const after=outboxAttempt(model),fact=api.byId[before.factId],base={factId:fact.id,family:fact.family},observations=[];
+      if(answered||after.complete||after.misses>before.misses)observations.push({kind:'attempt',fields:{...base,number:before.misses+1,correct:after.complete,helped:before.helped}});
+      if(after.helped&&!before.helped)observations.push({kind:'help',fields:{...base,number:after.misses+1,helped:true}});
+      if(after.complete){
+        const h=model.facts[fact.id].history.at(-1);if(!h||h.serial!==model.serial)return;
+        observations.push({kind:'resolution',fields:{...base,outcome:h.outcome,eligibleCheck:h.eligible,timingMs:h.ms,helped:after.helped}});
+      }
+      if(observations.length)outboxSend(captured,before,after,outboxAdoptable(before),observations);
+      if(after.complete&&typeof LEARNING_SYNC!=='undefined')LEARNING_SYNC.nudge();
+    }catch{}
+  }
   function readInitial(){
     try{savedRaw=localStorage.getItem(KEY);const parsed=parse(savedRaw);
       if(parsed&&typeof parsed.schemaVersion==='number'&&parsed.schemaVersion>api.SCHEMA_VERSION)memory('This fact save comes from a newer version. This session and its drive yards stay in memory.');
-      const restored=api.normalize(parsed);model=api.repair(restored||api.create());
+      const restored=api.normalize(parsed),loaded=restored&&outboxAttempt(restored);model=api.repair(restored||api.create());outboxLoaded(loaded);
       if(restored&&api.driveNeedsRepair(parsed))driveNotice='The saved drive could not be read, so it starts at zero. Your learning progress is preserved.';
       if(savedRaw!==null&&!restored&&writable)message='The saved fact progress could not be read. Your next action starts a fresh saved practice.';
     }catch{memory();model=api.create();}
@@ -111,7 +199,7 @@
     const raw=localStorage.getItem(KEY);if(raw===savedRaw)return true;
     const parsed=parse(raw);cancelNext();invalidate();input='';lastAward=null;
     if(parsed&&typeof parsed.schemaVersion==='number'&&parsed.schemaVersion>api.SCHEMA_VERSION){memory('This fact save comes from a newer version. This session and its drive yards stay in memory.');return false;}
-    report.open=false;const restored=api.normalize(parsed);model=api.repair(restored||api.create());
+    report.open=false;const restored=api.normalize(parsed),loaded=restored&&outboxAttempt(restored);model=api.repair(restored||api.create());outboxLoaded(loaded);
     driveNotice=restored&&api.driveNeedsRepair(parsed)?'The saved drive could not be read, so it starts at zero. Your learning progress is preserved.':'';
     savedRaw=raw;message='Fact progress changed in another tab. Please try again.';return false;
   }
@@ -134,12 +222,14 @@
       if(!active||life!==lifecycle||epoch!==null&&epoch!==nextEpoch)return;
       try{if(!refresh()){render(false);return;}}catch{memory();}
       if(!active||model.attempt.id!==attemptId)return;
-      const prior=model.attempt,wasComplete=prior.complete,priorDrive=api.drive(model),priorMisses=prior.misses,wasHelped=prior.helped;
+      const prior=model.attempt,wasComplete=prior.complete,priorDrive=api.drive(model),priorMisses=prior.misses,wasHelped=prior.helped,outboxBefore=outboxAttempt(model);
+      outboxAnswered=false;
       if(!action())return;
       if(!wasComplete&&model.attempt===prior&&(prior.complete||prior.misses>priorMisses||prior.helped!==wasHelped)){
         const current=api.drive(model);lastAward={yards:current.totalYards-priorDrive.totalYards,touchdown:current.touchdowns>priorDrive.touchdowns,penalty:!prior.complete,kick:prior.kind==='extraPoint'};
       }
       if(writable)try{savedRaw=JSON.stringify(model);localStorage.setItem(KEY,savedRaw);message='';if(!api.driveNeedsRepair(model))driveNotice='';}catch{memory();}
+      reportFacts(outboxBefore,prior);
       const newPrompt=prior!==model.attempt;
       if(newPrompt){cancelNext();input='';report.open=false;lastAward=null;}
       render(newPrompt);
@@ -162,7 +252,7 @@
     const q=model.attempt,now=performance.now(),elapsed=origin===null?null:now-origin;
     const ms=!timingInvalid&&equationVisible()&&elapsed>=300&&elapsed<=60000?Math.round(elapsed/100)*100:null;
     invalidate();const value=Number(input);
-    change(()=>{const result=api.answer(model,q.id,value,ms);if(result&&!model.attempt.complete)input='';return result;});
+    change(()=>{const result=api.answer(model,q.id,value,ms);if(result)outboxAnswered=true;if(result&&!model.attempt.complete)input='';return result;});
   }
   function renderReport(){
     const data=api.report(model);reportContent.replaceChildren();
@@ -222,6 +312,8 @@
     recap.hidden=!done;recapText.textContent=done?`Nice practice! ${model.session.completed} completed. ${model.session.firstTry} first try. ${model.session.helped} after another try or shown answer.${model.session.bonusCompleted?` Plus ${model.session.bonusCompleted} extra-point question${model.session.bonusCompleted===1?'':'s'}.`:''}`:'';
     const storageMessage=[message,driveNotice].filter(Boolean).join(' ');
     if(storage.textContent!==storageMessage)storage.textContent=storageMessage;
+    renderPlayerPicker();
+    renderPrivacy();
     renderReport();
     if(startTiming){invalidate();const token=renderToken,id=q.id;requestAnimationFrame(()=>requestAnimationFrame(()=>{
       if(active&&token===renderToken&&model.attempt.id===id&&!q.complete&&!q.helped&&q.firstCorrect===null&&equationVisible()&&!report.open){origin=performance.now();timingInvalid=false;}
@@ -245,8 +337,8 @@
     activate(value,page,football=true){const first=model===null;cancelNext();lifecycle++;active=value;panel.hidden=!value;document.body.classList.toggle('facts-active',value&&football);lastAward=null;invalidate();if(value){drive.hidden=!football;if(page!==null&&page!==undefined)sessionPage=page;if(sessionPage!==null)api.configure(sessionPage);
       if(sessionPage>=17&&message===EMPTY_MESSAGE)message='';
       // Re-check an existing prompt against the confirmed page on every activation; the next locked action saves a repair.
-      if(first)readInitial();else{const id=model.attempt.id;api.repair(model);if(model.attempt.id!==id){input='';report.open=false;}}
-      render(first&&savedRaw===null);}},
+      if(first)readInitial();else{const id=model.attempt.id,before=outboxAttempt(model);api.repair(model);if(model.attempt.id!==id){input='';report.open=false;try{outboxRepaired(before);}catch{}}}
+      render(first&&savedRaw===null);if(first)clearStaleSelection();}},
     // Opening Practice options only discards this question's timing sample; help and report state are untouched.
     interrupt(){invalidate();},
     onUnavailable(listener){unavailable=listener;},
