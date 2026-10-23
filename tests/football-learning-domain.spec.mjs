@@ -286,3 +286,17 @@ test('retained and index-only failures obey the same final twelve-result support
     if (count === 12) assert.deepEqual(omitted, baseline);
   }
 });
+
+// #201 preserves the established support-to-first-clean policy (F2), rather
+// than introducing a new two-result hold or changing challenge recovery.
+test('automatic need, one-clean recovery and 30-day mastery restore retain their exact existing weights',()=>{
+ const question=entry(core),mastery={'line-to-gain':{independent:{firstTryCorrect:8,retryCorrect:0,secondMiss:0}}};
+ for(const [days,expected] of [[0,.25],[15,.625],[30,1]]){
+  const s=L.createSession(mastery,{'line-to-gain':{independent:{resolution:'firstTryCorrect',completedAt:new Date(now-days*86400000).toISOString()}}},now);
+  assert.equal(L.adaptiveNeedMultiplier(s,question),expected);
+ }
+ const s=L.createSession(mastery,{},now);
+ L.recordResolved(s,question,'secondMiss');assert.equal(L.adaptiveNeedMultiplier(s,question),2.125);
+ L.recordResolved(s,question,'firstTryCorrect');assert.equal(L.adaptiveNeedMultiplier(s,question),.25);
+ const literacy=entry('yards-to-go-read');assert.equal(L.adaptiveNeedMultiplier(s,literacy),L.adaptiveNeedMultiplier(L.createSession(mastery,{},now),literacy));
+});

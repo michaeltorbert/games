@@ -309,7 +309,7 @@ test('legacy facts migrate on a locked action; damaged drive metadata preserves 
  const legacy=await page.evaluate(KEY=>{const s=__factsTest.snapshot();s.schemaVersion=1;delete s.drive;delete s.attempt.rewardSupported;const bytes=JSON.stringify(s);localStorage.setItem(KEY,bytes);return bytes;},KEY);
  await page.reload();expect(await page.evaluate(k=>localStorage.getItem(k),KEY)).toBe(legacy);
  expect((await snapshot(page)).drive.totalYards).toBe(0);await correct(page);
- const migrated=await page.evaluate(k=>JSON.parse(localStorage.getItem(k)),KEY);expect(migrated.schemaVersion).toBe(3);expect(migrated.serial).toBe(2);expect(migrated.drive.totalYards).toBe(5);
+ const migrated=await page.evaluate(k=>JSON.parse(localStorage.getItem(k)),KEY);expect(migrated.schemaVersion).toBe(4);expect(migrated.serial).toBe(2);expect(migrated.drive.totalYards).toBe(5);
  const corrupt=await page.evaluate(KEY=>{const s=__factsTest.snapshot();s.drive.totalYards=-8;const bytes=JSON.stringify(s);localStorage.setItem(KEY,bytes);return bytes;},KEY);
  await page.reload();expect(await page.evaluate(k=>localStorage.getItem(k),KEY)).toBe(corrupt);
  expect((await snapshot(page)).facts).toEqual(migrated.facts);expect((await snapshot(page)).drive.totalYards).toBe(0);
@@ -377,7 +377,7 @@ test('toggle-only report exposure also marks a warm prompt as supported for driv
 
 test('mixed practice is the default and presentation changes do not change its arithmetic',async({page})=>{
  await page.goto('/place-value-practice/');
- await expect(page.locator('#game-version')).toHaveText('Version 1.9.2');
+ await expect(page.locator('#game-version')).toHaveText('Version 1.9.3');
  await mathPractice(page).click();await settled(page);
  await expect(page.locator('#arithmetic-practice')).toBeVisible();
  await expect(page.locator('#practice-route-label')).toHaveText('Addition & subtraction');await expect(optionsButton(page)).toHaveAccessibleName('Practice options, now Addition & subtraction');
@@ -746,3 +746,47 @@ test('retry and shown-answer completions keep their outcomes; the explanation ne
  }
 });
 function PLACE_FACTS_ANSWER(id){const [op,a,b]=id.split(':');return op==='add'?Number(a)+Number(b):Number(a)-Number(b);}
+
+// #201: a valid six-completion local history leaves the first fact family-spaced,
+// but short of its eight-other-family serial ticket. Only elapsed days make it due.
+async function calendarSave(page){
+ return page.evaluate(KEY=>{
+  const A=PLACE_FACTS,now=Date.now(),s=A.create(100),target=s.attempt.factId;
+  for(let i=0;i<6;i++){A.answer(s,s.attempt.id,A.byId[s.attempt.factId].answer,null,now);if(i<5)A.next(s,s.attempt.id);}
+  for(const r of Object.values(s.facts))r.lastEligibleCheckAtMs=null;
+  s.facts[target].lastEligibleCheckAtMs=now-A.CALENDAR_REVIEW_MS;s.lastObservedClockMs=now;
+  if(!A.normalize(s))throw Error('Calendar fixture must be a valid persisted core');
+  if(A.select(s,()=>0,now).fact.id!==target||A.select(s,()=>0,now-1).diagnostics.queue!=='coverage')throw Error('Fixture must isolate calendar eligibility');
+  const bytes=JSON.stringify(s);localStorage.setItem(KEY,bytes);return {target,bytes,now};
+ },KEY);
+}
+test('seven-day local review survives reload without a read write and remains ordinary supported practice',async({page})=>{
+ await boot(page);const seed=await calendarSave(page);await page.reload();
+ expect(await page.evaluate(k=>localStorage.getItem(k),KEY)).toBe(seed.bytes);
+ const before=await snapshot(page);expect(before.serial).toBe(6);expect(before.attempt.complete).toBe(true);
+ await page.screenshot({path:test.info().outputPath('calendar-before-next.png')});
+ await page.locator('#facts-next').tap();await settled(page);
+ const review=await snapshot(page);expect(review.attempt.factId).toBe(seed.target);expect(review.attempt.eligible).toBe(true);
+ await page.screenshot({path:test.info().outputPath('calendar-review.png')});
+ await page.locator('#facts-show').tap();await correct(page,true);
+ const supported=await snapshot(page);expect(supported.facts[seed.target].ticket.kind).toBe('retry');expect(supported.facts[seed.target].checks).toBe(before.facts[seed.target].checks);
+ expect(supported.facts[seed.target].lastEligibleCheckAtMs).toBe(before.facts[seed.target].lastEligibleCheckAtMs);
+});
+test('clock rollback repairs only the detached view until a locked accepted action saves it',async({page})=>{
+ await boot(page);const seed=await calendarSave(page);
+ await page.clock.setSystemTime(seed.now-1000);await page.reload();
+ const loaded=await snapshot(page);expect(loaded.facts[seed.target].lastEligibleCheckAtMs).toBe(seed.now-1000);
+ expect(await page.evaluate(k=>localStorage.getItem(k),KEY)).toBe(seed.bytes);
+ expect(await page.evaluate(()=>__factsTest.diagnostics().queue)).toBe('coverage');
+ await page.locator('#facts-next').tap();await settled(page);
+ const saved=JSON.parse(await page.evaluate(k=>localStorage.getItem(k),KEY));expect(saved.lastObservedClockMs).toBe(seed.now-1000);expect(saved.facts[seed.target].lastEligibleCheckAtMs).toBe(seed.now-1000);
+});
+test('a stale tab cannot duplicate a newly accepted eligible timestamp or overwrite it with its older clock',async({page,context})=>{
+ await boot(page);const other=await context.newPage();await freeze(other);await other.goto('/place-value-practice/');await expect(other.locator('#fact-practice')).toBeVisible();
+ await page.clock.setSystemTime(new Date('2026-09-10T12:00:00Z'));await correct(page,true);
+ const accepted=await snapshot(page),fid=accepted.attempt.factId,stamp=accepted.facts[fid].lastEligibleCheckAtMs;
+ expect(stamp).toBe(Date.parse('2026-09-10T12:00:00Z'));
+ await correct(other,true);expect(await other.evaluate(k=>JSON.parse(localStorage.getItem(k)).facts['sub:7:5'].lastEligibleCheckAtMs,KEY)).toBe(stamp);
+ expect(await other.evaluate(k=>JSON.parse(localStorage.getItem(k)).facts['sub:7:5'].checks,KEY)).toBe(1);
+ await expect(other.locator('.facts-storage')).toContainText('another tab');await other.close();
+});

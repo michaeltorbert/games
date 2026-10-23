@@ -82,7 +82,7 @@
   function cancelNext(){nextEpoch++;}
   function goNext(){
     if(!active||busy||!model?.attempt.complete||api.sessionDone(model))return;
-    const id=model.attempt.id;change(()=>api.next(model,id),nextEpoch);
+    const id=model.attempt.id;change(nowMs=>api.next(model,id,undefined,nowMs),nextEpoch);
   }
   async function restartSession(){
     if(model&&(api.pendingKick(model)||model.attempt.kind==='extraPoint'&&!model.attempt.complete))return;
@@ -91,7 +91,7 @@
     length.removeAttribute('aria-invalid');lengthError.hidden=true;
     cancelNext();panel.setAttribute('aria-busy','true');const progress=await CURRICULUM_UI.ask();panel.setAttribute('aria-busy','false');if(!progress)return;sessionPage=progress.completedThroughPage;api.configure(sessionPage);if(sessionPage<17){message=EMPTY_MESSAGE;render();if(active)unavailable?.();return;}
     cancelNext();const intent=++restartIntent,life=lifecycle;
-    await whenIdle;if(active&&life===lifecycle&&intent===restartIntent)await change(()=>api.restart(model,target));
+    await whenIdle;if(active&&life===lifecycle&&intent===restartIntent)await change(nowMs=>api.restart(model,target,undefined,nowMs));
   }
   function invalidate(){origin=null;timingInvalid=true;renderToken++;}
   function equationVisible(){const r=equation.getBoundingClientRect();return document.visibilityState==='visible'&&r.top>=0&&r.bottom<=innerHeight&&r.left>=0&&r.right<=innerWidth;}
@@ -185,10 +185,11 @@
       if(after.complete&&typeof LEARNING_SYNC!=='undefined')LEARNING_SYNC.nudge();
     }catch{}
   }
+  const clockView=s=>{const nowMs=Date.now();return api.repair(api.prepareClock(s,nowMs),nowMs);};
   function readInitial(){
     try{savedRaw=localStorage.getItem(KEY);const parsed=parse(savedRaw);
       if(parsed&&typeof parsed.schemaVersion==='number'&&parsed.schemaVersion>api.SCHEMA_VERSION)memory('This fact save comes from a newer version. This session and its drive yards stay in memory.');
-      const restored=api.normalize(parsed),loaded=restored&&outboxAttempt(restored);model=api.repair(restored||api.create());outboxLoaded(loaded);
+      const restored=api.normalize(parsed),loaded=restored&&outboxAttempt(restored);model=clockView(restored||api.create());outboxLoaded(loaded);
       if(restored&&api.driveNeedsRepair(parsed))driveNotice='The saved drive could not be read, so it starts at zero. Your learning progress is preserved.';
       if(savedRaw!==null&&!restored&&writable)message='The saved fact progress could not be read. Your next action starts a fresh saved practice.';
     }catch{memory();model=api.create();}
@@ -199,7 +200,7 @@
     const raw=localStorage.getItem(KEY);if(raw===savedRaw)return true;
     const parsed=parse(raw);cancelNext();invalidate();input='';lastAward=null;
     if(parsed&&typeof parsed.schemaVersion==='number'&&parsed.schemaVersion>api.SCHEMA_VERSION){memory('This fact save comes from a newer version. This session and its drive yards stay in memory.');return false;}
-    report.open=false;const restored=api.normalize(parsed),loaded=restored&&outboxAttempt(restored);model=api.repair(restored||api.create());outboxLoaded(loaded);
+    report.open=false;const restored=api.normalize(parsed),loaded=restored&&outboxAttempt(restored);model=clockView(restored||api.create());outboxLoaded(loaded);
     driveNotice=restored&&api.driveNeedsRepair(parsed)?'The saved drive could not be read, so it starts at zero. Your learning progress is preserved.':'';
     savedRaw=raw;message='Fact progress changed in another tab. Please try again.';return false;
   }
@@ -222,9 +223,11 @@
       if(!active||life!==lifecycle||epoch!==null&&epoch!==nextEpoch)return;
       try{if(!refresh()){render(false);return;}}catch{memory();}
       if(!active||model.attempt.id!==attemptId)return;
+      const nowMs=Date.now(),unprepared=model;model=api.prepareClock(model,nowMs);
       const prior=model.attempt,wasComplete=prior.complete,priorDrive=api.drive(model),priorMisses=prior.misses,wasHelped=prior.helped,outboxBefore=outboxAttempt(model);
       outboxAnswered=false;
-      if(!action())return;
+      if(!action(nowMs)){model=unprepared;return;}
+      if(api.clockMs(nowMs))model.lastObservedClockMs=nowMs;
       if(!wasComplete&&model.attempt===prior&&(prior.complete||prior.misses>priorMisses||prior.helped!==wasHelped)){
         const current=api.drive(model);lastAward={yards:current.totalYards-priorDrive.totalYards,touchdown:current.touchdowns>priorDrive.touchdowns,penalty:!prior.complete,kick:prior.kind==='extraPoint'};
       }
@@ -252,7 +255,7 @@
     const q=model.attempt,now=performance.now(),elapsed=origin===null?null:now-origin;
     const ms=!timingInvalid&&equationVisible()&&elapsed>=300&&elapsed<=60000?Math.round(elapsed/100)*100:null;
     invalidate();const value=Number(input);
-    change(()=>{const result=api.answer(model,q.id,value,ms);if(result)outboxAnswered=true;if(result&&!model.attempt.complete)input='';return result;});
+    change(nowMs=>{const result=api.answer(model,q.id,value,ms,nowMs);if(result)outboxAnswered=true;if(result&&!model.attempt.complete)input='';return result;});
   }
   function renderReport(){
     const data=api.report(model);reportContent.replaceChildren();
@@ -351,5 +354,5 @@
       drive:{...api.drive(model),score:api.score(model),lastAward:lastAward?.yards??null,celebrating:!!lastAward?.touchdown,saved:writable}};}
   });
   window.__factsTest=Object.freeze({storageKey:KEY,snapshot:()=>model&&JSON.parse(JSON.stringify(model)),timing:()=>({valid:!timingInvalid,started:origin!==null}),
-    diagnostics:()=>model&&api.select(model).diagnostics});
+    diagnostics:()=>model&&api.select(model,undefined,Date.now()).diagnostics});
 })();

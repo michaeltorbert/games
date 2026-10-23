@@ -4,7 +4,8 @@
 // This is content scope, never a page-completion claim.
 (() => {
   'use strict';
-  const LIMIT=1000000000, HISTORY=12, INTERVALS=[8,24,60];
+  const LIMIT=1000000000, HISTORY=12, INTERVALS=[8,24,60], CALENDAR_REVIEW_MS=7*24*60*60*1000;
+  const clockMs=n=>Number.isSafeInteger(n)&&n>=0&&n<=8640000000000000;
   const catalog=[], byId=Object.create(null), families=[];
   let curriculumPage=null;
   const allowed=f=>curriculumPage===null||(f.source.page??Infinity)<=curriculumPage;
@@ -34,17 +35,30 @@
     return `${equation(f)} = ${f.answer}, and ${f.answer} − ${f.b} = ${f.a}.`;
   }
   function blank() {
-    return {schemaVersion:3,serial:0,nonce:0,coverageCursor:0,drive:{totalYards:0,extraPoints:0,kicksResolved:0},
+    return {schemaVersion:4,lastObservedClockMs:null,serial:0,nonce:0,coverageCursor:0,drive:{totalYards:0,extraPoints:0,kicksResolved:0},
       families:Object.fromEntries(families.map(id=>[id,{completed:0,exposedAt:null}])),
-      facts:Object.fromEntries(catalog.map(f=>[f.id,{seen:0,lastSeen:null,completed:0,checks:0,history:[],ticket:null}])),
+      facts:Object.fromEntries(catalog.map(f=>[f.id,{seen:0,lastSeen:null,completed:0,checks:0,history:[],ticket:null,lastEligibleCheckAtMs:null}])),
       session:{target:10,completed:0,firstTry:0,helped:0,bonusCompleted:0},attempt:null};
   }
   function eligible(s,f,gap) {const e=s.families[f.family].exposedAt;return e===null||other(s,f.family)-e>=gap;}
-  function select(s,rng=()=>0) {
+  // Detached calendar view: no read writes storage or mutates the caller. A rollback
+  // treats every known check as just happened; individual future anchors do likewise.
+  // A normal read retains the last accepted clock observation, so reload is stable.
+  function prepareClock(s,nowMs) {
+    if(!clockMs(nowMs))return s;
+    const rollback=clockMs(s.lastObservedClockMs)&&nowMs<s.lastObservedClockMs;
+    const facts=Object.fromEntries(Object.entries(s.facts).map(([id,r])=>[id,
+      clockMs(r.lastEligibleCheckAtMs)&&(rollback||r.lastEligibleCheckAtMs>nowMs)?{...r,lastEligibleCheckAtMs:nowMs}:r]));
+    return {...s,facts,lastObservedClockMs:rollback?nowMs:s.lastObservedClockMs};
+  }
+  function select(s,rng=()=>0,nowMs=null) {
     let pool=catalog.filter(f=>allowed(f)&&eligible(s,f,s.facts[f.id].ticket?.kind==='retry'?2:5)), relaxed=[];
     if(!pool.length){pool=catalog.filter(allowed);relaxed.push('family-avoidance');}
     if(!pool.length)throw new RangeError('No completed fact skills');
-    const slot=s.serial%4, due=(f,kind)=>{const t=s.facts[f.id].ticket;return t&&t.kind===kind&&other(s,f.family)>=t.dueOther;};
+    const slot=s.serial%4, due=(f,kind)=>{const r=s.facts[f.id],t=r.ticket;
+      const calendar=slot===2&&kind==='spaced'&&clockMs(nowMs)&&clockMs(r.lastEligibleCheckAtMs)&&
+        (!clockMs(s.lastObservedClockMs)||nowMs>=s.lastObservedClockMs)&&nowMs>=r.lastEligibleCheckAtMs&&nowMs-r.lastEligibleCheckAtMs>=CALENDAR_REVIEW_MS;
+      return t&&t.kind===kind&&(other(s,f.family)>=t.dueOther||calendar);};
     const coverage=items=>items.slice().sort((a,b)=>{
       const aa=s.facts[a.id],bb=s.facts[b.id];
       return Number(aa.seen>0)-Number(bb.seen>0)||(aa.lastSeen??-1)-(bb.lastSeen??-1)||
@@ -69,9 +83,9 @@
     const roll=Number(rng()), index=kind==='coverage'?0:Math.floor((Number.isFinite(roll)?Math.max(0,Math.min(.999999,roll)):0)*choices.length);
     return {fact:choices[index],diagnostics:{slot,queue:kind,relaxed}};
   }
-  function present(s,rng,kind='drive') {
+  function present(s,rng,kind='drive',nowMs=null) {
     if(s.nonce>=LIMIT)return false;
-    const selected=select(s,rng),f=selected.fact,r=s.facts[f.id];
+    const selected=select(s,rng,nowMs),f=selected.fact,r=s.facts[f.id];
     const independent=eligible(s,f,5);
     s.attempt={id:++s.nonce,kind,kickResult:null,factId:f.id,misses:0,helped:false,complete:false,eligible:independent,firstMs:null,firstCorrect:null,rewardSupported:false};
     r.seen=Math.min(LIMIT,r.seen+1);r.lastSeen=s.serial;
@@ -80,7 +94,7 @@
     return selected.diagnostics;
   }
   function create(target=10,rng) {const s=blank();s.session.target=validTarget(target)?target:10;present(s,rng);return s;}
-  function repair(s){if(!s.attempt.complete&&!allowed(byId[s.attempt.factId])){const prior=s.attempt;present(s,()=>0,prior.kind);if(prior.kind==='extraPoint'&&(prior.misses||prior.helped||prior.rewardSupported))s.attempt.rewardSupported=true;}return s;}
+  function repair(s,nowMs=null){if(!s.attempt.complete&&!allowed(byId[s.attempt.factId])){const prior=s.attempt;present(s,()=>0,prior.kind,nowMs);if(prior.kind==='extraPoint'&&(prior.misses||prior.helped||prior.rewardSupported))s.attempt.rewardSupported=true;}return s;}
   function retry(s,f) {s.facts[f.id].ticket={kind:'retry',dueOther:other(s,f.family)+2,created:s.serial};}
   function reportOpened(s,id) {
     const q=s.attempt;if(q.id!==id||q.complete)return false;
@@ -102,7 +116,7 @@
     if(makeTen)s.families[makeTen.family].exposedAt=other(s,makeTen.family);
     retry(s,f);return true;
   }
-  function answer(s,id,value,ms=null) {
+  function answer(s,id,value,ms=null,nowMs=null) {
     const q=s.attempt;if(q.id!==id||q.complete||!integer(value,18)||s.serial>=LIMIT-60)return false;
     const f=byId[q.factId],r=s.facts[f.id],correct=value===f.answer;
     if(q.firstCorrect===null){q.firstCorrect=correct;q.firstMs=!q.helped&&sample(ms)?ms:null;}
@@ -125,7 +139,7 @@
       if(unsupported)s.session.firstTry++;else s.session.helped++;
     }
     const check=unsupported&&q.eligible;
-    if(check)r.checks++;
+    if(check){r.checks++;r.lastEligibleCheckAtMs=clockMs(nowMs)?nowMs:null;}
     r.history.push({serial:s.serial,outcome:q.helped?'shown':q.misses?'retry':'first-correct',eligible:check,ms:q.firstMs});
     r.history=r.history.slice(-HISTORY);
     s.families[f.family].exposedAt=other(s,f.family);
@@ -141,20 +155,21 @@
   function pendingKick(s) {return Math.floor(s.drive.totalYards/100)>s.drive.kicksResolved;}
   function score(s) {return Math.floor(s.drive.totalYards/100)*6+s.drive.extraPoints;}
   function sessionDone(s) {return s.session.completed>=s.session.target&&!pendingKick(s)&&!(s.attempt.kind==='extraPoint'&&!s.attempt.complete);}
-  function next(s,id,rng) {
+  function next(s,id,rng,nowMs=null) {
     if(s.attempt.id!==id||!s.attempt.complete||sessionDone(s))return false;
-    return !!present(s,rng,pendingKick(s)?'extraPoint':'drive');
+    return !!present(s,rng,pendingKick(s)?'extraPoint':'drive',nowMs);
   }
-  function restart(s,target,rng) {
+  function restart(s,target,rng,nowMs=null) {
     if(!validTarget(target)||s.nonce>=LIMIT||pendingKick(s)||s.attempt.kind==='extraPoint'&&!s.attempt.complete)return false;
-    s.session={target,completed:0,firstTry:0,helped:0,bonusCompleted:0};return !!present(s,rng);
+    s.session={target,completed:0,firstTry:0,helped:0,bonusCompleted:0};return !!present(s,rng,'drive',nowMs);
   }
   function normalize(raw) {
     // Fail learning evidence closed; partial repairs could create false checks.
     // Optional drive metadata is independently repairable below.
     try {
-      if(!raw||![1,2,3].includes(raw.schemaVersion)||!integer(raw.serial,LIMIT-60)||!integer(raw.nonce)||raw.nonce<1||!integer(raw.coverageCursor,199))return null;
+      if(!raw||![1,2,3,4].includes(raw.schemaVersion)||!integer(raw.serial,LIMIT-60)||!integer(raw.nonce)||raw.nonce<1||!integer(raw.coverageCursor,199))return null;
       const s=blank();s.serial=raw.serial;s.nonce=raw.nonce;s.coverageCursor=raw.coverageCursor;
+      if(raw.schemaVersion===4&&clockMs(raw.lastObservedClockMs))s.lastObservedClockMs=raw.lastObservedClockMs;
       // Legacy practice never receives retroactive rewards. Damage to optional
       // motivation data must not discard valid learning evidence.
       if(raw.schemaVersion>=2&&!driveNeedsRepair(raw)){
@@ -184,7 +199,7 @@
         let ticket=null;
         if(v.ticket!==null){const t=v.ticket;if(v.seen===0||!['retry','spaced'].includes(t.kind)||!integer(t.dueOther)||!integer(t.created,s.serial)||t.dueOther>other(s,f.family)+60)return null;
           ticket={kind:t.kind,dueOther:t.dueOther,created:t.created};}
-        s.facts[f.id]={seen:v.seen,lastSeen:v.lastSeen,completed:v.completed,checks:v.checks,history,ticket};totals[f.family]+=v.completed;presentations+=v.seen;
+        s.facts[f.id]={seen:v.seen,lastSeen:v.lastSeen,completed:v.completed,checks:v.checks,history,ticket,lastEligibleCheckAtMs:raw.schemaVersion===4&&v.checks>0&&clockMs(v.lastEligibleCheckAtMs)?v.lastEligibleCheckAtMs:null};totals[f.family]+=v.completed;presentations+=v.seen;
       }
       if(presentations!==s.nonce)return null;
       for(const id of families)if(totals[id]!==s.families[id].completed)return null;
@@ -211,7 +226,7 @@
     }catch{return null;}
   }
   function driveNeedsRepair(raw) {
-    if(![2,3].includes(raw?.schemaVersion))return false;
+    if(![2,3,4].includes(raw?.schemaVersion))return false;
     const d=raw.drive;
     if(!d||!integer(d.totalYards,raw.serial*5))return true;
     if(raw.schemaVersion===2)return false;
@@ -243,6 +258,6 @@
     if(!f||q.complete!==true||typeof PLACE_ARITHMETIC==='undefined')return null;
     return PLACE_ARITHMETIC.explainOperation(f.op,[f.a,f.b]);
   }
-  globalThis.PLACE_FACTS=Object.freeze({SCHEMA_VERSION:3,LIMIT,HISTORY,INTERVALS,catalog:Object.freeze(catalog),families:Object.freeze(families),byId:Object.freeze(byId),
+  globalThis.PLACE_FACTS=Object.freeze({SCHEMA_VERSION:4,LIMIT,HISTORY,INTERVALS,CALENDAR_REVIEW_MS,clockMs,prepareClock,catalog:Object.freeze(catalog),families:Object.freeze(families),byId:Object.freeze(byId),
     create,normalize,select,answer,show,reportOpened,next,restart,report,equation,help,explain,threshold,other,drive,driveNeedsRepair,pendingKick,score,sessionDone,configure,repair});
 })();
