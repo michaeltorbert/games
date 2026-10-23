@@ -1,4 +1,4 @@
-const GAME_VERSION = '1.34.23';
+const GAME_VERSION = '1.34.24';
 let prevPlayerScore = -1, prevOpponentScore = -1;
 let playerRunTimer = 0, playerCelebrateTimer = 0, playerCelebrateDelayTimer = 0;
 const EZ = 5;
@@ -4904,7 +4904,8 @@ function timeLabIsOpen() {
 function timeLabModeLabel(mode) {
   return mode === 'clocks' ? 'Clocks practice'
     : mode === 'calendar' ? 'Calendar practice'
-      : 'Mixed practice';
+      : mode === 'precision' ? 'Minutes & seconds'
+        : mode === 'football' ? 'Football time' : 'Mixed practice';
 }
 
 function nextTimeLabRootSeed() {
@@ -4967,46 +4968,34 @@ function svgNode(name, attributes = {}) {
 function appendTimeLabClock(parent, clock, label) {
   const figure = document.createElement('figure');
   figure.className = 'tl-clock-figure';
-  figure.dataset.time = `${clock.hour}:${String(clock.minute).padStart(2, '0')}`;
+  figure.dataset.time = FOOTBALL_TIME_LAB.formatDetailedTime(clock);
   const svg = svgNode('svg', { viewBox: '0 0 120 120', 'aria-hidden': 'true', focusable: 'false' });
   svg.classList.add('tl-clock-svg');
   svg.appendChild(svgNode('circle', { cx: 60, cy: 60, r: 54, class: 'tl-clock-face' }));
-  for (let index = 0; index < 12; index++) {
-    const angle = (index * Math.PI) / 6;
-    const inner = index % 3 === 0 ? 43 : 47;
+  for (let index = 0; index < 60; index++) {
+    const angle = index * Math.PI / 30;
+    const inner = index % 5 === 0 ? 46 : 49;
     svg.appendChild(svgNode('line', {
-      x1: 60 + Math.sin(angle) * inner,
-      y1: 60 - Math.cos(angle) * inner,
-      x2: 60 + Math.sin(angle) * 50,
-      y2: 60 - Math.cos(angle) * 50,
-      class: index % 3 === 0 ? 'tl-clock-tick tl-clock-tick-major' : 'tl-clock-tick',
+      x1: 60 + Math.sin(angle) * inner, y1: 60 - Math.cos(angle) * inner,
+      x2: 60 + Math.sin(angle) * 52, y2: 60 - Math.cos(angle) * 52,
+      class: index % 5 === 0 ? 'tl-clock-tick tl-clock-tick-major' : 'tl-clock-tick',
     }));
   }
-  [12, 3, 6, 9].forEach((number) => {
-    const positions = {
-      12: [60, 19], 3: [101, 65], 6: [60, 106], 9: [19, 65],
-    };
-    const text = svgNode('text', {
-      x: positions[number][0], y: positions[number][1], class: 'tl-clock-number',
-      'text-anchor': 'middle',
-    });
+  for (let number = 1; number <= 12; number++) {
+    const angle = number * Math.PI / 6;
+    const text = svgNode('text', { x: 60 + Math.sin(angle) * 37, y: 64 + -Math.cos(angle) * 37,
+      class: 'tl-clock-number', 'text-anchor': 'middle' });
     text.textContent = String(number);
     svg.appendChild(text);
+  }
+  const angles = FOOTBALL_TIME_LAB.clockAngles(clock);
+  const hands = [['hour', 24], ['minute', 40], ...(clock.second !== undefined ? [['second', 46]] : [])];
+  hands.forEach(([name, length]) => {
+    const angle = angles[name] * Math.PI / 180;
+    const x = 60 + Math.sin(angle) * length, y = 60 - Math.cos(angle) * length;
+    svg.appendChild(svgNode('line', { x1: 60, y1: 60, x2: x, y2: y, class: `tl-clock-hand tl-clock-${name}` }));
+    if (name === 'second') svg.appendChild(svgNode('circle', { cx: x, cy: y, r: 2.5, class: 'tl-clock-second-tip' }));
   });
-  const minuteAngle = (clock.minute * Math.PI) / 30;
-  const hourAngle = (((clock.hour % 12) + (clock.minute / 60)) * Math.PI) / 6;
-  svg.appendChild(svgNode('line', {
-    x1: 60, y1: 60,
-    x2: 60 + Math.sin(hourAngle) * 27,
-    y2: 60 - Math.cos(hourAngle) * 27,
-    class: 'tl-clock-hand tl-clock-hour',
-  }));
-  svg.appendChild(svgNode('line', {
-    x1: 60, y1: 60,
-    x2: 60 + Math.sin(minuteAngle) * 39,
-    y2: 60 - Math.cos(minuteAngle) * 39,
-    class: 'tl-clock-hand tl-clock-minute',
-  }));
   svg.appendChild(svgNode('circle', { cx: 60, cy: 60, r: 4, class: 'tl-clock-pin' }));
   figure.appendChild(svg);
   if (label) {
@@ -5043,13 +5032,32 @@ function renderTimeLabClockVisual(container, visual) {
   }
 
   const row = document.createElement('div');
-  row.className = 'tl-clock-row';
+  row.className = visual.type === 'detailed-clock' ? 'tl-clock-row tl-detailed-clock-row' : 'tl-clock-row';
   appendTimeLabClock(row, data.clock, 'Practice clock');
   if (data.showDigital && data.digitalTime) {
     const digital = document.createElement('div');
     digital.className = 'tl-digital-readout';
     digital.textContent = data.digitalTime;
     row.appendChild(digital);
+  }
+  container.appendChild(row);
+  if (visual.type === 'detailed-clock') {
+    const legend = document.createElement('p');
+    legend.className = 'tl-hand-legend';
+    legend.textContent = data.seconds ? 'Short thick hand: hour · Long hand: minutes · Thin round-tip hand: seconds. Hour : minutes : seconds' : 'Short thick hand: hour · Long hand: minutes';
+    container.appendChild(legend);
+  }
+}
+
+function renderTimeLabGameVisual(container, visual) {
+  const data = visual.data;
+  const row = document.createElement('div');
+  row.className = 'tl-game-time';
+  for (const [label, value] of [['Start', data.startLabel], ['Total time', data.durationLabel], [data.halfway ? 'Halfway time' : 'Finish time', data.targetLabel || '?']]) {
+    const item = document.createElement('div');
+    const caption = document.createElement('small'); caption.textContent = label;
+    const text = document.createElement('strong'); text.textContent = value;
+    item.append(caption, text); row.appendChild(item);
   }
   container.appendChild(row);
 }
@@ -5156,8 +5164,10 @@ function renderTimeLabVisual(visual) {
   }
   container.setAttribute('role', 'img');
   container.setAttribute('aria-label', visual.ariaLabel);
-  if (['analog-clock', 'analog-digital', 'elapsed-clock'].includes(visual.type)) {
+  if (['analog-clock', 'analog-digital', 'elapsed-clock', 'detailed-clock'].includes(visual.type)) {
     renderTimeLabClockVisual(container, visual);
+  } else if (visual.type === 'game-elapsed') {
+    renderTimeLabGameVisual(container, visual);
   } else if (visual.type === 'day-night') {
     renderTimeLabAmPmVisual(container, visual);
   } else if (visual.type === 'month-ladder') {
@@ -5167,6 +5177,12 @@ function renderTimeLabVisual(visual) {
 
 function timeLabFamilyHeading(familyId) {
   const headings = {
+    'time-read-five-minute': 'Read minutes',
+    'time-read-one-minute': 'Count each minute',
+    'time-read-five-second': 'Read seconds',
+    'time-read-one-second': 'Count each second',
+    'game-finish-time': 'When does it finish?',
+    'game-halfway-time': 'Find the halfway time',
     'time-read-whole-hour': 'Read the whole hour',
     'time-read-half-hour': 'Read the half hour',
     'time-match-analog-digital': 'Match the clock',

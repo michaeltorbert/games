@@ -6,9 +6,7 @@ const FOOTBALL_TIME_LAB = (() => {
 
   const SCHEMA_VERSION = 1;
   const SESSION_LENGTH = 8;
-  const COMPLETED_THROUGH_PAGE = 145;
-  const INCLUDED_THROUGH_PAGE = 179;
-  const MODES = Object.freeze(['clocks', 'calendar', 'mixed']);
+  const MODES = Object.freeze(['clocks', 'calendar', 'mixed', 'precision', 'football']);
   const EVIDENCE_CLASSES = Object.freeze(['literacy', 'independent']);
   const ANSWER_EXPOSURES = Object.freeze(['source-visible', 'modeled-with-result-hidden']);
   const MONTH_NAMES = Object.freeze([
@@ -89,12 +87,55 @@ const FOOTBALL_TIME_LAB = (() => {
     });
   }
 
-  function normalizeClock(value) {
+  function normalizeDetailedClock(value) {
     if (!isRecord(value) || !Number.isInteger(value.hour) || value.hour < 1 || value.hour > 12
-      || ![0, 30].includes(value.minute)) {
-      throw new TypeError('Practice clocks require hour 1-12 and minute 0 or 30.');
+      || !Number.isInteger(value.minute) || value.minute < 0 || value.minute > 59
+      || (value.second !== undefined && (!Number.isInteger(value.second) || value.second < 0 || value.second > 59))) {
+      throw new TypeError('Practice clocks require hour 1-12 and minute/second 0-59.');
     }
-    return deepFreeze({ hour: value.hour, minute: value.minute });
+    return deepFreeze({ hour: value.hour, minute: value.minute, second: value.second ?? 0 });
+  }
+
+  function normalizeClock(value) {
+    const clock = normalizeDetailedClock(value);
+    if (![0, 30].includes(clock.minute) || value.second !== undefined) {
+      throw new TypeError('Basic practice clocks require minute 0 or 30 and no seconds.');
+    }
+    return deepFreeze({ hour: clock.hour, minute: clock.minute });
+  }
+
+  function formatDetailedTime(value, seconds = value.second !== undefined) {
+    const clock = normalizeDetailedClock(value);
+    return `${clock.hour}:${String(clock.minute).padStart(2, '0')}${seconds ? `:${String(clock.second).padStart(2, '0')}` : ''}`;
+  }
+
+  function addClockSeconds(value, delta) {
+    const clock = normalizeDetailedClock(value);
+    if (!Number.isSafeInteger(delta)) throw new TypeError('Clock seconds must be an integer.');
+    const total = (((clock.hour % 12) * 3600 + clock.minute * 60 + clock.second + delta) % 43200 + 43200) % 43200;
+    return normalizeDetailedClock({ hour: Math.floor(total / 3600) || 12, minute: Math.floor(total / 60) % 60, second: total % 60 });
+  }
+
+  function clockAngles(value) {
+    const clock = normalizeDetailedClock(value);
+    return deepFreeze({ hour: 30 * ((clock.hour % 12) + clock.minute / 60 + clock.second / 3600), minute: 6 * (clock.minute + clock.second / 60), second: 6 * clock.second });
+  }
+
+  function formatDayTime(total) {
+    if (!Number.isSafeInteger(total) || total < 0) throw new TypeError('Day time must be nonnegative integer minutes.');
+    const minute = total % 1440;
+    const hour = Math.floor(minute / 60);
+    const time = `${hour % 12 || 12}:${String(minute % 60).padStart(2, '0')}`;
+    const period = minute === 0 ? 'midnight' : minute === 720 ? 'noon' : hour < 12 ? 'AM' : 'PM';
+    const day = Math.floor(total / 1440);
+    return `${time} ${period}${day ? day === 1 ? ' (next day)' : ` (${day} days later)` : ''}`;
+  }
+
+  function elapsedGameTime(startMinutes, durationMinutes, halfway = false) {
+    if (!Number.isInteger(startMinutes) || startMinutes < 0 || startMinutes >= 1440
+      || !Number.isInteger(durationMinutes) || durationMinutes <= 0 || durationMinutes > 1440
+      || typeof halfway !== 'boolean' || (halfway && durationMinutes % 2)) throw new TypeError('Invalid pretend game time.');
+    return startMinutes + durationMinutes / (halfway ? 2 : 1);
   }
 
   function clockMinutes(value) {
@@ -260,10 +301,6 @@ const FOOTBALL_TIME_LAB = (() => {
     if (value.evidenceClass === 'independent' && value.answerExposure !== 'modeled-with-result-hidden') {
       throw new TypeError(`${familyId} independent work must hide the modeled result.`);
     }
-    if (!Number.isInteger(value.introducedOnPage) || value.introducedOnPage <= COMPLETED_THROUGH_PAGE
-      || value.introducedOnPage > INCLUDED_THROUGH_PAGE) {
-      throw new TypeError(`${familyId} has an invalid workbook page.`);
-    }
     return deepFreeze({
       id: familyId,
       familyId,
@@ -271,8 +308,8 @@ const FOOTBALL_TIME_LAB = (() => {
       concept: safeId(value.concept, 'Concept'),
       purpose: value.evidenceClass === 'literacy' ? 'read' : 'solve',
       grading: 'practice',
-      curriculumSource: 'workbook',
-      introducedOnPage: value.introducedOnPage,
+      curriculumSource: ['precision', 'football'].includes(value.group) ? 'user-requested-extension' : 'standalone-practice',
+      introducedOnPage: null,
       evidenceClass: value.evidenceClass,
       answerExposure: value.answerExposure,
       group: value.group,
@@ -281,14 +318,20 @@ const FOOTBALL_TIME_LAB = (() => {
   }
 
   const FAMILY_REGISTRY = deepFreeze([
-    makeMeta({ familyId: 'time-read-whole-hour', skill: 'whole-hour-reading', concept: 'clock-reading', introducedOnPage: 164, evidenceClass: 'literacy', answerExposure: 'source-visible', group: 'clocks', visualType: 'analog-clock' }),
-    makeMeta({ familyId: 'time-read-half-hour', skill: 'half-hour-reading', concept: 'clock-reading', introducedOnPage: 164, evidenceClass: 'literacy', answerExposure: 'source-visible', group: 'clocks', visualType: 'analog-clock' }),
-    makeMeta({ familyId: 'time-match-analog-digital', skill: 'analog-digital-matching', concept: 'clock-representation', introducedOnPage: 167, evidenceClass: 'literacy', answerExposure: 'source-visible', group: 'clocks', visualType: 'analog-digital' }),
-    makeMeta({ familyId: 'time-one-hour-later', skill: 'one-hour-later', concept: 'elapsed-time', introducedOnPage: 164, evidenceClass: 'independent', answerExposure: 'modeled-with-result-hidden', group: 'clocks', visualType: 'elapsed-clock' }),
-    makeMeta({ familyId: 'time-half-hour-later', skill: 'half-hour-later', concept: 'elapsed-time', introducedOnPage: 164, evidenceClass: 'independent', answerExposure: 'modeled-with-result-hidden', group: 'clocks', visualType: 'elapsed-clock' }),
-    makeMeta({ familyId: 'time-am-or-pm', skill: 'am-pm-situation', concept: 'time-of-day', introducedOnPage: 172, evidenceClass: 'independent', answerExposure: 'modeled-with-result-hidden', group: 'clocks', visualType: 'day-night' }),
-    makeMeta({ familyId: 'calendar-find-date-day', skill: 'calendar-reading', concept: 'calendar-reading', introducedOnPage: 175, evidenceClass: 'literacy', answerExposure: 'source-visible', group: 'calendar', visualType: 'calendar-grid' }),
-    makeMeta({ familyId: 'calendar-month-neighbor', skill: 'month-order', concept: 'month-order', introducedOnPage: 175, evidenceClass: 'independent', answerExposure: 'modeled-with-result-hidden', group: 'calendar', visualType: 'month-ladder' }),
+    makeMeta({ familyId: 'time-read-whole-hour', skill: 'whole-hour-reading', concept: 'clock-reading', evidenceClass: 'literacy', answerExposure: 'source-visible', group: 'clocks', visualType: 'analog-clock' }),
+    makeMeta({ familyId: 'time-read-half-hour', skill: 'half-hour-reading', concept: 'clock-reading', evidenceClass: 'literacy', answerExposure: 'source-visible', group: 'clocks', visualType: 'analog-clock' }),
+    makeMeta({ familyId: 'time-match-analog-digital', skill: 'analog-digital-matching', concept: 'clock-representation', evidenceClass: 'literacy', answerExposure: 'source-visible', group: 'clocks', visualType: 'analog-digital' }),
+    makeMeta({ familyId: 'time-one-hour-later', skill: 'one-hour-later', concept: 'elapsed-time', evidenceClass: 'independent', answerExposure: 'modeled-with-result-hidden', group: 'clocks', visualType: 'elapsed-clock' }),
+    makeMeta({ familyId: 'time-half-hour-later', skill: 'half-hour-later', concept: 'elapsed-time', evidenceClass: 'independent', answerExposure: 'modeled-with-result-hidden', group: 'clocks', visualType: 'elapsed-clock' }),
+    makeMeta({ familyId: 'time-am-or-pm', skill: 'am-pm-situation', concept: 'time-of-day', evidenceClass: 'independent', answerExposure: 'modeled-with-result-hidden', group: 'clocks', visualType: 'day-night' }),
+    makeMeta({ familyId: 'calendar-find-date-day', skill: 'calendar-reading', concept: 'calendar-reading', evidenceClass: 'literacy', answerExposure: 'source-visible', group: 'calendar', visualType: 'calendar-grid' }),
+    makeMeta({ familyId: 'calendar-month-neighbor', skill: 'month-order', concept: 'month-order', evidenceClass: 'independent', answerExposure: 'modeled-with-result-hidden', group: 'calendar', visualType: 'month-ladder' }),
+    makeMeta({ familyId: 'time-read-five-minute', skill: 'time-read-five-minute', concept: 'time-read-five-minute', evidenceClass: 'literacy', answerExposure: 'source-visible', group: 'precision', visualType: 'detailed-clock' }),
+    makeMeta({ familyId: 'time-read-one-minute', skill: 'time-read-one-minute', concept: 'time-read-one-minute', evidenceClass: 'literacy', answerExposure: 'source-visible', group: 'precision', visualType: 'detailed-clock' }),
+    makeMeta({ familyId: 'time-read-five-second', skill: 'time-read-five-second', concept: 'time-read-five-second', evidenceClass: 'literacy', answerExposure: 'source-visible', group: 'precision', visualType: 'detailed-clock' }),
+    makeMeta({ familyId: 'time-read-one-second', skill: 'time-read-one-second', concept: 'time-read-one-second', evidenceClass: 'literacy', answerExposure: 'source-visible', group: 'precision', visualType: 'detailed-clock' }),
+    makeMeta({ familyId: 'game-finish-time', skill: 'game-finish-time', concept: 'game-finish-time', evidenceClass: 'independent', answerExposure: 'modeled-with-result-hidden', group: 'football', visualType: 'game-elapsed' }),
+    makeMeta({ familyId: 'game-halfway-time', skill: 'game-halfway-time', concept: 'game-halfway-time', evidenceClass: 'independent', answerExposure: 'modeled-with-result-hidden', group: 'football', visualType: 'game-elapsed' }),
   ]);
   const FAMILY_BY_ID = new Map(FAMILY_REGISTRY.map(meta => [meta.familyId, meta]));
 
@@ -408,7 +451,83 @@ const FOOTBALL_TIME_LAB = (() => {
     return fixture;
   }
 
+  const PRECISE_FIXTURES = deepFreeze({
+    'time-read-five-minute': [
+      { hour: 3, minute: 35 }, { hour: 9, minute: 20 }, { hour: 5, minute: 10 },
+      { hour: 10, minute: 40 }, { hour: 2, minute: 50 }, { hour: 7, minute: 5 },
+    ],
+    'time-read-one-minute': [
+      { hour: 7, minute: 32 }, { hour: 11, minute: 59 }, { hour: 12, minute: 1 },
+      { hour: 4, minute: 18 }, { hour: 9, minute: 43 }, { hour: 2, minute: 26 },
+    ],
+    'time-read-five-second': [
+      { hour: 8, minute: 15, second: 20 }, { hour: 2, minute: 30, second: 45 },
+      { hour: 5, minute: 15, second: 0 }, { hour: 10, minute: 30, second: 10 },
+      { hour: 4, minute: 45, second: 35 }, { hour: 7, minute: 15, second: 50 },
+    ],
+    'time-read-one-second': [
+      { hour: 3, minute: 30, second: 7 }, { hour: 7, minute: 15, second: 59 },
+      { hour: 10, minute: 30, second: 1 }, { hour: 5, minute: 45, second: 23 },
+      { hour: 8, minute: 30, second: 42 }, { hour: 2, minute: 15, second: 38 },
+    ],
+  });
+  const GAME_STARTS = deepFreeze([720, 930, 1170, 1200]);
+
+  function detailedSemantic(meta, options, rng) {
+    const fixtures = PRECISE_FIXTURES[meta.familyId];
+    const raw = options.fact || (options.fixtureIndex === undefined ? pick(fixtures, rng) : fixtures[options.fixtureIndex % fixtures.length]);
+    const normalized = normalizeDetailedClock(raw);
+    const seconds = meta.familyId.endsWith('second');
+    if ((!seconds && raw.second !== undefined) || (seconds && raw.second === undefined)
+      || (meta.familyId === 'time-read-five-minute' && normalized.minute % 5 !== 0)
+      || (meta.familyId === 'time-read-five-second' && normalized.second % 5 !== 0)) throw new TypeError('Clock fact is not eligible for this family.');
+    const clock = seconds ? normalized : { hour: normalized.hour, minute: normalized.minute };
+    const answer = formatDetailedTime(clock, seconds);
+    const choices = fixedChoiceValues(answer, [
+      formatDetailedTime(addClockSeconds(clock, seconds ? 5 : 300), seconds),
+      formatDetailedTime(addClockSeconds(clock, 3600), seconds),
+      formatDetailedTime(addClockSeconds(clock, seconds ? -5 : -300), seconds),
+    ]);
+    const handPosition = value => value % 5 === 0 ? `at ${value / 5 || 12}` : `${value % 5} small marks after ${Math.floor(value / 5) || 12}`;
+    const aria = `Stopped practice clock. Short thick hour hand ${clock.minute || normalized.second ? `between ${clock.hour} and ${clock.hour % 12 + 1}` : `at ${clock.hour}`}. Long minute hand ${handPosition(clock.minute)}${normalized.second ? ', slightly forward toward the next mark' : ''}.${seconds ? ` Thin second hand with a round tip ${handPosition(clock.second)}.` : ''}`;
+    const visual = { clock, showDigital: false, seconds };
+    return {
+      facts: { clock }, answer, choices,
+      prompt: seconds ? 'Read the hour, minutes and seconds on this practice clock.' : 'What time does this practice clock show?',
+      sourceVisualData: visual, workedVisualData: { ...visual, showDigital: true, digitalTime: answer },
+      sourceVisualAria: aria, workedVisualAria: `${aria} The time is ${answer}.`,
+      baselineGuidance: seconds ? 'Read each hand. The thin hand with a round tip counts seconds.' : 'This clock is stopped. Read the short hour hand and the long minute hand.',
+      retryGuidance: seconds ? 'For seconds, count by fives to the last number passed, then count the small marks.' : 'Count by fives to the last number the long hand passed, then count the small marks.',
+      explanation: seconds
+        ? `Read ${clock.hour} hours and ${clock.minute} minutes. The thin hand passed ${Math.floor(clock.second / 5) * 5} seconds, then ${clock.second % 5} more marks: ${clock.second} seconds. The time is ${answer}.`
+        : `The long hand passed ${Math.floor(clock.minute / 5) || 12}: ${Math.floor(clock.minute / 5) * 5} minutes, then ${clock.minute % 5} more marks. The short hand gives hour ${clock.hour}. The time is ${answer}.`,
+    };
+  }
+
+  function gameSemantic(meta, options, rng) {
+    const startMinutes = options.startMinutes === undefined ? (options.fixtureIndex === undefined ? pick(GAME_STARTS, rng) : GAME_STARTS[options.fixtureIndex % GAME_STARTS.length]) : options.startMinutes;
+    const durationMinutes = 240;
+    const halfway = meta.familyId === 'game-halfway-time';
+    const targetMinutes = elapsedGameTime(startMinutes, durationMinutes, halfway);
+    const start = formatDayTime(startMinutes), answer = formatDayTime(targetMinutes);
+    const alternatives = [startMinutes + (halfway ? 240 : 120), targetMinutes + 60, targetMinutes - 30];
+    const data = { startMinutes, startLabel: start, durationLabel: '4 hours', targetLabel: null, halfway };
+    return {
+      facts: { startMinutes, durationMinutes, halfway }, answer,
+      choices: fixedChoiceValues(answer, alternatives.map(formatDayTime)),
+      prompt: `A pretend football game starts at ${start} and lasts 4 hours. ${halfway ? 'Halfway means half the total time has passed. What time is halfway through?' : 'What time does it finish?'}`,
+      sourceVisualData: data, workedVisualData: { ...data, targetLabel: answer },
+      sourceVisualAria: `Start: ${start}. Total time: 4 hours. Work out the ${halfway ? 'halfway' : 'finish'} time.`,
+      workedVisualAria: `Start: ${start}. The ${halfway ? 'halfway' : 'finish'} time is ${answer}.`,
+      baselineGuidance: halfway ? 'Find the halfway time for this pretend game.' : 'Find the finish time for this pretend game.',
+      retryGuidance: halfway ? 'Split the total time into two equal parts. Move forward by one part from the start.' : 'Count forward one hour at a time. Keep the minutes the same.',
+      explanation: halfway ? `4 hours splits into 2 hours and 2 hours. Two hours after ${start} is ${answer}.` : `${[0, 60, 120, 180, 240].map(move => formatDayTime(startMinutes + move)).join(' → ')}. Four hours have passed.`,
+    };
+  }
+
   function semanticFor(meta, options, contentRng) {
+    if (meta.group === 'precision') return detailedSemantic(meta, options, contentRng);
+    if (meta.group === 'football') return gameSemantic(meta, options, contentRng);
     if (meta.familyId === 'time-read-whole-hour' || meta.familyId === 'time-read-half-hour'
       || meta.familyId === 'time-match-analog-digital') {
       const minute = meta.familyId === 'time-read-whole-hour' ? [0]
@@ -595,7 +714,12 @@ const FOOTBALL_TIME_LAB = (() => {
     if (!MODES.includes(mode)) throw new TypeError('Unknown Time Lab mode.');
     const clockIds = FAMILY_REGISTRY.filter(meta => meta.group === 'clocks').map(meta => meta.familyId);
     const calendarIds = FAMILY_REGISTRY.filter(meta => meta.group === 'calendar').map(meta => meta.familyId);
-    if (mode === 'mixed') return shuffled(FAMILY_REGISTRY.map(meta => meta.familyId), contentRng);
+    if (mode === 'mixed') return shuffled([...clockIds, ...calendarIds], contentRng);
+    if (mode === 'precision') {
+      const ids = Object.keys(PRECISE_FIXTURES);
+      return [...ids, ...ids];
+    }
+    if (mode === 'football') return ['game-finish-time', 'game-halfway-time'].flatMap(id => Array(4).fill(id));
     if (mode === 'clocks') {
       const core = shuffled(clockIds, contentRng);
       return [...core, pick(clockIds, contentRng), pick(clockIds, contentRng)];
@@ -611,6 +735,14 @@ const FOOTBALL_TIME_LAB = (() => {
       ? { content: options.contentRng, presentation: options.presentationRng }
       : createRngStreams(options.rootSeed ?? 0x54494d45);
     const plan = familyPlan(mode, streams.content);
+    if (plan.length !== SESSION_LENGTH) throw new TypeError('Practice sessions require exactly eight questions.');
+    // Select two different stopped clocks per skill. Presentation draws never
+    // participate, and the scaffolded family order remains unchanged.
+    const precisionFacts = mode === 'precision'
+      ? Object.fromEntries(Object.entries(PRECISE_FIXTURES).map(([familyId, fixtures]) => (
+          [familyId, shuffled(fixtures, streams.content).slice(0, 2)]
+        )))
+      : null;
     const slots = plan.map((familyId, index) => {
       const meta = FAMILY_BY_ID.get(familyId);
       return {
@@ -629,6 +761,7 @@ const FOOTBALL_TIME_LAB = (() => {
           instanceId: `${sessionId}-question-${index + 1}`,
           contentRng: streams.content,
           presentationRng: streams.presentation,
+          ...(mode === 'precision' ? { fact: precisionFacts[familyId][Math.floor(index / 4)] } : mode === 'football' ? { fixtureIndex: index % 4 } : {}),
         }),
       };
     });
@@ -696,7 +829,7 @@ const FOOTBALL_TIME_LAB = (() => {
       return;
     }
     const target = later.find(candidate => (
-      draft.mode === 'calendar' ? candidate.familyId === slot.familyId : candidate.concept === slot.concept
+      ['calendar', 'precision', 'football'].includes(draft.mode) ? candidate.familyId === slot.familyId : candidate.concept === slot.concept
     ));
     if (target) {
       target.supportLevel = 'heightened';
@@ -795,6 +928,8 @@ const FOOTBALL_TIME_LAB = (() => {
         evidenceClass: slot.question.evidenceClass,
         purpose: slot.question.purpose,
         introducedOnPage: slot.question.introducedOnPage,
+        curriculumSource: slot.question.curriculumSource,
+        grading: slot.question.grading,
         attempt: slot.attempt,
         supportLevel: slot.supportLevel,
         resolution: slot.resolution,
@@ -824,8 +959,6 @@ const FOOTBALL_TIME_LAB = (() => {
   return deepFreeze({
     SCHEMA_VERSION,
     SESSION_LENGTH,
-    COMPLETED_THROUGH_PAGE,
-    INCLUDED_THROUGH_PAGE,
     MODES,
     EVIDENCE_CLASSES,
     ANSWER_EXPOSURES,
@@ -835,6 +968,14 @@ const FOOTBALL_TIME_LAB = (() => {
     CALENDAR_FIXTURES,
     AM_PM_FIXTURES,
     FAMILY_REGISTRY,
+    normalizeDetailedClock,
+    formatDetailedTime,
+    addClockSeconds,
+    clockAngles,
+    formatDayTime,
+    elapsedGameTime,
+    PRECISE_FIXTURES,
+    GAME_STARTS,
     normalizeClock,
     addClockMinutes,
     formatTime,

@@ -83,7 +83,7 @@ function reachScheduledCalendarSlot(lab, sessionId) {
   return session;
 }
 
-test('registers exactly eight frozen curriculum families with the approved evidence map', () => {
+test('registers the preserved basic families and truthful standalone extension metadata', () => {
   const lab = loadTimeLab();
   const expected = [
     ['time-read-whole-hour', 164, 'literacy', 'source-visible'],
@@ -96,12 +96,18 @@ test('registers exactly eight frozen curriculum families with the approved evide
     ['calendar-month-neighbor', 175, 'independent', 'modeled-with-result-hidden'],
   ];
   assert.deepEqual(
-    plain(lab.FAMILY_REGISTRY.map(meta => [meta.familyId, meta.introducedOnPage, meta.evidenceClass, meta.answerExposure])),
-    expected,
+    plain(lab.FAMILY_REGISTRY.slice(0, 8).map(meta => [meta.familyId, meta.introducedOnPage, meta.evidenceClass, meta.answerExposure])),
+    expected.map(([id, page, evidence, exposure]) => [id, null, evidence, exposure]),
   );
   assert.equal(deepFrozen(lab.FAMILY_REGISTRY), true);
-  assert.equal(lab.COMPLETED_THROUGH_PAGE, 145);
-  assert.equal(lab.INCLUDED_THROUGH_PAGE, 179);
+  assert.equal(lab.COMPLETED_THROUGH_PAGE, undefined);
+  assert.equal(lab.INCLUDED_THROUGH_PAGE, undefined);
+  assert.equal(lab.FAMILY_REGISTRY.length, 14);
+  for (const meta of lab.FAMILY_REGISTRY) {
+    assert.equal(meta.introducedOnPage, null);
+    assert.equal(meta.grading, 'practice');
+    assert.equal(meta.curriculumSource, ['precision', 'football'].includes(meta.group) ? 'user-requested-extension' : 'standalone-practice');
+  }
 });
 
 test('builds every family as a recursively frozen question with stable unique choices', () => {
@@ -229,7 +235,7 @@ test('builds deterministic two-stream sessions whose presentation cannot perturb
 
 test('creates exactly eight coverage-first questions in Clocks, Calendar, and Mixed', () => {
   const lab = loadTimeLab();
-  const allFamilies = new Set(lab.FAMILY_REGISTRY.map(meta => meta.familyId));
+  const allFamilies = new Set(lab.FAMILY_REGISTRY.filter(meta => ['clocks', 'calendar'].includes(meta.group)).map(meta => meta.familyId));
   const clockFamilies = new Set(lab.FAMILY_REGISTRY.filter(meta => meta.group === 'clocks').map(meta => meta.familyId));
   const calendarFamilies = new Set(lab.FAMILY_REGISTRY.filter(meta => meta.group === 'calendar').map(meta => meta.familyId));
   for (const mode of lab.MODES) {
@@ -474,5 +480,117 @@ test('domain source has no live-game or persistence authority references', () =>
     'createGameState(',
   ]) {
     assert.equal(source.includes(forbidden), false, forbidden);
+  }
+});
+
+test('precise clocks validate every unit, preserve legacy eligibility, carry and continuously position hands', () => {
+  const lab = loadTimeLab();
+  for (let unit = 0; unit < 60; unit++) {
+    assert.equal(lab.formatDetailedTime({hour: 12, minute: unit, second: unit}), `12:${String(unit).padStart(2, '0')}:${String(unit).padStart(2, '0')}`);
+    const question = lab.buildQuestion('time-read-one-second', {fact: {hour: 3, minute: 30, second: unit}});
+    assert.equal(question.answer.value, `3:30:${String(unit).padStart(2, '0')}`);
+    assert.equal(question.choices.length, 4);
+  }
+  for (const bad of [-1, 60, 1.5, NaN]) {
+    assert.throws(() => lab.normalizeDetailedClock({hour: 3, minute: bad}));
+    assert.throws(() => lab.normalizeDetailedClock({hour: 3, minute: 5, second: bad}));
+  }
+  for (const hour of [0, 13, 1.5]) assert.throws(() => lab.normalizeDetailedClock({hour, minute: 0}));
+  assert.throws(() => lab.normalizeClock({hour: 3, minute: 1}));
+  assert.throws(() => lab.normalizeClock({hour: 3, minute: 30, second: 0}));
+  assert.deepEqual(plain(lab.normalizeClock({hour: 3, minute: 30})), {hour: 3, minute: 30});
+  assert.equal(lab.formatDetailedTime(lab.addClockSeconds({hour: 11, minute: 59, second: 59}, 1)), '12:00:00');
+  assert.equal(lab.formatDetailedTime(lab.addClockSeconds({hour: 12, minute: 59, second: 59}, 1)), '1:00:00');
+  assert.deepEqual(plain(lab.clockAngles({hour: 3, minute: 30, second: 30})), {hour: 105.25, minute: 183, second: 180});
+});
+
+test('fictional football finish and halfway retain noon, midnight and day boundaries with hidden results', () => {
+  const lab = loadTimeLab();
+  const answers = [['4:00 PM', '7:30 PM', '11:30 PM', '12:00 midnight (next day)'], ['2:00 PM', '5:30 PM', '9:30 PM', '10:00 PM']];
+  for (const [type, id] of ['game-finish-time', 'game-halfway-time'].entries()) {
+    for (let fixtureIndex = 0; fixtureIndex < 4; fixtureIndex++) {
+      const q = lab.buildQuestion(id, {fixtureIndex});
+      assert.equal(q.answer.value, answers[type][fixtureIndex]);
+      assert.equal(q.choices.length, 4);
+      for (const stage of ['initial', 'guided']) {
+        assert.equal(q.visuals[stage].data.targetLabel, null);
+        assert.equal(q.visuals[stage].result, null);
+        assert.ok(!q.visuals[stage].ariaLabel.includes(q.answer.value));
+      }
+      assert.equal(q.visuals.worked.data.targetLabel, q.answer.value);
+    }
+  }
+  assert.equal(lab.formatDayTime(lab.elapsedGameTime(690, 60)), '12:30 PM');
+  assert.equal(lab.formatDayTime(lab.elapsedGameTime(1410, 60)), '12:30 AM (next day)');
+  assert.throws(() => lab.elapsedGameTime(720, 91, true));
+  assert.throws(() => lab.elapsedGameTime(1440, 240));
+  assert.throws(() => lab.elapsedGameTime(720, -1));
+});
+
+test('new sessions guarantee eight scaffolded distinct-fixture encounters and support never replaces coverage', () => {
+  const lab = loadTimeLab();
+  for (let seed = 0; seed < 12; seed++) {
+    for (const mode of ['precision', 'football']) {
+      let session = lab.createSession(mode, {rootSeed: seed});
+      const before = plain(session.slots.map(slot => [slot.familyId, slot.question.facts]));
+      assert.equal(session.slots.length, 8);
+      if (mode === 'precision') {
+        assert.deepEqual(plain(session.slots.slice(0, 4).map(slot => slot.familyId)), Object.keys(plain(lab.PRECISE_FIXTURES)));
+        for (let i = 0; i < 4; i++) assert.notDeepEqual(plain(session.slots[i].question.facts), plain(session.slots[i + 4].question.facts));
+      } else assert.deepEqual(plain(session.slots.map(slot => slot.question.facts.startMinutes)), [720, 930, 1170, 1200, 720, 930, 1170, 1200]);
+      session = answerWrong(lab, session);
+      assert.deepEqual(plain(session.slots.map(slot => [slot.familyId, slot.question.facts])), before);
+      assert.ok(session.slots.some(slot => slot.supportReason === 'related-miss'));
+      assert.equal(lab.publicSnapshot(session).current.workedExplanation, null);
+      session = answerWrong(lab, session, 1);
+      assert.ok(lab.publicSnapshot(session).current.workedExplanation);
+      const slot = current(session);
+      session = lab.nextSession(session, slot.question.questionInstanceId);
+      while (session.status === 'active') session = resolveCorrect(lab, session);
+      assert.equal(session.status, 'recap');
+      assert.equal(session.tallies.secondMiss, 1);
+      assert.equal(session.tallies.read + session.tallies.solved, 7);
+    }
+  }
+});
+
+
+test('repeated precision practice varies real clock facts with reproducible independent content draws', () => {
+  const lab = loadTimeLab();
+  const sessions = Array.from({length: 16}, (_, rootSeed) => lab.createSession('precision', {rootSeed}));
+  const signatures = sessions.map(session => JSON.stringify(session.slots.map(slot => slot.question.facts)));
+  assert.ok(new Set(signatures).size > 1, 'different seeds must change the clock facts, not just choices');
+  for (const [index, familyId] of Object.keys(lab.PRECISE_FIXTURES).entries()) {
+    const seen = new Set();
+    for (const session of sessions) {
+      const first = session.slots[index].question, second = session.slots[index + 4].question;
+      assert.equal(first.familyId, familyId);
+      assert.equal(second.familyId, familyId);
+      assert.notDeepEqual(plain(first.facts), plain(second.facts));
+      for (const question of [first, second]) {
+        const clock = question.facts.clock;
+        seen.add(JSON.stringify(clock));
+        assert.equal(question.answer.value, lab.formatDetailedTime(clock));
+        assert.equal(question.choices.length, 4);
+        assert.equal(new Set(question.choices.map(choice => choice.label)).size, 4);
+        assert.equal(question.choices.filter(choice => choice.value === question.answer.value).length, 1);
+        assert.ok(clock.minute >= 0 && clock.minute < 60);
+        if (familyId === 'time-read-five-minute') assert.equal(clock.minute % 5, 0);
+        if (clock.second !== undefined) assert.ok(clock.second >= 0 && clock.second < 60);
+        if (familyId === 'time-read-five-second') assert.equal(clock.second % 5, 0);
+        const angles = lab.clockAngles(clock);
+        assert.equal(angles.minute, 6 * (clock.minute + (clock.second || 0) / 60));
+        assert.equal(angles.hour, 30 * ((clock.hour % 12) + clock.minute / 60 + (clock.second || 0) / 3600));
+      }
+    }
+    assert.ok(seen.size > 2, `${familyId} must offer genuinely additional practice values`);
+  }
+  for (const rootSeed of [5, 21]) {
+    const a = lab.createRngStreams(rootSeed), b = lab.createRngStreams(rootSeed);
+    for (let i = 0; i < 19; i++) b.presentation();
+    const first = lab.createSession('precision', {contentRng:a.content,presentationRng:a.presentation});
+    const second = lab.createSession('precision', {contentRng:b.content,presentationRng:b.presentation});
+    assert.deepEqual(plain(first.slots.map(slot => slot.question.facts)), plain(second.slots.map(slot => slot.question.facts)));
+    assert.deepEqual(plain(lab.createSession('precision', {rootSeed})), plain(lab.createSession('precision', {rootSeed})));
   }
 });
