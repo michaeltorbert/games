@@ -977,7 +977,10 @@ test('Time Lab menu, guided retry, worked explanation, and recap follow producti
   await expect(page.locator('#ov-time-lab')).toHaveAttribute('aria-hidden', 'false');
   await expect(page.locator('#ov-start')).not.toHaveClass(/show/);
   await expect(page.locator('#ov-time-lab .tl-card')).toHaveAttribute('data-tl-view', 'menu');
-  await expect(page.locator('.tl-mode-button')).toHaveCount(3);
+  await expect(page.locator('.tl-mode-button')).toHaveCount(5);
+  expect(await page.locator('.tl-mode-button').evaluateAll(buttons => buttons.map(button => button.id))).toEqual([
+    'tl-mode-clocks', 'tl-mode-calendar', 'tl-mode-mixed', 'tl-mode-precision', 'tl-mode-football',
+  ]);
   await assertVisibleOverlayCardBounds(page, '32-time-lab-menu');
   await shot(page, testInfo, '32-time-lab-menu');
 
