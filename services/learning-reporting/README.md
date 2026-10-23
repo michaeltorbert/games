@@ -6,14 +6,28 @@ separate from `services/kayak-reporting`: its own Worker, its own D1 database, n
 tables and no Google APIs. Only Kayak's deployment and configuration conventions are
 reused.
 
-**Status: not live, not released and not delivering household data.** The remaining
-steps, their order, budget, stop rules and rollbacks are in [GO-LIVE.md](GO-LIVE.md).
-What is established so far, all operator-reported rather than observed independently:
+**Qualification checkpoint — 2026-10-23 00:56 UTC.** Hosted service qualification
+had completed: real game clients, the synthetic corpus and exports, one actual scheduled
+retention run, and synthetic cleanup. Production reporting was enabled for the approved
+game origin only, with the temporary qualification origin removed. The deployed daily
+cron was `37 21 * * *` UTC with 90-day retention. Deployment and refusal evidence is
+retained locally at `output/issue-200/go-live/hosted/production/` (not published here).
 
-- A dedicated Worker and D1 database are deployed from source `1e921b1` with uploads off
-  (`REPORTING_ENABLED: "false"`) and no cron (`triggers.crons: []`). The dashboard
-  loaded through an existing owner Access session with no profiles or devices. The
-  served `app.js` was not hashed.
+At that checkpoint, the paired client release awaited final checks, independent review,
+merge and verified Pages deployment; intended household-device receipt and usability
+were also pending. Actual release and household status belong in the
+[PR #207](https://github.com/michaeltorbert/games/pull/207) and
+[issue #200 completion record](https://github.com/michaeltorbert/games/issues/200).
+Only after verified client deployment, use the intermediate status
+"client released; intended-device receipt pending". Qualification alone is not a
+live-household or physical-device claim. Steps, stop rules and recovery are in
+[GO-LIVE.md](GO-LIVE.md).
+
+Historical setup readback, retained as dated evidence rather than current status:
+
+- The initial dedicated Worker and D1 deployment from source `1e921b1` had uploads off
+  and no cron. The owner dashboard then showed no profiles or devices; its served
+  `app.js` was not hashed at that stage.
 - Access policy contents (operator dashboard readback, 2026-10-22 02:36 UTC): one
   self-hosted application on the whole Worker host whose only policy allows exactly one
   owner email, with no exclude or require rules; two Bypass applications for exactly
@@ -21,16 +35,19 @@ What is established so far, all operator-reported rather than observed independe
   bypass also matches descendants and case variants (`/v1/sync/child`, `/V1/sync`):
   those reach the Worker, which refuses them with 401 because only the two exact
   pathnames are public. They are protected by the Worker, not the edge. Whether
-  one-time PIN login is enabled is not visible; with a single-email include rule it
-  admits no one else.
-- Still pending: a fresh normal owner login with a current product response, today's
-  account-wide usage, hosted qualification, the paired game release and actual
-  intended-device receipt.
+  one-time PIN login is enabled was not visible in that readback.
+- The owner read account-wide usage on 2026-10-22 at 19:25 UTC before synthetic
+  growth. That reading is now stale and establishes no current quota or capacity.
+  Earlier billing 403, GraphQL throttling and account-dashboard access denial remain
+  unresolved evidence limits; those methods were not retried to bypass them. Hosted
+  HTTP outcomes establish neither CPU margin nor full Free-plan capacity.
 
-The committed `wrangler.jsonc` stays a fail-closed template: reporting is disabled, the
-Access values are empty and the D1 ID is all zeros. The games' service origin
-(`shared/learning-reporting/config.js`) is empty, so the games send nothing. No device
-is enrolled.
+The committed `wrangler.jsonc` remains a fail-closed setup template: reporting is
+disabled, Access values are empty and the D1 ID is all zeros. Production uses a separate
+private operational configuration. The activated shared client configuration
+names the approved service origin; recording and uploads still require explicit
+device enrollment. Synthetic profiles, devices and events were deleted after
+qualification. This does not establish intended-device receipt.
 
 Upkeep: this Worker and D1 database, a Cloudflare Access application and policy, device
 enrollment and revocation, schema migrations, and noticing sync failures on the Devices
@@ -166,8 +183,11 @@ node --test test-runtime/combined-trial.test.mjs
 ```
 
 The game files are served byte for byte at a synthetic HTTPS origin, and only
-`config.js` is overridden, in the browser context; the committed client URL stays
-empty. The two web-font stylesheets the source declares (Football's markup link and
+`config.js` is overridden in the browser context. The trial first serves an explicitly
+empty configuration and verifies the disabled page, stopped sync engine and absence of
+device requests. It then switches that fixture route to the synthetic service for
+enrollment and play; the activated production origin is never contacted. The two
+web-font stylesheets the source declares (Football's markup link and
 the `shared/fonts.css` import) are answered locally with an empty stylesheet; any other
 font query or remote host is denied, so pages use fallback fonts and font rendering is
 not covered. Pinned Playwright's WebKit screenshot preparation briefly inserts a
@@ -183,10 +203,12 @@ Limits:
 - Requests pass through Playwright interception, not a native network path, so it is
   not evidence of a CORS preflight or origin refusal (AC03/AC04 rely on other tests).
 - It is not evidence of hosted CPU, quotas, billing or daily row usage, physical
-  devices, a household or human comprehension. It changes no hosted setting and leaves
-  the public client URL blank.
-- The original outcomes O1–O13 and AC01–AC30 remain pending, and no exception is
-  accepted for release.
+  devices, a household or human comprehension. It changes no hosted setting or client
+  configuration file.
+- This local trial alone does not establish the original outcomes O1–O13 and AC01–AC30.
+  Their evidence, limitations and reviewed exceptions are recorded separately in the
+  release acceptance record; final release checks and intended-device receipt remain
+  distinct gates.
 
 ### Hosted-check tool test
 
@@ -234,8 +256,9 @@ ways:
    D1, cron and rate-limit namespace capacity. Check daily usage as well as resource
    counts; `2001`/`2002` must not collide with another deployment. Keep the Worker
    undeployed until these checks and the Access configuration below are complete.
-2. **Prepare account-local configuration.** Keep the committed disabled template and
-   empty client URL unchanged. Use a private operational configuration selected
+2. **Prepare account-local configuration.** Keep the committed disabled template
+   unchanged. During initial setup keep the client URL empty until the reviewed client
+   activation in GO-LIVE.md phase 8. Use a private operational configuration selected
    explicitly with Wrangler's `--config`; resolve its source and migration paths and
    inspect the deployment target before use. Supply the real D1 binding,
    `ACCESS_TEAM_DOMAIN` (`https://<team>.cloudflareaccess.com`), root `ACCESS_AUD`,
@@ -261,7 +284,8 @@ ways:
    selected operational configuration. The migration creates the installation marker
    and confirmation key. Verify the exact binding before deploying the reviewed
    Worker with reporting disabled and cron absent. An initialized but wrong database
-   is not detected by its marker. Keep the games' service URL empty.
+   is not detected by its marker. Keep the games' service URL empty until GO-LIVE.md
+   phase 8; it is not a permanent requirement after client activation.
 
 Constants that still hold for every later phase: the scheduled retention cap is
 `15 * 3 + 2 = 47` statements, below the application's 49 budget and the current Free
@@ -279,6 +303,11 @@ paths](https://developers.cloudflare.com/cloudflare-one/access-controls/policies
 [D1 row pricing](https://developers.cloudflare.com/d1/platform/pricing/).
 
 ## Disable switch and recovery
+
+Retain the reviewed private operational configuration and deployment record in private
+storage, outside Git. Recovery must not depend on a temporary working directory: rebuild
+from the pinned source commit and use the retained configuration after verifying its
+binding and target. Never publish that configuration or its private identifiers.
 
 - **Stop uploads:** set `REPORTING_ENABLED` to `"false"` and deploy. Devices get 503 and
   keep their queues; the dashboard, export and deletion still work. This does **not**
