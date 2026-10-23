@@ -595,7 +595,11 @@ test('the public device page shows only the regions that apply: not set up, not 
   let serviceUrl = null;
   const profileIds = [randomUUID(), randomUUID()];
   const cors = origin => ({ 'Access-Control-Allow-Origin': origin, 'Access-Control-Allow-Methods': 'POST', 'Access-Control-Allow-Headers': 'Authorization, Content-Type', Vary: 'Origin' });
-  // 1. The shipped, unconfigured page: summary and a disabled form only; no health, no Send now, no Stop.
+  // Isolate the setting before the first navigation; null means explicitly unconfigured.
+  await page.route('**/shared/learning-reporting/config.js*', route => route.fulfill({
+    status: 200, contentType: 'application/javascript', body: `globalThis.LEARNING_REPORTING_CONFIG = Object.freeze({ serviceUrl: '${serviceUrl ?? ''}' });`,
+  }));
+  // 1. The explicitly unconfigured fixture page: summary and a disabled form only; no health, no Send now, no Stop.
   await page.goto('/shared/learning-reporting/');
   await expect(page.locator('#lr-summary')).toHaveText('Reporting is not set up for this site.');
   await expectRegions(page, ['lr-setup']);
@@ -604,9 +608,6 @@ test('the public device page shows only the regions that apply: not set up, not 
   await geometry(page, 'device-page-not-set-up');
 
   // The synthetic service: a routed config origin and a loopback-only mock (no real service).
-  await page.route('**/shared/learning-reporting/config.js*', route => route.fulfill({
-    status: 200, contentType: 'application/javascript', body: `globalThis.LEARNING_REPORTING_CONFIG = Object.freeze({ serviceUrl: '${serviceUrl ?? ''}' });`,
-  }));
   const syncs = [];
   await page.route(`${DEVICE_SERVICE}/**`, route => {
     const request = route.request(), origin = request.headers().origin;

@@ -1,5 +1,5 @@
-// #200 real client transport against a loopback-only mock service. Pages get the service
-// origin by routing shared/learning-reporting/config.js; the shipped config stays empty.
+// #200 real client transport against a loopback-only mock service.
+// Tests use an isolated synthetic service via the config route; no live service traffic.
 // The mock answers at http://127.0.0.1:8199 only, through Playwright routing; nothing
 // leaves the machine. Football pages are session-muted and verified by
 // curriculum-fixture before any input; Number facts plays no audio.
@@ -197,7 +197,10 @@ test('a proven revocation clears the outbox and enrollment; an unrecognized cred
   expect(await page.evaluate(() => localStorage.getItem(LEARNING_OUTBOX.ENROLLMENT_KEY))).toBeNull();
 });
 
-test('the shipped config keeps reporting off: no picker, no timer-driven request, the device page says it is not set up', async ({ page }) => {
+test('an explicitly unconfigured fixture keeps reporting off: no picker, no timer-driven request, the device page says it is not set up', async ({ page }) => {
+  await page.route('**/shared/learning-reporting/config.js*', route => route.fulfill({
+    status: 200, contentType: 'application/javascript', body: "globalThis.LEARNING_REPORTING_CONFIG = Object.freeze({ serviceUrl: '' });",
+  }));
   const requests = [];
   page.on('request', request => requests.push({ method: request.method(), url: request.url() }));
   await page.goto('/shared/learning-reporting/');
