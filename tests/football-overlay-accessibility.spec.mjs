@@ -89,6 +89,7 @@ test('start overlay traps focus across the selected mode and visible rival radio
   const wakeForest = page.locator('input[name="rival"][value="wake-forest"]');
   const start = page.locator('#start-game-btn');
   const timeLab = page.locator('#tl-open-button');
+  const install = page.getByRole('button', { name: 'Add to Home Screen', exact: true });
 
   await wakeForest.check();
   await wakeForest.focus();
@@ -99,11 +100,15 @@ test('start overlay traps focus across the selected mode and visible rival radio
   await page.keyboard.press(keys.previous);
   await expect(team).toBeFocused();
   await page.keyboard.press(keys.previous);
+  await expect(install).toBeFocused();
+  await page.keyboard.press(keys.previous);
   await expect(timeLab).toBeFocused();
   await page.keyboard.press(keys.previous);
   await expect(start).toBeFocused();
   await page.keyboard.press(keys.next);
   await expect(timeLab).toBeFocused();
+  await page.keyboard.press(keys.next);
+  await expect(install).toBeFocused();
   await page.keyboard.press(keys.next);
   await expect(team).toBeFocused();
   await page.keyboard.press(keys.next);
@@ -119,6 +124,8 @@ test('start overlay traps focus across the selected mode and visible rival radio
   await expect(start).toBeFocused();
   await page.keyboard.press(keys.next);
   await expect(timeLab).toBeFocused();
+  await page.keyboard.press(keys.next);
+  await expect(install).toBeFocused();
   await page.keyboard.press(keys.next);
   await expect(team).toBeFocused();
   await page.keyboard.press(keys.next);
@@ -145,6 +152,7 @@ test('a saved Season locks the team group out of the start overlay tab cycle', a
   const group = page.getByRole('group', { name: 'Choose your team' });
   const start = page.locator('#start-game-btn');
   const timeLab = page.locator('#tl-open-button');
+  const install = page.getByRole('button', { name: 'Add to Home Screen', exact: true });
   await expect(seasonMode).toBeChecked();
   await expect(seasonMode).toBeFocused();
   await expect(page.locator('#team-picker')).toHaveAttribute('disabled', '');
@@ -158,8 +166,12 @@ test('a saved Season locks the team group out of the start overlay tab cycle', a
   await page.keyboard.press(keys.next);
   await expect(timeLab).toBeFocused();
   await page.keyboard.press(keys.next);
+  await expect(install).toBeFocused();
+  await page.keyboard.press(keys.next);
   await expect(seasonMode).toBeFocused();
   expect(await focusedTeamRadio()).toBe(false);
+  await page.keyboard.press(keys.previous);
+  await expect(install).toBeFocused();
   await page.keyboard.press(keys.previous);
   await expect(timeLab).toBeFocused();
   await page.keyboard.press(keys.previous);

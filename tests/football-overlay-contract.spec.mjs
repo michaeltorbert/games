@@ -645,13 +645,13 @@ test.describe('issue 49 overlay characterization', () => {
           'span.ov-broadcast-badge.ov-badge-info', 'div#ov-start-title.ov-title', 'div#ov-start-sub.ov-sub',
           'fieldset#team-picker.team-picker', 'fieldset#play-mode-picker.play-mode-picker',
           'div#quick-game-panel', 'div#season-panel.season-panel',
-          'div.start-action-row',
+          'div.start-action-row', 'div#home-screen-install.start-install-row',
         ],
         ids: [
           'ov-start-title', 'ov-start-sub', 'team-picker', 'team-options', 'team-status',
           'play-mode-picker', 'quick-game-panel', 'rival-picker', 'rival-options',
           'rival-preview', 'rival-preview-matchup', 'rival-preview-style', 'season-panel', 'season-progress',
-          'season-record', 'season-rungs', 'season-next', 'season-status', 'start-game-btn', 'tl-open-button',
+          'season-record', 'season-rungs', 'season-next', 'season-status', 'start-game-btn', 'tl-open-button', 'home-screen-install',
         ],
         actions: [
           { id: 'start-game-btn', onclick: 'startGame()' },

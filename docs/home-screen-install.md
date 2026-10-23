@@ -4,10 +4,11 @@
 [michaeltorbert/home-screen-install](https://github.com/michaeltorbert/home-screen-install).
 One copy serves Football, Place by Place and Kayak.
 
-**No game loads it yet.** The files are inert: no `index.html`, `games.js`,
-`version.json`, cache key or manifest refers to them. Adding the button to each
-game is tracked separately, and those issues stay open until each game is
-adopted and verified on iPhone and iPad:
+Football loads and mounts the pinned classic component on its start screen.
+Its native guide participates in the start screen focus and overlay lifecycle;
+visibility uses only the component’s current standalone-mode signals and stores
+no installation flag. Other games have not adopted it. Integration and native
+iPhone/iPad acceptance are tracked separately:
 
 - Football: #193
 - Place by Place: #194

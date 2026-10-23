@@ -1,4 +1,4 @@
-const GAME_VERSION = '1.34.25';
+const GAME_VERSION = '1.34.26';
 let prevPlayerScore = -1, prevOpponentScore = -1;
 let playerRunTimer = 0, playerCelebrateTimer = 0, playerCelebrateDelayTimer = 0;
 const EZ = 5;
@@ -5503,6 +5503,23 @@ function advanceTimeLabForTest() {
 // part in activation, hiding, inertness, focus, and Escape. The collection is
 // read fresh on each call so a newly marked modal needs no registration.
 const OVERLAY_SELECTOR = '.overlay[data-overlay]';
+let homeScreenInstall = null;
+
+// The install guide owns a native dialog in its open shadow root. Keep this
+// adapter local to that component; it is not another Football overlay.
+function homeScreenInstallHost() {
+  return document.querySelector('#home-screen-install [data-home-screen-install]');
+}
+
+function openInstallDialog() {
+  return homeScreenInstallHost()?.shadowRoot?.querySelector('dialog[open]') || null;
+}
+
+function deepActiveElement() {
+  let active = document.activeElement;
+  while (active?.shadowRoot?.activeElement) active = active.shadowRoot.activeElement;
+  return active;
+}
 
 function overlayElements() {
   return Array.from(document.querySelectorAll(OVERLAY_SELECTOR));
@@ -5571,9 +5588,17 @@ function setGameUiInert(isInert) {
 function overlayFocusableElements(overlay) {
   // `:disabled` also excludes controls disabled through an ancestor fieldset,
   // such as a saved Season's locked team group.
-  const focusable = Array.from(overlay.querySelectorAll(
+  const controls = Array.from(overlay.querySelectorAll(
     'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
-  )).filter((element) => element.getClientRects().length > 0 && !element.matches(':disabled'));
+  ));
+  const host = homeScreenInstallHost();
+  // This host follows the start actions in markup. The closed dialog's region
+  // and Close button are deliberately excluded from the underlying tab cycle.
+  if (host && overlay.contains(host) && !host.hidden) {
+    const trigger = host.shadowRoot?.querySelector('[part="button"]');
+    if (trigger) controls.push(trigger);
+  }
+  const focusable = controls.filter((element) => element.getClientRects().length > 0 && !element.matches(':disabled'));
   const namedRadioTargets = new Map();
   for (const element of focusable) {
     if (element.tagName !== 'INPUT' || element.type !== 'radio' || !element.name) continue;
@@ -5590,7 +5615,7 @@ function overlayFocusableElements(overlay) {
 
 function focusActiveOverlay(overlay) {
   requestAnimationFrame(() => {
-    if (!overlay.classList.contains('show')) return;
+    if (!overlay.classList.contains('show') || openInstallDialog()) return;
     const quickPanel = document.getElementById('quick-game-panel');
     const timeLabChoice = overlay.id !== 'ov-time-lab' ? null
       : !timeLabSession
@@ -5634,6 +5659,7 @@ function activateOverlay(id) {
   const overlays = overlayElements();
   const active = overlays.find(overlay => overlay.id === id);
   if (!active) return false;
+  if (active.id !== 'ov-start') homeScreenInstall?.close();
   overlayDecorations(overlays.filter(overlay => overlay !== active)).forEach(clearConfetti);
   overlays.forEach((overlay) => {
     const isActive = overlay === active;
@@ -5647,6 +5673,7 @@ function activateOverlay(id) {
 }
 
 function hideOverlays() {
+  homeScreenInstall?.close();
   const overlays = overlayElements();
   overlays.forEach((overlay) => {
     overlay.classList.remove('show');
@@ -5659,6 +5686,8 @@ function hideOverlays() {
 }
 
 document.addEventListener('keydown', function(event) {
+  const nativeDialog = openInstallDialog();
+  if (nativeDialog && event.composedPath().includes(nativeDialog)) return;
   if (event.key === 'Escape' && state.phase === PHASES.explanation && state.questionUi?.reviewExpanded) {
     event.preventDefault();
     collapseWorkedReview();
@@ -5671,14 +5700,13 @@ document.addEventListener('keydown', function(event) {
     focusActiveOverlay(overlay);
     return;
   }
-  const activationControl = event.target instanceof Element
-    ? event.target.closest('button, input, select, textarea, a[href], [role="button"]')
-    : null;
+  const activationControl = event.composedPath().find(node => node instanceof Element
+    && node.matches('button, input, select, textarea, a[href], [role="button"]'));
   const isActivationKey = event.key === 'Enter' || event.key === ' ' || event.code === 'Space';
   if (event.repeat
     && isActivationKey
     && activationControl
-    && overlay.contains(activationControl)) {
+    && (overlay.contains(activationControl) || overlay.contains(activationControl.getRootNode().host))) {
     event.preventDefault();
     return;
   }
@@ -5691,10 +5719,10 @@ document.addEventListener('keydown', function(event) {
   }
   const first = focusable[0];
   const last = focusable[focusable.length - 1];
-  if (event.shiftKey && document.activeElement === first) {
+  if (event.shiftKey && deepActiveElement() === first) {
     event.preventDefault();
     last.focus({ preventScroll: true });
-  } else if (!event.shiftKey && document.activeElement === last) {
+  } else if (!event.shiftKey && deepActiveElement() === last) {
     event.preventDefault();
     first.focus({ preventScroll: true });
   }
@@ -6729,6 +6757,7 @@ window.__footballTest = {
 };
 
 // -- Init ---------------------------------------------------------------------
+homeScreenInstall = HomeScreenInstall.mount(document.getElementById('home-screen-install'), { appName: 'Football Math' });
 installBreakFieldArt();
 buildField();
 state = createGameState();
