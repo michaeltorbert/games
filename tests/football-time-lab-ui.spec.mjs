@@ -117,6 +117,8 @@ test('start entry is separate and every mode opens an eight-question ephemeral s
     ['clocks', '#tl-mode-clocks'],
     ['calendar', '#tl-mode-calendar'],
     ['mixed', '#tl-mode-mixed'],
+    ['precision', '#tl-mode-precision'],
+    ['football', '#tl-mode-football'],
   ]) {
     await openLab(page);
     await page.locator(buttonId).click();
@@ -361,6 +363,15 @@ test('practice leaves live authority, live RNG streams, and storage byte-identic
   await openLab(page);
   await page.locator('#tl-mode-clocks').click();
   await finishRemainingCorrect(page);
+  for (const mode of ['precision', 'football']) {
+    await page.locator('#tl-done-button').tap();
+    await openLab(page);
+    await page.locator(`#tl-mode-${mode}`).tap();
+    await page.evaluate(() => window.__footballTest.answerPracticeLab('wrong'));
+    await page.evaluate(() => window.__footballTest.answerPracticeLab('wrong'));
+    await page.locator('#tl-next-button').tap();
+    await finishRemainingCorrect(page);
+  }
 
   expect(await liveSemanticSnapshot(page)).toBe(liveBefore);
   expect(await storageBytes(page)).toBe(storageBefore);
@@ -407,6 +418,12 @@ test('a live snap after practice is seed-equivalent to the control path', async 
   await startSeededMode(practice, 'mixed', 404);
   await finishRemainingCorrect(practice);
   await practice.locator('#tl-done-button').click();
+  for (const mode of ['precision', 'football']) {
+    await openLab(practice);
+    await practice.locator(`#tl-mode-${mode}`).tap();
+    await finishRemainingCorrect(practice);
+    await practice.locator('#tl-done-button').tap();
+  }
 
   await Promise.all([
     control.locator('#start-game-btn').click(),
@@ -642,4 +659,51 @@ test('reduced-motion preference removes Time Lab control transitions', async ({ 
   await page.goto('/football/');
   await openLab(page);
   expect(await page.locator('#tl-mode-clocks').evaluate(element => getComputedStyle(element).transitionDuration)).toBe('0s');
+});
+
+test('new time practices support real taps, readable precise hands, hidden elapsed results and finite recaps', async ({ page }, testInfo) => {
+  const errors = watchErrors(page);
+  await page.goto('/football/');
+  for (const mode of ['precision', 'football']) {
+    await openLab(page);
+    await page.locator(`#tl-mode-${mode}`).tap();
+    for (let index = 0; index < 8; index++) {
+      const question = await page.evaluate(() => {
+        const q = timeLabSession.slots[timeLabSession.index].question;
+        return {familyId:q.familyId, correctId:q.correctChoiceId, answer:q.answer.value, second:q.facts.clock?.second};
+      });
+      if (mode === 'precision') {
+        await expect(page.locator('#tl-visual .tl-clock-tick')).toHaveCount(60);
+        await expect(page.locator('#tl-visual .tl-clock-number')).toHaveCount(12);
+        await expect(page.locator('#tl-visual .tl-clock-second')).toHaveCount(question.second === undefined ? 0 : 1);
+        await expect(page.locator('#tl-visual .tl-digital-readout')).toHaveCount(0);
+      } else {
+        await expect(page.locator('#tl-visual')).not.toContainText(question.answer);
+        expect(await page.locator('#tl-visual').getAttribute('aria-label')).not.toContain(question.answer);
+      }
+      const wrongId = await page.locator('#tl-choices button').evaluateAll((buttons, correct) => buttons.find(button => button.dataset.choiceId !== correct).id, question.correctId);
+      await page.locator(`#${wrongId}`).tap();
+      await expect(page.locator('#tl-worked')).toBeHidden();
+      const secondWrongId = await page.locator('#tl-choices button').evaluateAll((buttons, correct) => buttons.find(button => button.dataset.choiceId !== correct).id, question.correctId);
+      await page.locator(`#${secondWrongId}`).tap();
+      await expect(page.locator('#tl-worked')).toContainText(question.answer);
+      const metrics = await page.locator('#ov-time-lab .tl-card').evaluate(card => ({
+        overflow: card.scrollHeight > card.clientHeight + 1,
+        horizontal: card.scrollWidth > card.clientWidth + 1,
+        controls: Array.from(card.querySelectorAll('button')).filter(button => button.getClientRects().length && !button.hidden).map(button => ({width:button.getBoundingClientRect().width,height:button.getBoundingClientRect().height})),
+      }));
+      expect(metrics.overflow, `${mode} ${index} worked fits`).toBe(false);
+      expect(metrics.horizontal).toBe(false);
+      for (const control of metrics.controls) {expect(control.width).toBeGreaterThanOrEqual(44);expect(control.height).toBeGreaterThanOrEqual(44);}
+      await page.locator('#tl-next-button').tap();
+    }
+    await expect(page.locator('#tl-recap-view')).toBeVisible();
+    expect((await practiceState(page)).tallies.secondMiss).toBe(8);
+    await page.locator('#tl-done-button').tap();
+  }
+  await openLab(page);
+  await page.locator('#tl-mode-football').tap();
+  await page.locator('#tl-back-button').tap();
+  await expect(page.locator('#tl-open-button')).toBeFocused();
+  expectNoErrors(errors);
 });

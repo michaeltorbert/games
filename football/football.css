@@ -7968,3 +7968,39 @@ body::after {
     align-content: center;
   }
 }
+
+/* Time Lab precise reading and elapsed wall-clock practice. */
+.tl-mode-options { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.tl-mode-button { min-height: 104px; }
+.tl-mode-button strong { font-size: 32px; }
+.tl-clock-tick { stroke-width: 0.8; }
+.tl-clock-tick-major { stroke-width: 1.7; }
+.tl-clock-number { font-size: 10px; }
+.tl-clock-second { stroke: #137c72; stroke-width: 1.5; }
+.tl-clock-second-tip { fill: #137c72; stroke: #072c28; stroke-width: 0.7; }
+#ov-time-lab .tl-detailed-clock-row .tl-clock-figure { width: 206px; max-width: 65%; }
+.tl-hand-legend { max-width: 42ch; margin: 5px auto 0; text-align: center; color: #10284e; font: 700 14px/1.2 'Nunito', sans-serif; }
+.tl-game-time { display: grid; gap: 8px; width: 100%; }
+.tl-game-time > div { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.tl-game-time small { font: 700 15px/1.2 'Nunito', sans-serif; }
+.tl-game-time strong { font: 900 21px/1.2 'Nunito', sans-serif; text-align: right; }
+@media (max-width: 600px) {
+  .tl-mode-options { grid-template-columns: 1fr; gap: 6px; }
+  .tl-mode-button { min-height: 70px; padding: 8px 10px; }
+  .tl-mode-button strong { font-size: 27px; }
+  .tl-mode-button small { font-size: 12px; }
+  #ov-time-lab .tl-detailed-clock-row .tl-clock-figure { width: 160px; max-width: 62%; }
+  .tl-hand-legend { font-size: 11px; }
+  .tl-game-time { gap: 5px; }
+  .tl-game-time small { font-size: 12px; }
+  .tl-game-time strong { font-size: 16px; }
+  #ov-time-lab .tl-visual[data-visual-type="game-elapsed"] { min-height: 100px; }
+  #ov-time-lab .tl-visual[data-visual-type="game-elapsed"] + .tl-guidance { margin-top: 4px; }
+  .tl-question-view:has(.tl-visual[data-visual-type="game-elapsed"]) .tl-choice-button { font-size: 20px; }
+}
+.tl-hand-legend { color: #d9e8ff; }
+.tl-game-time { color: #d9e8ff; }
+@media (max-width: 600px) {
+  #ov-time-lab .tl-visual[data-visual-type="detailed-clock"][data-visual-stage="worked"] .tl-clock-figure { width: 125px; }
+  #ov-time-lab .tl-visual[data-visual-type="detailed-clock"][data-visual-stage="worked"] .tl-digital-readout { font-size: 24px; }
+}
