@@ -452,10 +452,24 @@ const FOOTBALL_TIME_LAB = (() => {
   }
 
   const PRECISE_FIXTURES = deepFreeze({
-    'time-read-five-minute': [{ hour: 3, minute: 35 }, { hour: 9, minute: 20 }],
-    'time-read-one-minute': [{ hour: 7, minute: 32 }, { hour: 11, minute: 59 }, { hour: 12, minute: 1 }],
-    'time-read-five-second': [{ hour: 8, minute: 15, second: 20 }, { hour: 2, minute: 30, second: 45 }, { hour: 5, minute: 15, second: 0 }],
-    'time-read-one-second': [{ hour: 3, minute: 30, second: 7 }, { hour: 7, minute: 15, second: 59 }, { hour: 10, minute: 30, second: 1 }],
+    'time-read-five-minute': [
+      { hour: 3, minute: 35 }, { hour: 9, minute: 20 }, { hour: 5, minute: 10 },
+      { hour: 10, minute: 40 }, { hour: 2, minute: 50 }, { hour: 7, minute: 5 },
+    ],
+    'time-read-one-minute': [
+      { hour: 7, minute: 32 }, { hour: 11, minute: 59 }, { hour: 12, minute: 1 },
+      { hour: 4, minute: 18 }, { hour: 9, minute: 43 }, { hour: 2, minute: 26 },
+    ],
+    'time-read-five-second': [
+      { hour: 8, minute: 15, second: 20 }, { hour: 2, minute: 30, second: 45 },
+      { hour: 5, minute: 15, second: 0 }, { hour: 10, minute: 30, second: 10 },
+      { hour: 4, minute: 45, second: 35 }, { hour: 7, minute: 15, second: 50 },
+    ],
+    'time-read-one-second': [
+      { hour: 3, minute: 30, second: 7 }, { hour: 7, minute: 15, second: 59 },
+      { hour: 10, minute: 30, second: 1 }, { hour: 5, minute: 45, second: 23 },
+      { hour: 8, minute: 30, second: 42 }, { hour: 2, minute: 15, second: 38 },
+    ],
   });
   const GAME_STARTS = deepFreeze([720, 930, 1170, 1200]);
 
@@ -722,6 +736,13 @@ const FOOTBALL_TIME_LAB = (() => {
       : createRngStreams(options.rootSeed ?? 0x54494d45);
     const plan = familyPlan(mode, streams.content);
     if (plan.length !== SESSION_LENGTH) throw new TypeError('Practice sessions require exactly eight questions.');
+    // Select two different stopped clocks per skill. Presentation draws never
+    // participate, and the scaffolded family order remains unchanged.
+    const precisionFacts = mode === 'precision'
+      ? Object.fromEntries(Object.entries(PRECISE_FIXTURES).map(([familyId, fixtures]) => (
+          [familyId, shuffled(fixtures, streams.content).slice(0, 2)]
+        )))
+      : null;
     const slots = plan.map((familyId, index) => {
       const meta = FAMILY_BY_ID.get(familyId);
       return {
@@ -740,7 +761,7 @@ const FOOTBALL_TIME_LAB = (() => {
           instanceId: `${sessionId}-question-${index + 1}`,
           contentRng: streams.content,
           presentationRng: streams.presentation,
-          ...(mode === 'precision' ? { fixtureIndex: Math.floor(index / 4) } : mode === 'football' ? { fixtureIndex: index % 4 } : {}),
+          ...(mode === 'precision' ? { fact: precisionFacts[familyId][Math.floor(index / 4)] } : mode === 'football' ? { fixtureIndex: index % 4 } : {}),
         }),
       };
     });

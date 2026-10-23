@@ -553,3 +553,44 @@ test('new sessions guarantee eight scaffolded distinct-fixture encounters and su
     }
   }
 });
+
+
+test('repeated precision practice varies real clock facts with reproducible independent content draws', () => {
+  const lab = loadTimeLab();
+  const sessions = Array.from({length: 16}, (_, rootSeed) => lab.createSession('precision', {rootSeed}));
+  const signatures = sessions.map(session => JSON.stringify(session.slots.map(slot => slot.question.facts)));
+  assert.ok(new Set(signatures).size > 1, 'different seeds must change the clock facts, not just choices');
+  for (const [index, familyId] of Object.keys(lab.PRECISE_FIXTURES).entries()) {
+    const seen = new Set();
+    for (const session of sessions) {
+      const first = session.slots[index].question, second = session.slots[index + 4].question;
+      assert.equal(first.familyId, familyId);
+      assert.equal(second.familyId, familyId);
+      assert.notDeepEqual(plain(first.facts), plain(second.facts));
+      for (const question of [first, second]) {
+        const clock = question.facts.clock;
+        seen.add(JSON.stringify(clock));
+        assert.equal(question.answer.value, lab.formatDetailedTime(clock));
+        assert.equal(question.choices.length, 4);
+        assert.equal(new Set(question.choices.map(choice => choice.label)).size, 4);
+        assert.equal(question.choices.filter(choice => choice.value === question.answer.value).length, 1);
+        assert.ok(clock.minute >= 0 && clock.minute < 60);
+        if (familyId === 'time-read-five-minute') assert.equal(clock.minute % 5, 0);
+        if (clock.second !== undefined) assert.ok(clock.second >= 0 && clock.second < 60);
+        if (familyId === 'time-read-five-second') assert.equal(clock.second % 5, 0);
+        const angles = lab.clockAngles(clock);
+        assert.equal(angles.minute, 6 * (clock.minute + (clock.second || 0) / 60));
+        assert.equal(angles.hour, 30 * ((clock.hour % 12) + clock.minute / 60 + (clock.second || 0) / 3600));
+      }
+    }
+    assert.ok(seen.size > 2, `${familyId} must offer genuinely additional practice values`);
+  }
+  for (const rootSeed of [5, 21]) {
+    const a = lab.createRngStreams(rootSeed), b = lab.createRngStreams(rootSeed);
+    for (let i = 0; i < 19; i++) b.presentation();
+    const first = lab.createSession('precision', {contentRng:a.content,presentationRng:a.presentation});
+    const second = lab.createSession('precision', {contentRng:b.content,presentationRng:b.presentation});
+    assert.deepEqual(plain(first.slots.map(slot => slot.question.facts)), plain(second.slots.map(slot => slot.question.facts)));
+    assert.deepEqual(plain(lab.createSession('precision', {rootSeed})), plain(lab.createSession('precision', {rootSeed})));
+  }
+});
