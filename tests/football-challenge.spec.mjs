@@ -12,7 +12,12 @@ test('a real stretch play records once, reports this game, and restores only his
       scheduler: () => { counts.scheduler++; return draw; },
       presentation: () => { counts.presentation++; return .5; } });
     const active = makeActiveScrimmagePlay('shortRun', { calls: { offense: 'shortRun', defense: null, matchup: null } });
-    const eligible = FOOTBALL_CONTEXTUAL_QUESTIONS.inspect(active, contextualQuestionProfile()).eligible.map(e => ({
+    // Probe the same first ordinary slot as pickQuestion: #208 reserves time
+    // families for slots 2,5,8,..., so they cannot shift this stretch draw.
+    if (state.instructedScrimmages !== 0) throw Error('Stretch fixture must target the first ordinary slot');
+    const clockIds = FOOTBALL_CONTEXTUAL_QUESTIONS.IN_GAME_TIME_FAMILIES;
+    const eligible = FOOTBALL_CONTEXTUAL_QUESTIONS.inspect(active, contextualQuestionProfile()).eligible
+      .filter(entry => !clockIds.includes(entry.familyId)).map(e => ({
       ...e, selectionMultiplier: FOOTBALL_CONTEXTUAL_QUESTIONS.selectionFor(active, e.familyId).multiplier,
     }));
     let found = false;

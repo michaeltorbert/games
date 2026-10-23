@@ -710,6 +710,42 @@ const FOOTBALL_TIME_LAB = (() => {
     return deepFreeze(question);
   }
 
+  // #208: public identity is the only seed. This is a fictional instruction
+  // fixture, never a fact added to the canonical football play or a live clock.
+  const IN_GAME_FAMILIES = deepFreeze([
+    'time-read-one-minute', 'game-finish-time', 'time-read-one-second', 'game-halfway-time',
+  ]);
+
+  function inGameFixtureFor(identity, familyId) {
+    if (!isRecord(identity) || Object.keys(identity).sort().join(',') !== 'contextId,gameId,playId,possessionId'
+      || !IN_GAME_FAMILIES.includes(familyId)) throw new TypeError('Invalid in-game time identity or family.');
+    for (const key of ['gameId', 'possessionId', 'playId', 'contextId']) {
+      const value = identity[key];
+      if (!(typeof value === 'string' && value.trim() && value.length <= 200)
+        && !(Number.isSafeInteger(value) && value > 0)) throw new TypeError('Invalid public time identity.');
+    }
+    const identityCopy = Object.fromEntries(['gameId', 'possessionId', 'playId', 'contextId'].map(key => [key, identity[key]]));
+    let hash = 2166136261;
+    for (const character of JSON.stringify([1, identityCopy, familyId])) {
+      hash = Math.imul(hash ^ character.charCodeAt(0), 16777619) >>> 0;
+    }
+    const meta = FAMILY_BY_ID.get(familyId);
+    // Avalanche before reducing: correlated decimal play/context IDs must not
+    // trap the fixture bank on the low-bit parity of the identity encoding.
+    const index = mixSeed(hash, 0x54494d45) % (PRECISE_FIXTURES[familyId]?.length || GAME_STARTS.length);
+    const semantic = semanticFor(meta, { fixtureIndex: index }, () => { throw new Error('In-game time must not draw RNG.'); });
+    return deepFreeze({ schemaVersion: 1, generator: 'scrimmage-time-v1', identity: identityCopy,
+      familyId, facts: semantic.facts });
+  }
+
+  function inGameSemanticFor(identity, familyId) {
+    const fixture = inGameFixtureFor(identity, familyId);
+    const meta = FAMILY_BY_ID.get(familyId);
+    const options = meta.group === 'precision' ? { fact: fixture.facts.clock } : { startMinutes: fixture.facts.startMinutes };
+    const semantic = semanticFor(meta, options, () => { throw new Error('In-game time must not draw RNG.'); });
+    return deepFreeze({ fixture, semantic, visualType: meta.visualType });
+  }
+
   function familyPlan(mode, contentRng) {
     if (!MODES.includes(mode)) throw new TypeError('Unknown Time Lab mode.');
     const clockIds = FAMILY_REGISTRY.filter(meta => meta.group === 'clocks').map(meta => meta.familyId);
@@ -958,6 +994,7 @@ const FOOTBALL_TIME_LAB = (() => {
 
   return deepFreeze({
     SCHEMA_VERSION,
+    IN_GAME_FAMILIES, inGameFixtureFor, inGameSemanticFor,
     SESSION_LENGTH,
     MODES,
     EVIDENCE_CLASSES,

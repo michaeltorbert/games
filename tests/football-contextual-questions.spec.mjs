@@ -6,6 +6,7 @@ import vm from 'node:vm';
 const opponentSource = await readFile(new URL('../football/opponent.js', import.meta.url), 'utf8');
 const domainSource = await readFile(new URL('../football/football-domain.js', import.meta.url), 'utf8');
 const copySource = await readFile(new URL('../football/copy.js', import.meta.url), 'utf8');
+const timeSource = await readFile(new URL('../football/time-lab.js', import.meta.url), 'utf8');
 const questionsSource = await readFile(new URL('../football/contextual-questions.js', import.meta.url), 'utf8');
 
 function loadModules() {
@@ -14,6 +15,7 @@ function loadModules() {
   vm.runInContext(domainSource, context, { filename: 'football-domain.js' });
   vm.runInContext(copySource, context, { filename: 'copy.js' });
   vm.runInContext(questionsSource, context, { filename: 'contextual-questions.js' });
+  vm.runInContext(timeSource, context, { filename: 'time-lab.js' });
   return {
     domain: context.FOOTBALL_DOMAIN,
     fieldPosition: context.FOOTBALL_FIELD_POSITION,
@@ -267,6 +269,12 @@ function recompute(question) {
         : quarter === 3 ? [[2, 'Two quarters'], [half, 'One half']] : [[half, 'One half'], [3, 'Three quarters']];
       return first[0] === second[0] ? 'Same size' : first[0] > second[0] ? first[1] : second[1];
     }
+    case 'fictionalTime': {
+      const facts=question.timeFixture.facts;
+      if(facts.clock){const c=facts.clock;return `${c.hour}:${String(c.minute).padStart(2,'0')}${c.second===undefined?'':`:${String(c.second).padStart(2,'0')}`}`;}
+      const total=facts.startMinutes+facts.durationMinutes/(facts.halfway?2:1),day=total%1440,hour=Math.floor(day/60);
+      return `${hour%12||12}:${String(day%60).padStart(2,'0')} ${day===0?'midnight':day===720?'noon':hour<12?'AM':'PM'}${total>=1440?' (next day)':''}`;
+    }
     default: throw new Error(`Unknown operation ${question.operation.type}`);
   }
 }
@@ -291,6 +299,8 @@ function verifyGrounding(questions, snap, question) {
     if (binding.source.kind === 'context') {
       assert.equal(binding.source.path.startsWith('/context/privateOpponentSnapshot'), false);
       assert.deepEqual(plain(binding.value), plain(pointer(snap, binding.source.path)), `${question.familyId}:${binding.id}`);
+    } else if (binding.source.kind === 'timeFixture') {
+      assert.deepEqual(plain(binding.value), plain(pointer(question.timeFixture, binding.source.path)));
     } else if (binding.source.kind === 'challengeFixture') {
       // #186: generated operands dereference only into the fixture recomputed
       // from the same frozen play and family.
@@ -386,7 +396,7 @@ test('exports one deeply frozen plain-global API with a closed contract', () => 
   assert.equal(questions.OPERATION_TYPES.includes('nextOrdinal'), false);
   assert.ok(questions.ANSWER_EXPOSURE_POLICIES.includes('hidden-until-worked'));
   assert.deepEqual(plain(questions.EVIDENCE_CLASSES), ['literacy', 'independent']);
-  assert.deepEqual(plain(questions.CURRICULUM_SOURCES), ['workbook', 'football-only', 'requested-challenge']);
+  assert.deepEqual(plain(questions.CURRICULUM_SOURCES), ['workbook', 'football-only', 'requested-challenge', 'user-requested-time']);
 });
 
 test('field-position copy strictly normalizes canonical coordinates for every public rival', () => {
@@ -510,6 +520,7 @@ test('every family authors the exact evidence class and independent families hid
   const { domain, questions } = loadModules();
   const expected = {
     literacy: [
+      'time-read-one-minute', 'time-read-one-second',
       'yards-to-go-read',
       'goal-distance-tens',
       'goal-distance-ones',
@@ -524,6 +535,7 @@ test('every family authors the exact evidence class and independent families hid
       'punt-landing-spot',
     ],
     independent: [
+      'game-finish-time', 'game-halfway-time',
       'score-total-ch8', 'score-difference-ch8', 'team-yards-add-ch8', 'line-remaining-ch8', 'goal-remaining-ch8',
       'score-total-ch8-within-20', 'score-total-ch8-ones-add',
       'team-yards-add-ch8-within-20', 'team-yards-add-ch8-ones-add',
@@ -559,11 +571,12 @@ test('every family authors the exact evidence class and independent families hid
   // #186 deliberately adds the two player two-point challenge families; #51
   // adds the two wider past-marker yardage families and the eight quarter and
   // half families.
-  assert.equal(registry.length, 50);
+  assert.equal(registry.length, 54);
   assert.equal(Object.isFrozen(registry[0]), true);
 
   const comparisonSource = makeSnap(domain, { yardsToGo: 14, firstDownLine: 44, scores: { player: 14, opponent: 7 } }, 7);
   const scenarios = [
+    { ...makeSnap(domain, {}, 4), gameId: 'time-test-game', possessionId: 'time-test-possession', playId: 'time-test-play' },
     ...completedArithmeticSnaps(domain),
     comparisonSource,
     makeSnap(domain, { quarter: 1 }, 4),
@@ -709,6 +722,7 @@ test('yards-to-go reading keeps the source value out of the prompt and in the ac
 test('every exported family builds one exact, grounded, recursively frozen schema-3 worked review', () => {
   const { domain, questions } = loadModules();
   const scenarios = [
+    { ...makeSnap(domain, {}, 4), gameId: 'time-test-game', possessionId: 'time-test-possession', playId: 'time-test-play' },
     ...completedArithmeticSnaps(domain),
     makeSnap(domain, { yardsToGo: 14, firstDownLine: 44, scores: { player: 14, opponent: 7 } }, 7),
     makeSnap(domain, { quarter: 1 }, 4),
@@ -742,6 +756,10 @@ test('every exported family builds one exact, grounded, recursively frozen schem
     makeSpecialPlay(domain, 'punt', { possession: 'offense', yardLine: 30, travelYards: 40 }),
   ];
   const expected = {
+    'time-read-one-minute': ['time-read-one-minute', 'fictionalTime', ['clock']],
+    'time-read-one-second': ['time-read-one-second', 'fictionalTime', ['clock']],
+    'game-finish-time': ['game-finish-time', 'fictionalTime', ['startMinutes','durationMinutes','halfway']],
+    'game-halfway-time': ['game-halfway-time', 'fictionalTime', ['startMinutes','durationMinutes','halfway']],
     'score-total-ch8': ['score-total-ch8', 'add', ['playerScore', 'opponentScore']],
     'score-total-ch8-within-20': ['score-total-ch8', 'add', ['playerScore', 'opponentScore']],
     'score-total-ch8-ones-add': ['score-total-ch8', 'add', ['playerScore', 'opponentScore']],
