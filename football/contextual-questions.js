@@ -17,7 +17,7 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
   function sourceStatus(meta, profile = DEFAULT_PROFILE) {
     // The user-requested challenge is beyond confirmed completion, so it always
     // starts with visible guided support and never depends on a workbook page.
-    if (meta.curriculumSource === 'requested-challenge') return { included: true, guided: true };
+    if (['requested-challenge', 'user-requested-time'].includes(meta.curriculumSource)) return { included: true, guided: true };
     if (meta.curriculumSource !== 'workbook') return { included: true, guided: false };
     const title = meta.worktext || 'Math Mammoth Grade 1-A';
     const book = WORKTEXTS[title];
@@ -80,6 +80,7 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
     'gamePartAtBoundary',
     'halvesMakeWhole',
     'compareGameParts',
+    'fictionalTime',
   ]);
 
   const ANSWER_EXPOSURE_POLICIES = Object.freeze([
@@ -97,6 +98,7 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
     'workbook',
     'football-only',
     'requested-challenge',
+    'user-requested-time',
   ]);
 
   // Issue #186: the user asked for three-digit addition and subtraction on the
@@ -792,6 +794,10 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
       || !Object.prototype.hasOwnProperty.call(TWO_POINT_CHALLENGE.families, familyId))) {
       throw new Error('Requested-challenge families must be the player two-point challenge, claim no workbook page, and record independent evidence.');
     }
+    if (curriculumSource === 'user-requested-time' && (introducedOnPage !== null || playType !== 'scrimmage'
+      || !['time-read-one-minute', 'game-finish-time', 'time-read-one-second', 'game-halfway-time'].includes(familyId))) {
+      throw new Error('Time fixtures are restricted to the four user-requested scrimmage families.');
+    }
     const challenge = CHALLENGE_MAP[familyId] || null;
     if (challenge && (challenge.concept !== concept || evidenceClass !== 'independent' || playType !== 'scrimmage')) {
       throw new Error('Challenge metadata contradicts the family contract.');
@@ -842,6 +848,7 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
     workedVisualData = null,
     choicePresentation = null,
     challengeFixture = null,
+    timeFixture = null,
     reviewMeaning = null,
     initialAriaLabel,
     guidedAriaLabel,
@@ -849,6 +856,7 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
   }) {
     return {
       ...(challengeFixture ? { challengeFixture } : {}),
+      ...(timeFixture ? { timeFixture } : {}),
       // Optional play-specific Coach Replay meaning; otherwise the family's.
       ...(reviewMeaning ? { reviewMeaning } : {}),
       bindings,
@@ -1481,7 +1489,36 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
     },
   ];
 
+  const IN_GAME_TIME_FAMILIES = Object.freeze([
+    'time-read-one-minute', 'game-finish-time', 'time-read-one-second', 'game-halfway-time',
+  ]);
+  function timeIdentityFor(play) {
+    return { gameId: play.gameId, possessionId: play.possessionId, playId: play.playId, contextId: play.contextId };
+  }
+  const TIME_FAMILY_DEFINITIONS = IN_GAME_TIME_FAMILIES.map(familyId => {
+    const reading = familyId.startsWith('time-read');
+    return {
+      meta: makeMeta({ familyId, skill: familyId, concept: familyId, purpose: 'requestedTime',
+        tier: 'fictional-time', weight: 1, operationType: 'fictionalTime',
+        answerExposure: reading ? 'source-visible' : 'modeled-with-result-hidden',
+        evidenceClass: reading ? 'literacy' : 'independent', curriculumSource: 'user-requested-time' }),
+      derive(play) {
+        if (typeof FOOTBALL_TIME_LAB === 'undefined') throw contractError('missing-time-authority', 'In-game time authority is unavailable.');
+        const { fixture, semantic, visualType } = FOOTBALL_TIME_LAB.inGameSemanticFor(timeIdentityFor(play), familyId);
+        const bindings = Object.entries(fixture.facts).map(([id, value]) => ({ id,
+          source: { kind: 'timeFixture', path: `/facts/${id}` }, value: clone(value) }));
+        return eligible(makeSemantic({ bindings, operationType: 'fictionalTime', operandIds: bindings.map(binding => binding.id),
+          answer: semantic.answer, prompt: semantic.prompt, hint: semantic.retryGuidance,
+          explanation: semantic.explanation, choiceSpec: fixedChoiceSpec(semantic.choices), visualType,
+          visualData: semantic.sourceVisualData, workedVisualData: semantic.workedVisualData,
+          timeFixture: fixture, initialAriaLabel: semantic.sourceVisualAria,
+          guidedAriaLabel: semantic.sourceVisualAria, workedAriaLabel: semantic.workedVisualAria }));
+      },
+    };
+  });
+
   const FAMILY_DEFINITIONS = [
+    ...TIME_FAMILY_DEFINITIONS,
     ...ARITHMETIC_FAMILIES,
     {
       meta: makeMeta({ familyId: 'yards-to-go-read', skill: 'football-number-sense', concept: 'line-to-gain', purpose: 'coreReview', tier: 'within-10', weight: 4, operationType: 'read', answerExposure: 'source-visible', evidenceClass: 'literacy', curriculumSource: 'football-only' }),
@@ -2184,6 +2221,11 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
     'line-to-gain-surplus-ch8': { title: 'Count Past the Marker', goal: 'Use the yards needed to reach the marker, then find what is left of the gain.', footballMeaning: 'What is left of the gain is how far past the first-down marker it would go.' },
   };
   const WORKED_REVIEW_SPECS = deepFreeze({
+    ...Object.fromEntries(IN_GAME_TIME_FAMILIES.map(familyId => [familyId, {
+      title: familyId.startsWith('time-read') ? 'Read a Stopped Clock' : 'Work Out the Pretend Game Time',
+      goal: familyId.startsWith('time-read') ? 'Read the hands and count the small marks.' : 'Count forward from the pretend start time.',
+      footballMeaning: 'This fictional time practice decides the frozen play. It is separate from the match clock and its quarters.',
+    }])),
     ...Object.fromEntries(ARITHMETIC_FAMILIES.map(({ meta }) => [meta.familyId, { title: 'Work Out the Play Numbers', goal: 'Calculate with the public score or yardage facts.', footballMeaning: 'The equation uses the scores or yards from this exact play.' }])),
     // #51: the yardage relations name their football target. Each question
     // also supplies its own meaning for the hypothetical gain it asked about.
@@ -2685,6 +2727,7 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
       selection: selectionFor(source, familyId),
       // A presentation copy only; football.js recomputes it from the live play.
       ...(semantic.challengeFixture ? { challengeFixture: semantic.challengeFixture } : {}),
+      ...(semantic.timeFixture ? { timeFixture: semantic.timeFixture } : {}),
     };
     const frozen = deepFreeze(question);
     // Preserve an intentional alias so consumers cannot let premises and
@@ -2711,6 +2754,7 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
     CALL_AFFINITY_MULTIPLIER,
     CALL_AFFINITIES,
     RETIRED_LIVE_FAMILIES,
+    IN_GAME_TIME_FAMILIES, timeIdentityFor,
     TWO_POINT_CHALLENGE,
     twoPointChallengeFor,
     selectionFor,

@@ -594,3 +594,22 @@ test('repeated precision practice varies real clock facts with reproducible inde
     assert.deepEqual(plain(lab.createSession('precision', {rootSeed})), plain(lab.createSession('precision', {rootSeed})));
   }
 });
+
+test('#208 public identity generates closed deterministic frozen time fixtures without any ambient authority', () => {
+  const lab=loadTimeLab();
+  const all=new Map(lab.IN_GAME_FAMILIES.map(id=>[id,new Set()]));
+  for(let i=1;i<=200;i++)for(const familyId of lab.IN_GAME_FAMILIES){
+    const identity={gameId:'game-public',possessionId:'possession-public',playId:`play-${i}`,contextId:i};
+    const a=lab.inGameSemanticFor(identity,familyId),b=lab.inGameSemanticFor({...identity},familyId);
+    assert.deepEqual(plain(a),plain(b));assert.equal(deepFrozen(a),true);
+    const q=lab.buildQuestion(familyId,{...(a.fixture.facts.clock?{fact:a.fixture.facts.clock}:{startMinutes:a.fixture.facts.startMinutes}),contentRng:()=>{throw Error('content draw');},presentationRng:()=>0.5});
+    assert.equal(a.semantic.answer,q.answer.value);all.get(familyId).add(JSON.stringify(a.fixture.facts));
+    assert.equal(a.semantic.choices.filter(value=>value===a.semantic.answer).length,1);
+    if(!familyId.startsWith('time-read'))assert.equal(a.semantic.sourceVisualData.targetLabel,null);
+  }
+  assert.equal(all.get('time-read-one-minute').size,6);assert.equal(all.get('time-read-one-second').size,6);
+  assert.equal(all.get('game-finish-time').size,4);assert.equal(all.get('game-halfway-time').size,4);
+  const identity={gameId:'game',possessionId:'possession',playId:'play',contextId:1};
+  for(const edit of [{...identity,privateOpponentSnapshot:{}},{...identity,gameId:null},{...identity,contextId:NaN}])assert.throws(()=>lab.inGameFixtureFor(edit,'time-read-one-minute'));
+  assert.throws(()=>lab.inGameFixtureFor(identity,'calendar-month-neighbor'));
+});

@@ -26,9 +26,9 @@ const session = rows => L.createSession({}, {}, now, rows);
 const state = rows => L.challengeStateFor(session(rows), 'line-to-gain');
 const successes = n => Array.from({ length: n }, (_, i) => row(i));
 
-test('explicit immutable two-ladder map covers only eight of the 50 registered families', () => {
+test('explicit immutable two-ladder map covers only eight of the 54 registered families', () => {
   // #51 adds eight quarter and half families; none joins a challenge ladder.
-  assert.equal(families.length, 50);
+  assert.equal(families.length, 54);
   assert.equal(Object.keys(Q.CHALLENGE_MAP).length, 8);
   // #51: the two wider past-marker variants join line-to-gain as core work.
   for (const familyId of ['line-to-gain-surplus-ch8', 'line-to-gain-surplus-ch8-ones-subtract']) {

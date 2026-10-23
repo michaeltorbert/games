@@ -1,4 +1,4 @@
-const GAME_VERSION = '1.34.24';
+const GAME_VERSION = '1.34.25';
 let prevPlayerScore = -1, prevOpponentScore = -1;
 let playerRunTimer = 0, playerCelebrateTimer = 0, playerCelebrateDelayTimer = 0;
 const EZ = 5;
@@ -73,6 +73,10 @@ const COACH_CONCEPT_LABELS = Object.freeze({
   'conversion-scoring': 'Conversion points',
   'conversion-placement': 'Conversion try spot',
   'two-point-challenge': 'Two-point challenge',
+  'time-read-one-minute': 'Reading minutes',
+  'time-read-one-second': 'Reading seconds',
+  'game-finish-time': 'Pretend game finish time',
+  'game-halfway-time': 'Pretend game halfway time',
   'field-goal-scoring': 'Field-goal points',
   'field-goal-distance': 'Field-goal distance',
   'punt-distance': 'Punt distance',
@@ -1010,6 +1014,7 @@ function gameSnapshot() {
     playerTotalYards: state.playerTotalYards || 0,
     opponentTotalYards: state.opponentTotalYards || 0,
     plays: state.plays || 0,
+    instructedScrimmages: state.instructedScrimmages || 0,
     quarterPossessions: state.quarterPossessions || 0,
     tds: state.tds || 0,
     opponentTds: state.opponentTds || 0,
@@ -1150,6 +1155,7 @@ function createGameState(match = FOOTBALL_OPPONENT.createMatch()) {
     pendingRestartReason: null,
     finalizedPossessionIds: [],
     committedPlayIds: [],
+    instructedScrimmages: 0,
     phase: PHASES.start,
     ...makeDriveState(POSSESSIONS.offense),
     ...blankPlayState(),
@@ -1741,6 +1747,31 @@ function trustedTwoPointChallenge(activePlay, question) {
   return trusted;
 }
 
+// #208 has its own closed exception. Rebuild every rendered and recorded
+// property from the public frozen identity; question-supplied fiction is never
+// authority. Compare stable choices without requiring their shuffled order.
+function trustedTimeFixture(activePlay, question) {
+  const isTime = FOOTBALL_CONTEXTUAL_QUESTIONS.IN_GAME_TIME_FAMILIES.includes(question.familyId);
+  const hasTimeBinding = question.bindings.some(binding => binding?.source?.kind === 'timeFixture');
+  const reject = message => { throw Object.assign(new Error(message), { code: 'malformed-question' }); };
+  if (!isTime) {
+    if (hasTimeBinding || question.timeFixture !== undefined || question.curriculumSource === 'user-requested-time') reject('Time fixtures belong only to the four registered scrimmage families.');
+    return null;
+  }
+  if (activePlay.playType !== 'scrimmage' || !isRecursivelyFrozen(question)
+    || question.challengeFixture !== undefined) reject('Time practice requires a frozen ordinary scrimmage question.');
+  const expected = FOOTBALL_CONTEXTUAL_QUESTIONS.build(activePlay, question.familyId, { support: question.support, presentationRng: () => 0.5 });
+  const allowed = new Set([...Object.keys(expected), 'contextId', 'questionInstanceId', 'challengeSelection']);
+  if (Object.keys(question).some(key => !allowed.has(key))) reject('Time question contains an unrecognized field.');
+  for (const key of Object.keys(expected)) {
+    if (key === 'choices') continue;
+    if (!sameContractValue(question[key], expected[key])) reject(`Time question ${key} contradicts its trusted fixture.`);
+  }
+  const choices = values => [...values].sort((a, b) => a.id.localeCompare(b.id));
+  if (!Array.isArray(question.choices) || !sameContractValue(choices(question.choices), choices(expected.choices))) reject('Time choices contradict their trusted set.');
+  return expected.timeFixture;
+}
+
 function validateQuestionInstance(activePlay, question) {
   if (!question || typeof question !== 'object') throw Object.assign(new Error('Question builder returned no contract.'), { code: 'malformed-question' });
   if (question.schemaVersion !== FOOTBALL_CONTEXTUAL_QUESTIONS.SCHEMA_VERSION) {
@@ -1770,6 +1801,7 @@ function validateQuestionInstance(activePlay, question) {
     ? null
     : new Set(FOOTBALL_CONTEXTUAL_QUESTIONS.SPECIAL_BINDING_PATHS[activePlay.playType] || []);
   const trustedChallenge = trustedTwoPointChallenge(activePlay, question);
+  const trustedTime = trustedTimeFixture(activePlay, question);
   for (const binding of question.bindings) {
     if (binding?.source?.kind === 'context'
       && /private|opponentDecision|plannedCall|weight/i.test(binding.source.path)) {
@@ -1785,7 +1817,9 @@ function validateQuestionInstance(activePlay, question) {
         ? FOOTBALL_CONTEXTUAL_QUESTIONS.RULES[binding.source.ruleId]
         : binding?.source?.kind === 'challengeFixture' && trustedChallenge
           ? readQuestionPointer(trustedChallenge, binding.source.path)
-          : undefined;
+          : binding?.source?.kind === 'timeFixture' && trustedTime
+            ? readQuestionPointer(trustedTime, binding.source.path)
+            : undefined;
     if (actual === undefined || !sameContractValue(actual, binding.value)) {
       throw Object.assign(new Error(`Question binding ${binding?.id || 'unknown'} is not grounded in the snap.`), { code: 'malformed-question' });
     }
@@ -1827,7 +1861,13 @@ function validateQuestionInstance(activePlay, question) {
 function pickQuestion(activePlay) {
   const profile = contextualQuestionProfile();
   const inspected = FOOTBALL_CONTEXTUAL_QUESTIONS.inspect(activePlay, profile);
-  const eligible = questionFaultMode === 'empty-pool' ? [] : inspected.eligible.map((entry) => {
+  const ordinal = (state.instructedScrimmages || 0) + 1;
+  const clockDue = activePlay.playType === 'scrimmage' && ordinal >= 2 && (ordinal - 2) % 3 === 0;
+  const timeFamilies = FOOTBALL_CONTEXTUAL_QUESTIONS.IN_GAME_TIME_FAMILIES;
+  const dueFamily = clockDue ? timeFamilies[Math.floor((ordinal - 2) / 3) % timeFamilies.length] : null;
+  const pool = inspected.eligible.filter(entry => activePlay.playType !== 'scrimmage'
+    || (clockDue ? entry.familyId === dueFamily : !timeFamilies.includes(entry.familyId)));
+  const eligible = questionFaultMode === 'empty-pool' ? [] : pool.map((entry) => {
     const selection = FOOTBALL_CONTEXTUAL_QUESTIONS.selectionFor(activePlay, entry.familyId);
     return { ...entry, selectionMultiplier: selection.multiplier };
   });
@@ -2125,6 +2165,13 @@ function renderMathVisual() {
     visual.type === 'punt-travel' && data.possibleTouchback === true,
   );
   overlay.setAttribute('aria-label', visual.ariaLabel);
+  if (['detailed-clock', 'game-elapsed'].includes(visual.type)) {
+    overlay.removeAttribute('data-model');
+    overlay.replaceChildren();
+    if (visual.type === 'detailed-clock') renderTimeLabClockVisual(overlay, visual, false);
+    else renderTimeLabGameVisual(overlay, visual);
+    return;
+  }
   if (visual.type === 'column-arithmetic') {
     overlay.removeAttribute('data-model');
     overlay.replaceChildren(renderColumnArithmetic(data, visual.result));
@@ -3398,6 +3445,9 @@ function prepareQuestion(bundle, labelHtml, feedbackCopy = '') {
     : isFieldReading
       ? (state.possession === POSSESSIONS.offense ? 'specialFieldReadingOffense' : 'specialFieldReadingDefense')
       : (state.possession === POSSESSIONS.offense ? 'specialQuestionOffense' : 'specialQuestionDefense'));
+  if (question.curriculumSource === 'user-requested-time') {
+    setDeskHeader('Time practice', 'Use the stopped clock or pretend game time.', 'Choose the matching answer.');
+  }
   const view = captureLiveRender();
   syncUiState(view);
   const visibleGuidance = question.support === 'guided' ? question.hint.text : '';
@@ -4365,6 +4415,9 @@ function commitPendingResolution({ focusNextCall = false } = {}) {
 
   applyCanonicalTransition(activePlay, validation.value);
   state.committedPlayIds = [...(state.committedPlayIds || []), activePlay.playId];
+  if (activePlay.playType === 'scrimmage' && pending.policy !== 'questionBypass' && state.questionInstance) {
+    state.instructedScrimmages = (state.instructedScrimmages || 0) + 1;
+  }
   state.questionUi.outcomeCommitted = true;
   const placement = terminalPlacement(activePlay, validation.value, pending.policy);
   const possessionFinalized = placement
@@ -4965,10 +5018,10 @@ function svgNode(name, attributes = {}) {
   return node;
 }
 
-function appendTimeLabClock(parent, clock, label) {
+function appendTimeLabClock(parent, clock, label, exposeTime = true) {
   const figure = document.createElement('figure');
   figure.className = 'tl-clock-figure';
-  figure.dataset.time = FOOTBALL_TIME_LAB.formatDetailedTime(clock);
+  if (exposeTime) figure.dataset.time = FOOTBALL_TIME_LAB.formatDetailedTime(clock);
   const svg = svgNode('svg', { viewBox: '0 0 120 120', 'aria-hidden': 'true', focusable: 'false' });
   svg.classList.add('tl-clock-svg');
   svg.appendChild(svgNode('circle', { cx: 60, cy: 60, r: 54, class: 'tl-clock-face' }));
@@ -5007,7 +5060,7 @@ function appendTimeLabClock(parent, clock, label) {
   return figure;
 }
 
-function renderTimeLabClockVisual(container, visual) {
+function renderTimeLabClockVisual(container, visual, exposeTime = true) {
   const data = visual.data;
   if (visual.type === 'elapsed-clock') {
     const row = document.createElement('div');
@@ -5033,7 +5086,7 @@ function renderTimeLabClockVisual(container, visual) {
 
   const row = document.createElement('div');
   row.className = visual.type === 'detailed-clock' ? 'tl-clock-row tl-detailed-clock-row' : 'tl-clock-row';
-  appendTimeLabClock(row, data.clock, 'Practice clock');
+  appendTimeLabClock(row, data.clock, 'Stopped practice clock', exposeTime);
   if (data.showDigital && data.digitalTime) {
     const digital = document.createElement('div');
     digital.className = 'tl-digital-readout';

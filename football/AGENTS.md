@@ -40,9 +40,8 @@ repository-level `AGENTS.md`.
 - Use completed or explicitly included curriculum skills for graded questions,
   but only when the concept is genuinely supplied by the live football state.
   Approval through the end of a book authorizes concepts; it does not justify a
-  random worksheet question during a snap. Clock, AM/PM, and calendar work must
-  remain unscheduled in live snaps because they have no truthful live-play
-  source. The separate Game Day Time Lab may supply explicit, validated
+  random worksheet question during a snap. AM/PM and calendar work remain unscheduled in live snaps. Issue #208
+  explicitly authorizes the four fictional-time scrimmage families below. The separate Game Day Time Lab may supply explicit, validated
   practice fixtures outside football stakes, learning, stats, Coach Report, and
   Season state; it is distinct from Coach Replay remediation.
 - Keep question-family source metadata auditable. Workbook-derived families
@@ -60,7 +59,8 @@ repository-level `AGENTS.md`.
   partitioned by evidence class. Evidence from one class must not strengthen,
   suppress, guide, or refresh the other. Migrated `unclassified` history is
   display/preservation-only and remains inert for adaptation and Coach Report.
-- Every in-play question must be derived from the immutable public facts of the
+- Except for the explicitly authorized #186 and #208 fixtures, every in-play
+  question must be derived from the immutable public facts of the
   live tagged play. Scrimmage questions include the selected calls and exact
   proposed gain; conversion, field-goal, and punt questions consume only their
   own closed special-team context. The question gates that same frozen outcome;
@@ -83,7 +83,8 @@ repository-level `AGENTS.md`.
   subtraction. Only that try presents only the two challenge families
   (`two-point-three-digit-add`, `two-point-three-digit-subtract`); PAT tries,
   opponent tries, and every other play keep the play-grounded rule above, and
-  this is the only graded content outside completed or included curriculum. The
+  this and the #208 fictional-time families are the only graded exceptions
+  outside completed or included curriculum. The
   operands form a validated challenge fixture: a pure function of the frozen
   `gameId`, `possessionId`, `playId`, `contextId`, and `familyId` that draws
   from no football, scheduler, or presentation stream and never changes the
@@ -98,6 +99,18 @@ repository-level `AGENTS.md`.
   or takes away without borrowing, sums stay at most 999, and differences at
   least 100. Carrying or borrowing needs a later approved change and its own
   tier.
+- **In-game time (#208, user-requested exception).** Ordinary scrimmages on both
+  sides automatically use individual-minute, finish-time, individual-second,
+  halfway-time practice at successfully instructed ordinals 2, 5, 8, 11, then
+  repeat every third. Only accepted instructed scrimmage commits advance this
+  ephemeral cadence; bypasses retain the due slot. Pure versioned fixtures
+  derive from public frozen IDs, never a clock or an RNG stream. The validator
+  recomputes the complete question, choices, pictures and copy. These four
+  `user-requested-time` families claim no workbook page/completion; analog
+  reading is literacy and finish/halfway calculation independent evidence.
+  They gate the frozen football outcome with normal support. Pretend four-hour
+  games describe no actual match duration, halftime or elapsed quarter time.
+  Optional Lab sessions and all special-team pools retain their boundaries.
 - **Offense/defense symmetry exception (#186).** Because the request covers
   only the player's tries, the opponent's two-point try keeps the conversion
   literacy families. Shared retry, worked-explanation, Film Room, and

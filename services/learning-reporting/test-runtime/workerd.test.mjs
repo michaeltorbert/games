@@ -427,3 +427,35 @@ test('a missing installation marker answers 503 and never initializes', async ()
     await db.prepare('ALTER TABLE system_hidden RENAME TO system').run();
   }
 });
+
+// #208: qualify the actual built consumer before publishing the new producer.
+test('built Worker accepts four in-game time concepts beside an existing family and reports their separate evidence axes', async () => {
+  const profile = (await admin('/api/profiles', { label: 'Synthetic Time' })).data;
+  const dev = await enrolledDevice([profile.profileId], 'Time catalog tablet');
+  const ids = ['time-read-one-minute', 'game-finish-time', 'time-read-one-second', 'game-halfway-time'];
+  const metas = [...ids.map(familyId => ({ familyId, concept: familyId, purpose: 'requestedTime', tier: 'fictional-time', grading: 'gate', evidenceClass: familyId.startsWith('time-read') ? 'literacy' : 'independent' })),
+    { familyId: 'line-to-gain-exact', concept: 'line-to-gain', purpose: 'weakSpot', tier: 'within-10', grading: 'gate', evidenceClass: 'independent' }];
+  const events = metas.flatMap(meta => {
+    const questionInstanceId = randomUUID();
+    const event = fields => ({ schemaVersion: 1, eventId: randomUUID(), deviceId: dev.deviceId, epochId: dev.epochId,
+      seq: ++dev.seq, profileId: profile.profileId, game: 'football', gameVersion: '1.34.25',
+      recordedAt: new Date().toISOString(), questionInstanceId, ...meta, ...fields });
+    return [event({ kind: 'attempt', number: 1, correct: true, support: 'guided' }), event({ kind: 'resolution', resolution: 'firstTryCorrect' })];
+  });
+  for (const id of ids) assert.ok(bundle.includes(id), `${id} in deployed bundle bytes`);
+  const response = await sync(dev, events);
+  assert.equal(response.status, 200); assert.deepEqual(outcomes(response), events.map(() => 'accepted'));
+  assert.deepEqual(outcomes(await sync(dev, events)), events.map(() => 'accepted'), 'same exact events replay safely');
+  assert.equal(await count('SELECT count(*) AS n FROM events WHERE device_id = ?1', dev.deviceId), events.length);
+  const report = await admin(`/api/report?profile=${profile.profileId}`);
+  assert.equal(report.status, 200);
+  const text = JSON.stringify(report.data);
+  for (const meta of metas) {
+    const row=report.data.football.rows.find(row=>row.concept===meta.concept);
+    assert.ok(row, `${meta.concept} retained as a distinct report concept`);
+    assert.equal(row.counts[meta.evidenceClass].guidedFirstTry, 1);
+    assert.equal(row.counts[meta.evidenceClass==='literacy'?'independent':'literacy'].guidedFirstTry, 0);
+  }
+  const invalid = { ...events[0], eventId: randomUUID(), seq: ++dev.seq, evidenceClass: 'independent' };
+  assert.deepEqual(outcomes(await sync(dev, [invalid])), ['invalid'], 'reading cannot be relabelled calculation');
+});

@@ -100,6 +100,7 @@
     ['field-goal-point-value', 'field-goal-scoring', 'coreReview', 'football-context', 'gate', 'literacy'],
     ['conversion-attempt-value', 'conversion-scoring', 'coreReview', 'football-context', 'gate', 'literacy'],
     ['conversion-try-marker', 'conversion-placement', 'coreReview', 'football-context', 'gate', 'literacy'],
+    ...['time-read-one-minute', 'game-finish-time', 'time-read-one-second', 'game-halfway-time'].map(familyId => [familyId, familyId, 'requestedTime', 'fictional-time', 'gate', familyId.startsWith('time-read') ? 'literacy' : 'independent']),
     ['two-point-three-digit-add', 'two-point-challenge', 'requestedChallenge', 'three-digit-no-regrouping', 'gate', 'independent'],
     ['two-point-three-digit-subtract', 'two-point-challenge', 'requestedChallenge', 'three-digit-no-regrouping', 'gate', 'independent'],
   ];

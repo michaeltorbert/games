@@ -8004,3 +8004,32 @@ body::after {
   #ov-time-lab .tl-visual[data-visual-type="detailed-clock"][data-visual-stage="worked"] .tl-clock-figure { width: 125px; }
   #ov-time-lab .tl-visual[data-visual-type="detailed-clock"][data-visual-stage="worked"] .tl-digital-readout { font-size: 24px; }
 }
+
+/* #208: the same stopped-clock drawing fits the ordinary question workspace.
+   Its size is independent of the optional Lab overlay and answer choices. */
+#math-overlay:is([data-type="detailed-clock"], [data-type="game-elapsed"]) {
+  grid-template-columns: minmax(0, 1fr);
+  width: min(72%, 620px);
+  gap: 4px;
+  padding: 10px 14px;
+}
+#math-overlay[data-type="detailed-clock"] .tl-clock-figure { width: 148px; max-width: 55%; }
+#math-overlay .tl-clock-figure figcaption { color: #d9e8ff; font-size: 12px; }
+#math-overlay .tl-hand-legend { font-size: 12px; }
+#math-overlay .tl-digital-readout { font-size: 34px; padding: 6px 10px; }
+#math-overlay[data-type="game-elapsed"] .tl-game-time { gap: 6px; }
+@media (max-width: 600px) {
+  #wrap:is([data-phase="question"], [data-phase="explanation"]):has(#math-overlay[data-type="detailed-clock"]) #field-wrap { height: 252px; }
+  #wrap:is([data-phase="question"], [data-phase="explanation"]):has(#math-overlay[data-type="game-elapsed"]) #field-wrap { height: 190px; }
+  #math-overlay:is([data-type="detailed-clock"], [data-type="game-elapsed"]) {
+    left: calc(50% - 25.5px);
+    width: calc(94% - 51px);
+    bottom: 12px;
+    padding: 8px;
+  }
+  #math-overlay[data-type="detailed-clock"] .tl-clock-figure { width: 146px; max-width: 65%; }
+  #math-overlay[data-type="detailed-clock"][data-support="worked"] .tl-clock-figure { width: 126px; max-width: 48%; }
+  #math-overlay .tl-clock-row { gap: 8px; }
+  #math-overlay .tl-hand-legend { font-size: 11px; }
+  #math-overlay .tl-game-time strong { font-size: 16px; }
+}

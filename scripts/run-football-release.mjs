@@ -64,6 +64,7 @@ const BROWSER = [
   'tests/football-rivals.spec.mjs',
   'tests/football-season.spec.mjs',
   'tests/football-time-lab-ui.spec.mjs',
+  'tests/football-in-game-clocks.spec.mjs',
   'tests/football-learning-outbox.spec.mjs',
   'tests/learning-reporting-sync.spec.mjs',
   'tests/learning-reporting-ui.spec.mjs',
