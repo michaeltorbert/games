@@ -667,7 +667,7 @@ test.describe('issue 49 overlay characterization', () => {
         ],
         ids: [
           'tl-back-button', 'tl-title', 'tl-subtitle', 'tl-mode-view', 'tl-mode-heading', 'tl-mode-clocks',
-          'tl-mode-calendar', 'tl-mode-mixed', 'tl-question-view', 'tl-active-mode', 'tl-progress',
+          'tl-mode-calendar', 'tl-mode-mixed', 'tl-mode-precision', 'tl-mode-football', 'tl-question-view', 'tl-active-mode', 'tl-progress',
           'tl-question-heading', 'tl-prompt', 'tl-visual', 'tl-guidance', 'tl-guidance-copy', 'tl-choices',
           'tl-feedback', 'tl-worked', 'tl-worked-heading', 'tl-worked-copy', 'tl-next-button', 'tl-recap-view',
           'tl-recap-heading', 'tl-recap-copy', 'tl-recap-read', 'tl-recap-solved', 'tl-recap-supported',
@@ -678,6 +678,8 @@ test.describe('issue 49 overlay characterization', () => {
           { id: 'tl-mode-clocks', onclick: "startTimeLab('clocks')" },
           { id: 'tl-mode-calendar', onclick: "startTimeLab('calendar')" },
           { id: 'tl-mode-mixed', onclick: "startTimeLab('mixed')" },
+          { id: 'tl-mode-precision', onclick: "startTimeLab('precision')" },
+          { id: 'tl-mode-football', onclick: "startTimeLab('football')" },
           { id: 'tl-next-button', onclick: 'advanceTimeLabQuestion(this)' },
           { id: 'tl-done-button', onclick: 'finishTimeLab()' },
         ],
@@ -1241,6 +1243,10 @@ test.describe('issue 49 overlay characterization', () => {
 
     await tapOverlayAction(page, 'ov-start', '#tl-open-button', 'open Time Lab');
     await expect(page.locator('#ov-time-lab .tl-card')).toHaveAttribute('data-tl-view', 'menu');
+    // The raw textContent contract below preserves adjacent element serialization;
+    // accessible names must still separate the title and explanatory text.
+    await expect(page.locator('#tl-mode-precision')).toHaveAccessibleName('Minutes & seconds Read every small mark on a stopped clock');
+    await expect(page.locator('#tl-mode-football')).toHaveAccessibleName('Football time Find finish and halfway times for pretend games');
     await expectOverlayPresentation(page, testInfo, {
       id: 'ov-time-lab', label: 'd20-time-lab-menu', focus: '#tl-mode-clocks',
       copy: {
@@ -1251,7 +1257,9 @@ test.describe('issue 49 overlay characterization', () => {
           action('tl-back-button', 'Back', 'closeTimeLab()'),
           action('tl-mode-clocks', '◷ Clocks Read times, move ahead, and choose AM or PM', "startTimeLab('clocks')"),
           action('tl-mode-calendar', '▦ Calendar Find weekdays and put months in order', "startTimeLab('calendar')"),
-          action('tl-mode-mixed', '↔ Mixed Try every clock and calendar skill once', "startTimeLab('mixed')"),
+          action('tl-mode-mixed', '↔ Mixed Basic clocks and calendar skills, together', "startTimeLab('mixed')"),
+          action('tl-mode-precision', '◴ Minutes & secondsRead every small mark on a stopped clock', "startTimeLab('precision')"),
+          action('tl-mode-football', '→ Football timeFind finish and halfway times for pretend games', "startTimeLab('football')"),
         ],
       },
       name: 'Clocks & Calendars',
