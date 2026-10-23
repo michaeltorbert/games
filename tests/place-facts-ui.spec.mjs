@@ -1,7 +1,7 @@
 import { test, expect } from './curriculum-fixture.mjs';
 import { checkedOptions, chooseOptions, mathPractice, optionsButton, optionsDialog } from './place-practice-nav.mjs';
 const KEY='place-value-practice:facts:v1', MIXED='place-value-practice:arithmetic:v1', PLACE='place-value-practice:progress:v1', SUB='place-value-practice:arithmetic-mode:v1';
-async function freeze(page){const now=new Date('2026-09-09T12:00:00Z');await page.clock.install({time:now});await page.clock.pauseAt(now);}
+async function freeze(page){const now=new Date('2026-09-09T12:00:00Z');await page.clock.install({time:0});await page.clock.pauseAt(now);}
 test.beforeEach(async({page})=>{await freeze(page);});
 // A completed question now waits for an explicit Next. Each continuation first
 // proves that time alone (well past the former 650ms hold) changes nothing.

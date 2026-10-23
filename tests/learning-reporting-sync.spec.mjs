@@ -429,6 +429,8 @@ async function playFactsRun(page, context, state, { enrolled, offline = false })
   // Each run starts clean: no Fact save, hint, player choice or reporting database.
   await page.evaluate(() => { localStorage.clear(); sessionStorage.clear(); });
   expect(await deleteOutboxDatabase(page)).toBe('deleted');
+  // Reuse the exact scenario wall-clock input, retaining all calendar fields in parity.
+  await context.clock.setSystemTime(new Date('2026-09-09T12:00:00Z'));
   if (enrolled) await enrollThroughPage(page);
   await openFacts(page);
   if (offline) await context.setOffline(true);
@@ -461,7 +463,8 @@ async function playFactsRun(page, context, state, { enrolled, offline = false })
 
 test('seeded Number facts play is identical with no enrollment and with upload succeeding, failing, offline and hung; only acknowledged events leave the outbox', async ({ page, context }) => {
   const now = new Date('2026-09-09T12:00:00Z');
-  await context.clock.install({ time: now });
+  // This blank-page setup advances from epoch zero before any application timer exists.
+  await context.clock.install({ time: 0 });
   await context.clock.pauseAt(now);
   await context.addInitScript(() => { localStorage.setItem('place-value-practice:mode:v1', 'arithmetic'); localStorage.setItem('place-value-practice:arithmetic-mode:v1', 'facts'); });
   let current = newState();
@@ -501,7 +504,7 @@ test('seeded Number facts play is identical with no enrollment and with upload s
   expect(success.state.accepted.size).toBe(FACTS_EVENTS);
   expect(syncsOf(success.state).length).toBeGreaterThan(0);
   expect(syncsOf(success.state).every(request => request.authorization === `Bearer ${success.state.token}` && request.cookie === null)).toBe(true);
-  expect(syncsOf(success.state).flatMap(request => request.body.events).every(event => event.game === 'facts' && event.gameVersion === '1.9.2')).toBe(true);
+  expect(syncsOf(success.state).flatMap(request => request.body.events).every(event => event.game === 'facts' && event.gameVersion === '1.9.3')).toBe(true);
   // Failure: uploads were attempted and refused; nothing was removed.
   expect(syncsOf(failure.state).length).toBeGreaterThan(0);
   expect(failure.state.accepted.size).toBe(0);
