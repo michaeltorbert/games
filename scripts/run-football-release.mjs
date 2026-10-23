@@ -54,6 +54,7 @@ const BROWSER = [
   'tests/football-copy-contract.spec.mjs',
   'tests/football-fireworks.spec.mjs',
   'tests/football-overlay-accessibility.spec.mjs',
+  'tests/football-home-screen-install.spec.mjs',
   'tests/football-overlay-contract.spec.mjs',
   'tests/football-context-integration.spec.mjs',
   'tests/football-learning.spec.mjs',

@@ -8033,3 +8033,25 @@ body::after {
   #math-overlay .tl-hand-legend { font-size: 11px; }
   #math-overlay .tl-game-time strong { font-size: 16px; }
 }
+
+/* A utility action beneath the two existing start choices. */
+#ov-start .start-install-row {
+  margin-top: 6px;
+  text-align: center;
+  --hsi-font: inherit;
+  --hsi-font-size: 0.875rem;
+  --hsi-accent: #1f5fbf;
+  --hsi-on-accent: #142c49;
+  --hsi-radius: 10px;
+}
+#ov-start [data-home-screen-install]::part(button) {
+  min-height: 44px;
+  padding: 6px 16px;
+  background: transparent;
+  color: #c7d8ed;
+  border-color: #768ca8;
+}
+
+#ov-start [data-home-screen-install]::part(button):focus-visible {
+  outline-color: #fff;
+}

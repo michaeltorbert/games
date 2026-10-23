@@ -235,7 +235,7 @@ test('seeded play is identical with recording off, on, offline and failing; reco
     expect(run.outbox.valid).toBe(true);
     const events = run.outbox.envelope.events;
     expect(events.map(event => event.seq)).toEqual(events.map((_, index) => index + 1));
-    expect(events.every(event => event.game === 'football' && event.gameVersion === '1.34.25')).toBe(true);
+    expect(events.every(event => event.game === 'football' && event.gameVersion === '1.34.26')).toBe(true);
     const groups = byQuestion(events);
     const presented = run.steps.map((step, index) => ({ step, answers: SCRIPT[index].answers })).filter(item => item.step.family);
     expect(groups).toHaveLength(presented.length);
@@ -496,7 +496,7 @@ test('the outbox script ships with the release version and loads before football
       questions: index('/contextual-questions.js'), football: index('/football.js') };
   });
   expect(order.version).toBe(order.game);
-  expect(order.game).toBe('1.34.25');
+  expect(order.game).toBe('1.34.26');
   expect(order.outbox).toBeGreaterThan(order.questions);
   expect(order.outbox).toBeLessThan(order.football);
 });
