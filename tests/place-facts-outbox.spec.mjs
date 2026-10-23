@@ -20,7 +20,9 @@ test.beforeAll(({}, testInfo) => {
 // spy (indexedDB.open count; __failOutbox aborts the outbox transaction after its put).
 test.beforeEach(async ({ context }) => {
   const now = new Date('2026-09-09T12:00:00Z');
-  await context.clock.install({ time: now });
+  // Install before the page loads, then pause at the fixture instant from epoch zero.
+  // The install command can take real time; pausing at its own start instant races it.
+  await context.clock.install({ time: 0 });
   await context.clock.pauseAt(now);
   await context.addInitScript(() => {
     localStorage.setItem('place-value-practice:mode:v1', 'arithmetic');
@@ -115,6 +117,9 @@ async function playFacts(page, { enrolled = null, failOutbox = false, offline = 
   const requests = [];
   const onRequest = request => requests.push(`${request.method()} ${new URL(request.url()).pathname}`);
   page.on('request', onRequest);
+  // Every parity scenario receives identical wall time as well as identical actions.
+  // Keep complete model/save-byte comparisons, including calendar metadata.
+  await page.context().clock.setSystemTime(new Date('2026-09-09T12:00:00Z'));
   await open(page);
   if (enrolled) await enroll(page, enrolled);
   if (failOutbox) await page.evaluate(() => { window.__failOutbox = true; });
@@ -168,7 +173,7 @@ test('seeded Fact play is identical with recording off, on, offline and failing;
     expect(run.outbox.valid).toBe(true);
     const events = run.outbox.envelope.events;
     expect(events.map(event => event.seq)).toEqual(events.map((_, index) => index + 1));
-    expect(events.every(event => event.game === 'facts' && event.gameVersion === '1.9.2')).toBe(true);
+    expect(events.every(event => event.game === 'facts' && event.gameVersion === '1.9.3')).toBe(true);
     const groups = byQuestion(events);
     expect(groups.map(group => group.map(shape))).toEqual(SCRIPT.map(step => step.expect));
     groups.forEach((group, index) => {
@@ -592,7 +597,7 @@ test('the outbox script ships with the release version and loads before fact-pra
     return { version: scripts[index('/shared/learning-outbox.js')]?.searchParams.get('v'), game: GAME_VERSION,
       domain: index('/fact-practice-domain.js'), outbox: index('/shared/learning-outbox.js'), controller: index('/fact-practice.js') };
   });
-  expect([order.version, order.game]).toEqual(['1.9.2', '1.9.2']);
+  expect([order.version, order.game]).toEqual(['1.9.3', '1.9.3']);
   expect(order.outbox).toBeGreaterThan(order.domain);
   expect(order.outbox).toBeLessThan(order.controller);
 });
