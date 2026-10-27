@@ -8055,3 +8055,22 @@ body::after {
 #ov-start [data-home-screen-install]::part(button):focus-visible {
   outline-color: #fff;
 }
+
+/* Original labeled practice coins; diameter ratios follow the US Mint. */
+.shop-heading {font:700 12px/1.2 'Barlow Condensed',sans-serif;letter-spacing:.035em;color:#e8d39b;text-align:center;margin-bottom:5px;}
+.shop-coin-set {display:inline-flex;flex-wrap:wrap;justify-content:center;align-items:center;gap:3px;vertical-align:middle;max-width:100%;}
+.shop-coin {--coin-size:52px;display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;width:calc(var(--coin-size)*var(--coin-ratio));height:calc(var(--coin-size)*var(--coin-ratio));border-radius:50%;box-sizing:border-box;border:2px solid #afbbc5;box-shadow:inset 0 0 0 2px #e3e9ec;background:#cbd4da;color:#152836;font:800 13px/1 'Barlow Condensed',sans-serif;text-shadow:none;}
+.shop-coin-1 {background:#ce9164;border-color:#a86a43;box-shadow:inset 0 0 0 2px #e6b189;}
+.shop-note {font:700 13px/1.25 'Barlow Condensed',sans-serif;color:#fff;text-align:center;margin-top:4px;}
+.shop-add {display:inline-flex;align-items:center;gap:4px;margin-left:5px;}
+.shop-choice {display:flex;flex-direction:column;justify-content:center;align-items:center;gap:2px;}
+.shop-choice .shop-coin {--coin-size:31px;font-size:12px;}
+.shop-and {font-size:11px;line-height:1;}
+#math-overlay[data-type="coin-wallet"] {text-align:center;}
+@media(max-width:600px){.shop-coin {--coin-size:40px;font-size:12px;}.shop-choice .shop-coin {--coin-size:27px;font-size:11px;}.shop-heading {font-size:11px;}.shop-note{font-size:12px;}}
+
+/* Keep supplied coin values and prices on one compact row in the field. */
+#math-overlay[data-type="coin-wallet"] {min-height:0;padding:8px 10px;gap:4px;bottom:8px;}
+.shop-content {display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:5px 10px;min-width:0;}
+.shop-content .shop-note {margin-top:0;}
+.shop-reference {display:inline-flex;align-items:center;gap:5px;}
