@@ -121,6 +121,12 @@ test('#215 coin bypass retains its slot; retry renders repeated taps and stale C
  await page.locator('#call-grid .call-btn').first().tap();await expect.poll(()=>mode(page)).toBe('feedback');
  expect(await page.evaluate(()=>state.instructedScrimmages)).toBe(2);
  await page.evaluate(()=>window.__footballTest.setQuestionFault(null));await page.clock.fastForward(2000);
+ // The bypass advances football normally. If its gain leaves fourth down,
+ // take the legal production Go action before the next ordinary scrimmage.
+ const go=page.locator('#decision-grid [data-action="go"]');
+ if(await go.isVisible())await go.tap();
+ expect(await page.evaluate(()=>state.instructedScrimmages)).toBe(2);
+ await expect(page.locator('#call-grid .call-btn')).toHaveCount(5);
  await page.locator('#call-grid .call-btn').first().tap();
  const original=await contracts(page),q=original.questionInstance,p=original.activePlay;expect(q.coinFixture).toBeTruthy();
  const before=await page.evaluate(()=>{

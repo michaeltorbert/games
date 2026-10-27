@@ -1595,7 +1595,7 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
         sets=[[[25,10],[10,10,10,5]],[[25,5],[10,10,10,5]],[[25,10],[10,25]]];
         answer='set-0';ask='A pretend burger costs 35¢. Which choice shows TWO DIFFERENT ways to pay exactly?';
         hint='Count each set. Both must pay exactly, using different numbers or kinds of coins. Reordering the same coins is not another way.';break;
-      case 'quarter-purchase': case 'later-purchase': coins=kind==='later-purchase'?[25,25,25,10]:[25,25,10];price=25+n*5;break;
+      case 'quarter-purchase': case 'later-purchase': coins=kind==='later-purchase'?[25,25,25,10]:[25,25,10];price=[25,35,50][n-1];break;
       case 'one-quarter': case 'two-quarters': case 'three-quarters': {
         const count=kind==='one-quarter'?1:kind==='two-quarters'?2:3;
         coins=[]; target=count*25+10; constraints={quarters:count};
@@ -1630,7 +1630,14 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
       else if(kind==='make-nickels')explanation=`Count by fives: ${Array.from({length:fixture.answer},(_,i)=>(i+1)*5).join(', ')} cents. ${fixture.answer} nickels pay ${f.target}¢ exactly.`;
       else if(kind==='complete-quarters')explanation=`Start at 25¢ and add ${fixture.answer} ${fixture.answer===1?'quarter':'quarters'}: ${Array.from({length:fixture.answer},(_,i)=>(i+2)*25).join(', ')} cents. That reaches ${f.target}¢.`;
       else if(f.add!==null)explanation=`Count the wallet: ${countLine} cents. Add ${f.add}¢: ${sum} + ${f.add} = ${fixture.answer} cents.`;
-      else if(f.price!==null)explanation=`Count the wallet: ${countLine} cents. Spend ${f.price}¢: ${sum} − ${f.price} = ${fixture.answer} cents left in the wallet.`;
+      else if(f.price!==null){
+        // Exact payment uses only a subset of the displayed wallet. No exchange
+        // or cashier change is assumed, and no random stream is consumed.
+        const mask=Array.from({length:2**f.coins.length},(_,i)=>i).find(mask=>coinTotal(f.coins.filter((_,i)=>mask&(1<<i)))===f.price);
+        if(mask===undefined)throw contractError('invalid-coin-payment','The wallet must pay the practice price exactly.');
+        const paid=f.coins.filter((_,i)=>mask&(1<<i)),remaining=f.coins.filter((_,i)=>!(mask&(1<<i)));
+        explanation=`Pay ${f.price}¢ with ${coinDescription(paid)}. Coins left: ${coinDescription(remaining)}. Count their value: ${fixture.answer} cents. ${sum} − ${f.price} = ${fixture.answer}.`;
+      }
       else if(f.target!==null)explanation=`The supplied coins make ${sum}¢. ${sum} + ${fixture.answer} = ${f.target}, so ${fixture.answer} more cents complete the set.`;
       else explanation=`Count on by each coin’s value: ${countLine} cents. The coins make ${fixture.answer} cents.${kind==='two-nickels'?' Two nickels make the same value as one dime.':''}`;
       const data={...clone(f),target:['equal-sets','later-equal'].includes(kind)?null:f.target,

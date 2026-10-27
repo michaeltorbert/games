@@ -48,6 +48,15 @@ test('every exact source boundary is completion-only, independently mapped, and 
 test('bounded identity sweep independently grades every choice, denomination, amount, support and exact source variant',()=>{
  for(const side of ['offense','defense'])for(let n=1;n<=18;n++)for(const id of api.IN_GAME_COIN_FAMILIES){
   const p=play(n,side), q=api.build(p,id,{profile:profile(181)}),f=q.coinFixture.facts;
+  if(['coin-wallet-left','coin-quarter-purchase','coin-later-purchase'].includes(id)){
+   // Independent subset-sum oracle: every price must be payable by removing
+   // actual shown coins, without exchanging coins or receiving cashier change.
+   let reachable=new Set([0]);
+   for(const value of f.coins)reachable=new Set([...reachable,...Array.from(reachable,sum=>sum+value)]);
+   assert.ok(reachable.has(f.price),`${id} ${side} identity ${n}: exact payment exists in displayed wallet`);
+   assert.ok(reachable.has(total(f.coins)-f.price),`${id}: remaining value has the complementary subset`);
+   assert.match(q.explain,/Pay .* with .*Coins left:/);
+  }
   assert.deepEqual(plain(q.coinFixture),plain(api.coinFixtureFor(p,id)));
   assert.deepEqual(plain(oracle(q)),[q.correctChoiceId]);
   for(const coins of [f.coins,f.referenceCoins,...(q.coinFixture.sets||[]).flat()]){
