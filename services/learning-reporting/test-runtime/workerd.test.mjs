@@ -459,3 +459,22 @@ test('built Worker accepts four in-game time concepts beside an existing family 
   const invalid = { ...events[0], eventId: randomUUID(), seq: ++dev.seq, evidenceClass: 'independent' };
   assert.deepEqual(outcomes(await sync(dev, [invalid])), ['invalid'], 'reading cannot be relabelled calculation');
 });
+
+// #215 local real-runtime consumer qualification; this is not hosted acceptance.
+test('built Worker accepts all 26 closed coin families and rejects private or altered metadata',async()=>{
+ const {CATALOG}=await import('../src/validator.js');
+ const ids=Object.keys(CATALOG.football).filter(id=>id.startsWith('coin-'));assert.equal(ids.length,26);
+ const profile=(await admin('/api/profiles',{label:'Synthetic Coins'})).data;
+ const dev=await enrolledDevice([profile.profileId],'Coin catalog tablet');
+ const make=(id,fields)=>({schemaVersion:1,eventId:randomUUID(),deviceId:dev.deviceId,epochId:dev.epochId,seq:++dev.seq,profileId:profile.profileId,game:'football',gameVersion:'1.34.26',recordedAt:new Date().toISOString(),questionInstanceId:randomUUID(),familyId:id,...CATALOG.football[id],...fields});
+ const events=ids.flatMap(id=>[{kind:'attempt',number:1,correct:false,support:'initial'},{kind:'help',number:2,support:'guided'},{kind:'resolution',resolution:'retryCorrect'}].map(fields=>make(id,fields)));
+ for(const id of ids)assert.ok(bundle.includes(id),`${id} in actual dry-run bundle`);
+ for(let offset=0;offset<events.length;offset+=20){const batch=events.slice(offset,offset+20),response=await sync(dev,batch);assert.equal(response.status,200);assert.deepEqual(outcomes(response),batch.map(()=>'accepted'));}
+ assert.equal(await count('SELECT count(*) AS n FROM events WHERE device_id = ?1',dev.deviceId),events.length);
+ const invalid=ids.flatMap(id=>[
+  {...make(id,{kind:'resolution',resolution:'retryCorrect'}),evidenceClass:CATALOG.football[id].evidenceClass==='literacy'?'independent':'literacy'},
+  {...make(id,{kind:'resolution',resolution:'retryCorrect'}),coinFixture:{coins:[25,10]}}
+ ]);
+ for(let offset=0;offset<invalid.length;offset+=20){const batch=invalid.slice(offset,offset+20),response=await sync(dev,batch);assert.equal(response.status,200);assert.deepEqual(outcomes(response),batch.map(()=>'invalid'));}
+ assert.equal(await count('SELECT count(*) AS n FROM events WHERE device_id = ?1',dev.deviceId),events.length,'private/altered rows are never stored');
+});

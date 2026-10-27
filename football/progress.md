@@ -2991,3 +2991,26 @@ current-candidate browser/device geometry, full regression matrix, and independe
 review remain required verification and are recorded by the coordinating task
 outside this artifact. This entry does not claim merge, release, native-device
 acceptance, or final readiness.
+
+
+### #215 reporting compatibility correction (local candidate only)
+
+The first reviewed candidate exposed two verification failures: an obsolete
+learning-test family count and the reporting outbox's closed catalog missing all
+26 coin tuples. The catalog is now additively extended under schema 1 with every
+old tuple and all wire/storage fields unchanged. The stale test now checks actual
+registration uniqueness, the explicit coin inventory and unchanged challenge-map
+boundaries. The historical outbox reader is preserved verbatim and hash-pinned
+for compatibility execution; new readers preserve/append old queues, while old
+tabs pause mixed coin queues and every automatic maintenance path preserves all
+five record strings, including delayed responses and write-failure recovery.
+Node, real IndexedDB mixed-tab, enrolled ordinary coin-event, service validator,
+and actual bundled workerd cases supply the bounded acceptance evidence.
+
+No migration or sync/service implementation change was introduced. The future
+release order is mandatory: deploy/verify the backend catalog before enabling
+coins for enrolled production clients. The old hosted catalog rejects and
+suppresses those events; local workerd success is not hosted acceptance. No
+production deployment, hosted acceptance, merge or release is claimed here.
+The local isolated demo remains storage-free. The singular worked answer unit
+for one remaining quarter was also corrected before fresh final review.

@@ -15,8 +15,13 @@
   // the never-released legacy outbox key (preserved and paused; only Stop removes it).
   const ENROLLMENT_KEY = 'learningReporting:enrollment:v1';
   const LEGACY_OUTBOX_KEY = 'learningReporting:outbox:v1';
-  // One version for the envelope, status record and event contract. Any catalog
-  // change bumps it, so older pages pause instead of rejecting newer events.
+  // Version the wire/storage shape and interpretation together. A strictly
+  // additive closed-catalog extension may keep v1 only when immutable released
+  // readers prove that unknown events pause ALL automatic mutation/upload paths
+  // byte-for-byte, including delayed acknowledgments. No old tuple may change.
+  // Backend acceptance must be deployed and verified before enabling new clients.
+  // Shape/meaning changes or failure of that compatibility proof require a new
+  // schema and an explicit migration/compatibility plan (LEARNING_EVENTS.md).
   const SCHEMA_VERSION = 1;
   const MAX_EVENTS = 500, MAX_CHARS = 262144, MAX_PROFILES = 8, MAX_IDS = 1000, COUNTER_MAX = 1000000000;
   const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
@@ -52,6 +57,32 @@
   // [familyId, concept, purpose, tier, grading, evidenceClass]. Parity tests bind
   // it to FOOTBALL_CONTEXTUAL_QUESTIONS.FAMILY_REGISTRY.
   const FOOTBALL_FAMILIES = [
+    ['coin-count-dimes-pennies', 'game-day-coins', 'coreReview', 'coins-within-100', 'gate', 'independent'],
+    ['coin-count-nickels-pennies', 'game-day-coins', 'coreReview', 'coins-within-100', 'gate', 'independent'],
+    ['coin-count-dimes-nickels', 'game-day-coins', 'coreReview', 'coins-within-100', 'gate', 'independent'],
+    ['coin-make-nickels', 'game-day-coins', 'coreReview', 'coins-within-100', 'gate', 'independent'],
+    ['coin-count-mixed', 'game-day-coins', 'coreReview', 'coins-within-100', 'gate', 'independent'],
+    ['coin-two-nickels', 'game-day-coins', 'coreReview', 'coins-within-100', 'gate', 'independent'],
+    ['coin-add-dime', 'game-day-coins', 'coreReview', 'coins-within-100', 'gate', 'independent'],
+    ['coin-add-nickel', 'game-day-coins', 'coreReview', 'coins-within-100', 'gate', 'independent'],
+    ['coin-complete-amount', 'game-day-coins', 'coreReview', 'coins-within-100', 'gate', 'independent'],
+    ['coin-dollar', 'game-day-coins', 'coreReview', 'coins-within-100', 'gate', 'literacy'],
+    ['coin-finish-set', 'game-day-coins', 'coreReview', 'coins-within-100', 'gate', 'independent'],
+    ['coin-wallet-left', 'game-day-coins', 'coreReview', 'coins-within-100', 'gate', 'independent'],
+    ['coin-count-quarters', 'game-day-coins', 'coreReview', 'coins-within-100', 'gate', 'independent'],
+    ['coin-count-quarters-dimes', 'game-day-coins', 'coreReview', 'coins-within-100', 'gate', 'independent'],
+    ['coin-count-quarters-nickels', 'game-day-coins', 'coreReview', 'coins-within-100', 'gate', 'independent'],
+    ['coin-count-quarters-mixed', 'game-day-coins', 'coreReview', 'coins-within-100', 'gate', 'independent'],
+    ['coin-complete-quarters', 'game-day-coins', 'coreReview', 'coins-within-100', 'gate', 'independent'],
+    ['coin-count-all', 'game-day-coins', 'coreReview', 'coins-within-100', 'gate', 'independent'],
+    ['coin-equal-sets', 'game-day-coins', 'coreReview', 'coins-within-100', 'gate', 'independent'],
+    ['coin-two-ways', 'game-day-coins', 'coreReview', 'coins-within-100', 'gate', 'independent'],
+    ['coin-quarter-purchase', 'game-day-coins', 'coreReview', 'coins-within-100', 'gate', 'independent'],
+    ['coin-one-quarter', 'game-day-coins', 'coreReview', 'coins-within-100', 'gate', 'independent'],
+    ['coin-two-quarters', 'game-day-coins', 'coreReview', 'coins-within-100', 'gate', 'independent'],
+    ['coin-three-quarters', 'game-day-coins', 'coreReview', 'coins-within-100', 'gate', 'independent'],
+    ['coin-later-equal', 'game-day-coins', 'coreReview', 'coins-within-100', 'gate', 'independent'],
+    ['coin-later-purchase', 'game-day-coins', 'coreReview', 'coins-within-100', 'gate', 'independent'],
     ['score-total-ch8', 'score-total-ch8', 'approvedExtension', 'chapter-8-arithmetic', 'gate', 'independent'],
     ['score-total-ch8-within-20', 'score-total-ch8', 'approvedExtension', 'chapter-8-arithmetic', 'gate', 'independent'],
     ['score-total-ch8-ones-add', 'score-total-ch8', 'approvedExtension', 'chapter-8-arithmetic', 'gate', 'independent'],

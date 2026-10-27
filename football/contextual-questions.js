@@ -1624,7 +1624,7 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
       let explanation;
       const sum=coinTotal(f.coins), kind=familyId.slice(5);
       const countLine=f.coins.reduce((parts,value)=>{parts.push((parts.at(-1)||0)+value);return parts;},[]).join(', ');
-      const answerUnit=kind==='make-nickels'?'nickels':kind==='complete-quarters'?'quarters':'cents';
+      const answerUnit=kind==='make-nickels'?(fixture.answer===1?'nickel':'nickels'):kind==='complete-quarters'?(fixture.answer===1?'quarter':'quarters'):(fixture.answer===1?'cent':'cents');
       if(fixture.sets) explanation=`Count each coin and check every condition. ${fixture.sets[0].map(set=>`${coinDescription(set)} makes ${coinTotal(set)}¢`).join('; ')}.${kind==='two-ways'?' The two sets use different coin combinations.':''}${f.constraints?` It uses exactly ${f.constraints.quarters} ${f.constraints.quarters===1?'quarter':'quarters'}.`:''}`;
       else if(kind==='dollar')explanation='Ten dimes make 100 cents. 100¢ is the same value as $1, so one dollar is 100 cents.';
       else if(kind==='make-nickels')explanation=`Count by fives: ${Array.from({length:fixture.answer},(_,i)=>(i+1)*5).join(', ')} cents. ${fixture.answer} nickels pay ${f.target}¢ exactly.`;

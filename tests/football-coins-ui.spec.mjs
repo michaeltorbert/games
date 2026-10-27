@@ -1,4 +1,6 @@
 import {test,expect} from '@playwright/test';
+import {randomUUID} from 'node:crypto';
+import {installConsent,readOutbox} from './learning-outbox-fixture.mjs';
 import {muteFootballForTests,expectFootballTestMuted} from './football-test-mute.mjs';
 const clocks=['time-read-one-minute','game-finish-time','time-read-one-second','game-halfway-time'];
 const contracts=page=>page.evaluate(()=>window.__footballTest.activeContracts());
@@ -146,4 +148,28 @@ test('#215 coin bypass retains its slot; retry renders repeated taps and stale C
  expect(await page.evaluate(()=>({counter:state.instructedScrimmages,rows:statsSession.completedPlays.length,resolved:learningSession.resolved,graded:state.gradedQuestions,rng:{...window.__coinRngCounts}}))).toEqual(committed);
  const final=await contracts(page);expect(final.activePlay).toEqual(p);expect(final.questionInstance).toEqual(q);expect(final.statsSession.completedPlays.filter(row=>row.playId===p.playId)).toHaveLength(1);
  await testInfo.attach('coin-contract-invariants',{body:JSON.stringify({before,committed,familyId:q.familyId,playId:p.playId},null,2),contentType:'application/json'});
+});
+
+
+test('#215 enrolled ordinary coin retry records private-safe attempt help and one classified resolution',async({page},testInfo)=>{
+ test.skip(testInfo.project.name!=='ipad-11-landscape','Enrollment adapter evidence runs on primary target.');
+ await page.route('**/shared/learning-reporting/config.js*',route=>route.fulfill({contentType:'text/javascript',body:"globalThis.LEARNING_REPORTING_CONFIG=Object.freeze({serviceUrl:''});"}));
+ await page.clock.install();await page.goto('/football/');await expectFootballTestMuted(page);
+ await installConsent(page,{generation:randomUUID(),deviceId:randomUUID(),profileIds:[randomUUID()],activeProfileId:null});
+ await start(page);
+ let coin;
+ for(let ordinal=1;ordinal<=3;ordinal++){
+  await page.locator('#call-grid .call-btn').first().tap();const q=(await contracts(page)).questionInstance;
+  if(ordinal===3){coin=q;expect(q.coinFixture).toBeTruthy();const wrong=q.choices.findIndex(c=>c.id!==q.correctChoiceId);await page.locator(`#b${wrong}`).tap();}
+  await page.locator(`#b${q.choices.findIndex(c=>c.id===q.correctChoiceId)}`).tap();if(ordinal<3)await page.clock.fastForward(2000);
+ }
+ await page.evaluate(()=>LEARNING_OUTBOX.idle());const stored=await readOutbox(page);expect(stored.valid).toBe(true);
+ const events=stored.envelope.events.filter(e=>e.familyId.startsWith('coin-'));
+ expect(events.map(e=>e.kind)).toEqual(['attempt','help','attempt','resolution']);
+ expect(events.filter(e=>e.kind==='resolution')).toHaveLength(1);
+ for(const e of events){expect(e.familyId).toBe(coin.familyId);expect(e.evidenceClass).toBe(coin.evidenceClass);expect(e.concept).toBe('game-day-coins');expect(Object.values(e).every(v=>v===null||typeof v!=='object')).toBe(true);}
+ for(const key of ['prompt','answer','coins','coinFixture','bindings','choices','privateOpponentSnapshot','gameId','playId'])expect(events.some(e=>Object.hasOwn(e,key))).toBe(false);
+ await page.evaluate(()=>{commitPendingResolution();continueAfterExplanation();});await page.evaluate(()=>LEARNING_OUTBOX.idle());
+ expect((await readOutbox(page)).envelope.events.filter(e=>e.familyId.startsWith('coin-'))).toEqual(events);
+ await testInfo.attach('enrolled-coin-events',{body:JSON.stringify(events,null,2),contentType:'application/json'});
 });

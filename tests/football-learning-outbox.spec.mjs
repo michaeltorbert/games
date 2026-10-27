@@ -2,7 +2,8 @@
 // page is session-muted by curriculum-fixture (verified after each goto/reload)
 // before any input. Enrollment (IndexedDB consent plus the localStorage hint) is a
 // synthetic test fixture: production #199 has no installer or writer.
-import { randomUUID } from 'node:crypto';
+import { randomUUID, createHash } from 'node:crypto';
+import {readFile} from 'node:fs/promises';
 import { test, expect } from './curriculum-fixture.mjs';
 import { expectFootballTestMuted } from './football-test-mute.mjs';
 import { databaseNames, deleteOutboxDatabase, installConsent, outboxSpyScript, readOutbox, readRecords } from './learning-outbox-fixture.mjs';
@@ -517,4 +518,47 @@ test('the outbox script ships with the release version and loads before football
   expect(order.game).toBe('1.34.26');
   expect(order.outbox).toBeGreaterThan(order.questions);
   expect(order.outbox).toBeLessThan(order.football);
+});
+
+
+// Both tabs execute actual production readers; all IndexedDB operations here
+// are real browser transactions. The immutable old code is served only to this
+// test tab. No production service is contacted.
+test('#215 actual released and current tabs preserve mixed coin queues in real IndexedDB',async({page,context},testInfo)=>{
+ const oldSource=await readFile(new URL('./fixtures/issue215-learning-outbox-base.js',import.meta.url),'utf8');
+ expect(createHash('sha256').update(oldSource).digest('hex')).toBe('6f879318b190bd375f88da6462f11a09b8a07a51bf07252557aeb3bfaf94ed7d');
+ await page.route('**/shared/learning-reporting/config.js*',route=>route.fulfill({contentType:'text/javascript',body:"globalThis.LEARNING_REPORTING_CONFIG=Object.freeze({serviceUrl:''});"}));
+ await page.goto('/football/');const enrollment=enrollmentFor();await installConsent(page,enrollment);
+ const seeded=await page.evaluate(async e=>{
+  const token=`lr1_${'ab'.repeat(16)}_${'A'.repeat(43)}`;
+  const values={credential:{schemaVersion:1,generation:e.generation,deviceId:e.deviceId,serviceOrigin:'http://127.0.0.1:8199',token},sync:{schemaVersion:1,generation:e.generation,suppressed:[],lastSuccessAt:null,notice:null},binding:{schemaVersion:1,generation:e.generation,facts:null}};
+  const db=await new Promise((resolve,reject)=>{const r=indexedDB.open('learningReporting',1);r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);});
+  await new Promise((resolve,reject)=>{const tx=db.transaction('records','readwrite'),store=tx.objectStore('records');for(const [key,value]of Object.entries(values))store.put(JSON.stringify(value),key);tx.oncomplete=resolve;tx.onabort=()=>reject(tx.error);});db.close();return{generation:e.generation,deviceId:e.deviceId,token};
+ },enrollment);
+ async function bytes(){return page.evaluate(async()=>{await LEARNING_OUTBOX.idle();const db=await new Promise(resolve=>{const r=indexedDB.open('learningReporting',1);r.onsuccess=()=>resolve(r.result);});const result=await new Promise(resolve=>{const tx=db.transaction('records','readonly'),store=tx.objectStore('records'),requests=Object.fromEntries(['enrollment','outbox','credential','sync','binding'].map(k=>[k,store.get(k)]));tx.oncomplete=()=>resolve(Object.fromEntries(Object.entries(requests).map(([k,r])=>[k,r.result??null])));});db.close();return result;});}
+ const old=await context.newPage();let uploads=0;
+ await old.clock.install();
+ await old.route('**/shared/learning-outbox.js*',route=>route.fulfill({contentType:'text/javascript',body:oldSource}));
+ await old.route('**/shared/learning-reporting/config.js*',route=>route.fulfill({contentType:'text/javascript',body:"globalThis.LEARNING_REPORTING_CONFIG=Object.freeze({serviceUrl:'http://127.0.0.1:8199'});"}));
+ await old.route('http://127.0.0.1:8199/**',route=>{uploads++;return route.fulfill({status:500,body:'test transport must remain unused'});});
+ await old.goto('/football/');await expectFootballTestMuted(old);
+ await old.evaluate(async()=>{const O=LEARNING_OUTBOX;O.record(O.capture(),{game:'football',gameVersion:'1.34.26',kind:'attempt',questionInstanceId:crypto.randomUUID(),familyId:'line-to-gain-exact',...O.CATALOG.football['line-to-gain-exact'],number:1,correct:true,support:'initial'});await O.idle();window.__preCoinReceipt=await O.syncView();});
+ const oldBytes=await bytes();const original=JSON.parse(oldBytes.outbox).events;expect(original).toHaveLength(1);
+ await page.evaluate(async()=>{await LEARNING_OUTBOX.snapshot();});expect(await bytes()).toEqual(oldBytes);
+ await page.evaluate(async()=>{const O=LEARNING_OUTBOX;O.record(O.capture(),{game:'football',gameVersion:'1.34.26',kind:'attempt',questionInstanceId:crypto.randomUUID(),familyId:'coin-count-dimes-pennies',...O.CATALOG.football['coin-count-dimes-pennies'],number:1,correct:false,support:'initial'});await O.idle();});
+ const mixed=await bytes(),mixedEvents=JSON.parse(mixed.outbox).events;expect(mixedEvents.slice(0,1)).toEqual(original);expect(mixedEvents).toHaveLength(2);
+ const refused=await old.evaluate(async expected=>{
+  const O=LEARNING_OUTBOX,ids=window.__preCoinReceipt.envelope.events.map(e=>e.eventId);
+  const snapshot=await O.snapshot(),sync=await O.syncView();
+  O.record(O.capture(),{game:'football',gameVersion:'1.34.26',kind:'attempt',questionInstanceId:crypto.randomUUID(),familyId:'line-to-gain-exact',...O.CATALOG.football['line-to-gain-exact'],number:1,correct:true,support:'initial'});await O.idle();
+  const ack=await O.acknowledge(ids),rotate=await O.startNewEpoch('seq-conflict');
+  const delayed=await O.applySync(expected,{submitted:ids,remove:ids,suppress:[],rotateEpoch:null,syncedAt:null,notice:null});
+  await LEARNING_SYNC.syncNow();return{snapshot:snapshot.state,sync:sync.state,ack,rotate,delayed};
+ },seeded);
+ expect(refused.snapshot).toBe('malformed');expect(refused.sync).toBe('malformed');for(const result of [refused.ack,refused.rotate,refused.delayed])expect(result).toEqual({ok:false,reason:'malformed'});
+ expect(uploads).toBe(0);expect(await bytes()).toEqual(mixed);
+ const resumed=await page.evaluate(async()=>{const O=LEARNING_OUTBOX,v=await O.syncView();const result=await O.acknowledge(v.envelope.events.map(e=>e.eventId));return{state:v.state,result};});
+ expect(resumed).toEqual({state:'ok',result:{ok:true,removed:2}});expect(JSON.parse((await bytes()).outbox).events).toEqual([]);
+ await testInfo.attach('mixed-version-real-indexeddb',{body:JSON.stringify({oldCatalogHash:'6f879318b190bd375f88da6462f11a09b8a07a51bf07252557aeb3bfaf94ed7d',refused,resumed,uploads,oldEventIds:original.map(e=>e.eventId),mixedEventIds:mixedEvents.map(e=>e.eventId)},null,2),contentType:'application/json'});
+ await old.close();
 });
