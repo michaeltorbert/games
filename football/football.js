@@ -968,7 +968,7 @@ function setDeskHeader(chip, kicker, actionCopy) {
 
 function applyDeskHeader(key) {
   if (state.questionInstance?.coinFixture && [PHASES.question,PHASES.explanation].includes(state.phase)) {
-    setDeskHeader('Coin practice',state.phase===PHASES.explanation?'Review the coin values.':'Pretend game-day shop · practice prices','Choose the matching answer.');
+    setDeskHeader('Coin practice',state.phase===PHASES.explanation?'Review the coin values.':'Count and use coins.','Choose the matching answer.');
     return;
   }
   const copy = DESK_HEADER_COPY[key];

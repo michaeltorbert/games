@@ -1566,12 +1566,12 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
     const kind = familyId.slice(5);
     let coins = [10, 10, ...Array(n).fill(1)], target = null, price = null, add = null;
     let answer, sets = null, constraints = null;
-    let ask = 'A fan pays for a pretend ticket with these coins. How many cents is that?';
+    let ask = 'A fan pays for a ticket with these coins. How many cents is that?';
     let hint = 'Start with the largest coin. Count on by each coin’s value.';
     switch (kind) {
       case 'count-nickels-pennies': coins = [5,5,...Array(n).fill(1)]; break;
       case 'count-dimes-nickels': coins = [10,10,...Array(n).fill(5)]; break;
-      case 'make-nickels': coins = []; target = (n+2)*5; answer=n+2; ask=`A pretend ticket costs ${target}¢. How many nickels pay exactly?`; hint='Count by fives until you reach the practice price.'; break;
+      case 'make-nickels': coins = []; target = (n+2)*5; answer=n+2; ask=`A ticket costs ${target}¢. How many nickels pay exactly?`; hint='Count by fives until you reach the price.'; break;
       case 'count-mixed': coins = [10,5,...Array(n).fill(1)]; break;
       case 'two-nickels': coins=[5,5]; ask='Group these two nickels. How many cents are in the group?'; break;
       case 'add-dime': coins=[10,5,...Array(n).fill(1)]; add=10; break;
@@ -1584,7 +1584,7 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
       case 'count-quarters-dimes': coins=[25,...Array(n).fill(10)]; break;
       case 'count-quarters-nickels': coins=[25,...Array(n).fill(5)]; break;
       case 'count-quarters-mixed': coins=[25,10,...Array(n).fill(5)]; break;
-      case 'complete-quarters': coins=[25]; target=25*(n+1); ask=`A pretend ticket costs ${target}¢. How many more quarters complete this set?`; answer=n; hint='Count on by 25 from the quarter already supplied.'; break;
+      case 'complete-quarters': coins=[25]; target=25*(n+1); ask=`A ticket costs ${target}¢. How many more quarters complete this set?`; answer=n; hint='Count on by 25 from the quarter already supplied.'; break;
       case 'count-all': coins=[25,10,5,...Array(n).fill(1)]; break;
       case 'equal-sets': case 'later-equal':
         coins=kind==='later-equal'?[25,25,10,5]:[25,5,1]; target=coinTotal(coins);
@@ -1593,7 +1593,7 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
       case 'two-ways':
         coins=[];target=35;
         sets=[[[25,10],[10,10,10,5]],[[25,5],[10,10,10,5]],[[25,10],[10,25]]];
-        answer='set-0';ask='A pretend burger costs 35¢. Which choice shows TWO DIFFERENT ways to pay exactly?';
+        answer='set-0';ask='A burger costs 35¢. Which choice shows TWO DIFFERENT ways to pay exactly?';
         hint='Count each set. Both must pay exactly, using different numbers or kinds of coins. Reordering the same coins is not another way.';break;
       case 'quarter-purchase': case 'later-purchase': coins=kind==='later-purchase'?[25,25,25,10]:[25,25,10];price=[25,35,50][n-1];break;
       case 'one-quarter': case 'two-quarters': case 'three-quarters': {
@@ -1601,13 +1601,13 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
         coins=[]; target=count*25+10; constraints={quarters:count};
         const correct=[...Array(count).fill(25),10];
         sets=[[correct],[[...Array(count).fill(25),5]],[[...Array(count-1).fill(25),10,10,10,5]]];
-        answer='set-0';ask=`A pretend ticket costs ${target}¢. Which set pays exactly with exactly ${count} ${count===1?'quarter':'quarters'}?`;
+        answer='set-0';ask=`A ticket costs ${target}¢. Which set pays exactly with exactly ${count} ${count===1?'quarter':'quarters'}?`;
         hint='Check the amount AND the number of quarters.';break;
       }
     }
     if(add!==null){answer=coinTotal(coins)+add;ask=`Add one ${coinNames[add]} to this wallet. How many cents will it have?`;hint=`Count the wallet, then count on by ${add}.`;}
-    if(target!==null && answer===undefined){answer=target-coinTotal(coins);ask=`A pretend ticket costs ${target}¢. How many more cents complete this wallet?`;hint='Count the supplied coins. Find the missing part of the practice price.';}
-    if(price!==null){answer=coinTotal(coins)-price;ask=`This wallet buys a pretend burger for ${price}¢. How many cents are LEFT?`;hint='Count the wallet, then take away the practice price. This asks what stays in the wallet.';}
+    if(target!==null && answer===undefined){answer=target-coinTotal(coins);ask=`A ticket costs ${target}¢. How many more cents complete this wallet?`;hint='Count the supplied coins. Find the missing part of the price.';}
+    if(price!==null){answer=coinTotal(coins)-price;ask=`This wallet buys a burger for ${price}¢. How many cents are LEFT?`;hint='Count the wallet, then take away the price. This asks what stays in the wallet.';}
     if(answer===undefined)answer=coinTotal(coins);
     return deepFreeze({schemaVersion:1,kind:'pretend-game-day-coins',familyId,identity,sourcePage:COIN_SOURCE_MAP[familyId],
       facts:{coins,target,price,add,constraints,referenceCoins:kind==='make-nickels'?[5]:[]},answer,sets,ask,hint});
@@ -1620,7 +1620,7 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
     derive(play){
       const fixture=coinFixtureFor(play,familyId), f=fixture.facts;
       const bindings=Object.entries(f).map(([id,value])=>({id,source:{kind:'coinFixture',path:`/facts/${id}`},value:clone(value)}));
-      const sourceAria=`Pretend game-day shop, practice prices. ${f.coins.length?`Wallet: ${coinDescription(f.coins)}.`:'Choose coins to pay exactly.'}${f.referenceCoins.length?' Coin value: one nickel is 5 cents.':''}${f.add?` Add one ${coinNames[f.add]} ${f.add}¢.`:''}${f.target!==null&&!['coin-equal-sets','coin-later-equal'].includes(familyId)?` Target ${f.target}¢.`:''}${f.price!==null?` Spend ${f.price}¢.`:''}${familyId==='coin-dollar'?' One dollar is 100 cents.':''}`;
+      const sourceAria=`Game-day shop. Practice prices. ${f.coins.length?`Wallet: ${coinDescription(f.coins)}.`:'Choose coins to pay exactly.'}${f.referenceCoins.length?' Coin value: one nickel is 5 cents.':''}${f.add?` Add one ${coinNames[f.add]} ${f.add}¢.`:''}${f.target!==null&&!['coin-equal-sets','coin-later-equal'].includes(familyId)?` Target ${f.target}¢.`:''}${f.price!==null?` Spend ${f.price}¢.`:''}${familyId==='coin-dollar'?' One dollar is 100 cents.':''}`;
       let explanation;
       const sum=coinTotal(f.coins), kind=familyId.slice(5);
       const countLine=f.coins.reduce((parts,value)=>{parts.push((parts.at(-1)||0)+value);return parts;},[]).join(', ');
@@ -1641,7 +1641,7 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
       else if(f.target!==null)explanation=`The supplied coins make ${sum}¢. ${sum} + ${fixture.answer} = ${f.target}, so ${fixture.answer} more cents complete the set.`;
       else explanation=`Count on by each coin’s value: ${countLine} cents. The coins make ${fixture.answer} cents.${kind==='two-nickels'?' Two nickels make the same value as one dime.':''}`;
       const data={...clone(f),target:['equal-sets','later-equal'].includes(kind)?null:f.target,
-        heading:'Pretend game-day shop · practice prices',suppliedDollar:kind==='dollar',answerUnit};
+        heading:'Game-day shop · Practice prices',suppliedDollar:kind==='dollar',answerUnit};
       return eligible(makeSemantic({bindings,operationType:'read',operandIds:bindings.map(b=>b.id),answer:fixture.answer,
         prompt:fixture.ask,hint:fixture.hint,explanation,
         choiceSpec:fixture.sets?fixedChoiceSpec(fixture.sets.map((_,i)=>`set-${i}`)):numericChoiceSpec(0,100),
@@ -2356,7 +2356,7 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
     'line-to-gain-surplus-ch8': { title: 'Count Past the Marker', goal: 'Use the yards needed to reach the marker, then find what is left of the gain.', footballMeaning: 'What is left of the gain is how far past the first-down marker it would go.' },
   };
   const WORKED_REVIEW_SPECS = deepFreeze({
-    ...Object.fromEntries(IN_GAME_COIN_FAMILIES.map(familyId => [familyId, {title:'Count and Use Coins',goal:'Count coin values and check what the question asks.',footballMeaning:'This pretend shop practice decides the frozen play. Prices are invented for practice.'}])),
+    ...Object.fromEntries(IN_GAME_COIN_FAMILIES.map(familyId => [familyId, {title:'Count and Use Coins',goal:'Count coin values and check what the question asks.',footballMeaning:'This game-day shop practice decides the frozen play.'}])),
     ...Object.fromEntries(IN_GAME_TIME_FAMILIES.map(familyId => [familyId, {
       title: familyId.startsWith('time-read') ? 'Read a Stopped Clock' : 'Work Out the Pretend Game Time',
       goal: familyId.startsWith('time-read') ? 'Read the hands and count the small marks.' : 'Count forward from the pretend start time.',

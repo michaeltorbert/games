@@ -25,7 +25,7 @@ const FOOTBALL_COIN_VIEW = (() => {
     if(data.coins.length)content.append(set(data.coins));
     if(data.add) {const extra=document.createElement('span');extra.className='shop-add';extra.append(' + ',coin(data.add));content.append(extra);}
     const facts=[];
-    if(data.target!==null)facts.push(`Practice price: ${data.target}¢`);
+    if(data.target!==null)facts.push(`Price: ${data.target}¢`);
     if(data.price!==null)facts.push(`Spend: ${data.price}¢`);
     if(data.suppliedDollar)facts.push('$1 = 100¢');
     if(facts.length){const note=document.createElement('div');note.className='shop-note';note.textContent=facts.join(' · ');content.append(note);}

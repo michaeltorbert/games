@@ -21,9 +21,15 @@ async function geometry(page,testInfo,name){
    scroll:{horizontal:document.documentElement.scrollWidth>innerWidth,vertical:document.documentElement.scrollHeight>innerHeight},
    field:rect(document.querySelector('#field-wrap')),visual:rect(document.querySelector('#math-overlay')),
    coins:[...document.querySelectorAll('#math-overlay .shop-coin')].map(e=>({value:e.textContent,...rect(e)})),
+   panelText:document.querySelector('#math-overlay').innerText,
+   panelLabel:document.querySelector('#math-overlay').getAttribute('aria-label'),
    controls:[...document.querySelectorAll('#btn-row button:not(.hidden),#question-continue:not(.hidden)')].filter(e=>e.getBoundingClientRect().height).map(rect)};
  });
  expect(proof.scroll.horizontal).toBe(false);expect(proof.scroll.vertical).toBe(false);
+ expect(proof.panelText).not.toMatch(/pretend/i);
+ expect((proof.panelText.match(/Practice prices/g)||[])).toHaveLength(1);
+ expect(proof.panelLabel).toContain('Practice prices');
+ expect((proof.panelLabel.match(/Practice prices/g)||[])).toHaveLength(1);
  expect(proof.visual.y).toBeGreaterThanOrEqual(proof.field.y-1);expect(proof.visual.bottom).toBeLessThanOrEqual(proof.field.bottom+1);
  for(const r of proof.controls){expect(r.width).toBeGreaterThanOrEqual(44);expect(r.height).toBeGreaterThanOrEqual(44);expect(r.right).toBeLessThanOrEqual(proof.viewport.width+1);expect(r.bottom).toBeLessThanOrEqual(proof.viewport.height+1);}
  for(const r of proof.coins){expect(r.y).toBeGreaterThanOrEqual(proof.visual.y);expect(r.bottom).toBeLessThanOrEqual(proof.visual.bottom);}
@@ -104,7 +110,18 @@ test('#215 isolated working demo covers all families and help without storage wr
  await page.goto('/football/coins-demo.html');
  const before=await page.evaluate(()=>JSON.stringify({...localStorage}));
  const ids=await page.locator('#demo-family option').evaluateAll(options=>options.map(o=>o.value));expect(ids).toHaveLength(26);
- for(const id of ids){await page.locator('#demo-family').selectOption(id);await expect(page.locator('#demo-stage')).toHaveText('First try');await page.locator('#demo-help').tap();await expect(page.locator('#demo-stage')).toHaveText('Try again with help');await page.locator('#demo-worked').tap();await expect(page.locator('#demo-stage')).toHaveText('Worked answer');await page.locator('#demo-again').tap();await expect(page.locator('#demo-stage')).toHaveText('First try');}
+ for(const id of ids){
+  await page.locator('#demo-family').selectOption(id);await expect(page.locator('#demo-stage')).toHaveText('First try');
+  const checkCopy=async()=>{
+   const visible=await page.locator('.preview-desk').innerText();
+   const label=await page.locator('#demo-visual').getAttribute('aria-label');
+   expect(visible).not.toMatch(/pretend/i);expect((visible.match(/Practice prices/g)||[])).toHaveLength(1);
+   expect(label).toContain('Practice prices');expect((label.match(/Practice prices/g)||[])).toHaveLength(1);
+  };
+  await checkCopy();await page.locator('#demo-help').tap();await expect(page.locator('#demo-stage')).toHaveText('Try again with help');await checkCopy();
+  await page.locator('#demo-worked').tap();await expect(page.locator('#demo-stage')).toHaveText('Worked answer');await checkCopy();
+  await page.locator('#demo-again').tap();await expect(page.locator('#demo-stage')).toHaveText('First try');
+ }
  expect(await page.evaluate(()=>JSON.stringify({...localStorage}))).toBe(before);
 });
 
