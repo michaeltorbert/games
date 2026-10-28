@@ -32,7 +32,7 @@ Source: `football/MathMammoth_Grade1-B_2026/1 - Student worktexts/Math Mammoth G
 
 Adult introductions/resources (13-16, 47-49, 77-78, 95-99, 151-152, 167-169) do not unlock new learner questions. Digital recognition/counting/selection activities are adaptations of physical drawing, cutting, folding, and measuring tasks; the app does not claim to assess freehand drawing, cutting skill, or life-size measurement. Optional general borrowing challenges remain outside the ordinary Grade 1 scope, as the worktext itself states.
 
-Football consumes only real play-grounded arithmetic from the shared operand gates. Its separate Grade 1-A guided-first questions, place-value mode, and Time Lab keep their existing source boundaries; neither shapes nor money are injected into live snaps. Grade 1-B availability is completion-only.
+Football consumes real play-grounded arithmetic from the shared operand gates, with the narrow user-requested fictional-time (#208) and pretend game-day coin-shop (#215) exceptions. Shapes remain outside live snaps. Coin questions replace one ordinary scrimmage question at instructed ordinals 3, 9, 15, repeating every sixth, on both sides in Quick Game and Season; time remains at 2, 5, 8, repeating every third. With no completed coin family, that slot uses ordinary Football math. Special-team questions stay unchanged. Grade 1-B availability is completion-only, confirmed through the existing game-start page prompt. No historical progress record is advanced.
 
 ## Persistence and sessions
 
@@ -41,3 +41,42 @@ Football consumes only real play-grounded arithmetic from the shared operand gat
 Football confirms before each game and before Season mutation. Place by Place confirms on app startup and every new/restarted Grade 1-B run; startup and its immediate first run share one prompt. Grade 1-A place-value questions and Time Lab are not gated by Grade 1-B. Confirmed availability is frozen during a run. Decreases, raises greater than ten pages, and chapter-crossing raises require an extra confirmation.
 
 Arithmetic, exact facts, original place value, book practice, Football learning/stats, and Season retain distinct evidence stores. An eligibility correction repairs only a pending question; existing history and locked retry/spaced tickets survive. New book-practice evidence and rewards live at `place-value-practice:book:v1`; they do not affect exact-fact recall checks or Football stats.
+
+
+### Football coin source inventory (#215)
+
+Authority: Math Mammoth Grade 1-B, 2026 edition, **printed** pages below.
+These are original practice fixtures, not reproduced workbook exercises. Page
+168 supplies adult shopping context only. The shared `COIN_SOURCE_MAP` and
+contextual registry publish the same page-exact family inventory; broad catalog
+rows cannot unlock later exercises. All families are independent evidence except
+`coin-dollar`, which reads the explicitly supplied 100¢ = $1 equivalence.
+
+| Printed page | Family IDs (prefix `coin-`) | Allowed work |
+|---|---|---|
+| 170 | count-dimes-pennies | Dimes and pennies totals |
+| 171 | count-nickels-pennies; count-dimes-nickels; make-nickels | Nickels with pennies OR dimes; pay with nickels |
+| 172 | count-mixed; two-nickels | Dimes/nickels/pennies; two nickels group as ten cents |
+| 173 | add-dime; add-nickel; complete-amount | Add one taught coin; find missing cents |
+| 174 | dollar; finish-set | 100 cents = one dollar; finish a partial set |
+| 175 | wallet-left | Money remaining after spending from a wallet, without quarters |
+| 176 | count-quarters; count-quarters-dimes; count-quarters-nickels | Count quarters; quarters with dimes OR nickels |
+| 177 | count-quarters-mixed; complete-quarters | Quarters/dimes/nickels; complete a quarter set without pennies |
+| 178 | count-all; equal-sets | Quarters with pennies; equal-value sets |
+| 179 | two-ways; quarter-purchase | Two multiset-distinct ways to pay; money left using quarters |
+| 180 | one-quarter; two-quarters | Exact payment constrained to exactly one/two quarters |
+| 181 | three-quarters; later-equal; later-purchase | Exactly three quarters; later equal values and purchases |
+
+Every amount stays within 100 cents; no decimals, bills, tax, cashier change,
+accounts, actual stadium prices, or prices derived from yards/scores/outcomes.
+Coin faces label their values and do not claim unlabeled recognition. Initial
+and guided independent pictures keep calculated totals/remainders hidden,
+including accessible descriptions; worked support reveals the calculation.
+Coin-set options have exactly one valid choice under all amount/composition
+constraints. Reordering the same multiset does not count as two different ways.
+
+Original token diameter ratios follow the [US Mint coin specifications](https://www.usmint.gov/learn/coins-and-medals/circulating-coins/coin-specifications):
+dime 17.91, penny 19.05, nickel 21.21, quarter 24.26 mm. These are screen ratios,
+not a claim of life-size rendering. The isolated `football/coins-demo.html`
+preview covers every family and support stage without storing learner progress,
+play history, or Season results.

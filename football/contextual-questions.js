@@ -28,6 +28,10 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
       const page=request?.completedThroughPage??MATH_CURRICULUM.BASELINE.completedThroughPage;
       return {included:MATH_CURRICULUM.validPage(page)&&meta.introducedOnPage<=page,guided:false};
     }
+    if (title === 'Math Mammoth Grade 1-B' && meta.familyId?.startsWith('coin-')) {
+      const page=request?.completedThroughPage??book.completedThroughPage;
+      return {included:Number.isInteger(page)&&page>=0&&page<=187&&meta.introducedOnPage<=page,guided:false};
+    }
     const ceiling = title === 'Math Mammoth Grade 1-A' ? profile.includedThroughPage : book.includedThroughPage;
     const requested = request?.includedThroughPage;
     const limit = Number.isInteger(requested) && requested >= 0 ? Math.min(ceiling, requested) : ceiling;
@@ -849,6 +853,7 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
     choicePresentation = null,
     challengeFixture = null,
     timeFixture = null,
+    coinFixture = null,
     reviewMeaning = null,
     initialAriaLabel,
     guidedAriaLabel,
@@ -857,6 +862,7 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
     return {
       ...(challengeFixture ? { challengeFixture } : {}),
       ...(timeFixture ? { timeFixture } : {}),
+      ...(coinFixture ? { coinFixture } : {}),
       // Optional play-specific Coach Replay meaning; otherwise the family's.
       ...(reviewMeaning ? { reviewMeaning } : {}),
       bindings,
@@ -1517,7 +1523,136 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
     };
   });
 
+
+  // Original practice fixtures. Exact source pages are finer than the broad
+  // shared catalog rows. Each class/source variant has its own immutable ID.
+  const COIN_SOURCE_MAP = deepFreeze(Object.fromEntries([
+    ['coin-count-dimes-pennies', 170],
+    ['coin-count-nickels-pennies', 171],
+    ['coin-count-dimes-nickels', 171],
+    ['coin-make-nickels', 171],
+    ['coin-count-mixed', 172],
+    ['coin-two-nickels', 172],
+    ['coin-add-dime', 173],
+    ['coin-add-nickel', 173],
+    ['coin-complete-amount', 173],
+    ['coin-dollar', 174],
+    ['coin-finish-set', 174],
+    ['coin-wallet-left', 175],
+    ['coin-count-quarters', 176],
+    ['coin-count-quarters-dimes', 176],
+    ['coin-count-quarters-nickels', 176],
+    ['coin-count-quarters-mixed', 177],
+    ['coin-complete-quarters', 177],
+    ['coin-count-all', 178],
+    ['coin-equal-sets', 178],
+    ['coin-two-ways', 179],
+    ['coin-quarter-purchase', 179],
+    ['coin-one-quarter', 180],
+    ['coin-two-quarters', 180],
+    ['coin-three-quarters', 181],
+    ['coin-later-equal', 181],
+    ['coin-later-purchase', 181]
+  ]));
+  const IN_GAME_COIN_FAMILIES = Object.freeze(Object.keys(COIN_SOURCE_MAP));
+  const coinTotal = coins => coins.reduce((sum, value) => sum + value, 0);
+  const coinNames = { 1: 'penny', 5: 'nickel', 10: 'dime', 25: 'quarter' };
+  const coinDescription = coins => coins.map(value => `${coinNames[value]} ${value}¢`).join(', ');
+  function coinFixtureFor(play, familyId) {
+    if (!IN_GAME_COIN_FAMILIES.includes(familyId)) throw contractError('unknown-coin-family', 'Unknown coin family.');
+    const identity = timeIdentityFor(play);
+    const seed = identityHash(JSON.stringify([1, identity.gameId, identity.possessionId, identity.playId, identity.contextId, familyId]));
+    const n = seed % 3 + 1;
+    const kind = familyId.slice(5);
+    let coins = [10, 10, ...Array(n).fill(1)], target = null, price = null, add = null;
+    let answer, sets = null, constraints = null;
+    let ask = 'A fan pays for a ticket with these coins. How many cents is that?';
+    let hint = 'Start with the largest coin. Count on by each coin’s value.';
+    switch (kind) {
+      case 'count-nickels-pennies': coins = [5,5,...Array(n).fill(1)]; break;
+      case 'count-dimes-nickels': coins = [10,10,...Array(n).fill(5)]; break;
+      case 'make-nickels': coins = []; target = (n+2)*5; answer=n+2; ask=`A ticket costs ${target}¢. How many nickels pay exactly?`; hint='Count by fives until you reach the price.'; break;
+      case 'count-mixed': coins = [10,5,...Array(n).fill(1)]; break;
+      case 'two-nickels': coins=[5,5]; ask='Group these two nickels. How many cents are in the group?'; break;
+      case 'add-dime': coins=[10,5,...Array(n).fill(1)]; add=10; break;
+      case 'add-nickel': coins=[10,...Array(n).fill(1)]; add=5; break;
+      case 'complete-amount': coins=[10,5]; target=20+n; break;
+      case 'dollar': coins=Array(10).fill(10); answer=100; ask='One dollar is 100 cents. How many cents is one dollar?'; hint='Read the supplied dollar value.'; break;
+      case 'finish-set': coins=[10,10,10,10,10,10,10,10,10]; target=100; break;
+      case 'wallet-left': coins=[10,10,5,...Array(n).fill(1)]; price=10+n; break;
+      case 'count-quarters': coins=Array(n+1).fill(25); break;
+      case 'count-quarters-dimes': coins=[25,...Array(n).fill(10)]; break;
+      case 'count-quarters-nickels': coins=[25,...Array(n).fill(5)]; break;
+      case 'count-quarters-mixed': coins=[25,10,...Array(n).fill(5)]; break;
+      case 'complete-quarters': coins=[25]; target=25*(n+1); ask=`A ticket costs ${target}¢. How many more quarters complete this set?`; answer=n; hint='Count on by 25 from the quarter already supplied.'; break;
+      case 'count-all': coins=[25,10,5,...Array(n).fill(1)]; break;
+      case 'equal-sets': case 'later-equal':
+        coins=kind==='later-equal'?[25,25,10,5]:[25,5,1]; target=coinTotal(coins);
+        sets=kind==='later-equal'?[[[25,10,10,10,10]],[[25,25,10]],[[25,25,10,10]]]:[[[10,10,10,1]],[[25,5]],[[25,5,1,1]]];
+        answer='set-0'; ask='Which set has the same value as this wallet?'; break;
+      case 'two-ways':
+        coins=[];target=35;
+        sets=[[[25,10],[10,10,10,5]],[[25,5],[10,10,10,5]],[[25,10],[10,25]]];
+        answer='set-0';ask='A burger costs 35¢. Which choice shows TWO DIFFERENT ways to pay exactly?';
+        hint='Count each set. Both must pay exactly, using different numbers or kinds of coins. Reordering the same coins is not another way.';break;
+      case 'quarter-purchase': case 'later-purchase': coins=kind==='later-purchase'?[25,25,25,10]:[25,25,10];price=[25,35,50][n-1];break;
+      case 'one-quarter': case 'two-quarters': case 'three-quarters': {
+        const count=kind==='one-quarter'?1:kind==='two-quarters'?2:3;
+        coins=[]; target=count*25+10; constraints={quarters:count};
+        const correct=[...Array(count).fill(25),10];
+        sets=[[correct],[[...Array(count).fill(25),5]],[[...Array(count-1).fill(25),10,10,10,5]]];
+        answer='set-0';ask=`A ticket costs ${target}¢. Which set pays exactly with exactly ${count} ${count===1?'quarter':'quarters'}?`;
+        hint='Check the amount AND the number of quarters.';break;
+      }
+    }
+    if(add!==null){answer=coinTotal(coins)+add;ask=`Add one ${coinNames[add]} to this wallet. How many cents will it have?`;hint=`Count the wallet, then count on by ${add}.`;}
+    if(target!==null && answer===undefined){answer=target-coinTotal(coins);ask=`A ticket costs ${target}¢. How many more cents complete this wallet?`;hint='Count the supplied coins. Find the missing part of the price.';}
+    if(price!==null){answer=coinTotal(coins)-price;ask=`This wallet buys a burger for ${price}¢. How many cents are LEFT?`;hint='Count the wallet, then take away the price. This asks what stays in the wallet.';}
+    if(answer===undefined)answer=coinTotal(coins);
+    return deepFreeze({schemaVersion:1,kind:'pretend-game-day-coins',familyId,identity,sourcePage:COIN_SOURCE_MAP[familyId],
+      facts:{coins,target,price,add,constraints,referenceCoins:kind==='make-nickels'?[5]:[]},answer,sets,ask,hint});
+  }
+  const COIN_FAMILY_DEFINITIONS = IN_GAME_COIN_FAMILIES.map(familyId => ({
+    meta: makeMeta({familyId,skill:familyId,concept:'game-day-coins',purpose:'coreReview',tier:'coins-within-100',weight:1,
+      operationType:'read',answerExposure:familyId==='coin-dollar'?'source-visible':'modeled-with-result-hidden',
+      evidenceClass:familyId==='coin-dollar'?'literacy':'independent',curriculumSource:'workbook',
+      introducedOnPage:COIN_SOURCE_MAP[familyId],worktext:'Math Mammoth Grade 1-B',edition:2026}),
+    derive(play){
+      const fixture=coinFixtureFor(play,familyId), f=fixture.facts;
+      const bindings=Object.entries(f).map(([id,value])=>({id,source:{kind:'coinFixture',path:`/facts/${id}`},value:clone(value)}));
+      const sourceAria=`Game-day shop. Practice prices. ${f.coins.length?`Wallet: ${coinDescription(f.coins)}.`:'Choose coins to pay exactly.'}${f.referenceCoins.length?' Coin value: one nickel is 5 cents.':''}${f.add?` Add one ${coinNames[f.add]} ${f.add}¢.`:''}${f.target!==null&&!['coin-equal-sets','coin-later-equal'].includes(familyId)?` Target ${f.target}¢.`:''}${f.price!==null?` Spend ${f.price}¢.`:''}${familyId==='coin-dollar'?' One dollar is 100 cents.':''}`;
+      let explanation;
+      const sum=coinTotal(f.coins), kind=familyId.slice(5);
+      const countLine=f.coins.reduce((parts,value)=>{parts.push((parts.at(-1)||0)+value);return parts;},[]).join(', ');
+      const answerUnit=kind==='make-nickels'?(fixture.answer===1?'nickel':'nickels'):kind==='complete-quarters'?(fixture.answer===1?'quarter':'quarters'):(fixture.answer===1?'cent':'cents');
+      if(fixture.sets) explanation=`Count each coin and check every condition. ${fixture.sets[0].map(set=>`${coinDescription(set)} makes ${coinTotal(set)}¢`).join('; ')}.${kind==='two-ways'?' The two sets use different coin combinations.':''}${f.constraints?` It uses exactly ${f.constraints.quarters} ${f.constraints.quarters===1?'quarter':'quarters'}.`:''}`;
+      else if(kind==='dollar')explanation='Ten dimes make 100 cents. 100¢ is the same value as $1, so one dollar is 100 cents.';
+      else if(kind==='make-nickels')explanation=`Count by fives: ${Array.from({length:fixture.answer},(_,i)=>(i+1)*5).join(', ')} cents. ${fixture.answer} nickels pay ${f.target}¢ exactly.`;
+      else if(kind==='complete-quarters')explanation=`Start at 25¢ and add ${fixture.answer} ${fixture.answer===1?'quarter':'quarters'}: ${Array.from({length:fixture.answer},(_,i)=>(i+2)*25).join(', ')} cents. That reaches ${f.target}¢.`;
+      else if(f.add!==null)explanation=`Count the wallet: ${countLine} cents. Add ${f.add}¢: ${sum} + ${f.add} = ${fixture.answer} cents.`;
+      else if(f.price!==null){
+        // Exact payment uses only a subset of the displayed wallet. No exchange
+        // or cashier change is assumed, and no random stream is consumed.
+        const mask=Array.from({length:2**f.coins.length},(_,i)=>i).find(mask=>coinTotal(f.coins.filter((_,i)=>mask&(1<<i)))===f.price);
+        if(mask===undefined)throw contractError('invalid-coin-payment','The wallet must pay the practice price exactly.');
+        const paid=f.coins.filter((_,i)=>mask&(1<<i)),remaining=f.coins.filter((_,i)=>!(mask&(1<<i)));
+        explanation=`Pay ${f.price}¢ with ${coinDescription(paid)}. Coins left: ${coinDescription(remaining)}. Count their value: ${fixture.answer} cents. ${sum} − ${f.price} = ${fixture.answer}.`;
+      }
+      else if(f.target!==null)explanation=`The supplied coins make ${sum}¢. ${sum} + ${fixture.answer} = ${f.target}, so ${fixture.answer} more cents complete the set.`;
+      else explanation=`Count on by each coin’s value: ${countLine} cents. The coins make ${fixture.answer} cents.${kind==='two-nickels'?' Two nickels make the same value as one dime.':''}`;
+      const data={...clone(f),target:['equal-sets','later-equal'].includes(kind)?null:f.target,
+        heading:'Game-day shop · Practice prices',suppliedDollar:kind==='dollar',answerUnit};
+      return eligible(makeSemantic({bindings,operationType:'read',operandIds:bindings.map(b=>b.id),answer:fixture.answer,
+        prompt:fixture.ask,hint:fixture.hint,explanation,
+        choiceSpec:fixture.sets?fixedChoiceSpec(fixture.sets.map((_,i)=>`set-${i}`)):numericChoiceSpec(0,100),
+        choicePresentation:fixture.sets?{type:'coins',sets:Object.fromEntries(fixture.sets.map((sets,i)=>[`set-${i}`,sets]))}:null,
+        visualType:'coin-wallet',visualData:data,coinFixture:fixture,
+        initialAriaLabel:sourceAria,guidedAriaLabel:sourceAria,workedAriaLabel:`${sourceAria} ${explanation}`}));
+    }
+  }));
+
   const FAMILY_DEFINITIONS = [
+    ...COIN_FAMILY_DEFINITIONS,
     ...TIME_FAMILY_DEFINITIONS,
     ...ARITHMETIC_FAMILIES,
     {
@@ -2221,6 +2356,7 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
     'line-to-gain-surplus-ch8': { title: 'Count Past the Marker', goal: 'Use the yards needed to reach the marker, then find what is left of the gain.', footballMeaning: 'What is left of the gain is how far past the first-down marker it would go.' },
   };
   const WORKED_REVIEW_SPECS = deepFreeze({
+    ...Object.fromEntries(IN_GAME_COIN_FAMILIES.map(familyId => [familyId, {title:'Count and Use Coins',goal:'Count coin values and check what the question asks.',footballMeaning:'This game-day shop practice decides the frozen play.'}])),
     ...Object.fromEntries(IN_GAME_TIME_FAMILIES.map(familyId => [familyId, {
       title: familyId.startsWith('time-read') ? 'Read a Stopped Clock' : 'Work Out the Pretend Game Time',
       goal: familyId.startsWith('time-read') ? 'Read the hands and count the small marks.' : 'Count forward from the pretend start time.',
@@ -2539,6 +2675,11 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
   function choicePresentation(semantic, value) {
     const presentation = semantic.choicePresentation;
     if (!presentation) return { label: String(value), ariaLabel: choiceAriaLabel(value) };
+    if (presentation.type === 'coins') {
+      const coinSets = presentation.sets[value];
+      const label = coinSets.map(coinDescription).join(' / ');
+      return {label, ariaLabel:label, coinSets};
+    }
     if (presentation.type !== 'field-position') {
       throw contractError('invalid-choice-presentation', `Unknown choice presentation ${presentation.type}.`);
     }
@@ -2682,6 +2823,7 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
         value,
         label: presentation.label,
         ariaLabel: presentation.ariaLabel,
+        ...(presentation.coinSets ? {coinSets:presentation.coinSets} : {}),
       };
     });
     if (new Set(choices.map((choice) => choice.label)).size !== choices.length
@@ -2728,6 +2870,7 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
       // A presentation copy only; football.js recomputes it from the live play.
       ...(semantic.challengeFixture ? { challengeFixture: semantic.challengeFixture } : {}),
       ...(semantic.timeFixture ? { timeFixture: semantic.timeFixture } : {}),
+      ...(semantic.coinFixture ? { coinFixture: semantic.coinFixture } : {}),
     };
     const frozen = deepFreeze(question);
     // Preserve an intentional alias so consumers cannot let premises and
@@ -2755,6 +2898,7 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
     CALL_AFFINITIES,
     RETIRED_LIVE_FAMILIES,
     IN_GAME_TIME_FAMILIES, timeIdentityFor,
+    COIN_SOURCE_MAP, IN_GAME_COIN_FAMILIES, coinFixtureFor,
     TWO_POINT_CHALLENGE,
     twoPointChallengeFor,
     selectionFor,

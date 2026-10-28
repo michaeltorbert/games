@@ -843,6 +843,7 @@ function renderSnapshot(source, season) {
         label: choice.label,
         value: choice.value,
         ariaLabel: choice.ariaLabel,
+        ...(choice.coinSets ? {coinSets:choice.coinSets} : {}),
       })),
     } : null,
     season: {
@@ -966,6 +967,10 @@ function setDeskHeader(chip, kicker, actionCopy) {
 }
 
 function applyDeskHeader(key) {
+  if (state.questionInstance?.coinFixture && [PHASES.question,PHASES.explanation].includes(state.phase)) {
+    setDeskHeader('Coin practice',state.phase===PHASES.explanation?'Review the coin values.':'Count and use coins.','Choose the matching answer.');
+    return;
+  }
   const copy = DESK_HEADER_COPY[key];
   const kicker = state.match ? formatPossessionCopy(copy.kicker, state.match) : copy.kicker;
   setDeskHeader(copy.chip, kicker, copy.action);
@@ -1759,7 +1764,7 @@ function trustedTimeFixture(activePlay, question) {
     return null;
   }
   if (activePlay.playType !== 'scrimmage' || !isRecursivelyFrozen(question)
-    || question.challengeFixture !== undefined) reject('Time practice requires a frozen ordinary scrimmage question.');
+    || question.challengeFixture !== undefined || question.coinFixture !== undefined) reject('Time practice requires a frozen ordinary scrimmage question.');
   const expected = FOOTBALL_CONTEXTUAL_QUESTIONS.build(activePlay, question.familyId, { support: question.support, presentationRng: () => 0.5 });
   const allowed = new Set([...Object.keys(expected), 'contextId', 'questionInstanceId', 'challengeSelection']);
   if (Object.keys(question).some(key => !allowed.has(key))) reject('Time question contains an unrecognized field.');
@@ -1770,6 +1775,32 @@ function trustedTimeFixture(activePlay, question) {
   const choices = values => [...values].sort((a, b) => a.id.localeCompare(b.id));
   if (!Array.isArray(question.choices) || !sameContractValue(choices(question.choices), choices(expected.choices))) reject('Time choices contradict their trusted set.');
   return expected.timeFixture;
+}
+
+// #215: completion and the entire coin contract are checked against live
+// authority, never against a completion claim supplied inside the question.
+function trustedCoinFixture(activePlay, question) {
+  const isCoin = FOOTBALL_CONTEXTUAL_QUESTIONS.IN_GAME_COIN_FAMILIES.includes(question.familyId);
+  const hasBinding = question.bindings.some(binding => binding?.source?.kind === 'coinFixture');
+  const reject = message => { throw Object.assign(new Error(message), {code:'malformed-question'}); };
+  if (!isCoin) {
+    if (hasBinding || question.coinFixture !== undefined || question.visuals && Object.values(question.visuals).some(v=>v?.type==='coin-wallet')) reject('Coin fixtures belong only to registered coin scrimmage families.');
+    return null;
+  }
+  if (activePlay.playType !== 'scrimmage' || !isRecursivelyFrozen(question)
+    || question.timeFixture !== undefined || question.challengeFixture !== undefined) reject('Coins require a frozen scrimmage contract.');
+  let expected;
+  try { expected=FOOTBALL_CONTEXTUAL_QUESTIONS.build(activePlay, question.familyId, {
+    profile:contextualQuestionProfile(),support:question.support,presentationRng:()=>0.5}); }
+  catch(error) { reject('Coin family is outside current confirmed completion.'); }
+  const allowed=new Set([...Object.keys(expected),'contextId','questionInstanceId']);
+  if(Object.keys(question).some(key=>!allowed.has(key)))reject('Unrecognized coin question field.');
+  for(const key of Object.keys(expected)) {
+    if(key!=='choices' && !sameContractValue(question[key],expected[key]))reject(`Coin question ${key} contradicts its trusted fixture.`);
+  }
+  const sorted=values=>[...values].sort((a,b)=>a.id.localeCompare(b.id));
+  if(!Array.isArray(question.choices)||!sameContractValue(sorted(question.choices),sorted(expected.choices)))reject('Coin choices contradict their trusted set.');
+  return expected.coinFixture;
 }
 
 function validateQuestionInstance(activePlay, question) {
@@ -1802,6 +1833,7 @@ function validateQuestionInstance(activePlay, question) {
     : new Set(FOOTBALL_CONTEXTUAL_QUESTIONS.SPECIAL_BINDING_PATHS[activePlay.playType] || []);
   const trustedChallenge = trustedTwoPointChallenge(activePlay, question);
   const trustedTime = trustedTimeFixture(activePlay, question);
+  const trustedCoin = trustedCoinFixture(activePlay, question);
   for (const binding of question.bindings) {
     if (binding?.source?.kind === 'context'
       && /private|opponentDecision|plannedCall|weight/i.test(binding.source.path)) {
@@ -1819,7 +1851,9 @@ function validateQuestionInstance(activePlay, question) {
           ? readQuestionPointer(trustedChallenge, binding.source.path)
           : binding?.source?.kind === 'timeFixture' && trustedTime
             ? readQuestionPointer(trustedTime, binding.source.path)
-            : undefined;
+            : binding?.source?.kind === 'coinFixture' && trustedCoin
+              ? readQuestionPointer(trustedCoin, binding.source.path)
+              : undefined;
     if (actual === undefined || !sameContractValue(actual, binding.value)) {
       throw Object.assign(new Error(`Question binding ${binding?.id || 'unknown'} is not grounded in the snap.`), { code: 'malformed-question' });
     }
@@ -1865,8 +1899,13 @@ function pickQuestion(activePlay) {
   const clockDue = activePlay.playType === 'scrimmage' && ordinal >= 2 && (ordinal - 2) % 3 === 0;
   const timeFamilies = FOOTBALL_CONTEXTUAL_QUESTIONS.IN_GAME_TIME_FAMILIES;
   const dueFamily = clockDue ? timeFamilies[Math.floor((ordinal - 2) / 3) % timeFamilies.length] : null;
+  const coinFamilies = FOOTBALL_CONTEXTUAL_QUESTIONS.IN_GAME_COIN_FAMILIES;
+  const coinDue = activePlay.playType === 'scrimmage' && ordinal >= 3 && (ordinal-3)%6 === 0;
+  const eligibleCoins = inspected.eligible.filter(entry=>coinFamilies.includes(entry.familyId));
   const pool = inspected.eligible.filter(entry => activePlay.playType !== 'scrimmage'
-    || (clockDue ? entry.familyId === dueFamily : !timeFamilies.includes(entry.familyId)));
+    || (clockDue ? entry.familyId === dueFamily
+      : coinDue && eligibleCoins.length ? coinFamilies.includes(entry.familyId)
+      : !timeFamilies.includes(entry.familyId) && !coinFamilies.includes(entry.familyId)));
   const eligible = questionFaultMode === 'empty-pool' ? [] : pool.map((entry) => {
     const selection = FOOTBALL_CONTEXTUAL_QUESTIONS.selectionFor(activePlay, entry.familyId);
     return { ...entry, selectionMultiplier: selection.multiplier };
@@ -2165,6 +2204,11 @@ function renderMathVisual() {
     visual.type === 'punt-travel' && data.possibleTouchback === true,
   );
   overlay.setAttribute('aria-label', visual.ariaLabel);
+  if (visual.type === 'coin-wallet') {
+    overlay.removeAttribute('data-model');
+    FOOTBALL_COIN_VIEW.renderWallet(overlay, visual);
+    return;
+  }
   if (['detailed-clock', 'game-elapsed'].includes(visual.type)) {
     overlay.removeAttribute('data-model');
     overlay.replaceChildren();
@@ -2752,7 +2796,7 @@ function hideAnswerButtons() {
     delete b.dataset.value;
     delete b.dataset.choiceId;
     b.removeAttribute('aria-label');
-    b.classList.remove('wrong', 'correct');
+    b.classList.remove('wrong', 'correct', 'shop-choice');
   });
   hideContinueButton();
 }
@@ -2790,13 +2834,14 @@ function renderButtons(view) {
     const hasChoice = Boolean(choice);
     b.classList.toggle('hidden', !hasChoice);
     b.disabled = !hasChoice;
-    b.classList.remove('wrong', 'correct');
+    b.classList.remove('wrong', 'correct', 'shop-choice');
     if (!hasChoice) {
       b.textContent = '';
       delete b.dataset.choiceId;
       return;
     }
     b.textContent = choice.label;
+    if(choice.coinSets) FOOTBALL_COIN_VIEW.renderChoice(b, choice);
     b.dataset.slot = String.fromCharCode(65 + i);
     b.dataset.value = String(choice.value);
     b.dataset.choiceId = choice.id;

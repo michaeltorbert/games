@@ -520,6 +520,7 @@ test('every family authors the exact evidence class and independent families hid
   const { domain, questions } = loadModules();
   const expected = {
     literacy: [
+      'coin-dollar',
       'time-read-one-minute', 'time-read-one-second',
       'yards-to-go-read',
       'goal-distance-tens',
@@ -535,6 +536,7 @@ test('every family authors the exact evidence class and independent families hid
       'punt-landing-spot',
     ],
     independent: [
+      ...questions.IN_GAME_COIN_FAMILIES.filter(id=>id!=='coin-dollar'),
       'game-finish-time', 'game-halfway-time',
       'score-total-ch8', 'score-difference-ch8', 'team-yards-add-ch8', 'line-remaining-ch8', 'goal-remaining-ch8',
       'score-total-ch8-within-20', 'score-total-ch8-ones-add',
@@ -571,7 +573,7 @@ test('every family authors the exact evidence class and independent families hid
   // #186 deliberately adds the two player two-point challenge families; #51
   // adds the two wider past-marker yardage families and the eight quarter and
   // half families.
-  assert.equal(registry.length, 54);
+  assert.equal(registry.length, 54 + questions.IN_GAME_COIN_FAMILIES.length);
   assert.equal(Object.isFrozen(registry[0]), true);
 
   const comparisonSource = makeSnap(domain, { yardsToGo: 14, firstDownLine: 44, scores: { player: 14, opponent: 7 } }, 7);
@@ -621,6 +623,7 @@ test('every family authors the exact evidence class and independent families hid
   assert.equal(questions.build(comparisonSource, 'quarter-read').evidenceClass, 'literacy');
   assert.equal(builtById.has('gain-vs-needed-comparison'), false);
   builtById.set('gain-vs-needed-comparison', questions.build(comparisonSource, 'gain-vs-needed-comparison'));
+  for(const id of questions.IN_GAME_COIN_FAMILIES)builtById.set(id,questions.build(scenarios[0],id,{profile:{worktexts:{'Math Mammoth Grade 1-B':{edition:2026,completedThroughPage:181}}}}));
   for (const familyId of expected.independent) {
     const question = builtById.get(familyId);
     assert.ok(question, `build independent family ${familyId}`);
@@ -811,8 +814,9 @@ test('every exported family builds one exact, grounded, recursively frozen schem
     'punt-travel-distance': ['punt-distance', 'read', ['direction', 'puntStartYardLine', 'rawLandingYardLine', 'appliedTravelYards']],
     'punt-landing-spot': ['punt-placement', 'read', ['puntStartYardLine', 'direction', 'appliedTravelYards', 'landingYardLine']],
   };
+  // The page-exact coin inventory has its own exhaustive worked-review checks.
   const exportedFamilyIds = Object.values(questions.FAMILY_REGISTRY)
-    .flat()
+    .flat().filter(entry=>!questions.IN_GAME_COIN_FAMILIES.includes(entry.familyId))
     .map((entry) => entry.familyId)
     .sort();
   assert.deepEqual(Object.keys(expected).sort(), exportedFamilyIds);
@@ -2955,7 +2959,8 @@ test('published Grade 1-B source map matches every runtime family coordinate', a
   assert.equal(source.asOfDate, '2026-09-18');
   assert.equal(source.completedThroughPage, questions.WORKTEXTS[source.title].completedThroughPage);
   assert.equal(source.runtimeCatalogThroughPage, questions.WORKTEXTS[source.title].includedThroughPage);
-  const entries = source.sourceMap.flatMap(row => row.families.map(familyId => ({ familyId, row })));
+  const entries = [...source.sourceMap.flatMap(row => row.families.map(familyId => ({ familyId, row }))),
+    ...Object.entries(questions.COIN_SOURCE_MAP).map(([familyId,page])=>({familyId,row:{introducedOnPage:page,coverageThroughPage:page}}))];
   const runtime = questions.FAMILY_REGISTRY.scrimmage.filter(family => family.worktext === source.title);
   assert.deepEqual(entries.map(entry => entry.familyId).sort(), plain(runtime.map(family => family.familyId)).sort());
   for (const family of runtime) {

@@ -2961,3 +2961,56 @@ The same local candidate also adds reachable recovery and Stop for a partially s
 - [PR #213](https://github.com/michaeltorbert/games/pull/213) merged as `5d29b0df136ce88164247a83e9043c9c85f45d93` after fresh independent review and complete Chromium/WebKit release gates. The [Pages deployment](https://github.com/michaeltorbert/games/actions/runs/40042232563) succeeded for that merge; live verification matched all 24 checked public assets to the reviewed tree, confirmed Football 1.34.26, and preserved the other games' registry entries and versions.
 - [Native evidence](https://github.com/michaeltorbert/games/pull/213#issuecomment-6376731946) records actual iPhone 15 and iPad A16 Apple Simulator Safari installation, Home Screen icon launch with the option hidden, and return to ordinary Safari with it visible. Captures preceded the cache-query/test-only changes; independent review accepted reuse of the unchanged UI/component payload. This is not final-SHA recapture or physical-device proof. On iPhone, Safari Find revealed the below-fold option before a real tap; native swipe forwarding and JavaScript mode introspection were not established. Engine layout/keyboard evidence remains separate.
 - Earlier failed runs remain retained: the outbox test's unequal observation window was corrected without filtering its privacy assertion; a separate external font socket failure was classified and later availability checked. Passing final gates do not establish a fix for that historical transport cause or the existing issue #161 WebKit stall. Gameplay, settings, saves, Season and learning authorities remain unchanged by this release.
+
+
+## 2026-10-27 — Issue #215 coin practice candidate (unreleased)
+
+Implemented a narrow pretend game-day shop question replacement for ordinary
+scrimmages in Quick Game and Season. Instructed ordinals 3, 9, 15 repeat every
+sixth; clock ordinals 2, 5, 8 remain unchanged. No eligible confirmed coin page
+falls back to ordinary math, and special teams keep their existing pools. The
+26-family source inventory spans the exact Math Mammoth Grade 1-B (2026)
+printed pages 170–181 documented in shared/curriculum-coverage.md, with no
+historical learner-progress or registry/version change.
+
+Versioned fixtures depend only on frozen public identity and family. Production
+rebuilds the complete coin contract against live confirmed completion before
+acceptance. Coin sets, all support pictures/copy, choice identity/presentation,
+source metadata, and immutable evidence class are validated. The existing
+retry, worked/Continue/Replay, once-only commit, learning/stats and Season
+contracts remain in use. Original labeled coins use the US Mint diameter ratios
+(dime 17.91, penny 19.05, nickel 21.21, quarter 24.26 mm). Exact payment, grouping,
+missing cents, wallet remainder, equal sets, distinct ways to pay, and constrained
+quarter counts all have their own page gates. Cashier change remains excluded.
+
+`coins-demo.html` is a clearly labeled isolated preview using synthetic completed
+pages with the production generator and shared coin renderer. It loads no
+learning/history/Season writers and saves nothing. The new coin domain and UI
+suites are included in the canonical release runner. Coin domain checks pass;
+current-candidate browser/device geometry, full regression matrix, and independent
+review remain required verification and are recorded by the coordinating task
+outside this artifact. This entry does not claim merge, release, native-device
+acceptance, or final readiness.
+
+
+### #215 reporting compatibility correction (local candidate only)
+
+The first reviewed candidate exposed two verification failures: an obsolete
+learning-test family count and the reporting outbox's closed catalog missing all
+26 coin tuples. The catalog is now additively extended under schema 1 with every
+old tuple and all wire/storage fields unchanged. The stale test now checks actual
+registration uniqueness, the explicit coin inventory and unchanged challenge-map
+boundaries. The historical outbox reader is preserved verbatim and hash-pinned
+for compatibility execution; new readers preserve/append old queues, while old
+tabs pause mixed coin queues and every automatic maintenance path preserves all
+five record strings, including delayed responses and write-failure recovery.
+Node, real IndexedDB mixed-tab, enrolled ordinary coin-event, service validator,
+and actual bundled workerd cases supply the bounded acceptance evidence.
+
+No migration or sync/service implementation change was introduced. The future
+release order is mandatory: deploy/verify the backend catalog before enabling
+coins for enrolled production clients. The old hosted catalog rejects and
+suppresses those events; local workerd success is not hosted acceptance. No
+production deployment, hosted acceptance, merge or release is claimed here.
+The local isolated demo remains storage-free. The singular worked answer unit
+for one remaining quarter was also corrected before fresh final review.
