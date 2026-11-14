@@ -11,6 +11,36 @@ const MATH_CURRICULUM = (() => {
     ['bar-graphs',153,9],['graph-compare',154,9],['graph-total',155,9],['graph-build',156,9],['graph-difference',158,9],['tallies',160,9],
     ['dimes-pennies',170,10],['dimes-nickels-pennies',171,10],['coin-combinations',172,10],['coin-values',174,10],['coin-change',175,10],['quarters-coins',176,10],['quarter-combinations',178,10],['money-practice',180,10],
   ];
+  // Football's narrower, page-exact coin inventory; broad catalog entries do
+  // not unlock later exercises in the same row. Grade 1-B, 2026, pp.170-181.
+  const COIN_SOURCE_MAP = Object.freeze(Object.fromEntries([
+    ['coin-count-dimes-pennies', 170],
+    ['coin-count-nickels-pennies', 171],
+    ['coin-count-dimes-nickels', 171],
+    ['coin-make-nickels', 171],
+    ['coin-count-mixed', 172],
+    ['coin-two-nickels', 172],
+    ['coin-add-dime', 173],
+    ['coin-add-nickel', 173],
+    ['coin-complete-amount', 173],
+    ['coin-dollar', 174],
+    ['coin-finish-set', 174],
+    ['coin-wallet-left', 175],
+    ['coin-count-quarters', 176],
+    ['coin-count-quarters-dimes', 176],
+    ['coin-count-quarters-nickels', 176],
+    ['coin-count-quarters-mixed', 177],
+    ['coin-complete-quarters', 177],
+    ['coin-count-all', 178],
+    ['coin-equal-sets', 178],
+    ['coin-two-ways', 179],
+    ['coin-quarter-purchase', 179],
+    ['coin-one-quarter', 180],
+    ['coin-two-quarters', 180],
+    ['coin-three-quarters', 181],
+    ['coin-later-equal', 181],
+    ['coin-later-purchase', 181]
+  ]));
   const CATALOG = Object.freeze(rows.map(([id,page,chapter])=>Object.freeze({id,page,chapter,worktext:BOOK,edition:EDITION,optional:['tallies','thirds'].includes(id)})));
   const validPage = page => Number.isInteger(page) && page>=0 && page<=LAST_PAGE;
   const chapter = page => page>=167?10:page>=151?9:page>=95?8:page>=77?7:page>=47?6:page>=13?5:0;
@@ -55,6 +85,6 @@ const MATH_CURRICULUM = (() => {
     if(a%10===0&&b<=9)return 142;
     return a%10>=b%10?137:Infinity;
   }
-  return Object.freeze({BOOK,EDITION,LAST_PAGE,BASELINE,CATALOG,validPage,chapter,available,factPage,arithmeticPage,operationPage,normalize,needsConfirmation});
+  return Object.freeze({BOOK,EDITION,LAST_PAGE,BASELINE,CATALOG,COIN_SOURCE_MAP,validPage,chapter,available,factPage,arithmeticPage,operationPage,normalize,needsConfirmation});
 })();
 globalThis.MATH_CURRICULUM=MATH_CURRICULUM;

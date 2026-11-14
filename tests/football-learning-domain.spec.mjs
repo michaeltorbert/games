@@ -26,9 +26,12 @@ const session = rows => L.createSession({}, {}, now, rows);
 const state = rows => L.challengeStateFor(session(rows), 'line-to-gain');
 const successes = n => Array.from({ length: n }, (_, i) => row(i));
 
-test('explicit immutable two-ladder map covers only eight of the 54 registered families', () => {
+test('explicit immutable two-ladder map stays closed while the complete coin inventory remains ordinary review', () => {
   // #51 adds eight quarter and half families; none joins a challenge ladder.
-  assert.equal(families.length, 54);
+  assert.equal(new Set(families.map(f=>f.familyId)).size,families.length);
+  assert.deepEqual(families.filter(f=>f.familyId.startsWith('coin-')).map(f=>f.familyId).sort(),[...Q.IN_GAME_COIN_FAMILIES].sort());
+  assert.equal(Q.IN_GAME_COIN_FAMILIES.length,26);
+  for(const id of Q.IN_GAME_COIN_FAMILIES){assert.equal(entry(id).concept,'game-day-coins');assert.equal(entry(id).challenge,undefined);}
   assert.equal(Object.keys(Q.CHALLENGE_MAP).length, 8);
   // #51: the two wider past-marker variants join line-to-gain as core work.
   for (const familyId of ['line-to-gain-surplus-ch8', 'line-to-gain-surplus-ch8-ones-subtract']) {

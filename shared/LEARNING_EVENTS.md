@@ -225,9 +225,13 @@ catalog says so; a synthetic catalog fixture in the domain tests covers it.
 sources, so any page can validate every stored event without loading the other
 game. Parity tests bind it to the live `FAMILY_REGISTRY` and `PLACE_FACTS.catalog`.
 
-- Any catalog change (a new, changed or retired Football family, or a Facts
-  catalog change) must bump the event `schemaVersion` and the envelope version.
-  A retired family stays as a historical entry so queued events stay valid.
+- Incompatible event, wire, storage, or interpretation changes require a
+  coordinated event/envelope schema version and compatibility plan. A strictly
+  additive family extension may keep the existing schema only with execution
+  proof that released old readers pause all automatic mutation/upload paths
+  while preserving unknown envelopes byte-for-byte, including delayed replies;
+  see the #215 compatibility evidence below. Existing tuples must not change,
+  and retired families remain historical entries so queued events stay valid.
 - An older page that reads a newer envelope, status record or event
   `schemaVersion` pauses every automatic mutation and leaves the bytes untouched.
   A malformed current-schema envelope also pauses and is preserved. There is no
@@ -374,3 +378,71 @@ documents keep their links in memory only and never read or replace
 - **Exported constants:** `DB_NAME`, `DB_VERSION`, `STORE`, `CONSENT_RECORD`,
   `OUTBOX_RECORD`, `ENROLLMENT_KEY`, `LEGACY_OUTBOX_KEY`. A future installer must
   use these.
+
+
+## #215 additive coin catalog compatibility and release order
+
+The 26 closed coin-family tuples extend schema 1. Every pre-existing tuple and
+all event fields, envelope/status fields, IndexedDB records, keys, versions,
+credentials and sync-response meanings remain unchanged. This is a catalog
+extension, not a protocol or storage migration. A shape or meaning change still
+requires an explicit schema/compatibility decision.
+
+Keeping v1 is justified by execution of the **actual immutable released reader**
+from commit `301fa4f59959de37870db8f8b4453c7a85c25b53`, pinned as
+`tests/fixtures/issue215-learning-outbox-base.js` (SHA-256
+`6f879318b190bd375f88da6462f11a09b8a07a51bf07252557aeb3bfaf94ed7d`).
+The older closed catalog classifies a mixed coin envelope as malformed. That
+pauses automatic recording, status/failure maintenance, snapshots for sync,
+acknowledgment, epoch rotation and delayed pre-coin sync responses before any
+write. The queue and all five owned record strings remain byte-for-byte intact.
+The new reader accepts old queues unchanged, appends new events in order without
+reassigning old identities/enrollment, and resumes normal acknowledgment. Truly
+unknown families and future schemas still pause. Tests exercise both fake
+transaction orchestration and the actual readers in separate browser tabs over
+real IndexedDB. This compatibility rule permits only strictly additive tuples
+with this preservation evidence; it does not relax the closed event allowlist.
+
+**Initial candidate gate: backend first.** The older Worker catalog hosted at
+that initial checkpoint rejected coin events as `invalid`; the sync client retains those events but
+suppresses them from automatic retry. Deploy the updated Worker, verify hosted
+acceptance of all new tuples and their immutable evidence classes, and only then
+enable/deploy the coordinated Football and Facts clients for enrolled production
+users, with both shared-file cache keys/version entries updated together under
+`REGISTRY_RELEASE_TARGET=football,place-value-practice`. The prepared Football
+1.35.0 and Place by Place 1.9.4 candidate versions remain held until that
+coordinated release. A local unit test or
+bundled workerd test does not establish hosted acceptance. Do not send this
+coin-enabled candidate to enrolled production users before that gate passes.
+No hosted deployment or acceptance is claimed by this local candidate. The
+isolated coin demo loads no recording/sync modules and writes no learner data.
+
+
+### 2026-11-13 — Superseding backend qualification for proposed paired release
+
+The backend-first compatibility gate above has now passed on the actual hosted
+service, before client publication. The reviewed prebuilt Worker bundle matched
+deployment readback for version `534a30ed-dd72-4c5e-82aa-e77ed1b312e5`; existing
+operational settings were preserved. The narrowly bounded synthetic trial
+accepted every new coin tuple with its immutable class and the legacy
+Football/Facts pairs, refused altered-class and private-fixture examples, and
+confirmed exact ordered replay acknowledgments. The export matched all 82
+expected unique stored IDs, with no rejected or duplicate rows. The actual report
+separated the 25 calculation families from the one reading family, and supported
+coin evidence from the unassisted legacy examples. Scoped synthetic profile and
+device cleanup was completed and verified through the normal dashboard.
+
+This changes only the backend gate's status. Current plan and usage remain
+unverified under the independently reviewed exception for this limited
+existing-service catalog trial; no current free-plan, zero-cost, quota headroom
+or capacity claim follows. Synthetic qualification does not establish learner
+receipt, native-device usability or child comprehension.
+
+Football 1.35.0 and Place by Place 1.9.4 remain proposed coordinated clients
+at this pre-merge checkpoint. Full Chromium/WebKit release gates, fresh final
+independent review, merge and merge-bound Pages/live verification still govern
+publication. [PR #216](https://github.com/michaeltorbert/games/pull/216) retains the
+final external verdict and deployment/cleanup evidence after this tracked
+record is frozen. Historical candidate statements above describe their earlier
+checkpoint; they are superseded by this dated backend result. The isolated demo
+remains storage-free.

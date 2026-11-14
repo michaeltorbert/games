@@ -5,12 +5,13 @@
 // for orchestration checks only; it is NOT evidence of real IndexedDB behavior, which
 // the browser specs exercise.
 import assert from 'node:assert/strict';
-import { randomUUID } from 'node:crypto';
+import { randomUUID, createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import vm from 'node:vm';
 import { consentRecord, createFakeIndexedDB } from './learning-outbox-fixture.mjs';
 
+const OLD_SOURCE=await readFile(new URL('./fixtures/issue215-learning-outbox-base.js',import.meta.url),'utf8');
 const SOURCE = await readFile(new URL('../shared/learning-outbox.js', import.meta.url), 'utf8');
 const read = path => readFile(new URL(path, import.meta.url), 'utf8');
 const DB = 'learningReporting', STORE = 'records';
@@ -48,12 +49,12 @@ function makeEnv() {
 }
 
 // No Web Locks in any tab: the outbox protocol no longer uses them.
-function openTab(env, { indexedDB = env.idb.factory, crypto = 'default' } = {}) {
+function openTab(env, { indexedDB = env.idb.factory, crypto = 'default', source = SOURCE } = {}) {
   const uuidSource = crypto === 'default' ? { randomUUID: () => { env.uuids.count++; return randomUUID(); } } : crypto;
   const globals = { localStorage: env.storage, navigator: {}, crypto: uuidSource };
   if (indexedDB) globals.indexedDB = indexedDB;
   const context = vm.createContext(globals);
-  vm.runInContext(SOURCE, context, { filename: 'learning-outbox.js' });
+  vm.runInContext(source, context, { filename: 'learning-outbox.js' });
   return context.LEARNING_OUTBOX;
 }
 
@@ -924,4 +925,55 @@ test('Facts leaves are emitted only for a linked attempt, and an unlinked replac
     factsOp(progress(9, 2), progress(9, 2, 1), [{ kind: 'attempt', fields: { ...FACT, number: 1, correct: false, helped: false, timingMs: null } }]),
     factsOp(progress(9, 2), progress(9, 2, 1), [{ kind: 'attempt', fields: { ...FACT, family: 'family:1:1:2', number: 1, correct: false, helped: false } }]),
   ]) assert.equal(tab.recordFacts(tab.capture(), bad), false);
+});
+
+
+// Actual released reader, frozen from 301fa4f59959de37870db8f8b4453c7a85c25b53.
+// This is compatibility evidence, not a replacement parser or simulated old policy.
+const OLD_SHA='6f879318b190bd375f88da6462f11a09b8a07a51bf07252557aeb3bfaf94ed7d';
+const COIN_META={familyId:'coin-count-dimes-pennies',concept:'game-day-coins',purpose:'coreReview',tier:'coins-within-100',grading:'gate',evidenceClass:'independent'};
+const ownedBytes=env=>Object.fromEntries(['enrollment','outbox','credential','sync','binding'].map(key=>[key,env.idb.peek(DB,STORE,key)]));
+function seedReporting(env){
+ const token=`lr1_${'ab'.repeat(16)}_${'A'.repeat(43)}`;
+ env.idb.poke(DB,STORE,'credential',JSON.stringify({schemaVersion:1,generation:GENERATION,deviceId:DEVICE,serviceOrigin:'http://127.0.0.1:8199',token}));
+ env.idb.poke(DB,STORE,'sync',JSON.stringify({schemaVersion:1,generation:GENERATION,suppressed:[],lastSuccessAt:null,notice:null}));
+ env.idb.poke(DB,STORE,'binding',JSON.stringify({schemaVersion:1,generation:GENERATION,facts:null}));
+ return{generation:GENERATION,deviceId:DEVICE,token};
+}
+test('immutable released catalog remains an unchanged subset; only exact coin tuples extend schema 1',()=>{
+ assert.equal(createHash('sha256').update(OLD_SOURCE).digest('hex'),OLD_SHA);
+ const old=openTab(makeEnv(),{source:OLD_SOURCE}),now=openTab(makeEnv());
+ assert.equal(now.SCHEMA_VERSION,old.SCHEMA_VERSION);assert.equal(now.DB_VERSION,old.DB_VERSION);
+ for(const [id,tuple]of Object.entries(old.CATALOG.football))assert.deepEqual(plain(now.CATALOG.football[id]),plain(tuple),id);
+ const additions=Object.keys(now.CATALOG.football).filter(id=>!old.CATALOG.football[id]);assert.equal(additions.length,26);assert.ok(additions.every(id=>id.startsWith('coin-')));
+ assert.deepEqual(plain(now.FIELDS),plain(old.FIELDS));assert.deepEqual(plain(now.CATALOG.facts),plain(old.CATALOG.facts));
+});
+test('new reader appends coins to old queues; old reader and delayed receipts preserve all five record strings; new reader resumes',async()=>{
+ const env=makeEnv();enroll(env);const old=openTab(env,{source:OLD_SOURCE});const expected=seedReporting(env);
+ await recordAttempts(old,2);const oldEvents=plain(envelope(env).events),oldBytes=ownedBytes(env);
+ const receipt=plain(await old.syncView());assert.equal(receipt.state,'ok');
+ const now=openTab(env);assert.deepEqual(plain(await now.snapshot()).envelope,JSON.parse(oldBytes.outbox));assert.deepEqual(ownedBytes(env),oldBytes,'reading old bytes does not migrate');
+ assert.equal(now.record(now.capture(),attempt(randomUUID(),1,false,COIN_META)),true);await now.idle();
+ const mixed=ownedBytes(env),mixedEvents=plain(envelope(env).events);assert.deepEqual(mixedEvents.slice(0,2),oldEvents);assert.equal(mixedEvents[2].seq,oldEvents[1].seq+1);
+ for(const key of ['enrollment','credential','sync','binding'])assert.equal(mixed[key],oldBytes[key],key);
+ assert.equal((await old.snapshot()).state,'malformed');assert.equal((await old.syncView()).state,'malformed');
+ old.record(old.capture(),attempt(randomUUID()));await old.idle();assert.deepEqual(ownedBytes(env),mixed,'old append cannot rewrite newer catalog data');
+ for(const operation of [()=>old.acknowledge([oldEvents[0].eventId]),()=>old.rejectDeleted([oldEvents[0].eventId]),()=>old.startNewEpoch('seq-conflict'),()=>old.applySync(expected,{submitted:oldEvents.map(e=>e.eventId),remove:[oldEvents[0].eventId],suppress:[],rotateEpoch:null,syncedAt:'2026-10-27T12:00:00.000Z',notice:null})]){
+  const result=await operation();assert.equal(result.ok,false);assert.equal(result.reason,'malformed');assert.deepEqual(ownedBytes(env),mixed,'old maintenance/delayed pre-coin receipt preserves every record');
+ }
+ // A failed-open old tab has an in-memory write-failure counter. Its later
+ // status-only recovery must not fold that counter into an unknown envelope.
+ const failed=openTab(env,{source:OLD_SOURCE});env.idb.faults.openError=1;failed.record(failed.capture(),attempt(randomUUID()));await failed.idle();assert.ok(failed.diagnostics().pendingWriteFailures>0);
+ failed.record(failed.capture(),attempt(randomUUID()));await failed.idle();assert.deepEqual(ownedBytes(env),mixed,'old failure maintenance preserves every record');
+ const view=await now.syncView();assert.equal(view.state,'ok');
+ const result=await now.applySync(expected,{submitted:mixedEvents.map(e=>e.eventId),remove:mixedEvents.map(e=>e.eventId),suppress:[],rotateEpoch:null,syncedAt:'2026-10-27T12:00:00.000Z',notice:null});
+ assert.equal(result.ok,true);assert.equal(result.removed,3);assert.deepEqual(plain(envelope(env).events),[]);assert.equal(envelope(env).status.highestSeq,mixedEvents[2].seq);
+});
+test('genuinely unknown catalog entries and future schemas stay opaque to both actual readers',async()=>{
+ for(const variant of ['unknown-family','future-schema']){
+  const env=makeEnv();enroll(env);seedReporting(env);const writer=openTab(env);await recordAttempts(writer,1);
+  const value=envelope(env);if(variant==='unknown-family')value.events[0].familyId='unknown-future-family';else value.schemaVersion=2;
+  putOutbox(env,JSON.stringify(value));const bytes=ownedBytes(env);
+  for(const source of [OLD_SOURCE,SOURCE]){const tab=openTab(env,{source});assert.equal((await tab.syncView()).state,variant==='unknown-family'?'malformed':'future');tab.record(tab.capture(),attempt(randomUUID()));await tab.idle();await tab.acknowledge([value.events[0].eventId]);await tab.startNewEpoch('rewind');assert.deepEqual(ownedBytes(env),bytes);}
+ }
 });

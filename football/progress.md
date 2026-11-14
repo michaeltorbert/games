@@ -2961,3 +2961,112 @@ The same local candidate also adds reachable recovery and Stop for a partially s
 - [PR #213](https://github.com/michaeltorbert/games/pull/213) merged as `5d29b0df136ce88164247a83e9043c9c85f45d93` after fresh independent review and complete Chromium/WebKit release gates. The [Pages deployment](https://github.com/michaeltorbert/games/actions/runs/40042232563) succeeded for that merge; live verification matched all 24 checked public assets to the reviewed tree, confirmed Football 1.34.26, and preserved the other games' registry entries and versions.
 - [Native evidence](https://github.com/michaeltorbert/games/pull/213#issuecomment-6376731946) records actual iPhone 15 and iPad A16 Apple Simulator Safari installation, Home Screen icon launch with the option hidden, and return to ordinary Safari with it visible. Captures preceded the cache-query/test-only changes; independent review accepted reuse of the unchanged UI/component payload. This is not final-SHA recapture or physical-device proof. On iPhone, Safari Find revealed the below-fold option before a real tap; native swipe forwarding and JavaScript mode introspection were not established. Engine layout/keyboard evidence remains separate.
 - Earlier failed runs remain retained: the outbox test's unequal observation window was corrected without filtering its privacy assertion; a separate external font socket failure was classified and later availability checked. Passing final gates do not establish a fix for that historical transport cause or the existing issue #161 WebKit stall. Gameplay, settings, saves, Season and learning authorities remain unchanged by this release.
+
+
+## 2026-10-27 — Issue #215 coin practice candidate (unreleased)
+
+Implemented a narrow pretend game-day shop question replacement for ordinary
+scrimmages in Quick Game and Season. Instructed ordinals 3, 9, 15 repeat every
+sixth; clock ordinals 2, 5, 8 remain unchanged. No eligible confirmed coin page
+falls back to ordinary math, and special teams keep their existing pools. The
+26-family source inventory spans the exact Math Mammoth Grade 1-B (2026)
+printed pages 170–181 documented in shared/curriculum-coverage.md, with no
+historical learner-progress or registry/version change.
+
+Versioned fixtures depend only on frozen public identity and family. Production
+rebuilds the complete coin contract against live confirmed completion before
+acceptance. Coin sets, all support pictures/copy, choice identity/presentation,
+source metadata, and immutable evidence class are validated. The existing
+retry, worked/Continue/Replay, once-only commit, learning/stats and Season
+contracts remain in use. Original labeled coins use the US Mint diameter ratios
+(dime 17.91, penny 19.05, nickel 21.21, quarter 24.26 mm). Exact payment, grouping,
+missing cents, wallet remainder, equal sets, distinct ways to pay, and constrained
+quarter counts all have their own page gates. Cashier change remains excluded.
+
+`coins-demo.html` is a clearly labeled isolated preview using synthetic completed
+pages with the production generator and shared coin renderer. It loads no
+learning/history/Season writers and saves nothing. The new coin domain and UI
+suites are included in the canonical release runner. Coin domain checks pass;
+current-candidate browser/device geometry, full regression matrix, and independent
+review remain required verification and are recorded by the coordinating task
+outside this artifact. This entry does not claim merge, release, native-device
+acceptance, or final readiness.
+
+
+### #215 reporting compatibility correction (local candidate only)
+
+The first reviewed candidate exposed two verification failures: an obsolete
+learning-test family count and the reporting outbox's closed catalog missing all
+26 coin tuples. The catalog is now additively extended under schema 1 with every
+old tuple and all wire/storage fields unchanged. The stale test now checks actual
+registration uniqueness, the explicit coin inventory and unchanged challenge-map
+boundaries. The historical outbox reader is preserved verbatim and hash-pinned
+for compatibility execution; new readers preserve/append old queues, while old
+tabs pause mixed coin queues and every automatic maintenance path preserves all
+five record strings, including delayed responses and write-failure recovery.
+Node, real IndexedDB mixed-tab, enrolled ordinary coin-event, service validator,
+and actual bundled workerd cases supply the bounded acceptance evidence.
+
+No migration or sync/service implementation change was introduced. The future
+release order is mandatory: deploy/verify the backend catalog before enabling
+coins for enrolled production clients. The old hosted catalog rejects and
+suppresses those events; local workerd success is not hosted acceptance. No
+production deployment, hosted acceptance, merge or release is claimed here.
+The local isolated demo remains storage-free. The singular worked answer unit
+for one remaining quarter was also corrected before fresh final review.
+
+## 2026-11-13 — #215 coordinated release preparation (1.35.0, unreleased)
+
+- Football's version and every production cache key, including `coins-view.js`,
+  now name 1.35.0. Place by Place advances together to 1.9.4 because both clients
+  consume the additive shared reporting catalog. Other registered games retain
+  their descriptors and versions. This supersedes the earlier candidate's
+  no-version-change status; it does not establish a release.
+- The current coin questions use normal wording and one “Practice prices” note.
+  The storage-free demo covers all 26 production question families and their
+  help/worked states. Source-page gates, ordinary Quick Game/Season coin cadence,
+  clock cadence, support and frozen football outcomes retain their existing
+  candidate implementation. No learner completion is inferred or changed.
+- Backend-first hosted catalog acceptance, full coordinated Football/Facts
+  Chromium and WebKit release gates, and fresh exact-artifact independent review
+  remain required before publication. Operational deployment, merge, Pages
+  verification and task-only cleanup are coordinator gates recorded externally.
+  No hosted acceptance, production release, native-device acceptance or child
+  comprehension is claimed by this preparatory entry.
+
+## 2026-11-13 — #215 proposed 1.35.0 release: backend qualification complete
+
+This supersedes the backend-pending status above. The proposed paired release
+adds coin practice to ordinary offense and defense in Quick Game and Season,
+with the exact Math Mammoth Grade 1-B (2026) printed-page gates for all 26
+families. Instructed coin ordinals remain 3, 9, 15; clock ordinals remain 2, 5, 8.
+Original labeled coins, normal wording, one “Practice prices” note and the
+storage-free all-family demo are included. Frozen football outcomes, retry and
+worked support, RNG budgets, once-only commits, Season and saved learner progress
+retain their existing boundaries; no learner completion is inferred.
+
+The additive reporting catalog is deployed and qualified on the actual hosted
+service. The reviewed bundle matched deployment readback, with existing
+operational settings preserved. The bounded synthetic trial established all coin
+tuples/classes and legacy Football/Facts acceptance, altered-class/private-fixture
+refusal and replay idempotence. The export contained exactly the expected stored
+IDs; the report separated the 25 calculation families from the one reading
+family and supported evidence from unassisted legacy examples. The dedicated
+synthetic profile and device were deleted through the scoped dashboard controls,
+and the resulting empty dashboard was verified. This supplies backend
+compatibility evidence, not a learner or intended-device run.
+
+Current plan and usage remain unverified under the independently reviewed, narrow
+existing-service trial exception. No current free-plan, zero-cost or capacity
+guarantee is made. The first complete Chromium release attempt exposed stale
+current-version test assertions after the version bump; those assertions now
+compare with the release registry, while historical fixtures remain unchanged.
+Runtime source was unchanged by that correction; the failed run is retained.
+
+Football 1.35.0 and Place by Place 1.9.4 remain release candidates at this
+pre-merge checkpoint. Complete Chromium/WebKit release gates, fresh final
+independent review, merge and merge-bound Pages/live verification remain required.
+[PR #216](https://github.com/michaeltorbert/games/pull/216) is the durable external
+record for the final verdict, release/deployment evidence and task-only cleanup;
+this frozen entry does not claim client publication. Native-device usability
+and child comprehension remain separate, unverified outcomes.

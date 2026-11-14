@@ -4,8 +4,12 @@
 // leaves the machine. Football pages are session-muted and verified by
 // curriculum-fixture before any input; Number facts plays no audio.
 import { randomUUID, randomBytes } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { test, expect } from './curriculum-fixture.mjs';
 import { deleteOutboxDatabase, installConsent, outboxSpyScript, readOutbox } from './learning-outbox-fixture.mjs';
+
+// Current-client assertions follow the independent release registry.
+const RELEASE_VERSION = JSON.parse(readFileSync(new URL('../version.json', import.meta.url), 'utf8'))['place-value-practice'];
 
 const SERVICE = 'http://127.0.0.1:8199';
 const BOOT = '/football/?boot=offense-call';
@@ -504,7 +508,7 @@ test('seeded Number facts play is identical with no enrollment and with upload s
   expect(success.state.accepted.size).toBe(FACTS_EVENTS);
   expect(syncsOf(success.state).length).toBeGreaterThan(0);
   expect(syncsOf(success.state).every(request => request.authorization === `Bearer ${success.state.token}` && request.cookie === null)).toBe(true);
-  expect(syncsOf(success.state).flatMap(request => request.body.events).every(event => event.game === 'facts' && event.gameVersion === '1.9.3')).toBe(true);
+  expect(syncsOf(success.state).flatMap(request => request.body.events).every(event => event.game === 'facts' && event.gameVersion === RELEASE_VERSION)).toBe(true);
   // Failure: uploads were attempted and refused; nothing was removed.
   expect(syncsOf(failure.state).length).toBeGreaterThan(0);
   expect(failure.state.accepted.size).toBe(0);

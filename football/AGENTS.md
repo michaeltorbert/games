@@ -59,7 +59,7 @@ repository-level `AGENTS.md`.
   partitioned by evidence class. Evidence from one class must not strengthen,
   suppress, guide, or refresh the other. Migrated `unclassified` history is
   display/preservation-only and remains inert for adaptation and Coach Report.
-- Except for the explicitly authorized #186 and #208 fixtures, every in-play
+- Except for the explicitly authorized #186, #208, and #215 fixtures, every in-play
   question must be derived from the immutable public facts of the
   live tagged play. Scrimmage questions include the selected calls and exact
   proposed gain; conversion, field-goal, and punt questions consume only their
@@ -84,7 +84,8 @@ repository-level `AGENTS.md`.
   (`two-point-three-digit-add`, `two-point-three-digit-subtract`); PAT tries,
   opponent tries, and every other play keep the play-grounded rule above, and
   this and the #208 fictional-time families are the only graded exceptions
-  outside completed or included curriculum. The
+  outside completed or included curriculum. The #215 fictional-shop exception
+  remains source-completion-gated. The
   operands form a validated challenge fixture: a pure function of the frozen
   `gameId`, `possessionId`, `playId`, `contextId`, and `familyId` that draws
   from no football, scheduler, or presentation stream and never changes the
@@ -111,6 +112,26 @@ repository-level `AGENTS.md`.
   They gate the frozen football outcome with normal support. Pretend four-hour
   games describe no actual match duration, halftime or elapsed quarter time.
   Optional Lab sessions and all special-team pools retain their boundaries.
+- **In-game coins (#215, narrow fictional-shop exception).** Ordinary
+  scrimmages on both sides in Quick Game and Season use coin practice at
+  successfully instructed ordinals 3, 9, 15, repeating every sixth. Time slots
+  at 2, 5, 8 remain unchanged. Only accepted instructed scrimmage commits advance
+  the shared counter; bypasses retain the slot. An unavailable coin pool falls
+  back to ordinary play-grounded math. Special teams stay unchanged.
+  `COIN_SOURCE_MAP` records each actual Grade 1-B (2026) printed page 170–181,
+  rather than unlocking later exercises from a coarse catalog row. Completion
+  comes only from the existing start confirmation; p.168 is adult context, not
+  completion. No learner-progress file is changed. The pretend game-day shop
+  uses original labeled coin tokens and invented prices through 100 cents;
+  $1 starts at p.174. Wallet money left is distinct from cashier change, which
+  is excluded. Each family has one fixed evidence class and source gate. Public
+  frozen IDs plus family/version determine a fixture without RNG draws. The
+  live validator recomputes its entire contract using current confirmed
+  completion, rejecting foreign, stale, altered, or ineligible coin fixtures.
+  This exception does not authorize unrelated worksheet questions during snaps.
+  `coins-demo.html` is a storage-free preview using synthetic completion, the
+  production generator and shared coin renderer; it loads no learning, stats,
+  or Season writers and does not establish learner completion.
 - **Offense/defense symmetry exception (#186).** Because the request covers
   only the player's tries, the opponent's two-point try keeps the conversion
   literacy families. Shared retry, worked-explanation, Film Room, and
