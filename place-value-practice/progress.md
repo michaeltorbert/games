@@ -272,3 +272,27 @@ The same local candidate also adds reachable recovery and Stop for a partially s
   Chromium/WebKit release gates and fresh exact-artifact independent review
   remain required. Deployment and live verification are external coordinator
   gates. This entry claims no merge, production release or device acceptance.
+
+## 2026-11-13 — #215 proposed 1.9.4 release: backend qualification complete
+
+This supersedes the backend-pending status above. Place by Place 1.9.4 pairs
+with Football 1.35.0 to refresh the additive shared reporting catalog and all
+production cache keys. Number facts gameplay, timing, saved progress, consent,
+event protocol and existing automatic review behavior are unchanged.
+
+The updated hosted backend accepted all coin tuples/classes and both legacy
+Football/Facts lifecycles, rejected the two invalid synthetic examples, and
+acknowledged the bounded replay without duplicate stored rows. The synthetic
+export and report matched the expected records and classifications. Its
+dedicated profile/device were removed with scoped dashboard controls and the
+result was verified. Existing operational settings were preserved; current
+plan/usage remain unverified under the reviewed limited-trial exception. This
+is compatibility evidence, with no zero-cost, capacity or learner-device claim.
+
+Current-client test expectations now read the release registry; historical
+compatibility fixtures remain fixed. Both games' complete Chromium/WebKit gates
+and fresh final independent review remain required before client publication,
+followed by merge-bound Pages/live verification.
+[PR #216](https://github.com/michaeltorbert/games/pull/216) holds the final external
+verdict, release evidence and task-only cleanup record. This pre-merge entry
+claims no client release or native-device acceptance.

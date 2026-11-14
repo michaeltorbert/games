@@ -403,8 +403,8 @@ transaction orchestration and the actual readers in separate browser tabs over
 real IndexedDB. This compatibility rule permits only strictly additive tuples
 with this preservation evidence; it does not relax the closed event allowlist.
 
-**Future release gate: backend first.** The currently hosted older Worker catalog
-will reject coin events as `invalid`; the sync client retains those events but
+**Initial candidate gate: backend first.** The older Worker catalog hosted at
+that initial checkpoint rejected coin events as `invalid`; the sync client retains those events but
 suppresses them from automatic retry. Deploy the updated Worker, verify hosted
 acceptance of all new tuples and their immutable evidence classes, and only then
 enable/deploy the coordinated Football and Facts clients for enrolled production
@@ -416,3 +416,33 @@ bundled workerd test does not establish hosted acceptance. Do not send this
 coin-enabled candidate to enrolled production users before that gate passes.
 No hosted deployment or acceptance is claimed by this local candidate. The
 isolated coin demo loads no recording/sync modules and writes no learner data.
+
+
+### 2026-11-13 — Superseding backend qualification for proposed paired release
+
+The backend-first compatibility gate above has now passed on the actual hosted
+service, before client publication. The reviewed prebuilt Worker bundle matched
+deployment readback for version `534a30ed-dd72-4c5e-82aa-e77ed1b312e5`; existing
+operational settings were preserved. The narrowly bounded synthetic trial
+accepted every new coin tuple with its immutable class and the legacy
+Football/Facts pairs, refused altered-class and private-fixture examples, and
+confirmed exact ordered replay acknowledgments. The export matched all 82
+expected unique stored IDs, with no rejected or duplicate rows. The actual report
+separated the 25 calculation families from the one reading family, and supported
+coin evidence from the unassisted legacy examples. Scoped synthetic profile and
+device cleanup was completed and verified through the normal dashboard.
+
+This changes only the backend gate's status. Current plan and usage remain
+unverified under the independently reviewed exception for this limited
+existing-service catalog trial; no current free-plan, zero-cost, quota headroom
+or capacity claim follows. Synthetic qualification does not establish learner
+receipt, native-device usability or child comprehension.
+
+Football 1.35.0 and Place by Place 1.9.4 remain proposed coordinated clients
+at this pre-merge checkpoint. Full Chromium/WebKit release gates, fresh final
+independent review, merge and merge-bound Pages/live verification still govern
+publication. [PR #216](https://github.com/michaeltorbert/games/pull/216) retains the
+final external verdict and deployment/cleanup evidence after this tracked
+record is frozen. Historical candidate statements above describe their earlier
+checkpoint; they are superseded by this dated backend result. The isolated demo
+remains storage-free.
