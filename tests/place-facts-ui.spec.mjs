@@ -1,5 +1,9 @@
+import { readFileSync } from 'node:fs';
 import { test, expect } from './curriculum-fixture.mjs';
 import { checkedOptions, chooseOptions, mathPractice, optionsButton, optionsDialog } from './place-practice-nav.mjs';
+// Current-client assertions follow the independent release registry.
+const RELEASE_VERSION = JSON.parse(readFileSync(new URL('../version.json', import.meta.url), 'utf8'))['place-value-practice'];
+
 const KEY='place-value-practice:facts:v1', MIXED='place-value-practice:arithmetic:v1', PLACE='place-value-practice:progress:v1', SUB='place-value-practice:arithmetic-mode:v1';
 async function freeze(page){const now=new Date('2026-09-09T12:00:00Z');await page.clock.install({time:0});await page.clock.pauseAt(now);}
 test.beforeEach(async({page})=>{await freeze(page);});
@@ -377,7 +381,7 @@ test('toggle-only report exposure also marks a warm prompt as supported for driv
 
 test('mixed practice is the default and presentation changes do not change its arithmetic',async({page})=>{
  await page.goto('/place-value-practice/');
- await expect(page.locator('#game-version')).toHaveText('Version 1.9.3');
+ await expect(page.locator('#game-version')).toHaveText(`Version ${RELEASE_VERSION}`);
  await mathPractice(page).click();await settled(page);
  await expect(page.locator('#arithmetic-practice')).toBeVisible();
  await expect(page.locator('#practice-route-label')).toHaveText('Addition & subtraction');await expect(optionsButton(page)).toHaveAccessibleName('Practice options, now Addition & subtraction');

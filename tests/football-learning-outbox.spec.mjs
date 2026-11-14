@@ -4,9 +4,13 @@
 // synthetic test fixture: production #199 has no installer or writer.
 import { randomUUID, createHash } from 'node:crypto';
 import {readFile} from 'node:fs/promises';
+import { readFileSync } from 'node:fs';
 import { test, expect } from './curriculum-fixture.mjs';
 import { expectFootballTestMuted } from './football-test-mute.mjs';
 import { databaseNames, deleteOutboxDatabase, installConsent, outboxSpyScript, readOutbox, readRecords } from './learning-outbox-fixture.mjs';
+
+// Current-client assertions follow the independent release registry.
+const RELEASE_VERSION = JSON.parse(readFileSync(new URL('../version.json', import.meta.url), 'utf8'))['football'];
 
 const STATS = 'footballMathStats:v1';
 const BOOT = '/football/?boot=offense-call';
@@ -254,7 +258,7 @@ test('seeded play is identical with recording off, on, offline and failing; reco
     expect(run.outbox.valid).toBe(true);
     const events = run.outbox.envelope.events;
     expect(events.map(event => event.seq)).toEqual(events.map((_, index) => index + 1));
-    expect(events.every(event => event.game === 'football' && event.gameVersion === '1.34.26')).toBe(true);
+    expect(events.every(event => event.game === 'football' && event.gameVersion === RELEASE_VERSION)).toBe(true);
     const groups = byQuestion(events);
     const presented = run.steps.map((step, index) => ({ step, answers: SCRIPT[index].answers })).filter(item => item.step.family);
     expect(groups).toHaveLength(presented.length);
@@ -515,7 +519,7 @@ test('the outbox script ships with the release version and loads before football
       questions: index('/contextual-questions.js'), football: index('/football.js') };
   });
   expect(order.version).toBe(order.game);
-  expect(order.game).toBe('1.34.26');
+  expect(order.game).toBe(RELEASE_VERSION);
   expect(order.outbox).toBeGreaterThan(order.questions);
   expect(order.outbox).toBeLessThan(order.football);
 });

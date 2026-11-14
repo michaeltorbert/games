@@ -2,8 +2,12 @@
 // Fact practice plays no audio (source-audited). Enrollment (IndexedDB consent plus the
 // localStorage hint) is a synthetic fixture; production #199 has no installer.
 import { randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { test, expect } from './curriculum-fixture.mjs';
 import { databaseNames, deleteOutboxDatabase, installConsent, outboxSpyScript, readOutbox, readRecords } from './learning-outbox-fixture.mjs';
+
+// Current-client assertions follow the independent release registry.
+const RELEASE_VERSION = JSON.parse(readFileSync(new URL('../version.json', import.meta.url), 'utf8'))['place-value-practice'];
 
 const KEY = 'place-value-practice:facts:v1';
 const HINT = 'learningReporting:enrollment:v1';
@@ -173,7 +177,7 @@ test('seeded Fact play is identical with recording off, on, offline and failing;
     expect(run.outbox.valid).toBe(true);
     const events = run.outbox.envelope.events;
     expect(events.map(event => event.seq)).toEqual(events.map((_, index) => index + 1));
-    expect(events.every(event => event.game === 'facts' && event.gameVersion === '1.9.3')).toBe(true);
+    expect(events.every(event => event.game === 'facts' && event.gameVersion === RELEASE_VERSION)).toBe(true);
     const groups = byQuestion(events);
     expect(groups.map(group => group.map(shape))).toEqual(SCRIPT.map(step => step.expect));
     groups.forEach((group, index) => {
@@ -597,7 +601,7 @@ test('the outbox script ships with the release version and loads before fact-pra
     return { version: scripts[index('/shared/learning-outbox.js')]?.searchParams.get('v'), game: GAME_VERSION,
       domain: index('/fact-practice-domain.js'), outbox: index('/shared/learning-outbox.js'), controller: index('/fact-practice.js') };
   });
-  expect([order.version, order.game]).toEqual(['1.9.3', '1.9.3']);
+  expect([order.version, order.game]).toEqual([RELEASE_VERSION, RELEASE_VERSION]);
   expect(order.outbox).toBeGreaterThan(order.domain);
   expect(order.outbox).toBeLessThan(order.controller);
 });
