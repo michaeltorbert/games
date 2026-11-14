@@ -409,8 +409,9 @@ suppresses them from automatic retry. Deploy the updated Worker, verify hosted
 acceptance of all new tuples and their immutable evidence classes, and only then
 enable/deploy the coordinated Football and Facts clients for enrolled production
 users, with both shared-file cache keys/version entries updated together under
-`REGISTRY_RELEASE_TARGET=football,place-value-practice`. Candidate versions remain
-held until that coordinated release. A local unit test or
+`REGISTRY_RELEASE_TARGET=football,place-value-practice`. The prepared Football
+1.35.0 and Place by Place 1.9.4 candidate versions remain held until that
+coordinated release. A local unit test or
 bundled workerd test does not establish hosted acceptance. Do not send this
 coin-enabled candidate to enrolled production users before that gate passes.
 No hosted deployment or acceptance is claimed by this local candidate. The

@@ -340,3 +340,135 @@ binding and target. Never publish that configuration or its private identifiers.
 - A missing marker or schema answers 503; the Worker never initializes itself. A wrong
   but initialized database binding can't be detected by the marker, so verify the D1 ID
   before every deploy.
+
+## #215 bounded additive hosted catalog trial
+
+`node scripts/hosted-coin-check.mjs --manifest /private/path/manifest.json --target https://approved-report-origin --bundle /private/path/worker.js --config /private/path/wrangler.jsonc --exception-record /private/path/accepted-exception.md --out /private/path/new-trial-directory`
+
+This separate helper implements only the independently reviewed #215 exception to
+fresh plan/usage evidence for the existing service's additive catalog upgrade.
+It does **not** change `hosted-check.mjs`, its qualification-only guard, or the
+ordinary growth/retention procedure. Current plan and allowance remain
+**UNVERIFIED**; neither historical Workers Free settings nor these receipts prove
+current headroom, zero cost, CPU margin, capacity or original quota acceptance.
+The coordinator must accept the exact scoped exception record before invocation.
+No new resource, billing/plan action, reset, Access change or migration is allowed.
+
+Before running, independently review and deploy the exact bundle with unchanged
+production settings and verify its actual deployment version/configuration.
+The manifest binds that operator observation; the helper cannot inspect the
+provider's deployment control plane. Use a newly created, dedicated synthetic
+profile and device code from the normal protected dashboard. Never reuse a
+household profile/device/code. The helper has no owner cookies/JWTs, admin calls
+or deletion capability. Supply the code only after `WAITING:code` appears, through
+that waiting process's stdin. Code and device token stay in memory, never in
+arguments, environment, evidence or output. No pre-piped/typeahead code is used.
+
+The private manifest has exactly these fields:
+
+```json
+{
+  "schemaVersion": 1,
+  "target": "https://approved-report-origin",
+  "gameOrigin": "https://approved-games-origin",
+  "profileId": "<dedicated synthetic profile UUID>",
+  "createdAt": "<current ISO timestamp>",
+  "expiresAt": "<ISO timestamp within three hours>",
+  "expected": {
+    "sourceCommit": "<40 hex current HEAD>",
+    "sourceSha256": "<64 hex source manifest digest>",
+    "toolSha256": "<64 hex helper digest>",
+    "contractSha256": "<64 hex shared outbox digest>",
+    "bundleSha256": "<64 hex deployed bundle digest>",
+    "configSha256": "<64 hex preserved operational config digest>",
+    "workerVersion": "<verified actual deployed version UUID>"
+  },
+  "exception": {
+    "recordSha256": "<64 hex accepted exception record digest>",
+    "accepted": true,
+    "scope": "issue215-additive-catalog-only",
+    "currentPlan": "UNVERIFIED",
+    "currentUsage": "UNVERIFIED"
+  },
+  "ownerOperations": { "used": 0, "reserve": 6, "cap": 20 },
+  "forecast": {
+    "rowsWritten": 5000,
+    "rowsRead": 250000,
+    "cleanupRowsWritten": 2000,
+    "cleanupRowsRead": 100000
+  }
+}
+```
+
+The exported `localBindings(bundlePath, configPath, exceptionRecordPath)` computes
+all local digest fields and current HEAD. `sourceSha256` hashes the JSON array of
+sorted `[filename, SHA256(bytes)]` pairs for every `.js` file directly in `src/`;
+the separately bound contract is `shared/learning-outbox.js`. Keep the manifest
+and input files private and frozen during this one trial. The exact HTTPS target
+must also be repeated on the command line; redirects are refused. There are no
+loopback or guard-bypass command options.
+
+The fixture contains exactly 84 unique IDs: 26 authoritative coin families,
+each with guided help, a correct first attempt and its supported resolution
+(78 events); unassisted legacy Football and Facts attempt/resolution pairs
+(4 events); and two separate invalid examples (wrong immutable class and an
+empty synthetic `coinFixture` marker, never a real prompt/fixture). Valid events
+use one contiguous 82-event epoch; invalid examples use a separate epoch so
+intentional rejection does not manufacture a missing-sequence warning. Five
+batches of at most 20 events are followed by one byte-identical first-batch
+replay: 104 transmissions, 82 expected stored events. Enrollment plus six syncs
+is seven planned device API calls, with a hard ceiling of ten including errors.
+All response IDs/outcomes must match exactly in order; malformed, duplicate,
+reordered, extra-field, oversized, unexpected or failed responses stop immediately.
+No automatic retry, growth ladder, retention aging or recovery replay is allowed.
+
+Authenticated dashboard operations are **separately** capped at 20 for the whole
+trial, including setup, errors, automatic dashboard fetches, refreshes, report,
+export and cleanup. The coordinator maintains that counter; the helper cannot
+observe browser requests. At least six calls must remain reserved (report/export
+and specific-profile/device preview/confirmation), and the manifest refuses a
+used-plus-reserve total above 20. Check the actual remaining dashboard work fits
+before starting; a UI action can make several requests. Stop rather than
+exceeding either budget. A failed trial is not authorization for another trial.
+
+The fixed D1 forecast above is a conservative incremental planning estimate,
+**not an executable database budget or guaranteed maximum**. `src/device.js`
+uses one six-statement sync transaction plus device/system reads. Only 82 valid
+rows can be inserted; the replay inserts none, invalid examples never reach the
+SQL rows, and successful non-conflicting records generate no anomaly rows.
+One epoch, assignment, device, code exchange and status updates are small.
+The event table has its event-ID primary key, unique device/epoch/sequence key
+and two secondary indexes, so event insertion/deletion and scoped retirement
+amplify physical writes. The 5,000-write forecast includes a 2,000-write cleanup
+reserve for retiring/deleting only this profile and deleting only its device,
+including relevant index, guard, tombstone and credential work. Current SQL is
+bound by the source digest and must be reviewed with this forecast.
+
+The 250,000-read forecast includes a 100,000-read cleanup reserve. Profile and
+device limits are 8 and 16; code creation caps active codes at 20, and exports
+stop beyond 50,000 rows. These limits do **not** bound all historical shared
+rows: code/tombstone/retired-event tables and some cleanup/report predicates can
+scan unrelated existing rows. Consequently this estimate cannot certify actual
+read charges or a universal maximum without current database/usage evidence.
+Unknown shared-account traffic and provider metering remain outside the estimate.
+Stop on the first quota/rate/resource error; never retry via another method.
+
+A new output directory (0700) is required. Its fsynced append-only journal (0600)
+records artifact bindings, synthetic IDs, exact receipts and closed stop labels.
+Each request's IDs are durable **before** transmission, preserving possible
+partial delivery even on transport failure. No event payloads, codes, tokens,
+response text, profile/device labels or raw errors are output. Keep these IDs
+private. Offline transport/refusal/redaction tests run with:
+
+`node --test test-runtime/hosted-coin-check.test.mjs`
+
+After success, use the normal dashboard to inspect the synthetic report and
+export: confirm all 82 expected IDs exactly once, all 26 immutable families/classes,
+both legacy pairs, and no invalid-example rows. Synthetic receipts are not a
+learner run, intended-device delivery, browser CORS or child-comprehension proof.
+Then preview and confirm deletion of **only** the new synthetic profile and
+its new device; inspect the confirmation scopes. Never use Delete everything
+or raw D1 edits. The helper performs no cleanup. Preserve receipt/export evidence
+privately; if quota prevents cleanup, retain the exact IDs and report pending
+scoped cleanup instead of retrying or broadening deletion. Backend compatibility
+must still pass before publishing the coordinated Football/Facts clients.

@@ -3014,3 +3014,22 @@ suppresses those events; local workerd success is not hosted acceptance. No
 production deployment, hosted acceptance, merge or release is claimed here.
 The local isolated demo remains storage-free. The singular worked answer unit
 for one remaining quarter was also corrected before fresh final review.
+
+## 2026-11-13 — #215 coordinated release preparation (1.35.0, unreleased)
+
+- Football's version and every production cache key, including `coins-view.js`,
+  now name 1.35.0. Place by Place advances together to 1.9.4 because both clients
+  consume the additive shared reporting catalog. Other registered games retain
+  their descriptors and versions. This supersedes the earlier candidate's
+  no-version-change status; it does not establish a release.
+- The current coin questions use normal wording and one “Practice prices” note.
+  The storage-free demo covers all 26 production question families and their
+  help/worked states. Source-page gates, ordinary Quick Game/Season coin cadence,
+  clock cadence, support and frozen football outcomes retain their existing
+  candidate implementation. No learner completion is inferred or changed.
+- Backend-first hosted catalog acceptance, full coordinated Football/Facts
+  Chromium and WebKit release gates, and fresh exact-artifact independent review
+  remain required before publication. Operational deployment, merge, Pages
+  verification and task-only cleanup are coordinator gates recorded externally.
+  No hosted acceptance, production release, native-device acceptance or child
+  comprehension is claimed by this preparatory entry.

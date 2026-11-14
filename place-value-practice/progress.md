@@ -261,3 +261,14 @@ The same local candidate also adds reachable recovery and Stop for a partially s
 - A pure detached clock view treats rollback or a future anchor as just recorded, before any accepted new check is stamped. Reads never write; the next accepted existing locked action persists repairs and its observed wall clock. Same saved bytes and instant produce the same decision; reload before an unpersisted repair can conservatively postpone review. Invalid clocks disable calendar eligibility while ordinary tickets remain active. Time zones do not affect epoch elapsed time; forward jumps remain bounded by the spaced slot.
 - No focus-management screen, cloud scheduler, reporting/enrollment dependency, support-tail queue, new speed rule or curriculum expansion. Seven days is a bounded pilot default, not a demonstrated optimum or learning-efficacy claim. Football's established automatic support and calendar restore remain intact in paired 1.34.23.
 - Candidate only: exact-artifact independent review, browser/release gates and deployed-version verification remain external coordinator evidence. This entry claims no release or physical-device acceptance.
+
+## 2026-11-13 — #215 shared catalog release preparation (1.9.4, unreleased)
+
+- Place by Place's inline version, every production cache key and registry entry
+  now name 1.9.4, paired with Football 1.35.0. This refreshes the shared additive
+  reporting catalog for the coordinated release; Number facts gameplay, timing,
+  saved progress, reporting consent and event protocol are unchanged.
+- Backend-first hosted acceptance of the coin catalog, both games' complete
+  Chromium/WebKit release gates and fresh exact-artifact independent review
+  remain required. Deployment and live verification are external coordinator
+  gates. This entry claims no merge, production release or device acceptance.
