@@ -209,7 +209,18 @@ const FOOTBALL_STATS = (() => {
       grading: question.grading === 'noStakes' ? 'noStakes' : 'gate',
       tier: safeString(question.tier, 'unknown'),
       evidenceClass,
+      ...(normalizeDifficulty(question.difficulty) ? { difficulty: normalizeDifficulty(question.difficulty) } : {}),
     };
+  }
+
+  // #220 optional, versioned difficulty projection. It names only a floor
+  // group and a magnitude, never operands or prompt text. Unknown or
+  // malformed values are dropped, leaving the row inert for the floor.
+  function normalizeDifficulty(value) {
+    if (!isRecord(value) || value.version !== 'difficulty-floor-v1'
+      || typeof value.group !== 'string' || !/^[a-z][a-z0-9-]{0,39}$/.test(value.group)
+      || !['tiny', 'neutral', 'substantial'].includes(value.magnitude)) return null;
+    return { version: value.version, group: value.group, magnitude: value.magnitude };
   }
 
   function normalizeLinks(value, question = null) {
@@ -928,6 +939,7 @@ const FOOTBALL_STATS = (() => {
         evidenceClass: row.question?.evidenceClass, grading: row.question?.grading,
         resolution: row.resolution,
         attempts: row.attempts.map(a => ({ number: a.number, correct: a.correct, support: a.support })),
+        ...(row.question?.difficulty ? { difficulty: row.question.difficulty } : {}),
       })),
     });
   }

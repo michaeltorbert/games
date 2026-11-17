@@ -31,6 +31,8 @@ const DOMAIN = [
   'tests/curriculum-domain.spec.mjs',
   'tests/football-domain.spec.mjs',
   'tests/football-learning-domain.spec.mjs',
+  'tests/football-difficulty-floor-domain.spec.mjs',
+  'tests/grade2a-curriculum-domain.spec.mjs',
   'tests/football-contextual-questions.spec.mjs',
   'tests/football-coins-domain.spec.mjs',
   'tests/football-stats-domain.spec.mjs',
@@ -42,6 +44,7 @@ const DOMAIN = [
 ];
 const BROWSER = [
   'tests/curriculum-ui.spec.mjs',
+  'tests/grade2a-ui.spec.mjs',
   'tests/football-challenge.spec.mjs',
   'tests/football-arithmetic-ui.spec.mjs',
   'tests/football-question-workspace.spec.mjs',

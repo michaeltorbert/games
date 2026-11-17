@@ -92,15 +92,43 @@ const FOOTBALL_LEARNING = (() => {
       && entry.grading === 'gate' ? meta : null;
   }
 
+  // #220: a row belongs to a difficulty floor group only through the
+  // canonical family map. Its magnitude comes from the validated, versioned
+  // projection recorded at the trusted derive boundary; rows saved before that
+  // projection are inert unless their immutable family domain is substantial.
+  const FLOOR_POLICY = Object.freeze({ version: 'difficulty-floor-v1', window: 12, days: 30, minResults: 8,
+    minFirstTryRate: 0.8, recent: 6, recentFirstTry: 5, minSubstantial: 3, tinyFactor: 0.25 });
+
+  function floorMeta(entry) {
+    const Q = typeof FOOTBALL_CONTEXTUAL_QUESTIONS === 'undefined' ? null : FOOTBALL_CONTEXTUAL_QUESTIONS;
+    const familyId = entry?.familyId || entry?.id;
+    const group = Q?.FLOOR_GROUPS?.[familyId];
+    if (!group || entry.evidenceClass !== 'independent' || entry.grading !== 'gate') return null;
+    const d = entry.difficulty;
+    if (d === undefined || d === null) {
+      return Q.IMMUTABLE_SUBSTANTIAL_FAMILIES.includes(familyId) ? { group, magnitude: 'substantial' } : null;
+    }
+    return isRecord(d) && d.version === Q.DIFFICULTY_VERSION && d.version === FLOOR_POLICY.version
+      && d.group === group && Q.DIFFICULTY_MAGNITUDES.includes(d.magnitude) ? { group, magnitude: d.magnitude } : null;
+  }
+
   // Accept only the closed projection of finalized stats rows. No question text,
   // operands, elapsed time, or presentation state enters this evidence window.
   function normalizeChallengeEvidence(rows, nowMs) {
+    return normalizeEvidence(rows, nowMs, challengeMeta, CHALLENGE_POLICY.days, false);
+  }
+
+  function normalizeFloorEvidence(rows, nowMs) {
+    return normalizeEvidence(rows, nowMs, floorMeta, FLOOR_POLICY.days, true);
+  }
+
+  function normalizeEvidence(rows, nowMs, accept, days, keepDifficulty) {
     const seen = new Map();
     for (const row of Array.isArray(rows) ? rows : []) {
-      const meta = row && challengeMeta(row);
+      const meta = row && accept(row);
       const time = typeof row?.completedAt === 'string' ? Date.parse(row.completedAt) : NaN;
       if (!meta || row.playType !== 'scrimmage' || row.instructionalStatus !== 'presented'
-        || !Number.isFinite(time) || time > nowMs || nowMs - time > CHALLENGE_POLICY.days * 86400000
+        || !Number.isFinite(time) || time > nowMs || nowMs - time > days * 86400000
         || ![row.gameId, row.playId].every(id => typeof id === 'string' && id.length > 0)
         || !RESOLUTIONS.includes(row.resolution) || !Array.isArray(row.attempts)) continue;
       const attempts = row.attempts;
@@ -114,7 +142,9 @@ const FOOTBALL_LEARNING = (() => {
       const clean = { gameId: row.gameId, playId: row.playId, familyId: row.familyId,
         concept: row.concept, evidenceClass: 'independent', grading: 'gate', playType: 'scrimmage',
         instructionalStatus: 'presented', completedAt: new Date(time).toISOString(), resolution: row.resolution,
-        attempts: attempts.map(a => ({ number: a.number, correct: a.correct, support: a.support })) };
+        attempts: attempts.map(a => ({ number: a.number, correct: a.correct, support: a.support })),
+        ...(keepDifficulty && isRecord(row.difficulty) ? { difficulty: { version: row.difficulty.version,
+          group: row.difficulty.group, magnitude: row.difficulty.magnitude } } : {}) };
       // Conflicting duplicate evidence is unusable, independent of input order.
       if (seen.has(key) && JSON.stringify(seen.get(key)) !== JSON.stringify(clean)) seen.set(key, null);
       else if (!seen.has(key)) seen.set(key, clean);
@@ -170,8 +200,58 @@ const FOOTBALL_LEARNING = (() => {
       refreshDue: stretchRun >= 4 };
   }
 
+  // #220 group readiness: the latest 12 group results from the last 30 days,
+  // at least 8 of them, 80% first try, 5 of the latest 6 first try with no
+  // second miss there, and at least 3 unsupported first-try substantial
+  // results. Tiny-only, helped, literacy, and unclassified work never promote.
+  // Any recent retry or miss, due support, downshift, or refresh in the group
+  // keeps its baseline mix. Grade completion is never evidence.
+  function floorStateFor(session, group, entries = []) {
+    const evidence = Array.isArray(session.floorEvidence) ? session.floorEvidence : [];
+    const rows = evidence.filter(row => floorMeta(row)?.group === group).slice(-FLOOR_POLICY.window);
+    const firsts = rows.filter(row => row.resolution === 'firstTryCorrect');
+    const recent = rows.slice(-FLOOR_POLICY.recent);
+    const substantial = firsts.filter(row => floorMeta(row).magnitude === 'substantial'
+      && row.attempts[0].support !== 'guided').length;
+    const ready = rows.length >= FLOOR_POLICY.minResults
+      && firsts.length / rows.length >= FLOOR_POLICY.minFirstTryRate
+      && recent.filter(row => row.resolution === 'firstTryCorrect').length >= FLOOR_POLICY.recentFirstTry
+      && !recent.some(row => row.resolution === 'secondMiss')
+      && substantial >= FLOOR_POLICY.minSubstantial;
+    // Every legacy concept in the group counts, not only those in this pool.
+    const Q = typeof FOOTBALL_CONTEXTUAL_QUESTIONS === 'undefined' ? null : FOOTBALL_CONTEXTUAL_QUESTIONS;
+    const concepts = [...new Set([...entries.map(entry => entry.concept || entry.skill),
+      ...(Q ? Q.FAMILY_REGISTRY.scrimmage.filter(meta => Q.FLOOR_GROUPS[meta.familyId] === group).map(meta => meta.concept) : [])])];
+    const windowMs = FLOOR_POLICY.days * 86400000;
+    const supported = resolution => resolution === 'retryCorrect' || resolution === 'secondMiss';
+    let block = null;
+    if (rows.length && rows.at(-1).resolution !== 'firstTryCorrect') block = 'recent-retry-or-miss';
+    for (const concept of concepts) {
+      if (block) break;
+      const current = session.latestResolvedByConcept[concept]?.independent;
+      const indexed = session.historicalLastResolved[concept]?.independent;
+      if (supported(current?.resolution)) block = 'recent-retry-or-miss';
+      else if (!current && indexed && supported(indexed.resolution) && indexed.resolvedAtMs <= session.nowMs
+        && session.nowMs - indexed.resolvedAtMs <= windowMs) block = 'recent-retry-or-miss';
+      else if (['line-to-gain', 'drive-distance'].includes(concept)) {
+        const ladder = challengeStateFor(session, concept);
+        if (ladder.preference === 'downshifted') block = 'downshift';
+        else if (ladder.refreshDue) block = 'refresh-due';
+        else if (ladder.guided) block = 'support-due';
+      }
+    }
+    if (!block && entries.some(entry => supportFor(session, entry, 'initial') === 'guided')) block = 'support-due';
+    return Object.freeze({ policyVersion: FLOOR_POLICY.version, group, ready, active: ready && !block,
+      reason: block || (ready ? 'ready' : 'not-ready'), results: rows.length, substantialFirstTry: substantial });
+  }
+
   function recordCommitted(session, row) {
     const projected = projectCommitted(row);
+    const floor = normalizeFloorEvidence([projected], Math.max(session.nowMs, Date.now()));
+    if (floor.length && Array.isArray(session.floorEvidence)
+      && !session.floorEvidence.some(r => r.gameId === row.gameId && r.playId === row.playId)) {
+      session.floorEvidence = normalizeFloorEvidence([...session.floorEvidence, floor[0]], Math.max(session.nowMs, Date.now()));
+    }
     const clean = normalizeChallengeEvidence([projected], Math.max(session.nowMs, Date.now()));
     if (!clean.length || session.challengeEvidence.some(r => r.gameId === row.gameId && r.playId === row.playId)) return false;
     session.challengeEvidence.push(clean[0]);
@@ -185,7 +265,8 @@ const FOOTBALL_LEARNING = (() => {
       instructionalStatus: row?.instructionalStatus, completedAt: row?.completedAt,
       familyId: row?.links?.familyId, concept: row?.question?.concept,
       evidenceClass: row?.question?.evidenceClass, grading: row?.question?.grading,
-      resolution: row?.resolution, attempts: row?.attempts?.map(a => ({ number: a.number, correct: a.correct, support: a.support })) };
+      resolution: row?.resolution, attempts: row?.attempts?.map(a => ({ number: a.number, correct: a.correct, support: a.support })),
+      ...(row?.question?.difficulty ? { difficulty: row.question.difficulty } : {}) };
   }
 
   function challengeOptions(entries, session) {
@@ -216,6 +297,7 @@ const FOOTBALL_LEARNING = (() => {
       recentFamilyIds: [],
       recentFamilyIdsByClass: { literacy: [], independent: [] },
       challengeEvidence: normalizeChallengeEvidence(historicalEvidence, nowMs),
+      floorEvidence: normalizeFloorEvidence(historicalEvidence, nowMs),
       currentChallengeEvidence: [],
       bySkill: {},
       byConcept: {},
@@ -440,8 +522,7 @@ const FOOTBALL_LEARNING = (() => {
     return PROFILE.purposeWeights[entry.purpose] || 0.12;
   }
 
-  function weightedPick(entries, session, rng) {
-    if (!entries.length) return null;
+  function selectionWeights(entries, session) {
     const options = challengeOptions(entries, session);
     const purposeTotals = entries.reduce((totals, entry) => {
       totals[entry.purpose] = (totals[entry.purpose] || 0) + (entry.weight || 1);
@@ -472,6 +553,28 @@ const FOOTBALL_LEARNING = (() => {
       const adjusted = group.reduce((sum, item) => sum + item.weight * item.factor, 0);
       if (adjusted > 0) group.forEach(item => { item.weight *= item.factor * budget / adjusted; });
     }
+    // #220: after the baseline ladder, a ready, unblocked floor group lowers
+    // its tiny entries and rescales so the group keeps its budget. A group
+    // with no substantial alternative in this truthful pool stays baseline.
+    const groups = [...new Set(weighted.map(item => floorMeta(item.entry)?.group).filter(Boolean))];
+    for (const group of groups) {
+      const items = weighted.filter(item => floorMeta(item.entry)?.group === group);
+      const tiny = items.filter(item => floorMeta(item.entry).magnitude === 'tiny');
+      if (!tiny.length || !items.some(item => floorMeta(item.entry).magnitude === 'substantial')) continue;
+      const state = floorStateFor(session, group, items.map(item => item.entry));
+      items.forEach(item => { item.floor = state; });
+      if (!state.active) continue;
+      const budget = items.reduce((sum, item) => sum + item.weight, 0);
+      tiny.forEach(item => { item.weight *= FLOOR_POLICY.tinyFactor; });
+      const adjusted = items.reduce((sum, item) => sum + item.weight, 0);
+      items.forEach(item => { item.weight *= budget / adjusted; });
+    }
+    return weighted;
+  }
+
+  function weightedPick(entries, session, rng) {
+    if (!entries.length) return null;
+    const weighted = selectionWeights(entries, session);
     const selected = item => item.diagnostic ? { ...item.entry, challengeSelection: item.diagnostic,
       challengeGuided: item.guided } : item.entry;
     const total = weighted.reduce((sum, item) => sum + item.weight, 0);
@@ -522,6 +625,10 @@ const FOOTBALL_LEARNING = (() => {
     PROFILE,
     CHALLENGE_POLICY,
     normalizeChallengeEvidence,
+    FLOOR_POLICY,
+    normalizeFloorEvidence,
+    floorStateFor,
+    selectionWeights,
     challengeStateFor,
     challengeOptions,
     projectCommitted,

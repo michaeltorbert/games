@@ -10,7 +10,10 @@
     "completedThroughPage": 145,
     "asOfDate": "2026-07-14",
     "usualPagesPerDay": 2,
-    "progressRule": "Advance completedThroughPage only from an explicit user update"
+    "progressRule": "Advance completedThroughPage only from an explicit user update",
+    "reportedContext": [
+      { "asOfDate": "2026-11-11", "report": "James finished Math Mammoth Grade 1 and is starting Grade 2-A.", "use": "Dated, reported context only. It does not change the Grade 1-B instructor-confirmed baseline (page 113, 2026-09-18), migrate saved progress, unlock any Grade 2-A family, or count as mastery evidence." }
+    ]
   },
   "footballQuestionPlan": {
     "includedThroughPage": 179,
@@ -210,6 +213,19 @@
           "concepts": "Compare one half with one, two, or three quarters of the same whole; two quarters equal one half."
         }
       ]
+    },
+    {
+      "title": "Math Mammoth Grade 2-A",
+      "edition": "rev-2025-09-06",
+      "sourceIdentity": { "copyright": "2012-2025", "pdfCreated": "2025-09-06", "sha256": "ff96fc64c6d05a4b961ab4ea46920be86de06cb0af15c84cb311b3445a7a6bf2", "coverEditionYear": null },
+      "repositoryUse": "The purchased PDF is not stored in the repository. Practice is original and source-bounded; no workbook wording, figures, or exercises are copied.",
+      "reportablePageRange": [0, 161],
+      "runtimeCatalogThroughPage": 32,
+      "chapter1Pages": [10, 32],
+      "completedThroughPage": null,
+      "runtimeAvailabilityPolicy": "Completion-only, learner-reported through the shared page prompt and stored separately from Grade 1-B (math-curriculum:progress:grade2a:v1). A family unlocks only when its own printed page is reported complete; a new record starts at 0. Pages after 32 are accepted truthfully but add no practice.",
+      "omittedOptional": [{ "page": 16, "kind": "Puzzle Corner" }, { "page": 18, "kind": "Puzzle Corner" }, { "page": 23, "kind": "Challenge" }, { "page": 28, "kind": "Puzzle Corner" }, { "page": 30, "kind": "Puzzle Corner" }],
+      "runtimeAuthority": "shared/grade2a-curriculum.js"
     }
   ]
 }

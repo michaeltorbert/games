@@ -3070,3 +3070,37 @@ independent review, merge and merge-bound Pages/live verification remain require
 record for the final verdict, release/deployment evidence and task-only cleanup;
 this frozen entry does not claim client publication. Native-device usability
 and child comprehension remain separate, unverified outcomes.
+
+## 2026-11-17 — #219 Grade 2-A Chapter 1 eligibility and #220 difficulty floor (proposed 1.36.0)
+
+Original task prompts: #219 asks for a gentle, page-gated Grade 2-A Chapter 1
+first wave starting 2026-11-11, with reported Grade 1 completion kept as context
+only. #220 asks that ordinary Football practice serve trivial questions less
+often after a readiness criterion, without altering any live play.
+
+- The game-start prompt now offers a book choice (Grade 1-B or Grade 2-A) with
+  separately locked records; both are snapshotted per game. A completed Grade
+  2-A page can admit only existing Grade 1-B arithmetic relation families whose
+  exact live operands that page covers. Coins, time, and special teams are
+  unchanged; Grade 1-B 113 baseline and storage are unchanged.
+- Difficulty floor `difficulty-floor-v1` (see `shared/curriculum-coverage.md`):
+  effective-fact classification at the derive boundary, canonical floor groups,
+  challenge-equivalent group readiness, whole-group blocks, tiny factor 0.25
+  with group-budget rescale only when a substantial alternative exists, one
+  scheduler draw, optional validated stats projection, legacy rows inert except
+  crossing-ten-only families.
+- Version 1.36.0 across `GAME_VERSION`, cache keys, `games.js`, `version.json`.
+- New focused tests: `tests/football-difficulty-floor-domain.spec.mjs`,
+  `tests/grade2a-curriculum-domain.spec.mjs`, `tests/grade2a-ui.spec.mjs`,
+  registered in `scripts/run-football-release.mjs`.
+
+Author-run evidence is Chromium only, at the candidate stage. Full Chromium and
+WebKit release gates, independent review, merge, and Pages verification remain
+coordinator gates. No release is claimed.
+
+Correction round 1 (same candidate, 2026-11-17): Grade 2-A variants now follow
+each family's own occurrence count rather than the global run index, so every
+ordinary variant is reachable in real topic and All completed sessions; the
+halved-shape description states line position only; the page prompt and Place
+options copy say where Grade 2-A practice lives and that Mixed/Facts stay on
+Grade 1-B. Release gates remain pending.
