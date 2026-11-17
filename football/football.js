@@ -1,4 +1,4 @@
-const GAME_VERSION = '1.35.0';
+const GAME_VERSION = '1.36.0';
 let prevPlayerScore = -1, prevOpponentScore = -1;
 let playerRunTimer = 0, playerCelebrateTimer = 0, playerCelebrateDelayTimer = 0;
 const EZ = 5;
@@ -1289,6 +1289,7 @@ function sanitizedStatsQuestion(question) {
     grading: question.grading,
     tier: question.tier,
     evidenceClass: question.evidenceClass,
+    ...(question.difficulty ? { difficulty: question.difficulty } : {}),
   };
 }
 
@@ -1400,9 +1401,16 @@ function outcomeMessage(messagesByCall, callKey) {
   return choose(messagesByCall[callKey] || messagesByCall.shortRun);
 }
 
+// #219: Football's context for the shared page prompt's book choice.
+CURRICULUM_UI.configure?.({notes:{'1-B':'Grade 1-B sets which Football questions are open, including coins.',
+  '2-A':'In Football, finished Grade 2-A Chapter 1 pages can add some two-digit questions. Coins and other topics still follow your Grade 1-B page.'}});
+
 function contextualQuestionProfile() {
   return {
-    worktexts:{'Math Mammoth Grade 1-B':{edition:2026,completedThroughPage:curriculumSession?.completedThroughPage??MATH_CURRICULUM.BASELINE.completedThroughPage}},
+    // #219: both books are snapshotted once per game. Grade 2-A only adds
+    // existing arithmetic relations; Grade 1-B keeps coins and every other gate.
+    worktexts:{'Math Mammoth Grade 1-B':{edition:2026,completedThroughPage:curriculumSession?.completedThroughPage??MATH_CURRICULUM.BASELINE.completedThroughPage},
+      ...(typeof MATH_CURRICULUM_2A!=='undefined'?{[MATH_CURRICULUM_2A.BOOK]:{edition:MATH_CURRICULUM_2A.EDITION,completedThroughPage:curriculumSession?.grade2a?.completedThroughPage??0}}:{})},
     completedThroughPage: FOOTBALL_LEARNING.PROFILE.completedThroughPage,
     includedThroughPage: FOOTBALL_LEARNING.PROFILE.includedThroughPage,
     computationMax: FOOTBALL_LEARNING.PROFILE.computationMax,
@@ -1824,6 +1832,11 @@ function validateQuestionInstance(activePlay, question) {
   if (!sameContractValue(question.challenge || null, expectedChallenge)
     || (expectedChallenge && (question.concept !== expectedChallenge.concept || question.evidenceClass !== 'independent'))) {
     throw Object.assign(new Error('Question challenge metadata contradicts the registered family.'), { code: 'malformed-question' });
+  }
+  // #220: the difficulty projection is recomputed from the frozen play, never
+  // trusted from the question it rides on.
+  if (!sameContractValue(question.difficulty ?? null, FOOTBALL_CONTEXTUAL_QUESTIONS.difficultyFor(activePlay, question.familyId))) {
+    throw Object.assign(new Error('Question difficulty contradicts its trusted play facts.'), { code: 'malformed-question' });
   }
   if (!Array.isArray(question.bindings) || question.bindings !== question.premises || !question.bindings.length) {
     throw Object.assign(new Error('Question bindings are missing or have drifted.'), { code: 'malformed-question' });

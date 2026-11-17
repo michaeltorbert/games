@@ -19,6 +19,14 @@ repository-level `AGENTS.md`.
   Keep the dated instructor-confirmed page 113 record separate from these
   browser-local learner reports. Grade 1-B uses completion-only eligibility;
   Grade 1-A and Time Lab retain their existing guided-first/source boundaries.
+- Grade 2-A (#219) has its own authority, `shared/grade2a-curriculum.js`, and
+  its own learner-reported record chosen in the same game-start prompt. Both
+  books are snapshotted per game. Football adds no Grade 2-A fixture family: a
+  completed Chapter 1 page may only admit an existing Grade 1-B arithmetic
+  relation family when `MATH_CURRICULUM_2A.operationPage` places the exact live
+  operands on a completed page. Coins, time, and special teams stay on their
+  Grade 1-B and existing gates. The reported 2026-11-11 Grade 1 finish is dated
+  context only, never completion or mastery.
 - Do not infer that the learner completed two pages on every calendar day.
   `usualPagesPerDay` is a pacing norm; `completedThroughPage` changes only when
   the user provides a new progress update.
@@ -162,6 +170,22 @@ repository-level `AGENTS.md`.
   append only successfully finalized current rows once. The 200-row journal
   limits available history; missing evidence cannot establish promotion. There
   is no persisted level. Coach Report describes current committed work only.
+
+## Difficulty Floor (#220)
+
+- `contextual-questions.js` classifies each floor family's effective
+  computation (tiny, neutral, substantial) from trusted live operands at the
+  derive boundary and attaches `difficulty {version, group, magnitude}`;
+  `football.js` recomputes it before accepting a question. Policy details and
+  representative cases live in `shared/curriculum-coverage.md`.
+- `learning.js` applies the floor after ladder redistribution: a ready,
+  unblocked canonical group lowers tiny entries by 0.25 and rescales to its
+  budget, only when the same truthful pool has a substantial alternative.
+  Readiness mirrors the challenge thresholds per group; any recent retry or
+  miss, due support, downshift, or refresh blocks the whole group. One draw.
+- Stats keep the optional validated projection; older rows are inert except the
+  crossing-ten-only `*-within-20` families. Never parse prompts or report
+  operands for this policy.
 
 ## Play Integrity and Recovery
 

@@ -26,7 +26,11 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
     if (request && request.edition !== book.edition) return { included: false, guided: true };
     if(title==='Math Mammoth Grade 1-B' && typeof MATH_CURRICULUM!=='undefined'){
       const page=request?.completedThroughPage??MATH_CURRICULUM.BASELINE.completedThroughPage;
-      return {included:MATH_CURRICULUM.validPage(page)&&meta.introducedOnPage<=page,guided:false};
+      // #219: a completed Grade 2-A Chapter 1 lesson may admit an existing
+      // Grade 1-B arithmetic relation family; its derive then checks the
+      // exact operand domain against the Grade 2-A page as well.
+      const alternate=meta.tier==='chapter-8-arithmetic'&&grade2aPage(profile)!==null&&grade2aPage(profile)>=MATH_CURRICULUM_2A.CHAPTER1_FIRST;
+      return {included:(MATH_CURRICULUM.validPage(page)&&meta.introducedOnPage<=page)||alternate,guided:false};
     }
     if (title === 'Math Mammoth Grade 1-B' && meta.familyId?.startsWith('coin-')) {
       const page=request?.completedThroughPage??book.completedThroughPage;
@@ -38,6 +42,62 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
     const completed = title === 'Math Mammoth Grade 1-A' ? Math.min(profile.completedThroughPage ?? 145, 145) : book.completedThroughPage;
     return { included: (meta.coverageThroughPage ?? meta.introducedOnPage) <= limit,
       guided: completed === null || (meta.coverageThroughPage ?? meta.introducedOnPage) > completed };
+  }
+
+  // #219: the separately confirmed Grade 2-A page, or null when absent,
+  // malformed, or from another revision. Never inferred from Grade 1-B.
+  function grade2aPage(profile) {
+    if (typeof MATH_CURRICULUM_2A === 'undefined') return null;
+    const request = profile?.worktexts?.[MATH_CURRICULUM_2A.BOOK];
+    return request && request.edition === MATH_CURRICULUM_2A.EDITION && MATH_CURRICULUM_2A.validPage(request.completedThroughPage)
+      ? request.completedThroughPage : null;
+  }
+
+  // An existing relation is completed when Grade 1-B covers its operands, or
+  // when the exact Grade 2-A Chapter 1 page covering them is completed.
+  // The Grade 1-B path also needs the family's own page, so a family admitted
+  // only through Grade 2-A cannot borrow a Grade 1-B operand check.
+  function operationCompleted(operation, a, b, profile, familyPage) {
+    if (typeof MATH_CURRICULUM === 'undefined') return true;
+    const page1b = profile?.worktexts?.['Math Mammoth Grade 1-B']?.completedThroughPage ?? MATH_CURRICULUM.BASELINE.completedThroughPage;
+    if (familyPage <= page1b && MATH_CURRICULUM.operationPage(operation, a, b) <= page1b) return true;
+    const page2a = grade2aPage(profile);
+    return page2a !== null && MATH_CURRICULUM_2A.operationPage(operation, a, b) <= page2a;
+  }
+
+  // #220 difficulty floor: classify the effective computation a live relation
+  // asks for, from trusted play facts only (never prompt text). Whole tens act
+  // as tens facts; a non-crossing ones/tens computation is tiny when it is an
+  // identity, steps by at most 2, or uses only facts within 5; crossing ten
+  // and genuine two-place work are substantial; anything else is neutral.
+  const DIFFICULTY_VERSION = 'difficulty-floor-v1';
+  const DIFFICULTY_MAGNITUDES = Object.freeze(['tiny', 'neutral', 'substantial']);
+  function classifyComputation(operation, a, b, kind = 'compute') {
+    if (![a, b].every((n) => Number.isInteger(n) && n >= 0)) return 'neutral';
+    if (kind === 'count') {
+      if (Math.abs(a - b) <= 5) return 'tiny';
+      operation = 'subtract';
+      if (b > a) [a, b] = [b, a];
+    }
+    if (operation !== 'add' && operation !== 'subtract') return 'neutral';
+    if (operation === 'subtract' && b > a) return 'neutral';
+    const add = operation === 'add';
+    const result = add ? a + b : a - b;
+    const step = add ? Math.min(a, b) : Math.min(b, result);
+    if (step === 0) return 'tiny';
+    if (a % 10 === 0 && b % 10 === 0) return classifyComputation(operation, a / 10, b / 10);
+    if (add ? result <= 10 : a <= 10) return step <= 2 || [a, b, result].every((n) => n <= 5) ? 'tiny' : 'neutral';
+    if (add ? a % 10 + b % 10 > 10 : a % 10 < b % 10) return 'substantial';
+    if (step <= 2) return 'tiny';
+    const facts = [1, 10].flatMap((place) => {
+      const da = Math.floor(a / place) % 10;
+      const db = Math.floor(b / place) % 10;
+      if (!db || (add && !da)) return [];
+      const r = add ? da + db : da - db;
+      return [{ x: da, y: db, r, step: add ? Math.min(da, db) : Math.min(db, r) }];
+    });
+    if (!facts.length || facts.every((f) => f.step <= 2) || facts.every((f) => f.x <= 5 && f.y <= 5 && f.r <= 5)) return 'tiny';
+    return facts.length >= 2 ? 'substantial' : 'neutral';
   }
 
   // Grade 1-B Chapter 8 domains. General borrowing (43 - 7, 52 - 18)
@@ -1129,7 +1189,7 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
       derive(snap,profile) {
         const relation = spec.relation(snap);
         const plus = spec.operation === 'add';
-        if(relation&&typeof MATH_CURRICULUM!=='undefined'&&MATH_CURRICULUM.operationPage(plus?'add':'subtract',relation.a,relation.b)>(profile?.worktexts?.['Math Mammoth Grade 1-B']?.completedThroughPage??MATH_CURRICULUM.BASELINE.completedThroughPage))return {decline:decline('curriculum-not-completed','This operand domain belongs to a later printed page.')};
+        if(relation&&!operationCompleted(plus?'add':'subtract',relation.a,relation.b,profile,domain?.page ?? spec.page))return {decline:decline('curriculum-not-completed','This operand domain belongs to a later printed page.')};
         if (!relation || !arithmeticAllowed(plus ? 'add' : 'subtract', relation.a, relation.b)
           || (relation.a <= 10 && relation.b <= 10 && (!plus || relation.a + relation.b <= 10))) {
           return { decline: decline('outside-chapter-8-relation', 'No supported wider arithmetic relation in these public facts.') };
@@ -2551,6 +2611,46 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
     },
   });
 
+  // #220 canonical floor groups: one semantic group per kind of live number,
+  // spanning legacy concepts, so rescaling inside a group keeps that group's
+  // share of the (independent-evidence) budget. Each entry reads the exact
+  // trusted operands its family's derive uses.
+  const RELATION_FLOOR_GROUPS = Object.freeze({
+    'score-total-ch8': 'score', 'score-difference-ch8': 'score', 'team-yards-add-ch8': 'team-yards',
+    'line-remaining-ch8': 'yardage-marker', 'goal-remaining-ch8': 'goal-distance', 'line-to-gain-surplus-ch8': 'yardage-marker',
+  });
+  const DIFFICULTY_SPECS = new Map([
+    ['line-to-gain-missing-part', { group: 'yardage-marker', compute: (snap) => ['subtract', snap.context.yardsToGo, appliedGain(snap)] }],
+    ['line-to-gain-exact', { group: 'yardage-marker', compute: (snap) => ['subtract', snap.context.yardsToGo, appliedGain(snap)] }],
+    ['line-to-gain-surplus', { group: 'yardage-marker', compute: (snap) => ['subtract', appliedGain(snap), snap.context.yardsToGo] }],
+    ['line-to-gain-fact-family', { group: 'yardage-marker', compute: (snap) => ['subtract', snap.context.yardsToGo, appliedGain(snap)] }],
+    ['drive-distance-scaffolded', { group: 'drive-distance', compute: (snap) => ['subtract', snap.context.yardLine, snap.context.driveStart, 'count'] }],
+    ['drive-distance-plus-whole-tens', { group: 'drive-distance', compute: (snap) => ['add', Math.abs(snap.context.yardLine - snap.context.driveStart), appliedGain(snap)] }],
+    ['committed-score-total', { group: 'score', compute: (snap) => ['add', snap.context.scores.player, snap.context.scores.opponent] }],
+    ['committed-score-difference', { group: 'score', compute: (snap) => ['subtract', Math.max(snap.context.scores.player, snap.context.scores.opponent), Math.min(snap.context.scores.player, snap.context.scores.opponent)] }],
+    ['goal-distance-minus-whole-tens', { group: 'goal-distance', compute: (snap) => ['subtract', goalDistance(snap), appliedGain(snap)] }],
+    ...ARITHMETIC_RELATIONS.flatMap((spec) => {
+      const domains = COMPLETED_ARITHMETIC_DOMAINS[spec.operation === 'add' ? 'add' : 'subtract'];
+      const compute = (snap) => { const relation = spec.relation(snap); return relation ? [spec.operation === 'add' ? 'add' : 'subtract', relation.a, relation.b] : null; };
+      return [spec.id, ...domains.map((domain) => `${spec.id}-${domain.suffix}`)]
+        .map((familyId) => [familyId, { group: RELATION_FLOOR_GROUPS[spec.id], compute }]);
+    }),
+  ]);
+  // Families whose immutable operand domain makes every instance substantial
+  // (single-digit sums of 11-18 always cross ten), so rows saved before the
+  // difficulty projection existed may still count. All other legacy rows stay
+  // inert for floor readiness.
+  const IMMUTABLE_SUBSTANTIAL_FAMILIES = Object.freeze(['score-total-ch8-within-20', 'team-yards-add-ch8-within-20']);
+  const FLOOR_GROUPS = deepFreeze(Object.fromEntries([...DIFFICULTY_SPECS].map(([familyId, spec]) => [familyId, spec.group])));
+
+  function difficultyFor(source, familyId) {
+    const spec = DIFFICULTY_SPECS.get(familyId);
+    if (!spec || sourcePlayType(source) !== 'scrimmage') return null;
+    const computed = spec.compute(source);
+    if (!computed) return null;
+    return deepFreeze({ version: DIFFICULTY_VERSION, group: spec.group, magnitude: classifyComputation(...computed) });
+  }
+
   const FAMILY_BY_ID = new Map(FAMILY_DEFINITIONS.map((definition) => [definition.meta.familyId, definition]));
   if (FAMILY_BY_ID.size !== FAMILY_DEFINITIONS.length) throw new Error('Contextual family IDs must be unique.');
   for (const familyId of FAMILY_BY_ID.keys()) {
@@ -2569,6 +2669,15 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
   ])));
   for (const familyId of Object.keys(CHALLENGE_MAP)) {
     if (!FAMILY_BY_ID.has(familyId)) throw new Error(`Unknown challenge family ${familyId}.`);
+  }
+  for (const [familyId, spec] of DIFFICULTY_SPECS) {
+    const meta = FAMILY_BY_ID.get(familyId)?.meta;
+    if (!meta || meta.playType !== 'scrimmage' || meta.evidenceClass !== 'independent' || typeof spec.group !== 'string') {
+      throw new Error(`Difficulty floor family ${familyId} must be a registered independent scrimmage family.`);
+    }
+  }
+  for (const familyId of IMMUTABLE_SUBSTANTIAL_FAMILIES) {
+    if (!DIFFICULTY_SPECS.has(familyId)) throw new Error(`Unknown immutable substantial family ${familyId}.`);
   }
 
   for (const familyIds of Object.values(CALL_AFFINITIES)) {
@@ -2643,7 +2752,8 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
       if (reason) {
         declined.push({ familyId: meta.familyId, reason });
       } else {
-        eligibleCandidates.push({ ...meta });
+        const difficulty = difficultyFor(source, meta.familyId);
+        eligibleCandidates.push({ ...meta, ...(difficulty ? { difficulty } : {}) });
       }
     }
 
@@ -2867,6 +2977,7 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
       math: { ...visuals[support], support },
       grounding: { bindingIds, answerId },
       selection: selectionFor(source, familyId),
+      ...(difficultyFor(source, familyId) ? { difficulty: difficultyFor(source, familyId) } : {}),
       // A presentation copy only; football.js recomputes it from the live play.
       ...(semantic.challengeFixture ? { challengeFixture: semantic.challengeFixture } : {}),
       ...(semantic.timeFixture ? { timeFixture: semantic.timeFixture } : {}),
@@ -2902,6 +3013,8 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
     TWO_POINT_CHALLENGE,
     twoPointChallengeFor,
     selectionFor,
+    DIFFICULTY_VERSION, DIFFICULTY_MAGNITUDES, FLOOR_GROUPS, IMMUTABLE_SUBSTANTIAL_FAMILIES,
+    classifyComputation, difficultyFor, grade2aPage,
     inspect,
     build,
   });

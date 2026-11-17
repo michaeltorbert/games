@@ -296,3 +296,30 @@ followed by merge-bound Pages/live verification.
 [PR #216](https://github.com/michaeltorbert/games/pull/216) holds the final external
 verdict, release evidence and task-only cleanup record. This pre-merge entry
 claims no client release or native-device acceptance.
+
+## 2026-11-17 — #219 Grade 2-A Chapter 1 book practice (proposed 1.10.0)
+
+Original task prompt: add a gentle, page-gated Grade 2-A Chapter 1 first wave
+for a learner starting Grade 2-A on 2026-11-11, keeping reported Grade 1
+completion as context only and preserving Grade 1 behavior and progress.
+
+- The shared page prompt offers Grade 1-B or Grade 2-A and remembers the last
+  choice. Grade 2-A has its own locked record (new records start at 0; pages
+  0-161; pages past 32 add no practice).
+- Book topics follows the chosen book. Grade 2-A runs 32 original generators
+  covering all nine Chapter 1 lessons and the review (printed pages 10-32), each
+  unlocked only by its own page, with lesson topics, help after a miss, worked
+  answers, and its own store `place-value-practice:book:grade2a:v1`. Five
+  optional Puzzle Corner/Challenge items are omitted by reviewed disposition.
+- Mixed arithmetic and Basic facts stay Grade 1-B lanes (documented limit).
+  The Grade 1-B book store, topics, and behavior are unchanged.
+- Version 1.10.0 across `GAME_VERSION`, cache keys, `games.js`, `version.json`.
+
+Author-run Chromium evidence only; release gates and review remain pending.
+
+Correction round 1 (same candidate, 2026-11-17): Grade 2-A variants now follow
+each family's own occurrence count rather than the global run index, so every
+ordinary variant is reachable in real topic and All completed sessions; the
+halved-shape description states line position only; the page prompt and Place
+options copy say where Grade 2-A practice lives and that Mixed/Facts stay on
+Grade 1-B. Release gates remain pending.
