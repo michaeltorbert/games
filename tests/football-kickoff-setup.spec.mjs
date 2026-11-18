@@ -23,6 +23,10 @@ const START_IDS = [
   'play-mode-picker', 'quick-game-panel', 'rival-picker', 'rival-options', 'rival-preview',
   'rival-preview-matchup', 'rival-preview-style', 'season-panel', 'season-progress', 'season-record',
   'season-rungs', 'season-next', 'season-status', 'start-game-btn', 'tl-open-button',
+  // #222: start-card Options access for the next game's quarter length.
+  'start-options-btn',
+  // Pre-existing markup (base index.html) the stale characterization omitted.
+  'home-screen-install',
 ];
 
 // Design C computed styles per project, from the unchanged base rules.
@@ -577,13 +581,15 @@ test('unsaved Season creation and unsaved final results keep every warning and a
   await expect(page.locator('#ui-desk')).toHaveAttribute('data-phase', 'call');
   await page.evaluate(() => {
     window.__kickoffBlockSeason = true;
+    window.__footballTest.useManualClock(0);
     window.__footballTest.seedDriveState({
       possession: 'offense', direction: 1, quarter: 4,
       down: 4, yardsToGo: 10, yardLine: 28, firstDownLine: 38, driveStart: 20,
-      scores: { player: 3, opponent: 7 }, quarterPossessions: 3,
+      scores: { player: 3, opponent: 7 }, quarterPossessions: 3, clockRemainingMs: 1,
     });
   });
   await page.locator('#decision-grid .decision-btn[data-action="punt"]').tap();
+  await page.evaluate(() => window.__footballTest.advanceClock(1)); // #222: the clock reaches 0:00 during this play
   expect(await page.evaluate(() => window.__footballTest.answerChoice('correct'))).not.toBe(false);
   await expect(page.locator('#ov-end')).toHaveClass(/show/);
   await expect(page.locator('#ov-end-btn')).toHaveText('Retry Saving');

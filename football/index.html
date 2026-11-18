@@ -4,14 +4,14 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <title>Football Math!</title>
-<link rel="apple-touch-icon" href="apple-touch-icon.png?v=1.36.0">
-<link rel="icon" type="image/png" href="apple-touch-icon.png?v=1.36.0">
+<link rel="apple-touch-icon" href="apple-touch-icon.png?v=1.37.0">
+<link rel="icon" type="image/png" href="apple-touch-icon.png?v=1.37.0">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow+Condensed:wght@600;700;800&display=swap">
-<link rel="stylesheet" href="../shared/fonts.css?v=1.36.0">
-<link rel="stylesheet" href="../shared/reset.css?v=1.36.0">
-<link rel="stylesheet" href="football.css?v=1.36.0">
+<link rel="stylesheet" href="../shared/fonts.css?v=1.37.0">
+<link rel="stylesheet" href="../shared/reset.css?v=1.37.0">
+<link rel="stylesheet" href="football.css?v=1.37.0">
 </head>
 <body>
 <div id="broadcast-shell">
@@ -19,7 +19,11 @@
     <div id="scorebug" data-possession="offense">
       <div id="status-ribbon">
         <span id="status-ribbon-text">DUKE BALL - OFFENSE</span>
-        <span class="sb-quarter"><span class="sb-label">Quarter</span> <span id="s-quarter">1</span></span>
+        <span class="sb-period">
+          <span class="sb-quarter"><span class="sb-label">Quarter</span> <span id="s-quarter">1</span></span>
+          <span class="sb-clock" id="s-clock" role="timer" aria-label="Game clock 5:00, stopped" data-clock-state="idle">5:00</span>
+          <button class="sb-options" id="options-toggle" type="button" onclick="openOptions()">Options</button>
+        </span>
       </div>
       <div id="status">
         <div class="sb-team sb-duke"><span class="sb-name" id="s-player-name">DUKE</span><span class="sb-score" id="s-pscore">0</span></div>
@@ -243,6 +247,10 @@
         <span class="tl-entry-title">Practice Clocks &amp; Calendars</span>
         <span class="tl-entry-copy">A separate 8-question practice lab</span>
       </button>
+      <button class="tl-entry-btn options-entry-btn" id="start-options-btn" data-slot="options-action" type="button" onclick="openOptions()">
+        <span class="tl-entry-title">Options</span>
+        <span class="tl-entry-copy" data-slot="options-summary">5-min quarters</span>
+      </button>
     </div>
     <div id="home-screen-install" class="start-install-row"></div>
   </div>
@@ -323,6 +331,24 @@
       </dl>
       <button class="tl-done-button" id="tl-done-button" type="button" onclick="finishTimeLab()">Done</button>
     </section>
+  </div>
+</div>
+<div class="overlay" id="ov-options" data-overlay="options" data-context="start" role="dialog" aria-modal="true" aria-labelledby="ov-options-title" aria-describedby="ov-options-sub" aria-hidden="true" inert>
+  <div class="overlay-card ov-options-card">
+    <span class="ov-broadcast-badge ov-badge-info" data-slot="badge">OPTIONS</span>
+    <div class="ov-title" id="ov-options-title" data-slot="title">Options</div>
+    <div class="ov-sub" id="ov-options-sub" data-slot="sub">Choose how long each quarter lasts.</div>
+    <button class="ov-btn" id="ov-options-btn" data-slot="action" type="button" onclick="closeOptions()">Done</button>
+    <fieldset class="quarter-length-picker" id="quarter-length-picker">
+      <legend>Quarter length</legend>
+      <div class="quarter-length-options">
+        <label class="quarter-length-option"><input type="radio" name="quarter-minutes" value="3" onchange="selectQuarterMinutes(3)"><span>3 minutes</span></label>
+        <label class="quarter-length-option"><input type="radio" name="quarter-minutes" value="5" checked onchange="selectQuarterMinutes(5)"><span>5 minutes</span></label>
+        <label class="quarter-length-option"><input type="radio" name="quarter-minutes" value="10" onchange="selectQuarterMinutes(10)"><span>10 minutes</span></label>
+      </div>
+      <p class="quarter-length-status" id="quarter-length-status" data-slot="quarter-status" role="status" aria-live="polite" aria-atomic="true">Your next game uses 5-minute quarters.</p>
+    </fieldset>
+    <p class="ov-options-note" id="ov-options-note" data-slot="clock-note"></p>
   </div>
 </div>
 <div class="overlay" id="ov-td" data-overlay="td" data-side="offense" role="dialog" aria-modal="true" aria-labelledby="ov-td-title" aria-describedby="ov-td-sub" aria-hidden="true" inert>
@@ -416,27 +442,27 @@
   </div>
 </div>
 
-<link rel="stylesheet" href="../shared/curriculum.css?v=1.36.0">
-<script src="../shared/curriculum.js?v=1.36.0"></script>
-<script src="../shared/grade2a-curriculum.js?v=1.36.0"></script>
-<script src="../shared/curriculum-ui.js?v=1.36.0"></script>
-<script src="copy.js?v=1.36.0"></script>
-<script src="learning.js?v=1.36.0"></script>
-<script src="stats.js?v=1.36.0"></script>
-<script src="opponent.js?v=1.36.0"></script>
-<script src="season.js?v=1.36.0"></script>
-<script src="football-domain.js?v=1.36.0"></script>
-<script src="contextual-questions.js?v=1.36.0"></script>
-<script src="time-lab.js?v=1.36.0"></script>
-<script src="../shared/learning-outbox.js?v=1.36.0"></script>
-<script src="../shared/learning-reporting/config.js?v=1.36.0"></script>
-<script src="../shared/learning-sync.js?v=1.36.0"></script>
-<script src="../shared/home-screen-install/home-screen-install.js?v=1.36.0"></script>
-<script src="coins-view.js?v=1.36.0"></script>
-<script src="football.js?v=1.36.0"></script>
+<link rel="stylesheet" href="../shared/curriculum.css?v=1.37.0">
+<script src="../shared/curriculum.js?v=1.37.0"></script>
+<script src="../shared/grade2a-curriculum.js?v=1.37.0"></script>
+<script src="../shared/curriculum-ui.js?v=1.37.0"></script>
+<script src="copy.js?v=1.37.0"></script>
+<script src="learning.js?v=1.37.0"></script>
+<script src="stats.js?v=1.37.0"></script>
+<script src="opponent.js?v=1.37.0"></script>
+<script src="season.js?v=1.37.0"></script>
+<script src="football-domain.js?v=1.37.0"></script>
+<script src="contextual-questions.js?v=1.37.0"></script>
+<script src="time-lab.js?v=1.37.0"></script>
+<script src="../shared/learning-outbox.js?v=1.37.0"></script>
+<script src="../shared/learning-reporting/config.js?v=1.37.0"></script>
+<script src="../shared/learning-sync.js?v=1.37.0"></script>
+<script src="../shared/home-screen-install/home-screen-install.js?v=1.37.0"></script>
+<script src="coins-view.js?v=1.37.0"></script>
+<script src="football.js?v=1.37.0"></script>
 <script>
   document.getElementById('version-display').textContent = `v${GAME_VERSION}`;
 </script>
-<script src="../shared/updater.js?v=1.36.0"></script>
+<script src="../shared/updater.js?v=1.37.0"></script>
 </body>
 </html>

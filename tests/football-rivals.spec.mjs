@@ -961,6 +961,8 @@ test('the same seed plays identical football and questions for every team', asyn
         scheduler: stream('scheduler', 0x173b),
         presentation: stream('presentation', 0x173c),
       });
+      // #222: a still quarter clock keeps the frozen opponent timing basis equal.
+      window.__footballTest.useManualClock(0);
       window.__footballTest.seedDriveState({
         possession: 'defense', direction: -1,
         quarter: 2, down: 2, yardsToGo: 8, yardLine: 70, firstDownLine: 62,

@@ -29,7 +29,7 @@ const SOURCE_FILES = [
 ];
 
 const EPS = 1;
-const MARKUP_OVERLAY_IDS = ['ov-start', 'ov-time-lab', 'ov-td', 'ov-defense', 'ov-offense', 'ov-quarter', 'ov-halftime', 'ov-end'];
+const MARKUP_OVERLAY_IDS = ['ov-start', 'ov-time-lab', 'ov-options', 'ov-td', 'ov-defense', 'ov-offense', 'ov-quarter', 'ov-halftime', 'ov-end'];
 const BREAK_ANIMATIONS = [
   'ov-broadcast-badge:ov-break-rise',
   'ov-scorebug:ov-break-rise',
@@ -45,6 +45,7 @@ const START_COPY = {
   buttons: [
     { id: 'start-game-btn', text: 'Start Game', onclick: 'startGame()', disabled: false },
     { id: 'tl-open-button', text: 'Practice Clocks & Calendars A separate 8-question practice lab', onclick: 'openTimeLab()', disabled: false },
+    { id: 'start-options-btn', text: 'Options 5-min quarters', onclick: 'openOptions()', disabled: false },
   ],
 };
 const START_FOCUS = 'input[name="rival"]:checked';
@@ -651,11 +652,13 @@ test.describe('issue 49 overlay characterization', () => {
           'ov-start-title', 'ov-start-sub', 'team-picker', 'team-options', 'team-status',
           'play-mode-picker', 'quick-game-panel', 'rival-picker', 'rival-options',
           'rival-preview', 'rival-preview-matchup', 'rival-preview-style', 'season-panel', 'season-progress',
-          'season-record', 'season-rungs', 'season-next', 'season-status', 'start-game-btn', 'tl-open-button', 'home-screen-install',
+          'season-record', 'season-rungs', 'season-next', 'season-status', 'start-game-btn', 'tl-open-button',
+          'start-options-btn', 'home-screen-install',
         ],
         actions: [
           { id: 'start-game-btn', onclick: 'startGame()' },
           { id: 'tl-open-button', onclick: 'openTimeLab()' },
+          { id: 'start-options-btn', onclick: 'openOptions()' },
         ],
       },
       {
@@ -683,6 +686,18 @@ test.describe('issue 49 overlay characterization', () => {
           { id: 'tl-next-button', onclick: 'advanceTimeLabQuestion(this)' },
           { id: 'tl-done-button', onclick: 'finishTimeLab()' },
         ],
+      },
+      {
+        // #222: the shared Options/paused modal (quarter length and Resume).
+        id: 'ov-options', role: 'dialog', modal: 'true', labelledBy: 'ov-options-title', describedBy: 'ov-options-sub',
+        rootChildren: ['div.overlay-card.ov-options-card'],
+        card: [
+          'span.ov-broadcast-badge.ov-badge-info', 'div#ov-options-title.ov-title', 'div#ov-options-sub.ov-sub',
+          'button#ov-options-btn.ov-btn', 'fieldset#quarter-length-picker.quarter-length-picker',
+          'p#ov-options-note.ov-options-note',
+        ],
+        ids: ['ov-options-title', 'ov-options-sub', 'ov-options-btn', 'quarter-length-picker', 'quarter-length-status', 'ov-options-note'],
+        actions: [{ id: 'ov-options-btn', onclick: 'closeOptions()' }],
       },
       {
         id: 'ov-td', role: 'dialog', modal: 'true', labelledBy: 'ov-td-title', describedBy: 'ov-td-sub',
@@ -1180,13 +1195,16 @@ test.describe('issue 49 overlay characterization', () => {
 
   test('characterization: special-result final from a tapped field goal keeps its result copy', async ({ page }, testInfo) => {
     await page.goto('/football/?boot=offense-call');
+    // #222: the Q4 clock reaches 0:00 during this field goal, so it ends the game.
+    await page.evaluate(() => window.__footballTest.useManualClock(0));
     await seedDrive(page, {
       possession: 'offense', direction: 1, quarter: 4, down: 4, yardsToGo: 2, yardLine: 60,
       firstDownLine: 62, driveStart: 20, scores: { player: 14, opponent: 14 }, plays: 10, drivePlays: 3,
-      quarterPossessions: 3, tds: 2, opponentTds: 2, correctAnswers: 5, gradedQuestions: 6,
+      quarterPossessions: 3, tds: 2, opponentTds: 2, correctAnswers: 5, gradedQuestions: 6, clockRemainingMs: 1,
     });
     await expect(page.locator('#decision-grid .decision-btn')).toHaveCount(3);
     await page.locator('#decision-grid .decision-btn[data-action="fieldGoal"]').tap();
+    await page.evaluate(() => window.__footballTest.advanceClock(1));
     await expectQuestionPlayType(page, 'fieldGoal', 'final field goal');
     await answer(page, 'correct', 'final field goal');
     await expect(page.locator('#feedback')).toHaveText('Field goal made. Three points.');
@@ -1464,7 +1482,7 @@ test.describe('issue 49 overlay contract', () => {
     expect(marking.dialogs).toEqual(MARKUP_OVERLAY_IDS);
     expect(marking.marked).toEqual(MARKUP_OVERLAY_IDS.map((id, index) => ({
       id,
-      name: ['start', 'time-lab', 'td', 'defense', 'offense', 'quarter', 'halftime', 'end'][index],
+      name: ['start', 'time-lab', 'options', 'td', 'defense', 'offense', 'quarter', 'halftime', 'end'][index],
       overlayClass: true,
     })));
 
@@ -1561,6 +1579,8 @@ test.describe('issue 49 overlay contract', () => {
     await page.goto('/football/?boot=offense-call');
     await expect(page.locator('#call-grid .call-btn')).toHaveCount(5);
     await expectGameplayFocus(page, '#call-grid .call-btn', 'call phase');
+    // #222: hold the live quarter clock still so the render compares equal.
+    await page.evaluate(() => window.__footballTest.useManualClock(0));
     const result = await page.evaluate(() => {
       const before = render_game_to_text();
       const focused = document.activeElement;
@@ -1709,6 +1729,8 @@ test.describe('issue 49 overlay contract', () => {
       ['season-status', 'season-status'],
       ['action', 'start-game-btn'],
       ['time-lab-action', 'tl-open-button'],
+      ['options-action', 'start-options-btn'],
+      ['options-summary', ''],
     ]);
 
     // Persistent slot and mode-radio nodes; the rival and rung producers
@@ -1861,12 +1883,15 @@ test.describe('issue 49 overlay contract', () => {
 
   test('contract: Final re-renders leave no stale special-result or result-class state', async ({ page }) => {
     await page.goto('/football/?boot=offense-call');
+    // #222: the Q4 clock reaches 0:00 during this field goal, so it ends the game.
+    await page.evaluate(() => window.__footballTest.useManualClock(0));
     await seedDrive(page, {
       possession: 'offense', direction: 1, quarter: 4, down: 4, yardsToGo: 2, yardLine: 60,
       firstDownLine: 62, driveStart: 20, scores: { player: 14, opponent: 14 }, plays: 10, drivePlays: 3,
-      quarterPossessions: 3, tds: 2, opponentTds: 2, correctAnswers: 5, gradedQuestions: 6,
+      quarterPossessions: 3, tds: 2, opponentTds: 2, correctAnswers: 5, gradedQuestions: 6, clockRemainingMs: 1,
     });
     await page.locator('#decision-grid .decision-btn[data-action="fieldGoal"]').tap();
+    await page.evaluate(() => window.__footballTest.advanceClock(1));
     await answer(page, 'correct', 'special final field goal');
     await expect(page.locator('#ov-end')).toHaveClass(/(^|\s)show(\s|$)/, { timeout: 5000 });
     expect((await finalDetails(page)).special).toBe(true);

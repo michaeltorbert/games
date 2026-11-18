@@ -319,13 +319,16 @@ test('longest supported Final is wholly reachable by touch and keyboard', async 
       if (name === key) throw new DOMException('blocked', 'QuotaExceededError');
       return nativeSetItem.call(this, name, value);
     };
+    // #222: the Q4 clock reaches 0:00 during this punt, so it ends the game.
+    window.__footballTest.useManualClock(0);
     window.__footballTest.seedDriveState({
       possession: 'offense', direction: 1, quarter: 4,
       down: 4, yardsToGo: 10, yardLine: 28, firstDownLine: 38, driveStart: 20,
-      scores: { player: 3, opponent: 7 }, quarterPossessions: 3,
+      scores: { player: 3, opponent: 7 }, quarterPossessions: 3, clockRemainingMs: 1,
     });
   }, SEASON_KEY);
   await page.locator('#decision-grid .decision-btn[data-action="punt"]').tap();
+  await page.evaluate(() => window.__footballTest.advanceClock(1));
   const correct = await page.evaluate(() => window.__footballTest.activeContracts().questionInstance?.correctChoiceId);
   expect(correct, 'punt question choice').toEqual(expect.any(String));
   expect(await page.evaluate(id => window.__footballTest.answerChoice(id), correct)).not.toBe(false);

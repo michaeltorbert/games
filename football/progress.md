@@ -3104,3 +3104,51 @@ ordinary variant is reachable in real topic and All completed sessions; the
 halved-shape description states line position only; the page prompt and Place
 options copy say where Grade 2-A practice lives and that Mixed/Facts stay on
 Grade 1-B. Release gates remain pending.
+
+## 2026-11-18 — #222 timed quarters (proposed 1.37.0, release-prepared candidate)
+
+Original task prompt: James asked for timed quarters (default 5 minutes)
+configurable in Options instead of four possessions per quarter. Michael chose
+one running game clock with no separate Pause button (issue #222, accepted
+policy of 2026-11-18). This entry supersedes the four-possession quarter rule
+for live play; the count remains only as an explicit legacy fixture seam.
+
+- One quarter game clock per period. `FOOTBALL_DOMAIN` owns pure clock helpers
+  (monotonic elapsed recomputed from the start instant, whole-second round-up
+  display) and timed planners: clock-timed `planPossessionClosure`,
+  `planPeriodExpiry` (idle/committed), and clock forms of presentation and
+  period advance. `football.js` owns the 250 ms tick, scoreboard clock, guards
+  and the Options pause.
+- Runs only for usable calls, fourth-down and conversion decisions, and
+  unresolved questions (retries and help included), on both sides. Stops for
+  resolved feedback/explanations, result animations, every overlay, Options,
+  and backgrounding.
+- At 0:00 no new ordinary snap: call, fourth-down (Go reserves nothing), and
+  automatic opponent punt/field-goal paths sync the clock before allocating a
+  play or RNG draw. An accepted play finishes with normal support and counts;
+  an owed conversion is timed while time remains and always completes at zero.
+- Idle zero carries the open Q1/Q3 drive (same possession ID, down, distance,
+  spot, frozen opponent decision/visible plan); Q2 closes it for the halftime
+  kickoff; Q4 closes it and settles a Season game once with no play, stats,
+  learning, or result rows. Committed plays at zero use the same rules.
+- Opponent decisions/tendency use a frozen `clock` basis; the uncalibrated
+  late-game predicate is the final 25% of Q4.
+- Options: scoreboard control and start-card entry; one shared modal with
+  explicit Resume that restores the exact play/question, focus, and any
+  interrupted overlay; advances due while paused wait for Resume. Background
+  (visibilitychange/pagehide) pauses any active game surface. Copy says reload
+  or closing starts over. Quarter length 3/5/10 minutes, default 5, a validated
+  browser-local next-game preference snapshotted at game start.
+- Layout: scorebug team/state rows shortened so the scoreboard total height is
+  unchanged on all six targets; phone start card shares the Time Lab row.
+- Version 1.37.0 across `GAME_VERSION`, every Football cache key, `games.js`,
+  and `version.json`. New tests `tests/football-game-clock-domain.spec.mjs`
+  and `tests/football-game-clock.spec.mjs`, registered in
+  `scripts/run-football-release.mjs`; count-based period fixtures in affected
+  specs migrated to the manual clock seam.
+
+Author-run evidence is cloud Chromium only (pinned Playwright 1.56.1 driving a
+newer preinstalled headless Chromium), at the candidate stage. Full Chromium and
+WebKit six-project release gates, native iPad Simulator Safari background/Resume,
+independent review, merge, and Pages verification remain coordinator gates. No
+release, deployment, native-device result, or child-play outcome is claimed.

@@ -1,6 +1,6 @@
 import { test, expect } from './curriculum-fixture.mjs';
 
-const overlayIds = ['ov-start', 'ov-time-lab', 'ov-td', 'ov-defense', 'ov-offense', 'ov-quarter', 'ov-halftime', 'ov-end'];
+const overlayIds = ['ov-start', 'ov-time-lab', 'ov-options', 'ov-td', 'ov-defense', 'ov-offense', 'ov-quarter', 'ov-halftime', 'ov-end'];
 
 function primaryOnly(testInfo) {
   test.skip(
@@ -89,6 +89,7 @@ test('start overlay traps focus across the selected mode and visible rival radio
   const wakeForest = page.locator('input[name="rival"][value="wake-forest"]');
   const start = page.locator('#start-game-btn');
   const timeLab = page.locator('#tl-open-button');
+  const options = page.locator('#start-options-btn');
   const install = page.getByRole('button', { name: 'Add to Home Screen', exact: true });
 
   await wakeForest.check();
@@ -102,11 +103,15 @@ test('start overlay traps focus across the selected mode and visible rival radio
   await page.keyboard.press(keys.previous);
   await expect(install).toBeFocused();
   await page.keyboard.press(keys.previous);
+  await expect(options).toBeFocused();
+  await page.keyboard.press(keys.previous);
   await expect(timeLab).toBeFocused();
   await page.keyboard.press(keys.previous);
   await expect(start).toBeFocused();
   await page.keyboard.press(keys.next);
   await expect(timeLab).toBeFocused();
+  await page.keyboard.press(keys.next);
+  await expect(options).toBeFocused();
   await page.keyboard.press(keys.next);
   await expect(install).toBeFocused();
   await page.keyboard.press(keys.next);
@@ -124,6 +129,8 @@ test('start overlay traps focus across the selected mode and visible rival radio
   await expect(start).toBeFocused();
   await page.keyboard.press(keys.next);
   await expect(timeLab).toBeFocused();
+  await page.keyboard.press(keys.next);
+  await expect(options).toBeFocused();
   await page.keyboard.press(keys.next);
   await expect(install).toBeFocused();
   await page.keyboard.press(keys.next);
@@ -152,6 +159,7 @@ test('a saved Season locks the team group out of the start overlay tab cycle', a
   const group = page.getByRole('group', { name: 'Choose your team' });
   const start = page.locator('#start-game-btn');
   const timeLab = page.locator('#tl-open-button');
+  const options = page.locator('#start-options-btn');
   const install = page.getByRole('button', { name: 'Add to Home Screen', exact: true });
   await expect(seasonMode).toBeChecked();
   await expect(seasonMode).toBeFocused();
@@ -166,12 +174,16 @@ test('a saved Season locks the team group out of the start overlay tab cycle', a
   await page.keyboard.press(keys.next);
   await expect(timeLab).toBeFocused();
   await page.keyboard.press(keys.next);
+  await expect(options).toBeFocused();
+  await page.keyboard.press(keys.next);
   await expect(install).toBeFocused();
   await page.keyboard.press(keys.next);
   await expect(seasonMode).toBeFocused();
   expect(await focusedTeamRadio()).toBe(false);
   await page.keyboard.press(keys.previous);
   await expect(install).toBeFocused();
+  await page.keyboard.press(keys.previous);
+  await expect(options).toBeFocused();
   await page.keyboard.press(keys.previous);
   await expect(timeLab).toBeFocused();
   await page.keyboard.press(keys.previous);
@@ -364,4 +376,44 @@ test('keyboard Continue returns focus to the next nonterminal call grid', async 
     await continueButton.press('Enter');
     await expect(page.locator('#call-grid .call-btn').first()).toBeFocused({ timeout: 4000 });
   }
+});
+
+// #222: Options is one shared modal. From a live call it pauses with focus on
+// Resume, keeps focus trapped, ignores Escape, and Resume returns focus to the
+// control that opened it; from the start card, Done returns to the start card.
+test('Options pauses as a trapped modal and Resume or Done returns focus', async ({ page, browserName }) => {
+  const keys = tabKeys(browserName);
+  await page.goto('/football/?boot=offense-call');
+  const toggle = page.locator('#options-toggle');
+  await toggle.focus();
+  await toggle.press('Enter');
+  const overlay = page.locator('#ov-options');
+  await expect(overlay).toHaveClass(/show/);
+  await expect(page.locator('#ov-options-btn')).toHaveText('Resume');
+  await expect(page.locator('#ov-options-btn')).toBeFocused();
+  await expect(page.locator('#wrap')).toHaveAttribute('aria-hidden', 'true');
+  expect(await page.locator('#wrap').evaluate(element => element.inert)).toBe(true);
+  for (let index = 0; index < 5; index++) {
+    await page.keyboard.press(keys.next);
+    expect(await page.evaluate(() => document.activeElement?.closest('.overlay')?.id)).toBe('ov-options');
+  }
+  await page.keyboard.press('Escape');
+  await expect(overlay).toHaveClass(/show/);
+  await page.locator('#ov-options-btn').focus();
+  await page.keyboard.press('Enter');
+  await expect(overlay).not.toHaveClass(/show/);
+  expect(await page.locator('#wrap').evaluate(element => element.inert)).toBe(false);
+  await expect(toggle).toBeFocused();
+
+  await page.goto('/football/');
+  // Let the start card place its own initial focus first.
+  await expect.poll(() => page.evaluate(() => document.activeElement?.closest('.overlay')?.id)).toBe('ov-start');
+  await page.locator('#start-options-btn').press('Enter');
+  await expect(overlay).toHaveClass(/show/);
+  await expect(page.locator('#ov-options-btn')).toHaveText('Done');
+  await expect(page.locator('#ov-options-btn')).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#ov-start')).toHaveClass(/show/);
+  await expect(overlay).not.toHaveClass(/show/);
+  await expect(page.locator('#start-options-btn')).toBeFocused();
 });

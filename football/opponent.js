@@ -10,6 +10,9 @@ const FOOTBALL_OPPONENT = (() => {
   ]);
   const FOURTH_DOWN_ACTIONS = Object.freeze(['go', 'punt', 'fieldGoal']);
   const CONVERSION_ACTIONS = Object.freeze(['pat', 'twoPoint']);
+  // #222 uncalibrated late-game analogue: the final quarter of the fourth
+  // quarter's clock (matches FOOTBALL_DOMAIN.LATE_GAME_FRACTION).
+  const LATE_GAME_FRACTION = 0.25;
 
   function freeze(value) {
     if (!value || typeof value !== 'object' || Object.isFrozen(value)) return value;
@@ -468,18 +471,6 @@ const FOOTBALL_OPPONENT = (() => {
       throw new RangeError('Opponent decision direction must match possession');
     }
     const quarter = decisionInteger(gameState.quarter, 'quarter', 1, 4);
-    const possessionsPerQuarter = decisionInteger(
-      gameState.possessionsPerQuarter,
-      'possessionsPerQuarter',
-      1,
-      Number.MAX_SAFE_INTEGER,
-    );
-    const quarterPossessions = decisionInteger(
-      gameState.quarterPossessions,
-      'quarterPossessions',
-      0,
-      possessionsPerQuarter - 1,
-    );
     const score = gameState.scores || gameState.score || {};
     const playerScore = decisionInteger(
       score.player ?? gameState.playerScore,
@@ -495,7 +486,43 @@ const FOOTBALL_OPPONENT = (() => {
     );
     const offenseScore = possession === 'offense' ? playerScore : opponentScore;
     const defenseScore = possession === 'offense' ? opponentScore : playerScore;
-    const basis = {
+    const clock = timedClockBasis(gameState);
+    const basis = clock ? {
+      possession,
+      direction,
+      quarter,
+      timing: 'clock',
+      quarterLengthMs: clock.quarterLengthMs,
+      remainingMs: clock.remainingMs,
+      scores: { player: playerScore, opponent: opponentScore },
+      offenseScore,
+      defenseScore,
+      offenseScoreMargin: offenseScore - defenseScore,
+      trailing: offenseScore < defenseScore,
+      lateGame: quarter === 4 && clock.remainingMs <= clock.quarterLengthMs * LATE_GAME_FRACTION,
+    } : countBasis(gameState, {
+      possession, direction, quarter, playerScore, opponentScore, offenseScore, defenseScore,
+    });
+    return withFieldPosition(basis, gameState, direction, needsFieldPosition);
+  }
+
+  // Legacy fixture-only count basis (pre-#222). Production timed games pass
+  // `clock`; this path keeps the original frozen decision contract.
+  function countBasis(gameState, facts) {
+    const { possession, direction, quarter, playerScore, opponentScore, offenseScore, defenseScore } = facts;
+    const possessionsPerQuarter = decisionInteger(
+      gameState.possessionsPerQuarter,
+      'possessionsPerQuarter',
+      1,
+      Number.MAX_SAFE_INTEGER,
+    );
+    const quarterPossessions = decisionInteger(
+      gameState.quarterPossessions,
+      'quarterPossessions',
+      0,
+      possessionsPerQuarter - 1,
+    );
+    return {
       possession,
       direction,
       quarter,
@@ -509,7 +536,24 @@ const FOOTBALL_OPPONENT = (() => {
       lastScheduledQ4Possession: quarter === 4
         && quarterPossessions === possessionsPerQuarter - 1,
     };
+  }
 
+  function timedClockBasis(gameState) {
+    const clock = gameState.clock;
+    if (clock === undefined || clock === null) return null;
+    if (!clock || typeof clock !== 'object' || Array.isArray(clock)) {
+      throw new TypeError('Opponent clock basis must be a plain object');
+    }
+    const quarterLengthMs = decisionInteger(clock.quarterLengthMs, 'quarterLengthMs', 1, Number.MAX_SAFE_INTEGER);
+    const remainingMs = decisionInteger(clock.remainingMs, 'remainingMs', 0, quarterLengthMs);
+    return { quarterLengthMs, remainingMs };
+  }
+
+  function lateGameBasis(basis) {
+    return basis.timing === 'clock' ? basis.lateGame : basis.lastScheduledQ4Possession;
+  }
+
+  function withFieldPosition(basis, gameState, direction, needsFieldPosition) {
     if (!needsFieldPosition) return basis;
     const yardLine = decisionInteger(
       gameState.yardLine ?? gameState.yd ?? gameState.absoluteYard,
@@ -540,14 +584,15 @@ const FOOTBALL_OPPONENT = (() => {
   // decision, ordinary private call planning remains a separate later step.
   function decideFourthDown(gameState = {}) {
     const basis = decisionBasis(gameState, true);
+    const lateGame = lateGameBasis(basis);
     let action;
-    if (basis.lastScheduledQ4Possession
+    if (lateGame
       && basis.fieldGoalLegal
       && basis.offenseScore + 3 >= basis.defenseScore) {
       action = 'fieldGoal';
-    } else if (basis.lastScheduledQ4Possession && basis.trailing) {
+    } else if (lateGame && basis.trailing) {
       action = 'go';
-    } else if (!basis.lastScheduledQ4Possession && basis.fieldGoalLegal) {
+    } else if (!lateGame && basis.fieldGoalLegal) {
       action = 'fieldGoal';
     } else if (basis.beyondMidfield && basis.yardsToGo <= 2) {
       action = 'go';
@@ -566,7 +611,7 @@ const FOOTBALL_OPPONENT = (() => {
     const basis = decisionBasis(gameState, false);
     const patWouldTieOrLead = basis.offenseScore + 1 >= basis.defenseScore;
     const twoWouldTieOrLead = basis.offenseScore + 2 >= basis.defenseScore;
-    const action = basis.lastScheduledQ4Possession
+    const action = lateGameBasis(basis)
       && twoWouldTieOrLead
       && !patWouldTieOrLead
       ? 'twoPoint'
@@ -607,14 +652,20 @@ const FOOTBALL_OPPONENT = (() => {
     const playerScore = finiteNumber(gameState.playerScore ?? gameState.score?.player, 0);
     const opponentScore = finiteNumber(gameState.opponentScore ?? gameState.score?.opponent, 0);
     const scoreMargin = opponentScore - playerScore;
-    const possessionsPerQuarter = Math.max(1, Math.round(finiteNumber(gameState.possessionsPerQuarter, 4)));
-    const quarterPossessions = clamp(
+    const clock = timedClockBasis(gameState);
+    const possessionsPerQuarter = clock ? null
+      : Math.max(1, Math.round(finiteNumber(gameState.possessionsPerQuarter, 4)));
+    const quarterPossessions = clock ? null : clamp(
       Math.round(finiteNumber(gameState.quarterPossessions, 0)),
       0,
       possessionsPerQuarter,
     );
-    const quarterProgress = quarterPossessions / possessionsPerQuarter;
-    const lateGameBoundary = quarter === 4 && quarterPossessions >= possessionsPerQuarter - 1;
+    const quarterProgress = clock
+      ? (clock.quarterLengthMs - clock.remainingMs) / clock.quarterLengthMs
+      : quarterPossessions / possessionsPerQuarter;
+    const lateGameBoundary = clock
+      ? quarter === 4 && clock.remainingMs <= clock.quarterLengthMs * LATE_GAME_FRACTION
+      : quarter === 4 && quarterPossessions >= possessionsPerQuarter - 1;
     const lateGameFactor = !lateGameBoundary
       ? null
       : scoreMargin < 0
@@ -654,8 +705,11 @@ const FOOTBALL_OPPONENT = (() => {
         fieldZone: zoneFactor(yardsToGoal),
         quarter,
         opponentScoreMargin: scoreMargin,
-        quarterPossessions,
-        possessionsPerQuarter,
+        ...(clock ? {
+          timing: 'clock',
+          quarterLengthMs: clock.quarterLengthMs,
+          remainingMs: clock.remainingMs,
+        } : { quarterPossessions, possessionsPerQuarter }),
         quarterProgress,
         lateGameBoundary,
       },

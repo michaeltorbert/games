@@ -1,4 +1,4 @@
-const GAME_VERSION = '1.36.0';
+const GAME_VERSION = '1.37.0';
 let prevPlayerScore = -1, prevOpponentScore = -1;
 let playerRunTimer = 0, playerCelebrateTimer = 0, playerCelebrateDelayTimer = 0;
 const EZ = 5;
@@ -8,7 +8,13 @@ const DOWN_NAMES = ["", "1st", "2nd", "3rd", "4th"];
 const QUARTER_NAMES = ["", "1st", "2nd", "3rd", "4th"];
 const START_YARD = 20;
 const TD_POINTS = 6;
+// Legacy fixture-only possession count (pre-#222). Production periods are
+// timed by the quarter game clock; only explicitly legacy test seams such as
+// finishPossession() and pure count fixtures use this value.
 const POSSESSIONS_PER_QUARTER = 4;
+const QUARTER_MINUTES_STORAGE_KEY = 'footballQuarterMinutes:v1';
+const GAME_CLOCK_TICK_MS = 250;
+const DEFERRED_ADVANCE_RESUME_MS = 400;
 
 // Single definitions for the live game phase and possession side. The string
 // values are a stable public contract, not just internal names:
@@ -219,6 +225,19 @@ let seasonEndActionBusy = false;
 let timeLabSession = null;
 let timeLabSessionCounter = 0;
 let timeLabFallbackCounter = 0;
+
+// #222 live quarter game clock. One frozen FOOTBALL_DOMAIN clock per live
+// game/quarter; `clockNowSource` is the monotonic time source (a manual source
+// is a narrow test seam). Time never enters activePlay, questions, RNG,
+// learning, or stats.
+let gameClock = null;
+let clockNowSource = () => performance.now();
+let manualClockNow = null;
+let gameInterruption = null;
+let deferredAdvance = null;
+let startOptionsOpen = false;
+let quarterPreferenceSave = 'stored';
+let selectedQuarterMinutes = storedQuarterMinutes() ?? FOOTBALL_DOMAIN.DEFAULT_QUARTER_MINUTES;
 
 function mixSeed(seed, salt) {
   let value = (seed ^ salt) >>> 0;
@@ -896,6 +915,7 @@ function syncUiState(view) {
   if (view.phase !== PHASES.explanation) clearWorkedReviewDisplay();
   updatePromptContext(playContextText(view));
   renderDefenseRead(view);
+  syncGameClock();
 }
 
 function playContextText(view) {
@@ -1034,6 +1054,10 @@ function gameSnapshot() {
     pendingRestartReason: state.pendingRestartReason || null,
     finalizedPossessionIds: [...(state.finalizedPossessionIds || [])],
     committedPlayIds: [...(state.committedPlayIds || [])],
+    periodEnd: state.periodEnd || null,
+    carryDrive: state.carryDrive === true,
+    conversionOwed: state.conversionOwed === true,
+    carriedCall: state.carriedCall || null,
   };
 }
 
@@ -1051,6 +1075,10 @@ function transitionSnapshot() {
       : null,
     pendingRestartReason: state.pendingRestartReason || null,
     finalizedPossessionIds: [...(state.finalizedPossessionIds || [])],
+    possession: state.possession || null,
+    periodEnd: state.periodEnd || null,
+    carryDrive: state.carryDrive === true,
+    conversionOwed: state.conversionOwed === true,
   };
 }
 
@@ -1161,6 +1189,10 @@ function createGameState(match = FOOTBALL_OPPONENT.createMatch()) {
     finalizedPossessionIds: [],
     committedPlayIds: [],
     instructedScrimmages: 0,
+    periodEnd: null,
+    carryDrive: false,
+    conversionOwed: false,
+    carriedCall: null,
     phase: PHASES.start,
     ...makeDriveState(POSSESSIONS.offense),
     ...blankPlayState(),
@@ -3106,8 +3138,7 @@ function fourthDownDecisionState() {
     possession: state.possession,
     direction: state.direction,
     quarter: state.quarter,
-    quarterPossessions: state.quarterPossessions,
-    possessionsPerQuarter: POSSESSIONS_PER_QUARTER,
+    ...opponentTimingBasis(),
     yardLine: state.yd,
     yardsToGo: state.ytg,
     scores: { player: state.playerScore, opponent: state.opponentScore },
@@ -3281,6 +3312,7 @@ function retryOpponentSpecialAction(action) {
   const recoveryType = state.specialRecoveryPlay?.playType;
   if (state.phase !== PHASES.fourthDownDecision || state.possession !== POSSESSIONS.defense
     || !decision || decision.action !== action || recoveryType !== action) return false;
+  if (newSnapBlockedByClock()) return false;
   let activePlay;
   try {
     activePlay = buildSpecialPlay(action, state.specialRecoveryPlay);
@@ -3310,6 +3342,7 @@ function retryOpponentConversionAction(action) {
 }
 
 function beginOpponentFourthDown(decision = null, recovery = null) {
+  if (newSnapBlockedByClock()) return;
   const frozenDecision = decision || taggedOpponentDecision(FOOTBALL_OPPONENT.decideFourthDown(fourthDownDecisionState()));
   state.opponentDecisionSnapshot = frozenDecision;
   if (frozenDecision.action === 'go') {
@@ -3318,6 +3351,9 @@ function beginOpponentFourthDown(decision = null, recovery = null) {
     renderOrdinaryCallPrompt();
     return;
   }
+  // An automatic punt or field goal is a new snap: sync the clock first, and
+  // at 0:00 end the period instead of allocating a play or RNG draw.
+  if (newSnapBlockedByClock()) return;
   state.publicSpecialAction = frozenDecision.action;
   let activePlay;
   try {
@@ -3330,7 +3366,7 @@ function beginOpponentFourthDown(decision = null, recovery = null) {
 }
 
 function showCallPrompt({ preserveOpponentSnapshot = false, forceScrimmage = false, focusFirstCall = false } = {}) {
-  clearTimeout(advTimer);
+  cancelAdvance();
   resetTackle();
   const opponentSnapshot = preserveOpponentSnapshot ? state.opponentSnapshot : null;
   const decision = state.down === 4 ? state.opponentDecisionSnapshot : null;
@@ -3344,6 +3380,8 @@ function showCallPrompt({ preserveOpponentSnapshot = false, forceScrimmage = fal
     fourthDownGoChosen: goChosen,
   });
   announceSpecialAction('');
+  // Reaching a call screen at 0:00 ends the period before any planning draw.
+  if (newSnapBlockedByClock()) return;
   if (state.down === 4 && !goChosen) {
     if (state.possession === POSSESSIONS.offense) showPlayerFourthDownDecision(recovery);
     else beginOpponentFourthDown(decision, recovery);
@@ -3359,6 +3397,8 @@ function selectFourthDownAction(action) {
   if (state.phase !== PHASES.fourthDownDecision || state.possession !== POSSESSIONS.offense) return false;
   const recoveryAction = state.specialRecoveryPlay?.playType;
   if (recoveryAction && action !== recoveryAction) return false;
+  // "Go" reserves no snap; at 0:00 every fourth-down choice ends the period.
+  if (newSnapBlockedByClock()) return false;
   if (action === 'go') {
     const recovery = state.specialRecoveryPlay;
     Object.assign(state, blankPlayState(), {
@@ -3385,7 +3425,7 @@ function selectFourthDownAction(action) {
 
 function startDrive(possession, startYardLine = null, restartReason = null) {
   const plan = FOOTBALL_DOMAIN.planDriveStart(transitionSnapshot(), { possession, startYardLine, restartReason });
-  clearTimeout(advTimer);
+  cancelAdvance();
   hideOverlays();
   resetPlayerAnimations();
   state = {
@@ -3807,6 +3847,7 @@ function startSpecialPlay(activePlay, revealCopy = '') {
 
 function selectOffenseCall(callKey) {
   if (state.phase !== PHASES.call || state.possession !== POSSESSIONS.offense) return;
+  if (newSnapBlockedByClock()) return;
   let activePlay;
   try {
     activePlay = makeActiveScrimmagePlay(callKey, {
@@ -3822,7 +3863,7 @@ function selectOffenseCall(callKey) {
 function getOpponentTendency(overrides = {}, profile = rivalForMatch(state.match).profileKey) {
   return FOOTBALL_OPPONENT.getTendency({
     ...state,
-    possessionsPerQuarter: POSSESSIONS_PER_QUARTER,
+    ...opponentTimingBasis(overrides),
     ...overrides,
   }, profile);
 }
@@ -3835,7 +3876,7 @@ function planOpponentSnap(
 ) {
   return FOOTBALL_OPPONENT.planSnap({
     ...state,
-    possessionsPerQuarter: POSSESSIONS_PER_QUARTER,
+    ...opponentTimingBasis(overrides),
     ...overrides,
   }, profile, rng, opponentId);
 }
@@ -3847,6 +3888,7 @@ function defenseMatches(defenseCallKey, opponentCallKey) {
 
 function selectDefenseCall(defenseCallKey) {
   if (state.phase !== PHASES.call || state.possession !== POSSESSIONS.defense) return;
+  if (newSnapBlockedByClock()) return false;
   const selection = state.opponentSnapshot;
   if (!selection) {
     reportFootballDiagnostic('missing-opponent-snapshot', {
@@ -4156,9 +4198,12 @@ function terminalPlacement(activePlay, transition, policy) {
   );
 }
 
-function finalizePossessionState(possessionId, placement) {
+// The period ends with this closure only when the quarter clock already
+// reached 0:00 (the play that ran out the clock still counts).
+function finalizePossessionState(possessionId, placement, periodExpired = gameClockExpired()) {
   const plan = FOOTBALL_DOMAIN.planPossessionClosure(transitionSnapshot(), possessionId, placement, {
-    possessionsPerQuarter: POSSESSIONS_PER_QUARTER,
+    timing: 'clock',
+    periodExpired,
   });
   if (!plan.accepted) return false;
   applyTransitionPatch(plan.patch);
@@ -4166,12 +4211,12 @@ function finalizePossessionState(possessionId, placement) {
 }
 
 // Delayed production routes pass the committed source; a stale or repeated
-// route is rejected before any state, DOM, ID, or RNG effect.
-function routePossessionPresentation(message, expectedSource = null) {
-  const intent = FOOTBALL_DOMAIN.planPossessionPresentation(transitionSnapshot(), {
-    possessionsPerQuarter: POSSESSIONS_PER_QUARTER,
-    expectedSource,
-  });
+// route is rejected before any state, DOM, ID, or RNG effect. Only the
+// explicitly legacy finishPossession() fixture seam routes by count.
+function routePossessionPresentation(message, expectedSource = null, { legacyCount = false } = {}) {
+  const intent = FOOTBALL_DOMAIN.planPossessionPresentation(transitionSnapshot(), legacyCount
+    ? { possessionsPerQuarter: POSSESSIONS_PER_QUARTER, expectedSource }
+    : { timing: 'clock', expectedSource });
   if (!intent.accepted) {
     reportFootballDiagnostic('stale-possession-transition', {
       message: 'A delayed possession transition no longer matches the live game.',
@@ -4324,7 +4369,7 @@ function finishCommittedTransition(activePlay, transition, policy, outcome, {
     if (activePlay.playType === 'punt') showFieldFloat(transition.resultKind === 'puntTouchback' ? 'TOUCHBACK' : 'PUNT');
     else if (transition.points > 0) showFieldFloat(`+${transition.points} PTS`, offense ? 'first-down' : 'negative');
     else showFieldFloat(activePlay.playType === 'fieldGoal' ? 'NO GOOD' : 'TRY FAILED', 'negative');
-    advTimer = setTimeout(() => routePossessionPresentation(message, source), 1400);
+    scheduleAdvance(() => routePossessionPresentation(message, source), 1400);
     return;
   }
 
@@ -4338,13 +4383,13 @@ function finishCommittedTransition(activePlay, transition, policy, outcome, {
 
   if (outcome === 'touchdown') {
     setFeedback(offense ? 'Touchdown! Six points. Choose the conversion next.' : `${state.match.opponent.shortName} touchdown. Six points; the conversion is next.`, offense ? 'positive' : 'negative');
-    advTimer = setTimeout(() => showTD(offense ? POSSESSIONS.offense : POSSESSIONS.defense), 900);
+    scheduleAdvance(() => showTD(offense ? POSSESSIONS.offense : POSSESSIONS.defense), 900);
     return;
   }
   if (outcome === 'turnoverOnDowns') {
     setFeedback('Turnover on downs.', offense ? 'negative' : 'positive');
     if (!offense && (policy === 'firstTryCorrect' || policy === 'retryCorrect')) playCorrect();
-    advTimer = setTimeout(() => routePossessionPresentation(
+    scheduleAdvance(() => routePossessionPresentation(
       offense ? 'Turnover on downs. Time to play defense!' : `${state.outcomeMessage || 'Your defense held!'} Turnover on downs!`,
       source,
     ), offense ? 1400 : 1500);
@@ -4352,7 +4397,7 @@ function finishCommittedTransition(activePlay, transition, policy, outcome, {
   }
   if (outcome === 'turnover') {
     setFeedback(state.outcomeMessage || 'Turnover.', offense ? 'negative' : 'positive');
-    advTimer = setTimeout(() => routePossessionPresentation(
+    scheduleAdvance(() => routePossessionPresentation(
       offense ? `${state.outcomeMessage || 'Turnover.'} Time to play defense!` : 'Takeaway! Time to play offense!',
       source,
     ), 1500);
@@ -4371,15 +4416,23 @@ function finishCommittedTransition(activePlay, transition, policy, outcome, {
         ? setTimeout(startTackledCelebrate, TACKLED_CELEBRATE_DELAY_MS)
         : setTimeout(startPlayerCelebrate, 700);
     }
-    advTimer = setTimeout(() => showCallPrompt({ focusFirstCall: focusNextCall }), offense ? 1400 : 1600);
+    scheduleAdvance(() => continueAfterCommittedPlay(source, focusNextCall), offense ? 1400 : 1600);
     return;
   }
   if (outcome === 'stop') playCorrect();
   if (offense && policy !== 'secondMiss' && policy !== 'questionBypass') { setFeedback('Correct.', 'positive'); playCorrect(); }
-  advTimer = setTimeout(
-    () => showCallPrompt({ focusFirstCall: focusNextCall }),
+  scheduleAdvance(
+    () => continueAfterCommittedPlay(source, focusNextCall),
     policy === 'secondMiss' ? 1800 : offense ? 1400 : 1500,
   );
+}
+
+// After a non-terminal play: the next ordinary call, or the period break when
+// that play ran out the quarter clock.
+function continueAfterCommittedPlay(source, focusFirstCall = false) {
+  if (state.periodEnd) return routePossessionPresentation('Time ran out on that play.', source);
+  showCallPrompt({ focusFirstCall });
+  return true;
 }
 
 function handleInvalidCommittedPlay(error, activePlay) {
@@ -4427,6 +4480,345 @@ function settleSeasonGameOnce() {
     });
   return seasonSettlementPromise;
 }
+
+// ── Quarter game clock (#222) ───────────────────────────────────────────────
+// One running game clock per quarter. It runs only while usable play choices
+// or an unresolved question are on screen, on offense and defense, and stops
+// for resolved feedback/explanations, result animations, every overlay, the
+// Options pause, and backgrounding. Elapsed time is recomputed from the
+// monotonic start instant. At 0:00 no new ordinary snap starts; an accepted
+// play, and any owed conversion, always finishes and counts.
+const CLOCK_RUNNING_PHASES = Object.freeze([
+  PHASES.call, PHASES.fourthDownDecision, PHASES.question, PHASES.conversionDecision,
+]);
+const IDLE_EXPIRY_PHASES = Object.freeze([PHASES.call, PHASES.fourthDownDecision]);
+// FOOTBALL_DOMAIN.planPeriodExpiry origins: a choice screen with no play, or
+// a committed non-terminal play.
+const PERIOD_EXPIRY_ORIGINS = Object.freeze({ idle: 'idle', committed: 'committed' });
+
+function storedQuarterMinutes() {
+  try {
+    return FOOTBALL_DOMAIN.normalizeQuarterMinutes(localStorage.getItem(QUARTER_MINUTES_STORAGE_KEY));
+  } catch (error) {
+    return null;
+  }
+}
+
+// Browser-local next-game preference. Each new game snapshots it once at
+// start; changing it never alters a game in progress.
+function selectQuarterMinutes(minutes) {
+  const value = FOOTBALL_DOMAIN.normalizeQuarterMinutes(minutes);
+  if (!value) return false;
+  selectedQuarterMinutes = value;
+  try {
+    localStorage.setItem(QUARTER_MINUTES_STORAGE_KEY, String(value));
+    quarterPreferenceSave = 'saved';
+  } catch (error) {
+    quarterPreferenceSave = 'unsaved';
+  }
+  renderOptionsOverlay();
+  renderStartOptionsSummary();
+  if (!gameClock) renderGameClock();
+  return true;
+}
+
+function clockNow() {
+  return clockNowSource();
+}
+
+function installGameClock({ quarterLengthMs, remainingMs } = {}) {
+  const length = Number.isInteger(quarterLengthMs) && quarterLengthMs > 0
+    ? quarterLengthMs
+    : selectedQuarterMinutes * 60000;
+  let clock = FOOTBALL_DOMAIN.createGameClock({ gameId: state.gameId, quarter: state.quarter || 1, quarterLengthMs: length });
+  if (Number.isInteger(remainingMs)) {
+    clock = FOOTBALL_DOMAIN.deepFreeze({ ...clock, remainingMs: clamp(remainingMs, 0, length) });
+    FOOTBALL_DOMAIN.validateGameClock(clock);
+  }
+  gameClock = clock;
+  renderGameClock();
+  return gameClock;
+}
+
+function clearGameClock() {
+  gameClock = null;
+  gameInterruption = null;
+  deferredAdvance = null;
+  startOptionsOpen = false;
+  renderGameClock();
+}
+
+function liveClockMatchesState() {
+  return Boolean(gameClock) && gameClock.gameId === state.gameId && gameClock.quarter === state.quarter;
+}
+
+function gameClockRemaining(now = clockNow()) {
+  return gameClock ? FOOTBALL_DOMAIN.clockRemainingMs(gameClock, now) : null;
+}
+
+function gameClockExpired() {
+  if (!liveClockMatchesState()) return false;
+  syncGameClock();
+  return gameClockRemaining() === 0;
+}
+
+function publicGameClock() {
+  if (!gameClock) return null;
+  const remainingMs = gameClockRemaining();
+  return {
+    quarter: gameClock.quarter,
+    quarterLengthMs: gameClock.quarterLengthMs,
+    remainingMs,
+    display: FOOTBALL_DOMAIN.clockDisplay(remainingMs),
+    running: gameClock.runningSince !== null,
+    expired: remainingMs === 0,
+  };
+}
+
+// Frozen timing facts for the pure opponent tables. A narrow test seam may
+// still pass the legacy possession count explicitly.
+function opponentTimingBasis(overrides = {}) {
+  if (overrides && (Object.prototype.hasOwnProperty.call(overrides, 'quarterPossessions')
+    || Object.prototype.hasOwnProperty.call(overrides, 'possessionsPerQuarter'))
+    && !Object.prototype.hasOwnProperty.call(overrides, 'clock')) {
+    return { clock: null, possessionsPerQuarter: POSSESSIONS_PER_QUARTER };
+  }
+  const quarterLengthMs = gameClock?.quarterLengthMs ?? selectedQuarterMinutes * 60000;
+  const remainingMs = liveClockMatchesState() ? gameClockRemaining() : quarterLengthMs;
+  return { clock: { quarterLengthMs, remainingMs } };
+}
+
+function clockShouldRun() {
+  if (!liveClockMatchesState() || gameInterruption || startOptionsOpen) return false;
+  if (document.visibilityState === 'hidden') return false;
+  if (state.periodEnd || shownOverlay()) return false;
+  return CLOCK_RUNNING_PHASES.includes(state.phase);
+}
+
+// Start or stop at this instant from the live phase; never subtracts ticks.
+function syncGameClock(now = clockNow()) {
+  if (gameClock) {
+    const run = clockShouldRun();
+    const remaining = FOOTBALL_DOMAIN.clockRemainingMs(gameClock, now);
+    if (gameClock.runningSince !== null && (!run || remaining === 0)) {
+      gameClock = FOOTBALL_DOMAIN.stopGameClock(gameClock, now);
+    } else if (gameClock.runningSince === null && run && remaining > 0) {
+      gameClock = FOOTBALL_DOMAIN.startGameClock(gameClock, now);
+    }
+  }
+  renderGameClock(now);
+}
+
+function renderGameClock(now = clockNow()) {
+  const element = document.getElementById('s-clock');
+  if (!element) return;
+  const remaining = gameClock
+    ? FOOTBALL_DOMAIN.clockRemainingMs(gameClock, now)
+    : selectedQuarterMinutes * 60000;
+  const display = FOOTBALL_DOMAIN.clockDisplay(remaining);
+  if (element.textContent !== display) element.textContent = display;
+  const clockState = !gameClock ? 'idle'
+    : remaining === 0 ? 'expired'
+      : gameClock.runningSince !== null ? 'running' : 'stopped';
+  if (element.dataset.clockState !== clockState) element.dataset.clockState = clockState;
+  const label = `Game clock ${display}${clockState === 'stopped' || clockState === 'idle' ? ', stopped' : ''}`;
+  if (element.getAttribute('aria-label') !== label) element.setAttribute('aria-label', label);
+}
+
+function tickGameClock() {
+  if (!gameClock) return;
+  syncGameClock();
+  expireIdlePeriodIfDue();
+}
+
+function expireIdlePeriodIfDue() {
+  if (!liveClockMatchesState() || gameInterruption || document.visibilityState === 'hidden') return false;
+  if (state.periodEnd || shownOverlay() || !IDLE_EXPIRY_PHASES.includes(state.phase)) return false;
+  if (gameClockRemaining() > 0) return false;
+  return endIdlePeriod();
+}
+
+// Input handlers call this before allocating a new play or drawing RNG.
+// Waiting on a choice screen reserves no play.
+function newSnapBlockedByClock() {
+  if (!liveClockMatchesState()) return false;
+  syncGameClock();
+  if (gameClockRemaining() > 0) return false;
+  expireIdlePeriodIfDue();
+  return true;
+}
+
+function carriedCallState() {
+  return FOOTBALL_DOMAIN.deepFreeze({
+    possessionId: state.possessionId,
+    opponentSnapshot: state.opponentSnapshot || null,
+    opponentDecisionSnapshot: state.opponentDecisionSnapshot || null,
+    fourthDownGoChosen: state.fourthDownGoChosen === true,
+    specialRecoveryPlay: state.specialRecoveryPlay || null,
+  });
+}
+
+// 0:00 on a call or fourth-down screen: no play happened, so no play, stats,
+// learning, or result rows are created. Q4 settles its Season game here
+// once, the only legitimate non-commit origin.
+function endIdlePeriod() {
+  const carried = carriedCallState();
+  const plan = FOOTBALL_DOMAIN.planPeriodExpiry(transitionSnapshot(), { origin: PERIOD_EXPIRY_ORIGINS.idle });
+  if (!plan.accepted) return false;
+  cancelAdvance();
+  applyTransitionPatch(plan.patch);
+  state.carriedCall = plan.carry ? carried : null;
+  announceSpecialAction('');
+  hideCallGrid();
+  hideDecisionGrid();
+  if (plan.periodEnd === 'final') settleSeasonGameOnce();
+  return routePossessionPresentation('Time ran out before the next snap.');
+}
+
+// A committed non-terminal play that ran out the clock ends the period after
+// its result; a touchdown still owes its separate conversion first.
+function planCommittedPeriodExpiry() {
+  const plan = FOOTBALL_DOMAIN.planPeriodExpiry(transitionSnapshot(), { origin: PERIOD_EXPIRY_ORIGINS.committed });
+  if (!plan.accepted) return null;
+  applyTransitionPatch(plan.patch);
+  state.carriedCall = null;
+  return plan;
+}
+
+// Delayed advances run once; one that comes due during a pause waits for an
+// explicit Resume instead of moving the game behind the paused screen.
+function scheduleAdvance(callback, delay) {
+  cancelAdvance();
+  advTimer = setTimeout(() => runAdvance(callback), delay);
+}
+
+function runAdvance(callback) {
+  advTimer = null;
+  if (gameInterruption) {
+    deferredAdvance = callback;
+    return;
+  }
+  callback();
+}
+
+function cancelAdvance() {
+  clearTimeout(advTimer);
+  advTimer = null;
+  deferredAdvance = null;
+}
+
+function gameIsActive() {
+  return Boolean(gameClock) && gameClock.gameId === state.gameId
+    && ![PHASES.start, PHASES.final].includes(state.phase);
+}
+
+// Options and backgrounding share one paused state with an explicit Resume.
+// The pending play, question, choices, help, and explanation stay exactly as
+// they were; an interrupted overlay is restored rather than hidden.
+function interruptGame(reason = 'options') {
+  if (!gameIsActive()) return false;
+  if (gameInterruption) {
+    if (reason === 'background') gameInterruption = { ...gameInterruption, reason };
+    renderOptionsOverlay();
+    syncGameClock();
+    return true;
+  }
+  const previous = shownOverlay();
+  gameInterruption = {
+    reason,
+    returnOverlayId: previous?.id || null,
+    focusTarget: previous ? null : deepActiveElement(),
+  };
+  syncGameClock();
+  renderOptionsOverlay();
+  activateOverlay('ov-options');
+  return true;
+}
+
+function resumeGame() {
+  if (!gameInterruption || document.visibilityState === 'hidden') return false;
+  const { returnOverlayId, focusTarget } = gameInterruption;
+  gameInterruption = null;
+  if (returnOverlayId) activateOverlay(returnOverlayId);
+  else hideOverlays(focusTarget);
+  const deferred = deferredAdvance;
+  deferredAdvance = null;
+  if (deferred) advTimer = setTimeout(() => runAdvance(deferred), DEFERRED_ADVANCE_RESUME_MS);
+  expireIdlePeriodIfDue();
+  return true;
+}
+
+function openOptions() {
+  if (gameIsActive()) return interruptGame('options');
+  if (state.phase !== PHASES.start || timeLabIsOpen() || startOptionsOpen) return false;
+  startOptionsOpen = true;
+  renderOptionsOverlay();
+  activateOverlay('ov-options');
+  return true;
+}
+
+function closeOptions() {
+  if (gameInterruption) return resumeGame();
+  if (!startOptionsOpen) return false;
+  startOptionsOpen = false;
+  renderStartOptionsSummary();
+  activateOverlay('ov-start');
+  requestAnimationFrame(() => {
+    const entry = document.getElementById('start-options-btn');
+    if (startOverlay()?.classList.contains('show') && entry && !entry.disabled) entry.focus({ preventScroll: true });
+  });
+  return true;
+}
+
+function quarterMinutesLabel(minutes) {
+  return `${minutes}-minute quarters`;
+}
+
+function renderStartOptionsSummary() {
+  const summary = overlaySlot(startOverlay(), 'options-summary');
+  if (summary) summary.textContent = `${selectedQuarterMinutes}-min quarters`;
+}
+
+function renderOptionsOverlay() {
+  const overlay = document.getElementById('ov-options');
+  if (!overlay) return;
+  const inGame = Boolean(gameInterruption);
+  const gameMinutes = gameClock ? Math.round(gameClock.quarterLengthMs / 60000) : selectedQuarterMinutes;
+  const noteMinutes = inGame ? gameMinutes : selectedQuarterMinutes;
+  const saveNote = quarterPreferenceSave === 'unsaved'
+    ? ' This device could not save it, so it lasts only until this page closes.'
+    : '';
+  const status = inGame
+    ? `This game uses ${quarterMinutesLabel(gameMinutes)}. A new choice starts with your next game.${saveNote}`
+    : `Your next game uses ${quarterMinutesLabel(selectedQuarterMinutes)}.${saveNote}`;
+  populateOverlay(overlay, {
+    root: { dataset: { context: inGame ? 'game' : 'start' } },
+    slots: {
+      badge: inGame ? 'PAUSED' : 'OPTIONS',
+      title: inGame ? 'Game Paused' : 'Options',
+      sub: inGame
+        ? `${gameInterruption.reason === 'background' ? 'The game paused while it was in the background. ' : ''}The game clock is stopped at ${FOOTBALL_DOMAIN.clockDisplay(gameClockRemaining())}. This play is waiting right where you left it. Reloading or closing the page starts over.`
+        : 'Choose how long each quarter lasts.',
+      action: inGame ? 'Resume' : 'Done',
+      'quarter-status': status,
+      'clock-note': `Each quarter has ${noteMinutes} minutes on the game clock. The clock runs only while plays are being called and questions answered. It stops for results, breaks, and pauses, and the last play always finishes, so a full game takes longer than ${noteMinutes * 4} minutes.`,
+    },
+  });
+  for (const input of overlay.querySelectorAll('input[name="quarter-minutes"]')) {
+    input.checked = Number(input.value) === selectedQuarterMinutes;
+  }
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') interruptGame('background');
+  syncGameClock();
+});
+window.addEventListener('pagehide', () => {
+  interruptGame('background');
+  syncGameClock();
+});
+window.addEventListener('pageshow', () => syncGameClock());
+setInterval(tickGameClock, GAME_CLOCK_TICK_MS);
 
 function commitPendingResolution({ focusNextCall = false } = {}) {
   const pending = state.pendingResolution;
@@ -4477,10 +4869,15 @@ function commitPendingResolution({ focusNextCall = false } = {}) {
     state.instructedScrimmages = (state.instructedScrimmages || 0) + 1;
   }
   state.questionUi.outcomeCommitted = true;
+  // The clock is already stopped for this result; 0:00 means this play ran
+  // out the quarter. It still counts, and a touchdown still owes its try.
+  const periodExpired = gameClockExpired();
+  if (activePlay.playType === 'scrimmage' && validation.value.resultKind === 'touchdown') state.conversionOwed = true;
   const placement = terminalPlacement(activePlay, validation.value, pending.policy);
   const possessionFinalized = placement
-    ? finalizePossessionState(activePlay.possessionId, placement)
+    ? finalizePossessionState(activePlay.possessionId, placement, periodExpired)
     : false;
+  const periodExpiry = !possessionFinalized && periodExpired ? planCommittedPeriodExpiry() : null;
   const outcome = outcomeForTransition(activePlay, validation.value, pending.policy);
   applyCommittedOutcomeBookkeeping(activePlay, outcome);
   if (pending.policy !== 'questionBypass') recordQuestionResolution(pending.policy);
@@ -4510,9 +4907,7 @@ function commitPendingResolution({ focusNextCall = false } = {}) {
     placement: settledPlacement,
     assist: pending.assist || null,
   });
-  if (possessionFinalized
-    && state.quarter >= 4
-    && state.quarterPossessions >= POSSESSIONS_PER_QUARTER) {
+  if ((possessionFinalized || periodExpiry) && state.periodEnd === 'final') {
     settleSeasonGameOnce();
   }
   const view = captureLiveRender();
@@ -5727,10 +6122,11 @@ function activateOverlay(id) {
   });
   setGameUiInert(true);
   focusActiveOverlay(active);
+  syncGameClock();
   return true;
 }
 
-function hideOverlays() {
+function hideOverlays(focusTarget = null) {
   homeScreenInstall?.close();
   const overlays = overlayElements();
   overlays.forEach((overlay) => {
@@ -5740,7 +6136,19 @@ function hideOverlays() {
   });
   setGameUiInert(false);
   overlayDecorations(overlays).forEach(clearConfetti);
-  focusGameplayControl();
+  if (focusTarget) restoreGameplayFocus(focusTarget);
+  else focusGameplayControl();
+  syncGameClock();
+}
+
+function restoreGameplayFocus(target) {
+  requestAnimationFrame(() => {
+    if (shownOverlay()) return;
+    const usable = target.isConnected && !target.disabled && target.getClientRects().length > 0
+      && !target.closest('[inert]');
+    if (usable) target.focus({ preventScroll: true });
+    else focusGameplayControl();
+  });
 }
 
 document.addEventListener('keydown', function(event) {
@@ -5787,7 +6195,7 @@ document.addEventListener('keydown', function(event) {
 });
 
 function showStart() {
-  clearTimeout(advTimer);
+  cancelAdvance();
   hideOverlays();
   resetPlayerAnimations();
   state.phase = PHASES.start;
@@ -5804,13 +6212,14 @@ function showStart() {
 }
 
 function startQuickGame() {
-  clearTimeout(advTimer);
+  cancelAdvance();
   if (sessionInitialized) return false;
   const match = FOOTBALL_OPPONENT.createMatch(selectedRivalId, selectedPlayerTeamId);
   activeSeasonBinding = null;
   seasonSettlementPromise = null;
   initGameSession();
   state = createGameState(match);
+  installGameClock();
   applyMatchPresentation(match);
   hideOverlays();
   startDrive(POSSESSIONS.offense);
@@ -5818,7 +6227,7 @@ function startQuickGame() {
 }
 
 async function startSeasonGame(requestedTeamId = selectedPlayerTeamId) {
-  clearTimeout(advTimer);
+  cancelAdvance();
   if (sessionInitialized || seasonActionBusy) return false;
   let snapshot = FOOTBALL_SEASON.snapshot();
   const requestedAction = snapshot.action;
@@ -5859,6 +6268,7 @@ async function startSeasonGame(requestedTeamId = selectedPlayerTeamId) {
     activeSeasonBinding = binding;
     seasonSettlementPromise = null;
     state = createGameState(match);
+    installGameClock();
     applyMatchPresentation(match);
     hideOverlays();
     startDrive(POSSESSIONS.offense);
@@ -5919,14 +6329,13 @@ function conversionDecisionState() {
     possession: state.possession,
     direction: state.direction,
     quarter: state.quarter,
-    quarterPossessions: state.quarterPossessions,
-    possessionsPerQuarter: POSSESSIONS_PER_QUARTER,
+    ...opponentTimingBasis(),
     scores: { player: state.playerScore, opponent: state.opponentScore },
   };
 }
 
 function showConversionDecision(recovery = null, decision = null) {
-  clearTimeout(advTimer);
+  cancelAdvance();
   hideOverlays();
   const recoveryAction = recovery?.context?.attemptType || recovery?.attemptType || null;
   Object.assign(state, blankPlayState(), {
@@ -6027,7 +6436,7 @@ function presentationIntentFor(kind, intent) {
 
 function showDefenseTransition(message, intent = null) {
   const presentation = presentationIntentFor('defenseTransition', intent);
-  clearTimeout(advTimer);
+  cancelAdvance();
   Object.assign(state, blankPlayState(), retainedCommittedSpecialResultState());
   applyTransitionPatch(presentation.patch);
   syncUiState(captureLiveRender());
@@ -6050,7 +6459,7 @@ function startDefense(expectedSource = null) {
 
 function showOffenseTransition(message, intent = null) {
   const presentation = presentationIntentFor('offenseTransition', intent);
-  clearTimeout(advTimer);
+  cancelAdvance();
   Object.assign(state, blankPlayState(), retainedCommittedSpecialResultState());
   applyTransitionPatch(presentation.patch);
   syncUiState(captureLiveRender());
@@ -6068,8 +6477,10 @@ function startOffense(expectedSource = null) {
   return true;
 }
 
-// Release-matrix setup retains this legacy seam. Production terminal plays go
-// through commitPendingResolution() and guarded finalizePossessionState().
+// Release-matrix setup retains this legacy, explicitly count-based fixture
+// seam for reaching presentation overlays. It is never a production path:
+// production terminal plays go through commitPendingResolution() and the
+// timed finalizePossessionState(), and this seam settles no Season result.
 function finishPossession(message) {
   const nextPossession = state.pendingNextPossession || oppositePossession(state.possession);
   const placement = {
@@ -6079,8 +6490,11 @@ function finishPossession(message) {
       : startingYardFor(nextPossession),
     restartReason: state.pendingRestartReason || 'legacyScheduledChange',
   };
-  finalizePossessionState(state.possessionId, placement);
-  routePossessionPresentation(message);
+  const plan = FOOTBALL_DOMAIN.planPossessionClosure(transitionSnapshot(), state.possessionId, placement, {
+    possessionsPerQuarter: POSSESSIONS_PER_QUARTER,
+  });
+  if (plan.accepted) applyTransitionPatch(plan.patch);
+  routePossessionPresentation(message, null, { legacyCount: true });
 }
 
 // Text for a break overlay's persistent broadcast scorebug spans (decorative;
@@ -6127,12 +6541,38 @@ function showHalftime(message, intent = null) {
 }
 
 function nextQuarter(expectedSource = null) {
-  const plan = FOOTBALL_DOMAIN.planPeriodAdvance(transitionSnapshot(), { expectedSource });
+  if (gameInterruption) return false;
+  const plan = FOOTBALL_DOMAIN.planPeriodAdvance(transitionSnapshot(), { expectedSource, timing: 'clock' });
   if (!plan.accepted) return false;
   hideOverlays();
   applyTransitionPatch(plan.patch);
-  startDrive(plan.drive.possession, plan.drive.startYardLine, plan.drive.restartReason);
+  if (gameClock) gameClock = FOOTBALL_DOMAIN.nextQuarterClock(gameClock, state.quarter);
+  if (plan.carry) resumeCarriedDrive();
+  else startDrive(plan.drive.possession, plan.drive.startYardLine, plan.drive.restartReason);
   return true;
+}
+
+// Q1/Q3 expiry carries the open drive: same possession ID, down, distance,
+// spot, and any already-frozen opponent decision or visible plan. The next
+// accepted play is allocated in the new quarter.
+function resumeCarriedDrive() {
+  const carried = state.carriedCall && state.carriedCall.possessionId === state.possessionId
+    ? state.carriedCall
+    : null;
+  cancelAdvance();
+  resetPlayerAnimations();
+  Object.assign(state, blankPlayState(), {
+    carriedCall: null,
+    phase: PHASES.call,
+    opponentSnapshot: carried?.opponentSnapshot || null,
+    opponentDecisionSnapshot: carried?.opponentDecisionSnapshot || null,
+    fourthDownGoChosen: carried?.fourthDownGoChosen === true,
+    specialRecoveryPlay: carried?.specialRecoveryPlay || null,
+  });
+  const view = captureLiveRender();
+  updateField(view, false);
+  updateStatus(view);
+  showCallPrompt({ preserveOpponentSnapshot: Boolean(carried?.opponentSnapshot) });
 }
 
 function populateEndStats() {
@@ -6379,6 +6819,7 @@ function restart(preferredMode = null) {
   seasonTeamNoticeId = null;
   activeSeasonBinding = null;
   seasonSettlementPromise = null;
+  clearGameClock();
   state = createGameState(FOOTBALL_OPPONENT.createMatch(selectedRivalId, selectedPlayerTeamId));
   prevPlayerScore = -1;
   prevOpponentScore = -1;
@@ -6501,7 +6942,12 @@ function renderGameToText() {
     correctAnswers: state.correctAnswers,
     gradedQuestions: state.gradedQuestions,
     quarterPossessions: state.quarterPossessions,
-    possessionsPerQuarter: POSSESSIONS_PER_QUARTER,
+    gameClock: publicGameClock(),
+    periodEnd: state.periodEnd || null,
+    carryDrive: state.carryDrive === true,
+    conversionOwed: state.conversionOwed === true,
+    interrupted: gameInterruption?.reason || null,
+    quarterMinutesPreference: selectedQuarterMinutes,
     pendingNextPossession: state.pendingNextPossession || null,
     pendingNextStartYardLine: Number.isInteger(state.pendingNextStartYardLine) ? state.pendingNextStartYardLine : null,
     pendingNextStart: Number.isInteger(state.pendingNextStartYardLine) && state.pendingNextPossession
@@ -6588,7 +7034,7 @@ function activeContractsSnapshot() {
 
 function seedDriveStateForTest(overrides = {}) {
   if (!sessionInitialized) initGameSession(0x54c0de);
-  clearTimeout(advTimer);
+  cancelAdvance();
   const has = key => Object.prototype.hasOwnProperty.call(overrides, key);
   // A rival or team override keeps the other side of the live match.
   const match = has('match')
@@ -6667,6 +7113,11 @@ function seedDriveStateForTest(overrides = {}) {
   if (overrides.opponentSnapshot) {
     state.opponentSnapshot = FOOTBALL_DOMAIN.deepFreeze(FOOTBALL_DOMAIN.clone(overrides.opponentSnapshot));
   }
+  gameInterruption = null;
+  installGameClock({
+    quarterLengthMs: overrides.quarterLengthMs,
+    remainingMs: overrides.clockRemainingMs,
+  });
   hideOverlays();
   const view = captureLiveRender();
   updateField(view, false);
@@ -6812,6 +7263,36 @@ window.__footballTest = {
   activeContracts() {
     return activeContractsSnapshot();
   },
+  // #222 deterministic clock seam: a manual monotonic source, advanced only
+  // by advanceClock(). Run state is synced before time moves.
+  useManualClock(startMs = 0) {
+    syncGameClock();
+    if (gameClock) gameClock = FOOTBALL_DOMAIN.stopGameClock(gameClock, clockNow());
+    manualClockNow = startMs;
+    clockNowSource = () => manualClockNow;
+    syncGameClock();
+    return publicGameClock();
+  },
+  useRealClock() {
+    syncGameClock();
+    if (gameClock) gameClock = FOOTBALL_DOMAIN.stopGameClock(gameClock, clockNow());
+    manualClockNow = null;
+    clockNowSource = () => performance.now();
+    syncGameClock();
+    return publicGameClock();
+  },
+  advanceClock(ms) {
+    if (manualClockNow === null) throw new Error('advanceClock needs useManualClock() first');
+    if (!Number.isFinite(ms) || ms < 0) throw new RangeError('advanceClock needs a non-negative duration');
+    syncGameClock();
+    manualClockNow += ms;
+    tickGameClock();
+    return publicGameClock();
+  },
+  gameClock() { return publicGameClock(); },
+  interrupt(reason = 'options') { return interruptGame(reason); },
+  resume() { return resumeGame(); },
+  quarterMinutes() { return selectedQuarterMinutes; },
 };
 
 // -- Init ---------------------------------------------------------------------
@@ -6857,6 +7338,7 @@ function applyBootMode() {
     const match = FOOTBALL_OPPONENT.createMatch(selectedRivalId, selectedPlayerTeamId);
     initGameSession();
     state = createGameState(match);
+    installGameClock();
     applyMatchPresentation(match);
     hideOverlays();
     startDrive(POSSESSIONS.defense);

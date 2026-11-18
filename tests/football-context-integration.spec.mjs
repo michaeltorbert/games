@@ -77,6 +77,9 @@ async function answerChoice(page, choiceId) {
 async function beginSpecialPlay(page, playType, possession, fault = null, period = {}) {
   await page.evaluate(({ type, side, faultMode, periodState }) => {
     window.__footballTest.setQuestionFault(faultMode);
+    // #222: `clockExpires` leaves 1 ms on the manual quarter clock; it reaches
+    // 0:00 after the special play is accepted, so that play ends the period.
+    if (periodState.clockExpires) window.__footballTest.useManualClock(0);
     const reverse = side === 'defense';
     const seed = type === 'fieldGoal'
       ? { yardLine: reverse ? 40 : 60, yardsToGo: 2 }
@@ -97,6 +100,7 @@ async function beginSpecialPlay(page, playType, possession, fault = null, period
       totalYards: { player: 0, opponent: 0 },
       plays: 0,
       drivePlays: 0,
+      ...(periodState.clockExpires ? { clockRemainingMs: 1 } : {}),
     });
     if (type === 'conversion') showConversionDecision();
   }, { type: playType, side: possession, faultMode: fault, periodState: period });
@@ -104,6 +108,7 @@ async function beginSpecialPlay(page, playType, possession, fault = null, period
     const action = playType === 'conversion' ? 'pat' : playType;
     await page.locator(`#decision-grid .decision-btn[data-action="${action}"]`).click();
   }
+  if (period.clockExpires) await page.evaluate(() => window.__footballTest.advanceClock(1));
   return activeContracts(page);
 }
 
@@ -1762,6 +1767,7 @@ test('punt preview and committed result explain only child-visible changes and p
   const startPunt = async (possession, yardLine, travelYards, period = {}) => {
     await page.evaluate(({ side, spot, travel, periodState }) => {
       const direction = side === 'offense' ? 1 : -1;
+      if (periodState.clockExpires) window.__footballTest.useManualClock(0);
       window.__footballTest.seedDriveState({
         possession: side,
         direction,
@@ -1774,8 +1780,10 @@ test('punt preview and committed result explain only child-visible changes and p
         driveStart: spot,
         scores: { player: 0, opponent: 0 },
         totalYards: { player: 0, opponent: 0 },
+        ...(periodState.clockExpires ? { clockRemainingMs: 1 } : {}),
       });
       startSpecialPlay(makePuntActivePlay({ travelYards: travel }), 'Punt preview ready.');
+      if (periodState.clockExpires) window.__footballTest.advanceClock(1);
     }, { side: possession, spot: yardLine, travel: travelYards, periodState: period });
     return activeContracts(page);
   };
@@ -1916,7 +1924,7 @@ test('punt preview and committed result explain only child-visible changes and p
       + "Actual travel: 20 yards to Duke's own 15-yard line. Restart: Duke ball at Duke's own 20-yard line.",
   );
 
-  await startPunt('offense', 30, 37, { quarter: 1, quarterPossessions: 3 });
+  await startPunt('offense', 30, 37, { quarter: 1, quarterPossessions: 3, clockExpires: true });
   const breakResult = await resolveSpecialPolicy(page, 'firstTryCorrect');
   await expect(page.locator('#ov-quarter')).toBeVisible({ timeout: 2500 });
   const breakOverlay = await activeContracts(page);
@@ -1945,7 +1953,7 @@ test('committed special results survive defense-transition and halftime overlays
       next: { mode: 'call', possession: 'defense', quarter: 1 },
     },
     {
-      period: { quarter: 2, quarterPossessions: 3 },
+      period: { quarter: 2, quarterPossessions: 3, clockExpires: true },
       overlay: '#ov-halftime',
       overlayMode: 'halftime',
       next: { mode: 'call', possession: 'defense', quarter: 3 },
@@ -1993,6 +2001,7 @@ test('a final special result starts Season settlement at commit, survives final 
     quarter: 4,
     quarterPossessions: 3,
     scores: { player: 3, opponent: 7 },
+    clockExpires: true,
   });
   const resolved = await page.evaluate(() => {
     const before = window.__footballTest.activeContracts();
@@ -3275,7 +3284,7 @@ test('pending placement carries across quarters, resets at halftime, and disappe
     });
     finalizePossessionState(state.possessionId, {
       nextPossession: 'defense', nextStartYardLine: 67, restartReason: 'punt',
-    });
+    }, true);
     routePossessionPresentation('Quarter complete.');
     const before = JSON.parse(render_game_to_text());
     nextQuarter();
@@ -3296,7 +3305,7 @@ test('pending placement carries across quarters, resets at halftime, and disappe
     });
     finalizePossessionState(state.possessionId, {
       nextPossession: 'offense', nextStartYardLine: 33, restartReason: 'punt',
-    });
+    }, true);
     routePossessionPresentation('Third quarter complete.');
     const before = JSON.parse(render_game_to_text());
     nextQuarter();
@@ -3317,7 +3326,7 @@ test('pending placement carries across quarters, resets at halftime, and disappe
     });
     finalizePossessionState(state.possessionId, {
       nextPossession: 'defense', nextStartYardLine: 61, restartReason: 'missedFieldGoal',
-    });
+    }, true);
     const settled = JSON.parse(render_game_to_text());
     routePossessionPresentation('Half complete.');
     const before = JSON.parse(render_game_to_text());
@@ -3344,7 +3353,7 @@ test('pending placement carries across quarters, resets at halftime, and disappe
     });
     finalizePossessionState(state.possessionId, {
       nextPossession: 'defense', nextStartYardLine: 80, restartReason: 'automaticTouchback',
-    });
+    }, true);
     routePossessionPresentation('Game complete.');
     return JSON.parse(render_game_to_text());
   });
@@ -3362,12 +3371,15 @@ test('result telemetry publishes settled halftime placement separately from the 
   await page.evaluate(() => {
     window.__halftimeResults = [];
     window.addEventListener('football:result', event => window.__halftimeResults.push(event.detail));
+    // #222: the Q2 clock reaches 0:00 during this punt's question.
+    window.__footballTest.useManualClock(0);
     window.__footballTest.seedDriveState({
       possession: 'offense', direction: 1, quarter: 2, quarterPossessions: 3,
-      down: 4, yardsToGo: 10, yardLine: 50, firstDownLine: 60, driveStart: 20,
+      down: 4, yardsToGo: 10, yardLine: 50, firstDownLine: 60, driveStart: 20, clockRemainingMs: 1,
     });
   });
   await page.locator('#decision-grid .decision-btn[data-action="punt"]').click();
+  await page.evaluate(() => window.__footballTest.advanceClock(1));
   const question = await activeContracts(page);
   await answerChoice(page, question.questionInstance.correctChoiceId);
   const after = await activeContracts(page);
@@ -3395,14 +3407,17 @@ test('a Q4 touchdown waits for its fresh conversion before finalizing the posses
     const scheduler = () => 0.25;
     const presentation = () => 0.5;
     window.__footballTest.setRngStreams({ football, scheduler, presentation });
+    // #222: the Q4 clock reaches 0:00 during the touchdown question.
+    window.__footballTest.useManualClock(0);
     window.__footballTest.seedDriveState({
       possession: 'offense', direction: 1, quarter: 4, quarterPossessions: 3,
       down: 1, yardsToGo: 1, yardLine: 99, firstDownLine: 100, driveStart: 80,
       scores: { player: 0, opponent: 0 }, totalYards: { player: 0, opponent: 0 },
-      plays: 0, drivePlays: 0,
+      plays: 0, drivePlays: 0, clockRemainingMs: 1,
     });
   });
   await chooseCall(page, 'Short Run');
+  await page.evaluate(() => window.__footballTest.advanceClock(1));
   const touchdownQuestion = await activeContracts(page);
   expect(touchdownQuestion.activePlay.proposal.resultKind).toBe('touchdown');
   await answerChoice(page, touchdownQuestion.questionInstance.correctChoiceId);
@@ -3492,7 +3507,7 @@ test('production overlay handlers ignore repeated touchdown, transition, and per
     });
     finalizePossessionState(state.possessionId, {
       nextPossession: 'defense', nextStartYardLine: 67, restartReason: 'punt',
-    });
+    }, true);
     routePossessionPresentation('Quarter complete.');
     const firstAccepted = nextQuarter();
     const before = JSON.parse(render_game_to_text());
@@ -3541,12 +3556,20 @@ async function bootRouteProbe(page, seed) {
   });
 }
 
+// #222: a count of 3 (the retired last scheduled possession) now means the
+// quarter clock reaches 0:00 during this punt's question.
 async function seedQ1Punt(page, quarterPossessions) {
-  await page.evaluate((count) => window.__footballTest.seedDriveState({
-    possession: 'offense', direction: 1, quarter: 1, quarterPossessions: count,
-    down: 4, yardsToGo: 10, yardLine: 50, firstDownLine: 60, driveStart: 20,
-  }), quarterPossessions);
+  const expires = quarterPossessions >= 3;
+  await page.evaluate(({ count, expiring }) => {
+    if (expiring) window.__footballTest.useManualClock(0);
+    window.__footballTest.seedDriveState({
+      possession: 'offense', direction: 1, quarter: 1, quarterPossessions: count,
+      down: 4, yardsToGo: 10, yardLine: 50, firstDownLine: 60, driveStart: 20,
+      ...(expiring ? { clockRemainingMs: 1 } : {}),
+    });
+  }, { count: quarterPossessions, expiring: expires });
   await page.locator('#decision-grid .decision-btn[data-action="punt"]').click();
+  if (expires) await page.evaluate(() => window.__footballTest.advanceClock(1));
 }
 
 async function commitRoutedPunt(page) {
@@ -4129,6 +4152,9 @@ test('a frozen defense snap owns the exact pre-snap plan without leaking it to p
 test('scheduler and presentation draw perturbations cannot alter the football trace', async ({ page }, testInfo) => {
   primaryOnly(testInfo);
   await cleanBoot(page);
+  // #222: hold the quarter clock still so the frozen opponent timing basis is
+  // identical across traces; only the RNG streams differ.
+  await page.evaluate(() => window.__footballTest.useManualClock(0));
 
   async function runTrace({ schedulerBurn, presentationBurn }) {
     await page.evaluate(({ seed, schedulerBurnCount, presentationBurnCount, drive }) => {
@@ -4465,7 +4491,7 @@ test('#48 every live phase and both possessions reach the DOM bridge through pro
       });
       finalizePossessionState(state.possessionId, {
         nextPossession: 'defense', nextStartYardLine: 67, restartReason: 'punt',
-      });
+      }, true);
       routePossessionPresentation('Period complete.');
     }, quarter);
     const period = await phaseContractSample(page, expectedMode);
