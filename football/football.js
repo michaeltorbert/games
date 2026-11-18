@@ -6154,7 +6154,10 @@ function restoreGameplayFocus(target) {
 document.addEventListener('keydown', function(event) {
   const nativeDialog = openInstallDialog();
   if (nativeDialog && event.composedPath().includes(nativeDialog)) return;
-  if (event.key === 'Escape' && state.phase === PHASES.explanation && state.questionUi?.reviewExpanded) {
+  // A shown modal (including the #222 Options pause, which keeps the
+  // underlying explanation phase) owns Escape; the paused review stays as is.
+  if (event.key === 'Escape' && !shownOverlay()
+    && state.phase === PHASES.explanation && state.questionUi?.reviewExpanded) {
     event.preventDefault();
     collapseWorkedReview();
     return;

@@ -693,3 +693,61 @@ async function testInfoScreenshot(page, phase) {
   await page.screenshot({ path });
   await info.attach(`clock-${phase}`, { path, contentType: 'image/png' });
 }
+
+// R2: Escape belongs to the shown Options modal. It must not collapse the
+// expanded Coach Replay paused behind it; with no modal, Escape still does.
+test('Escape inside paused Options keeps the expanded worked explanation exactly; without a modal it still collapses', async ({ page }, testInfo) => {
+  primaryOnly(testInfo);
+  await boot(page);
+  await seed(page, { ...OFFENSE, quarter: 2, clockRemainingMs: 200000 });
+  await tapCall(page);
+  await tapAnswer(page, 'wrong');
+  await tapAnswer(page, 'wrong');
+  await expect(page.locator('#ui-desk')).toHaveAttribute('data-phase', 'explanation');
+  await page.locator('#question-learn-why').click();
+  await expect.poll(async () => (await render(page)).reviewExpanded).toBe(true);
+  const snapshot = () => page.evaluate(() => {
+    const contracts = window.__footballTest.activeContracts();
+    const review = document.getElementById('worked-review');
+    return {
+      reviewExpanded: contracts.render.reviewExpanded,
+      reviewSatisfied: contracts.render.reviewSatisfied,
+      mode: contracts.render.mode,
+      reviewHidden: review.hidden,
+      reviewContent: document.getElementById('worked-review-content').innerHTML,
+      feedback: document.getElementById('feedback').textContent,
+      answers: Array.from(document.querySelectorAll('#btn-row .ans-btn'), b => ({ disabled: b.disabled, cls: b.className })),
+      continueHidden: document.getElementById('question-continue').classList.contains('hidden'),
+      questionInstance: contracts.questionInstance,
+      questionUi: contracts.questionUi,
+      pendingResolution: contracts.pendingResolution,
+      completedPlays: contracts.statsSession.completedPlays.length,
+      clock: contracts.render.gameClock,
+    };
+  });
+  const before = await snapshot();
+  expect(before.reviewContent.length).toBeGreaterThan(0);
+  expect(before.reviewHidden).toBe(false);
+  expect(before.clock.running).toBe(false);
+
+  await page.locator('#options-toggle').click();
+  const options = page.locator('#ov-options');
+  await expect(options).toHaveClass(/show/);
+  await expect(page.locator('#ov-options-btn')).toBeFocused();
+  for (let index = 0; index < 2; index++) {
+    await page.keyboard.press('Escape');
+    await expect(options).toHaveClass(/show/);
+    expect(await page.evaluate(() => document.activeElement?.closest('.overlay')?.id)).toBe('ov-options');
+    expect((await render(page)).interrupted).toBe('options');
+    expect(await snapshot()).toEqual(before);
+  }
+  await page.locator('#ov-options-btn').click();
+  await expect(options).not.toHaveClass(/show/);
+  expect(await snapshot()).toEqual(before);
+
+  // Ordinary explanation Escape with no modal still collapses the review.
+  await page.keyboard.press('Escape');
+  await expect.poll(async () => (await render(page)).reviewExpanded).toBe(false);
+  expect((await render(page)).mode).toBe('explanation');
+  expect((await contracts(page)).pendingResolution).toEqual(before.pendingResolution);
+});

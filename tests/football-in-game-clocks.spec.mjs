@@ -190,7 +190,11 @@ for(const playMode of ['quick','season'])test(`#208 complete ordinary ${playMode
    await page.locator(`#b${q.choices.findIndex(v=>v.id===q.correctChoiceId)}`).tap();
    await page.clock.fastForward(2000);
   }else if(m==='call'){
-   await page.locator('#call-grid .call-btn').last().tap();
+   // #222: game time passes only while usable choices are shown, through the
+   // production clock and tick. 20 s is synthetic test input, not learner pace.
+   // A call is tapped only if 0:00 did not just end the period.
+   await page.clock.fastForward(20000);
+   if(await mode(page)==='call')await page.locator('#call-grid .call-btn').last().tap();
   }else{
    const decision=page.locator('#decision-grid button:visible').first(),overlay=page.locator('.overlay.show .ov-btn:visible').first();
    if(await decision.count())await decision.tap();else if(await overlay.count())await overlay.tap();else await page.clock.fastForward(2000);

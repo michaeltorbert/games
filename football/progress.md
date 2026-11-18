@@ -3152,3 +3152,18 @@ newer preinstalled headless Chromium), at the candidate stage. Full Chromium and
 WebKit six-project release gates, native iPad Simulator Safari background/Resume,
 independent review, merge, and Pages verification remain coordinator gates. No
 release, deployment, native-device result, or child-play outcome is claimed.
+
+Correction round R2 (same 1.37.0 candidate, 2026-11-18): Escape now belongs to
+any shown modal, so Escape inside the Options pause no longer collapses a paused
+expanded Coach Replay; ordinary no-modal Escape still collapses it (focused
+regression added). Full ordinary-game fixtures (coins, in-game clocks) now pass
+game time only on verified call screens through the production clock; the
+recording-mode comparison feeds identical explicit elapsed clock input to every
+mode and compares clock snapshots and the complete private plan. The quick
+full-game coin case was unseeded and intermittently saw coin plays on only one
+side (2 of 6 attempts). Its fixture now pins reproducible inputs after the real
+Start: root seed 0x2220215 through the existing test seam before any draw, a
+paused Playwright clock, and explicit 20 s call-screen advances; the clock
+policy itself does not promise both-side coin exposure in every game. Release gates,
+independent review, native lifecycle, merge and Pages verification remain
+pending; nothing is released.
