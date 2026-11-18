@@ -3167,3 +3167,12 @@ paused Playwright clock, and explicit 20 s call-screen advances; the clock
 policy itself does not promise both-side coin exposure in every game. Release gates,
 independent review, native lifecycle, merge and Pages verification remain
 pending; nothing is released.
+
+Correction round R3 (same 1.37.0 candidate, 2026-11-18): pinned WebKit failed
+the Options Resume focus check because WebKit leaves a tapped button unfocused,
+so the page body was captured and later refocused. The body is no longer a
+restore target: Options returns focus to its invoking Options control, and a
+background pause with nothing focused resumes onto the first usable gameplay
+control. A regression reproduces the unfocused-tap condition in any engine.
+Pinned Chromium/WebKit release gates, native lifecycle, fresh review, merge and
+Pages verification remain pending; nothing is released.

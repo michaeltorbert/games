@@ -4727,12 +4727,29 @@ function interruptGame(reason = 'options') {
   gameInterruption = {
     reason,
     returnOverlayId: previous?.id || null,
-    focusTarget: previous ? null : deepActiveElement(),
+    focusTarget: previous ? null : interruptionFocusTarget(reason),
   };
   syncGameClock();
   renderOptionsOverlay();
   activateOverlay('ov-options');
   return true;
+}
+
+// Focus to return to on Resume. WebKit leaves a tapped button unfocused, so
+// the document body can still be active when Options opens; the body is never
+// a restore target. Options then returns focus to its own invoking control; a
+// background pause with no focused control falls back to the first usable
+// gameplay control on Resume.
+function isGameplayFocusTarget(element) {
+  return element instanceof Element
+    && element !== document.body && element !== document.documentElement
+    && Boolean(element.closest('#wrap'));
+}
+
+function interruptionFocusTarget(reason) {
+  const active = deepActiveElement();
+  if (isGameplayFocusTarget(active)) return active;
+  return reason === 'options' ? document.getElementById('options-toggle') : null;
 }
 
 function resumeGame() {
@@ -6144,8 +6161,8 @@ function hideOverlays(focusTarget = null) {
 function restoreGameplayFocus(target) {
   requestAnimationFrame(() => {
     if (shownOverlay()) return;
-    const usable = target.isConnected && !target.disabled && target.getClientRects().length > 0
-      && !target.closest('[inert]');
+    const usable = isGameplayFocusTarget(target) && target.isConnected && !target.disabled
+      && target.getClientRects().length > 0 && !target.closest('[inert]');
     if (usable) target.focus({ preventScroll: true });
     else focusGameplayControl();
   });

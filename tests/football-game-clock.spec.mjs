@@ -751,3 +751,37 @@ test('Escape inside paused Options keeps the expanded worked explanation exactly
   expect((await render(page)).mode).toBe('explanation');
   expect((await contracts(page)).pendingResolution).toEqual(before.pendingResolution);
 });
+
+// R3 (G222-R2b-F04): WebKit does not focus a tapped button, so <body> can be
+// the active element when Options opens. Reproduce that condition in any
+// engine: no focused control, then a click event that moves no focus.
+test('Resume restores focus to Options, not the page body, when the tap left nothing focused', async ({ page }, testInfo) => {
+  primaryOnly(testInfo);
+  await boot(page);
+  await seed(page, { ...OFFENSE, quarter: 2, clockRemainingMs: 200000 });
+  await tapCall(page);
+  await tapAnswer(page, 'wrong');
+  const before = await contracts(page);
+  const disabled = await page.locator('#btn-row .ans-btn').evaluateAll(buttons => buttons.map(b => b.disabled));
+  await page.evaluate(() => document.activeElement?.blur());
+  expect(await page.evaluate(() => document.activeElement === document.body)).toBe(true);
+  await page.locator('#options-toggle').dispatchEvent('click');
+  await expect(page.locator('#ov-options')).toHaveClass(/show/);
+  await expect(page.locator('#ov-options-btn')).toBeFocused();
+  await page.locator('#ov-options-btn').press('Enter');
+  await expect(page.locator('#ov-options')).not.toHaveClass(/show/);
+  await expect.poll(() => page.evaluate(() => document.activeElement.id)).toBe('options-toggle');
+  const after = await contracts(page);
+  expect(after.questionInstance).toEqual(before.questionInstance);
+  expect(after.questionUi).toEqual(before.questionUi);
+  expect(after.pendingResolution).toEqual(before.pendingResolution);
+  expect(await page.locator('#btn-row .ans-btn').evaluateAll(buttons => buttons.map(b => b.disabled))).toEqual(disabled);
+
+  // A background pause with nothing focused resumes onto a usable answer.
+  await page.evaluate(() => document.activeElement?.blur());
+  expect(await page.evaluate(() => window.__footballTest.interrupt('background'))).toBe(true);
+  await page.locator('#ov-options-btn').press('Enter');
+  await expect(page.locator('#ov-options')).not.toHaveClass(/show/);
+  await expect.poll(() => page.evaluate(() => document.activeElement.matches('#btn-row .ans-btn:not(:disabled)'))).toBe(true);
+  expect((await contracts(page)).questionUi).toEqual(before.questionUi);
+});
