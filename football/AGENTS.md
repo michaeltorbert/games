@@ -80,6 +80,7 @@ repository-level `AGENTS.md`.
   follows quarter 2. Ask only what that quarter makes true ("It's the third
   quarter", "When the first quarter ends", "At halftime" only during Q2);
   never claim a clock, elapsed minutes, history, halftime now, or overtime.
+  The live game clock (#222) is not a question input: no family reads it.
   Keep this whole separate from field pictures. Count/grouping families are
   football-only; naming a part of the game and halves making the whole cite
   Grade 1-B p. 68, and comparing a half with quarters cites p. 71. The first
@@ -234,6 +235,42 @@ repository-level `AGENTS.md`.
   failed fourth-down goes restart at the canonical end spot. Q1→Q2 and Q3→Q4
   retain pending placement, halftime replaces it with the prescribed opponent
   start at absolute 80, and the Q4 final creates no restart.
+
+## Timed Quarters (#222)
+
+- One quarter game clock per period, default 5 minutes; Options offers 3, 5,
+  or 10 minutes as a browser-local next-game preference that each new game
+  snapshots once at start. A game's length never changes mid-game. There is
+  no play clock, per-question deadline, simulated time per play, time bonus,
+  idle detection, or anti-stalling rule. The legacy possession count
+  (`POSSESSIONS_PER_QUARTER`) is fixture-only and never ends a live period.
+- `FOOTBALL_DOMAIN` owns the pure clock (elapsed recomputed from a monotonic
+  start instant; display rounds whole seconds up) and the timed planners:
+  `planPossessionClosure` with `{ timing: 'clock', periodExpired }`,
+  `planPeriodExpiry`, and the clock forms of presentation and period advance.
+  Time never enters `activePlay`, contexts, questions, RNG, learning, stats, or
+  Season state. Opponent decisions/tendency receive a frozen `clock` basis;
+  their uncalibrated late-game predicate is the final 25% of Q4.
+- The clock runs only while usable calls, fourth-down decisions, conversion
+  decisions, or unresolved questions (including retries and help) are on
+  screen, on both sides. It stops for resolved feedback/explanations, result
+  animations, every overlay, the Options pause, and backgrounding.
+- At 0:00 no new ordinary snap starts: call, fourth-down, and automatic
+  opponent punt/field-goal paths sync the clock before allocating a play or
+  drawing RNG. An accepted play always finishes with normal support and
+  counts. An owed touchdown conversion always completes, timed while time
+  remains and untimed at zero, before the period ends.
+- Zero on a call or fourth-down screen ends the period with no play. Q1/Q3
+  carry the open drive (possession ID, down, distance, spot, and any frozen
+  opponent decision or visible plan) into the next quarter; Q2 closes it for
+  the halftime kickoff and Q4 closes it with no restart. A period ends at
+  most once; later plays allocate in the new quarter.
+- Options is reachable from the scoreboard and the start card, not a separate
+  Pause button. In a game it opens one paused state with an explicit Resume
+  that restores the exact play, question, focus, and any interrupted overlay;
+  delayed advances that come due while paused wait for Resume. Backgrounding
+  any active-game surface pauses the same way. Reloading or closing the page
+  does not preserve a game, and the copy must not imply that it does.
 - Drive start, possession closure, transition/period advance, and presentation
   routing are decided by the `FOOTBALL_DOMAIN` transition planners over a plain
   match-state snapshot. They return frozen accepted patches or rejection
@@ -309,9 +346,12 @@ repository-level `AGENTS.md`.
   replace, or clear the season.
 - Only `commitPendingResolution()` may originate settlement, after it newly
   closes the last Q4 possession, finalizes stats, and dispatches the result
-  event, but before delayed final presentation. A touchdown waits for its
-  separate conversion. `showGameOver()`, routing, legacy release seams, boot
-  modes, and presentation-only test helpers settle nothing.
+  event, but before delayed final presentation. The single exception is the
+  guarded idle Q4 clock expiry (`endIdlePeriod()`), which closes the open
+  possession with no play, stats, learning, or result rows and settles once.
+  A touchdown waits for its separate conversion. `showGameOver()`, routing,
+  legacy release seams, boot modes, and presentation-only test helpers settle
+  nothing.
 - Public semantic output may expose only play mode, game number, rung statuses,
   worded W-L-T counts, next public rival ID, completion, and save state. Do not
   expose season IDs, pending payloads, raw storage/errors, prompts/answers,

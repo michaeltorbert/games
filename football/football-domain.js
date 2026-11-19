@@ -1298,6 +1298,9 @@
   });
   const PRESENTATION_KINDS = Object.freeze(Object.keys(PRESENTATION_PHASES));
   const PERIOD_BREAK_PHASES = Object.freeze(['quarter', 'halftime']);
+  const PERIOD_END_KINDS = Object.freeze(['quarterEnd', 'halftime', 'final']);
+  const IDLE_EXPIRY_PHASES = Object.freeze(['call', 'fourth-down-decision']);
+  const CONVERSION_PHASES = Object.freeze(['touchdown', 'conversion-decision']);
   const HALFTIME_KICKOFF = Object.freeze({
     nextPossession: 'defense',
     nextStartYardLine: 80,
@@ -1341,7 +1344,22 @@
         : null,
       pendingRestartReason: input.pendingRestartReason || null,
       finalizedPossessionIds: [...finalized],
+      possession: POSSESSIONS.includes(input.possession) ? input.possession : null,
+      periodEnd: PERIOD_END_KINDS.includes(input.periodEnd) ? input.periodEnd : null,
+      carryDrive: input.carryDrive === true,
+      conversionOwed: input.conversionOwed === true,
     };
+  }
+
+  // Timed periods (#222). A play that commits after the quarter clock reached
+  // zero ends the period; the legacy possession count is fixture-only.
+  function clockTimingFrom(options) {
+    if (!isRecord(options) || options.timing !== 'clock') return null;
+    if (typeof options.periodExpired !== 'boolean') {
+      throw transitionError('INVALID_PERIOD_EXPIRY', '/periodExpired',
+        'Clock timing needs an explicit boolean period expiry.', 'boolean', options.periodExpired);
+    }
+    return { periodExpired: options.periodExpired };
   }
 
   function possessionsPerQuarterFrom(options) {
@@ -1400,24 +1418,81 @@
   // prescribed kickoff; the Q4 final creates no restart.
   function planPossessionClosure(input, possessionId, placement, options) {
     const match = periodState(input);
-    const possessionsPerQuarter = possessionsPerQuarterFrom(options);
+    const timed = clockTimingFrom(options);
+    const possessionsPerQuarter = timed ? null : possessionsPerQuarterFrom(options);
     if (!possessionId || !placement) return rejectedTransition('missing-closure');
     if (match.finalizedPossessionIds.includes(possessionId)) return rejectedTransition('already-finalized');
+    if (timed && match.periodEnd) return rejectedTransition('already-expired');
     const quarterPossessions = match.quarterPossessions + 1;
-    const periodComplete = quarterPossessions >= possessionsPerQuarter;
+    const periodComplete = timed ? timed.periodExpired : quarterPossessions >= possessionsPerQuarter;
     const finalPossession = match.quarter >= 4 && periodComplete;
     const halftimePossession = match.quarter === 2 && periodComplete;
     const next = finalPossession
       ? { nextPossession: null, nextStartYardLine: null, restartReason: null }
       : halftimePossession ? HALFTIME_KICKOFF : placement;
+    const periodEnd = finalPossession ? 'final'
+      : halftimePossession ? 'halftime'
+        : periodComplete ? 'quarterEnd' : null;
     return immutable({
       accepted: true,
-      periodEnd: finalPossession ? 'final'
-        : halftimePossession ? 'halftime'
-          : periodComplete ? 'quarterEnd' : null,
+      periodEnd,
       patch: {
         finalizedPossessionIds: [...match.finalizedPossessionIds, possessionId],
         quarterPossessions,
+        pendingNextPossession: next.nextPossession,
+        pendingNextStartYardLine: next.nextStartYardLine,
+        pendingRestartReason: next.restartReason,
+        ...(timed ? { periodEnd, carryDrive: false, conversionOwed: false } : {}),
+      },
+    });
+  }
+
+  // End a timed period whose clock reached zero without a terminal play: an
+  // idle call/decision screen, or a committed non-terminal play. Q1/Q3 carry
+  // the open drive unchanged; Q2 closes it for the halftime kickoff and Q4
+  // closes it with no restart. An owed conversion always completes first, and
+  // a period ends at most once.
+  function planPeriodExpiry(input, options) {
+    const match = periodState(input);
+    const origin = isRecord(options) ? options.origin : undefined;
+    if (origin !== 'idle' && origin !== 'committed') {
+      throw transitionError('INVALID_EXPIRY_ORIGIN', '/origin',
+        'Period expiry origin must be idle or committed.', ['idle', 'committed'], origin);
+    }
+    if (match.periodEnd) return rejectedTransition('already-expired');
+    if (match.conversionOwed || CONVERSION_PHASES.includes(match.phase)) return rejectedTransition('conversion-owed');
+    if (origin === 'idle' && !IDLE_EXPIRY_PHASES.includes(match.phase)) return rejectedTransition('phase');
+    if (origin === 'committed' && match.phase !== 'feedback') return rejectedTransition('phase');
+    if (!match.possessionId) return rejectedTransition('missing-possession');
+    if (match.finalizedPossessionIds.includes(match.possessionId)) return rejectedTransition('already-finalized');
+    if (match.quarter === 1 || match.quarter === 3) {
+      return immutable({
+        accepted: true,
+        periodEnd: 'quarterEnd',
+        carry: true,
+        patch: {
+          periodEnd: 'quarterEnd',
+          carryDrive: true,
+          pendingNextPossession: null,
+          pendingNextStartYardLine: null,
+          pendingRestartReason: null,
+        },
+      });
+    }
+    const final = match.quarter >= 4;
+    const next = final
+      ? { nextPossession: null, nextStartYardLine: null, restartReason: null }
+      : HALFTIME_KICKOFF;
+    const periodEnd = final ? 'final' : 'halftime';
+    return immutable({
+      accepted: true,
+      periodEnd,
+      carry: false,
+      patch: {
+        finalizedPossessionIds: [...match.finalizedPossessionIds, match.possessionId],
+        quarterPossessions: match.quarterPossessions + 1,
+        periodEnd,
+        carryDrive: false,
         pendingNextPossession: next.nextPossession,
         pendingNextStartYardLine: next.nextStartYardLine,
         pendingRestartReason: next.restartReason,
@@ -1478,10 +1553,26 @@
       const stale = sourceRejection(match, options.expectedSource, false);
       if (stale) return rejectedTransition(stale);
     }
+    const timed = isRecord(options) && options.timing === 'clock';
+    if (timed && match.carryDrive) {
+      if (!match.possession || !match.possessionId
+        || match.finalizedPossessionIds.includes(match.possessionId)) return rejectedTransition('invalid-carry');
+      return immutable({
+        accepted: true,
+        carry: true,
+        patch: { quarter: Math.min(match.quarter + 1, 4), quarterPossessions: 0, periodEnd: null, carryDrive: false },
+        drive: { possession: match.possession, startYardLine: null, restartReason: null },
+      });
+    }
     const fallbackPossession = match.quarter >= 2 ? 'defense' : 'offense';
     return immutable({
       accepted: true,
-      patch: { quarter: Math.min(match.quarter + 1, 4), quarterPossessions: 0 },
+      ...(timed ? { carry: false } : {}),
+      patch: {
+        quarter: Math.min(match.quarter + 1, 4),
+        quarterPossessions: 0,
+        ...(timed ? { periodEnd: null, carryDrive: false } : {}),
+      },
       drive: {
         possession: match.pendingNextPossession || fallbackPossession,
         startYardLine: match.pendingNextStartYardLine,
@@ -1501,7 +1592,8 @@
     const phase = PRESENTATION_PHASES[kind];
     const nextPossession = kind === 'offenseTransition' ? 'offense'
       : kind === 'defenseTransition' ? 'defense'
-        : kind === 'quarterEnd' ? match.pendingNextPossession || 'offense'
+        : kind === 'quarterEnd' ? match.pendingNextPossession
+          || (match.carryDrive && match.possession) || 'offense'
           : kind === 'halftime' ? match.pendingNextPossession || 'defense'
             : null;
     const patch = kind === 'final'
@@ -1515,16 +1607,104 @@
   // possession, or quarter has moved on, or after it has already presented.
   function planPossessionPresentation(input, options) {
     const match = periodState(input);
-    const possessionsPerQuarter = possessionsPerQuarterFrom(options);
+    const timed = isRecord(options) && options.timing === 'clock';
+    const possessionsPerQuarter = timed ? null : possessionsPerQuarterFrom(options);
     if (options.expectedSource != null) {
-      const stale = sourceRejection(match, options.expectedSource, true);
+      // A carried Q1/Q3 drive stays open across its quarter break.
+      const stale = sourceRejection(match, options.expectedSource, !(timed && match.carryDrive));
       if (stale) return rejectedTransition(stale);
       if (match.phase !== 'feedback') return rejectedTransition('phase');
     }
-    const kind = match.quarterPossessions >= possessionsPerQuarter
+    if (timed && match.conversionOwed) return rejectedTransition('conversion-owed');
+    const periodComplete = timed ? Boolean(match.periodEnd) : match.quarterPossessions >= possessionsPerQuarter;
+    const kind = periodComplete
       ? match.quarter >= 4 ? 'final' : match.quarter === 2 ? 'halftime' : 'quarterEnd'
       : match.pendingNextPossession === 'offense' ? 'offenseTransition' : 'defenseTransition';
     return presentationIntent(match, kind);
+  }
+
+  // Live quarter game clock (#222). Pure helpers over a monotonic `now` in
+  // milliseconds; football.js owns the timer and UI. Time never enters
+  // activePlay, contexts, questions, RNG, learning, or stats.
+  const QUARTER_MINUTE_CHOICES = Object.freeze([3, 5, 10]);
+  const DEFAULT_QUARTER_MINUTES = 5;
+  const LATE_GAME_FRACTION = 0.25;
+  const CLOCK_KEYS = Object.freeze(['gameId', 'quarter', 'quarterLengthMs', 'remainingMs', 'runningSince']);
+
+  function normalizeQuarterMinutes(value) {
+    const number = typeof value === 'string' && /^\d+$/.test(value) ? Number(value) : value;
+    return QUARTER_MINUTE_CHOICES.includes(number) ? number : null;
+  }
+
+  function finiteNow(now) {
+    if (typeof now !== 'number' || !Number.isFinite(now)) {
+      throw transitionError('INVALID_CLOCK_NOW', '/now', 'Clock time must be a finite monotonic number.', 'finite number', now);
+    }
+    return now;
+  }
+
+  function validateGameClock(clock) {
+    const diagnostics = [];
+    if (!isRecord(clock)) {
+      diagnostics.push(diagnostic('INVALID_CLOCK', '/', 'A game clock must be a plain object.'));
+    } else {
+      integerDiagnostic(clock.quarter, '/quarter', 1, 4, diagnostics);
+      integerDiagnostic(clock.quarterLengthMs, '/quarterLengthMs', 1, Number.MAX_SAFE_INTEGER, diagnostics);
+      integerDiagnostic(clock.remainingMs, '/remainingMs', 0, Number.MAX_SAFE_INTEGER, diagnostics);
+      if (Number.isInteger(clock.remainingMs) && clock.remainingMs > clock.quarterLengthMs) {
+        diagnostics.push(diagnostic('INVALID_CLOCK', '/remainingMs', 'Remaining time cannot exceed the quarter length.'));
+      }
+      if (clock.runningSince !== null && !(typeof clock.runningSince === 'number' && Number.isFinite(clock.runningSince))) {
+        diagnostics.push(diagnostic('INVALID_CLOCK', '/runningSince', 'A running clock needs a finite start time.'));
+      }
+    }
+    if (diagnostics.length) throw new FootballDomainError('INVALID_CLOCK', diagnostics);
+    return clock;
+  }
+
+  function createGameClock({ gameId = null, quarter = 1, quarterLengthMs } = {}) {
+    return immutable(validateGameClock({
+      gameId, quarter, quarterLengthMs, remainingMs: quarterLengthMs, runningSince: null,
+    }));
+  }
+
+  // Elapsed time is always recomputed from the start instant, never summed
+  // from timer callbacks. A non-monotonic `now` counts as zero elapsed.
+  function clockRemainingMs(clock, now) {
+    validateGameClock(clock);
+    if (clock.runningSince === null) return clock.remainingMs;
+    const elapsed = Math.max(0, finiteNow(now) - clock.runningSince);
+    return Math.max(0, Math.round(clock.remainingMs - elapsed));
+  }
+
+  function startGameClock(clock, now) {
+    validateGameClock(clock);
+    finiteNow(now);
+    if (clock.runningSince !== null || clock.remainingMs <= 0) return clock;
+    return immutable({ ...clock, runningSince: now });
+  }
+
+  function stopGameClock(clock, now) {
+    validateGameClock(clock);
+    if (clock.runningSince === null) return clock;
+    return immutable({ ...clock, remainingMs: clockRemainingMs(clock, now), runningSince: null });
+  }
+
+  function nextQuarterClock(clock, quarter) {
+    validateGameClock(clock);
+    return createGameClock({ gameId: clock.gameId, quarter, quarterLengthMs: clock.quarterLengthMs });
+  }
+
+  // Whole seconds round up, so 0:00 shows only once no time remains.
+  function clockDisplay(remainingMs) {
+    const seconds = Math.ceil(Math.max(0, Number(remainingMs) || 0) / 1000);
+    return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+  }
+
+  // Uncalibrated analogue of the old final-possession boundary: the last
+  // quarter of the fourth quarter's clock.
+  function clockLateGame(quarter, remainingMs, quarterLengthMs) {
+    return quarter === 4 && remainingMs <= quarterLengthMs * LATE_GAME_FRACTION;
   }
 
   const API = {
@@ -1572,6 +1752,21 @@
     planPeriodAdvance,
     presentationIntent,
     planPossessionPresentation,
+    planPeriodExpiry,
+    PERIOD_END_KINDS,
+    QUARTER_MINUTE_CHOICES,
+    DEFAULT_QUARTER_MINUTES,
+    LATE_GAME_FRACTION,
+    CLOCK_KEYS,
+    normalizeQuarterMinutes,
+    createGameClock,
+    validateGameClock,
+    clockRemainingMs,
+    startGameClock,
+    stopGameClock,
+    nextQuarterClock,
+    clockDisplay,
+    clockLateGame,
   };
 
   Object.defineProperty(root, 'FOOTBALL_DOMAIN', {

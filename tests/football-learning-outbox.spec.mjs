@@ -36,14 +36,27 @@ const FOURTH = Object.freeze({
   possession: 'offense', direction: 1, quarter: 1, down: 4, yardsToGo: 2, yardLine: 60, firstDownLine: 62, driveStart: 20,
   scores: { player: 0, opponent: 0 }, totalYards: { player: 0, opponent: 0 }, plays: 0, drivePlays: 0,
 });
+// #222: each step seeds an explicit, already-elapsed quarter clock
+// (clockRemainingMs). Recording runs get the identical external time input:
+// the same manual monotonic start and the same positive durations while the
+// clock runs (call, question, retry), plus a stopped-feedback interval.
 const SCRIPT = Object.freeze([
-  { name: 'offense first try', seed: OFFENSE, call: 0, answers: ['correct'] },
-  { name: 'offense retry', seed: { ...OFFENSE, down: 1, yardsToGo: 10, firstDownLine: 40 }, call: 2, answers: ['wrong', 'correct'] },
-  { name: 'defense second miss', seed: DEFENSE, call: 1, answers: ['wrong', 'wrong'] },
-  { name: 'defense first try', seed: { ...DEFENSE, down: 3, yardsToGo: 4, firstDownLine: 66 }, call: 0, answers: ['correct'] },
-  { name: 'field goal retry', seed: FOURTH, decision: 'fieldGoal', answers: ['wrong', 'correct'] },
-  { name: 'punt first try', seed: { ...FOURTH, yardLine: 50, yardsToGo: 10, firstDownLine: 60 }, decision: 'punt', answers: ['correct'] },
+  { name: 'offense first try', seed: OFFENSE, clockRemainingMs: 263000, call: 0, answers: ['correct'] },
+  { name: 'offense retry', seed: { ...OFFENSE, down: 1, yardsToGo: 10, firstDownLine: 40 }, clockRemainingMs: 251000, call: 2, answers: ['wrong', 'correct'] },
+  { name: 'defense second miss', seed: DEFENSE, clockRemainingMs: 199000, call: 1, answers: ['wrong', 'wrong'] },
+  { name: 'defense first try', seed: { ...DEFENSE, down: 3, yardsToGo: 4, firstDownLine: 66 }, clockRemainingMs: 187000, call: 0, answers: ['correct'] },
+  { name: 'field goal retry', seed: FOURTH, clockRemainingMs: 142000, decision: 'fieldGoal', answers: ['wrong', 'correct'] },
+  { name: 'punt first try', seed: { ...FOURTH, yardLine: 50, yardsToGo: 10, firstDownLine: 60 }, clockRemainingMs: 130000, decision: 'punt', answers: ['correct'] },
 ]);
+const CALL_MS = 4000;
+const ANSWER_MS = 3000;
+const FEEDBACK_MS = 5000;
+// Public clock facts under names the timing mask does not hide.
+const clockFacts = page => page.evaluate(() => {
+  const clock = JSON.parse(render_game_to_text()).gameClock;
+  return { remaining: clock.remainingMs, display: clock.display, running: clock.running, mode: JSON.parse(render_game_to_text()).mode };
+});
+const advanceClock = (page, ms) => page.evaluate(value => window.__footballTest.advanceClock(value), ms);
 
 const enrollmentFor = (overrides = {}) => ({
   generation: randomUUID(), deviceId: randomUUID(), profileIds: [randomUUID()], activeProfileId: null, ...overrides,
@@ -75,8 +88,14 @@ async function seedRng(page, seed) {
   }, seed);
 }
 
-async function present(page, step) {
-  await page.evaluate(seed => window.__footballTest.seedDriveState(seed), step.seed);
+async function present(page, step, timeline = null) {
+  await page.evaluate(seed => window.__footballTest.seedDriveState(seed),
+    timeline ? { ...step.seed, clockRemainingMs: step.clockRemainingMs } : step.seed);
+  if (timeline) {
+    timeline.push(['seeded', await clockFacts(page)]);
+    await advanceClock(page, CALL_MS);
+    timeline.push(['choice', await clockFacts(page)]);
+  }
   if (step.decision) await page.locator(`#decision-grid .decision-btn[data-action="${step.decision}"]`).click();
   else await page.locator('#call-grid .call-btn').nth(step.call).click();
   await expect.poll(() => mode(page)).toMatch(/^(question|feedback)$/);
@@ -112,20 +131,34 @@ async function privateStrings(page) {
   });
 }
 
-async function playStep(page, step, secrets) {
-  await present(page, step);
+async function playStep(page, step, secrets, { timed = false } = {}) {
+  const timeline = timed ? [] : null;
+  await present(page, step, timeline);
   const presented = await contracts(page);
   if ((await mode(page)) === 'question') {
     secrets.push(...await privateStrings(page));
-    for (const kind of step.answers) await answer(page, kind);
+    for (const kind of step.answers) {
+      if (timed) {
+        await advanceClock(page, ANSWER_MS);
+        timeline.push(['answering', await clockFacts(page)]);
+      }
+      await answer(page, kind);
+    }
     if (step.answers.length === 2 && step.answers[1] === 'wrong') {
       expect(await mode(page)).toBe('explanation');
       await continueAfterSecondMiss(page);
     }
   }
   await expect.poll(async () => (await contracts(page)).questionUi.outcomeCommitted).toBe(true);
+  if (timed) {
+    timeline.push(['resolved', await clockFacts(page)]);
+    await advanceClock(page, FEEDBACK_MS);
+    timeline.push(['resolved-later', await clockFacts(page)]);
+    expectClockTimeline(step, timeline);
+  }
   const c = await contracts(page);
   return {
+    clock: timeline,
     name: step.name,
     family: presented.questionInstance?.familyId ?? null,
     initialSupport: presented.questionUi.support,
@@ -173,9 +206,12 @@ async function playScript(page, { enrolled = null, failOutbox = false, offline =
   if (offline) await page.context().setOffline(true);
   await page.evaluate(() => window.__footballTest.setQuestionFault(null));
   await seedRng(page, 0x1990c0de);
+  // #222: identical external clock input in every recording mode, at the same
+  // boundary as the RNG seed (see SCRIPT clock schedule).
+  await page.evaluate(() => window.__footballTest.useManualClock(0));
   const secrets = [];
   const steps = [];
-  for (const step of SCRIPT) steps.push(await playStep(page, step, secrets));
+  for (const step of SCRIPT) steps.push(await playStep(page, step, secrets, { timed: true }));
   await page.evaluate(async key => {
     await navigator.locks.request(`${key}:central-write`, { mode: 'exclusive' }, () => {});
     await LEARNING_OUTBOX.idle();
@@ -192,6 +228,24 @@ async function playScript(page, { enrolled = null, failOutbox = false, offline =
   page.off('request', onRequest);
   page.off('pageerror', onError);
   return { ...result, steps, secrets, requests, startupVersion, errors, outbox: await readOutbox(page) };
+}
+
+// The active countdown falls by exactly the supplied durations; resolved
+// feedback is stopped and does not.
+function expectClockTimeline(step, timeline) {
+  const at = label => timeline.find(([name]) => name === label)[1];
+  expect(at('seeded').remaining, `${step.name}: seeded`).toBe(step.clockRemainingMs);
+  expect(at('choice'), `${step.name}: choice`).toMatchObject({ remaining: step.clockRemainingMs - CALL_MS, running: true });
+  const answering = timeline.filter(([name]) => name === 'answering').map(([, facts]) => facts);
+  answering.forEach((facts, index) => {
+    expect(facts, `${step.name}: answer ${index + 1}`).toMatchObject({
+      mode: 'question', running: true, remaining: step.clockRemainingMs - CALL_MS - ANSWER_MS * (index + 1),
+    });
+  });
+  const resolved = at('resolved');
+  expect(resolved.running, `${step.name}: resolved stops`).toBe(false);
+  expect(resolved.remaining).toBe(step.clockRemainingMs - CALL_MS - ANSWER_MS * answering.length);
+  expect(at('resolved-later'), `${step.name}: stopped feedback`).toEqual(resolved);
 }
 
 // Expected per-question events from the domain-accepted script.
@@ -245,12 +299,17 @@ test('seeded play is identical with recording off, on, offline and failing; reco
   for (const run of [on, offline, failing]) {
     expect(run.errors).toEqual([]);
     expect(run.rng).toEqual(off.rng);
+    expect(run.steps.map(step => step.clock)).toEqual(off.steps.map(step => step.clock));
     expect(mask(run.steps)).toEqual(mask(off.steps));
     expect(mask(JSON.parse(run.stats))).toEqual(mask(JSON.parse(off.stats)));
     expect(mask(run.statsSession)).toEqual(mask(off.statsSession));
   }
   expect(off.rng.football.length + off.rng.scheduler.length + off.rng.presentation.length).toBeGreaterThan(0);
   expect(off.steps.filter(step => step.family).length).toBeGreaterThanOrEqual(5);
+  // The frozen private opponent plans saw real, nonzero elapsed quarter time.
+  const plans = off.steps.map(step => step.privatePlan).filter(Boolean);
+  expect(plans.length).toBeGreaterThan(0);
+  for (const plan of plans) expect(plan.tendency.context.quarterProgress).toBeGreaterThan(0);
   expect(new Set(off.steps.map(step => step.policy))).toEqual(new Set(['firstTryCorrect', 'retryCorrect', 'secondMiss']));
 
   // The recorded run: a valid envelope, one question per presented step, exact events.

@@ -1194,13 +1194,16 @@ test('phone pending-result recovery keeps corrupt and future copy plus both acti
       if (name === key) throw new DOMException('blocked', 'QuotaExceededError');
       return nativeSetItem.call(this, name, value);
     };
+    // #222: the Q4 clock reaches 0:00 during this punt, so it ends the game.
+    window.__footballTest.useManualClock(0);
     window.__footballTest.seedDriveState({
       possession: 'offense', direction: 1, quarter: 4,
       down: 4, yardsToGo: 10, yardLine: 28, firstDownLine: 38, driveStart: 20,
-      scores: { player: 3, opponent: 7 }, quarterPossessions: 3,
+      scores: { player: 3, opponent: 7 }, quarterPossessions: 3, clockRemainingMs: 1,
     });
   }, 'footballMathSeason:v1');
   await page.locator('#decision-grid .decision-btn[data-action="punt"]').click();
+  await page.evaluate(() => window.__footballTest.advanceClock(1));
   await answerChoice(page, await liveChoiceId(page, 'correct'));
   await expect(page.locator('#ov-end')).toHaveClass(/show/);
   await expect(page.locator('#ov-end-btn')).toHaveText('Retry Saving');

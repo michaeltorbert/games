@@ -248,8 +248,10 @@ instructional authority are split across ordered plain-global scripts:
   type-specific transition projection/reprojection. `activeSnap` is only the
   derived scrimmage compatibility view. It also owns the DOM-free possession
   and period transition planners (drive start, closure, transition/period
-  advance, presentation intent, and stale-source rejection); `football.js`
-  only copies their accepted frozen patches into live state.
+  advance, timed period expiry, presentation intent, and stale-source
+  rejection) plus the pure quarter game-clock helpers (#222); `football.js`
+  only copies their accepted frozen patches into live state and owns the
+  clock's timer, UI, and Options pause.
 - `contextual-questions.js` owns DOM-free, play-grounded question families,
   their immutable literacy/independent evidence classification, and structured
   stable choices. Scrimmage and special-team pools consume only their closed
@@ -269,9 +271,12 @@ instructional authority are split across ordered plain-global scripts:
   `questionInstance`, and `pendingResolution` contracts and commits each play
   atomically after instruction resolves. A six-point touchdown and its later
   conversion are distinct plays with distinct IDs; the conversion closes the
-  possession. A season result can originate only from that production commit
-  path after the last Q4 possession is newly finalized and after stats and the
-  public result event, never from final-overlay presentation helpers.
+  possession. Quarters are timed by one game clock (#222); the legacy
+  four-possession count is fixture-only. A season result can originate only
+  from that production commit path after the last Q4 possession is newly
+  finalized and after stats and the public result event, or from the guarded
+  idle Q4 expiry that closes an open possession with no play, never from
+  final-overlay presentation helpers.
 
 ### Kayak
 

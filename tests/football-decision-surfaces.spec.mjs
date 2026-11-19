@@ -33,14 +33,14 @@ const PLAYER_TRY = Object.freeze({
 });
 // Opponent decision table: punt from its own 20, a legal field goal from the
 // player's 40, go on fourth and two beyond midfield, and a two-point try when
-// it trails by two on its last scheduled Q4 possession.
+// it trails by two in the timed late game (#222: the final 25% of the Q4 clock).
 const OPPONENT_PUNT = opponentFourthDown(80, 10);
 const OPPONENT_FIELD_GOAL = opponentFourthDown(40, 2);
 const OPPONENT_GO = opponentFourthDown(49, 2);
 const OPPONENT_TWO_POINT_TRY = Object.freeze({
   possession: 'defense', direction: -1, quarter: 4, quarterPossessions: 3, down: 1,
   yardsToGo: 10, yardLine: 80, firstDownLine: 70, driveStart: 80,
-  scores: { player: 14, opponent: 12 },
+  scores: { player: 14, opponent: 12 }, clockRemainingMs: 60000,
 });
 // Issue #186: only the player's own two-point try uses the three-digit challenge.
 const CHALLENGE_FAMILIES = ['two-point-three-digit-add', 'two-point-three-digit-subtract'];

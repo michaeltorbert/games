@@ -150,12 +150,14 @@ test('Quick Game preserves exact season bytes while start controls and semantic 
   await page.locator('#start-game-btn').click();
   await expect.poll(()=>page.evaluate(()=>sessionInitialized)).toBe(true);
   expect(await page.evaluate(() => JSON.parse(render_game_to_text()).match.opponent.id)).toBe('wake-forest');
+  await page.evaluate(() => window.__footballTest.useManualClock(0));
   await page.evaluate(() => window.__footballTest.seedDriveState({
     possession: 'offense', direction: 1, quarter: 4,
     down: 4, yardsToGo: 10, yardLine: 28, firstDownLine: 38, driveStart: 20,
-    scores: { player: 3, opponent: 7 }, quarterPossessions: 3,
+    scores: { player: 3, opponent: 7 }, quarterPossessions: 3, clockRemainingMs: 1,
   }));
   await page.locator('#decision-grid .decision-btn[data-action="punt"]').click();
+  await page.evaluate(() => window.__footballTest.advanceClock(1)); // #222: the clock reaches 0:00 during this play
   await answerCorrect(page);
   await expect(page.locator('#ov-end')).toHaveClass(/show/);
   expect(await page.evaluate((key) => localStorage.getItem(key), STORAGE_KEY)).toBe(original);
@@ -279,12 +281,14 @@ test('a queued Season start cannot replace a Quick Game started while its real W
   expect(created.schedule).toEqual(SCHEDULE);
   expect(created.results).toEqual([]);
 
+  await page.evaluate(() => window.__footballTest.useManualClock(0));
   await page.evaluate(() => window.__footballTest.seedDriveState({
     possession: 'offense', direction: 1, quarter: 4,
     down: 4, yardsToGo: 10, yardLine: 28, firstDownLine: 38, driveStart: 20,
-    scores: { player: 3, opponent: 7 }, quarterPossessions: 3,
+    scores: { player: 3, opponent: 7 }, quarterPossessions: 3, clockRemainingMs: 1,
   }));
   await page.locator('#decision-grid .decision-btn[data-action="punt"]').click();
+  await page.evaluate(() => window.__footballTest.advanceClock(1)); // #222: the clock reaches 0:00 during this play
   await answerCorrect(page);
   await expect(page.locator('#ov-end')).toHaveClass(/show/);
   expect(await page.evaluate((key) => localStorage.getItem(key), STORAGE_KEY)).toBe(createdRaw);
@@ -468,14 +472,16 @@ test('the last-quarter touchdown settles only after its conversion and presentat
       if (name === key) window.__seasonResultWrites++;
       return nativeSetItem.call(this, name, value);
     };
+    window.__footballTest.useManualClock(0);
     window.__footballTest.seedDriveState({
       possession: 'offense', direction: 1, quarter: 4,
       down: 1, yardsToGo: 1, yardLine: 99, firstDownLine: 100, driveStart: 99,
-      scores: { player: 14, opponent: 14 }, quarterPossessions: 3,
+      scores: { player: 14, opponent: 14 }, quarterPossessions: 3, clockRemainingMs: 1,
     });
   }, STORAGE_KEY);
 
   await page.locator('#call-grid .call-btn').first().click();
+  await page.evaluate(() => window.__footballTest.advanceClock(1)); // #222: the clock reaches 0:00 during this play
   await answerCorrect(page);
   expect(await storedResults(page)).toHaveLength(0);
   expect(await page.evaluate(() => FOOTBALL_SEASON.pendingKind())).toBeNull();
@@ -517,13 +523,15 @@ test('terminal conversions settle once for player two-point and opponent PAT or 
       if (name === key) window.__seasonResultWrites++;
       return nativeSetItem.call(this, name, value);
     };
+    window.__footballTest.useManualClock(0);
     window.__footballTest.seedDriveState({
       possession: 'offense', direction: 1, quarter: 4,
       down: 1, yardsToGo: 1, yardLine: 99, firstDownLine: 100, driveStart: 99,
-      scores: { player: 14, opponent: 14 }, quarterPossessions: 3,
+      scores: { player: 14, opponent: 14 }, quarterPossessions: 3, clockRemainingMs: 1,
     });
   }, STORAGE_KEY);
   await page.locator('#call-grid .call-btn').first().click();
+  await page.evaluate(() => window.__footballTest.advanceClock(1)); // #222: the clock reaches 0:00 during this play
   await answerCorrect(page);
   await expect(page.locator('#ov-td')).toHaveClass(/show/);
   await page.locator('#ov-td-btn').click();
@@ -562,10 +570,11 @@ test('terminal conversions settle once for player two-point and opponent PAT or 
         if (name === key) window.__seasonResultWrites++;
         return nativeSetItem.call(this, name, value);
       };
+      window.__footballTest.useManualClock(0);
       window.__footballTest.seedDriveState({
         possession: 'defense', direction: -1, quarter: 4,
         down: 1, yardsToGo: 1, yardLine: 1, firstDownLine: 0, driveStart: 1,
-        scores: initialScores, quarterPossessions: 3,
+        scores: initialScores, quarterPossessions: 3, clockRemainingMs: 1,
       });
       window.__footballTest.setQuestionFault('empty-pool');
     }, { key: STORAGE_KEY, initialScores: scenario.initialScores });
@@ -574,6 +583,9 @@ test('terminal conversions settle once for player two-point and opponent PAT or 
     expect(await storedResults(page)).toHaveLength(0);
     await page.evaluate(() => window.__footballTest.setQuestionFault(null));
     await page.locator('#ov-td-btn').click();
+    // #222: the bypassed touchdown commits at once; the clock reaches 0:00
+    // during the opponent's conversion question instead.
+    await page.evaluate(() => window.__footballTest.advanceClock(1));
     await expect.poll(() => page.evaluate(() => (
       window.__footballTest.activeContracts().activePlay?.context?.attemptType || null
     ))).toBe(scenario.attemptType);
@@ -596,14 +608,16 @@ test('a terminal binding mismatch never claims the active Season final was saved
   page.on('pageerror', error => pageErrors.push(error.message));
   await startSeasonFromEmpty(page);
   const binding = await page.evaluate(() => window.__footballTest.activeSeasonGame());
+  await page.evaluate(() => window.__footballTest.useManualClock(0));
   await page.evaluate(() => window.__footballTest.seedDriveState({
     gameId: 'mismatched-live-game',
     possession: 'offense', direction: 1, quarter: 4,
     down: 4, yardsToGo: 10, yardLine: 28, firstDownLine: 38, driveStart: 20,
-    scores: { player: 3, opponent: 7 }, quarterPossessions: 3,
+    scores: { player: 3, opponent: 7 }, quarterPossessions: 3, clockRemainingMs: 1,
   }));
 
   await page.locator('#decision-grid .decision-btn[data-action="punt"]').click();
+  await page.evaluate(() => window.__footballTest.advanceClock(1)); // #222: the clock reaches 0:00 during this play
   await answerCorrect(page);
   await expect(page.locator('#ov-end')).toHaveClass(/show/);
   expect(pageErrors).toEqual([]);
@@ -658,15 +672,17 @@ test('a terminal punt keeps one pending result, exposes recovery actions, and re
       }
       return nativeSetItem.call(this, name, value);
     };
+    window.__footballTest.useManualClock(0);
     window.__footballTest.seedDriveState({
       possession: 'offense', direction: 1, quarter: 4,
       down: 4, yardsToGo: 10, yardLine: 28, firstDownLine: 38, driveStart: 20,
-      scores: { player: 3, opponent: 7 }, quarterPossessions: 3,
+      scores: { player: 3, opponent: 7 }, quarterPossessions: 3, clockRemainingMs: 1,
     });
   }, STORAGE_KEY);
 
   await expect(page.locator('#decision-grid .decision-btn[data-action="punt"]')).toBeVisible();
   await page.locator('#decision-grid .decision-btn[data-action="punt"]').click();
+  await page.evaluate(() => window.__footballTest.advanceClock(1)); // #222: the clock reaches 0:00 during this play
   await answerCorrect(page);
   await expect(page.locator('#ov-end')).toHaveClass(/show/);
   await expect(page.locator('#ov-end-season')).toContainText(
@@ -740,13 +756,15 @@ test('pending finals keep exact incompatible bytes and explain future or damaged
         }
         return nativeSetItem.call(this, name, value);
       };
+      window.__footballTest.useManualClock(0);
       window.__footballTest.seedDriveState({
         possession: 'offense', direction: 1, quarter: 4,
         down: 4, yardsToGo: 10, yardLine: 28, firstDownLine: 38, driveStart: 20,
-        scores: { player: 3, opponent: 7 }, quarterPossessions: 3,
+        scores: { player: 3, opponent: 7 }, quarterPossessions: 3, clockRemainingMs: 1,
       });
     }, STORAGE_KEY);
     await page.locator('#decision-grid .decision-btn[data-action="punt"]').click();
+    await page.evaluate(() => window.__footballTest.advanceClock(1)); // #222: the clock reaches 0:00 during this play
     await answerCorrect(page);
     await expect(page.locator('#ov-end-btn')).toHaveText('Retry Saving');
     const attemptsBeforeIncompatible = await page.evaluate(() => window.__seasonResultWriteAttempts);
@@ -820,13 +838,15 @@ test('a competing final cannot confirm the local result after transient conflict
       if (name === key) throw new DOMException('blocked', 'QuotaExceededError');
       return nativeSetItem.call(this, name, value);
     };
+    window.__footballTest.useManualClock(0);
     window.__footballTest.seedDriveState({
       possession: 'offense', direction: 1, quarter: 4,
       down: 4, yardsToGo: 10, yardLine: 20, firstDownLine: 30, driveStart: 20,
-      scores: { player: 0, opponent: 0 }, quarterPossessions: 3,
+      scores: { player: 0, opponent: 0 }, quarterPossessions: 3, clockRemainingMs: 1,
     });
   }, STORAGE_KEY);
   await page.locator('#decision-grid .decision-btn[data-action="punt"]').click();
+  await page.evaluate(() => window.__footballTest.advanceClock(1)); // #222: the clock reaches 0:00 during this play
   await answerCorrect(page);
   await expect(page.locator('#ov-end-btn')).toHaveText('Retry Saving');
 
@@ -940,12 +960,14 @@ test('a legacy Duke Season keeps its locked team while the independent Quick tea
   await page.locator('#start-game-btn').click();
   await expect.poll(() => page.evaluate(() => sessionInitialized)).toBe(true);
   expect(await page.evaluate(() => JSON.parse(render_game_to_text()).match.player.id)).toBe('texas');
+  await page.evaluate(() => window.__footballTest.useManualClock(0));
   await page.evaluate(() => window.__footballTest.seedDriveState({
     possession: 'offense', direction: 1, quarter: 4,
     down: 4, yardsToGo: 10, yardLine: 28, firstDownLine: 38, driveStart: 20,
-    scores: { player: 3, opponent: 7 }, quarterPossessions: 3,
+    scores: { player: 3, opponent: 7 }, quarterPossessions: 3, clockRemainingMs: 1,
   }));
   await page.locator('#decision-grid .decision-btn[data-action="punt"]').click();
+  await page.evaluate(() => window.__footballTest.advanceClock(1)); // #222: the clock reaches 0:00 during this play
   await answerCorrect(page);
   await expect(page.locator('#ov-end')).toHaveClass(/show/);
   await expect(page.locator('#ov-end-score')).toHaveAttribute('aria-label', /^Texas 3, /);

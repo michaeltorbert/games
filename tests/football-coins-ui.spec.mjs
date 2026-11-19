@@ -1,5 +1,6 @@
 import {test,expect} from '@playwright/test';
 import {randomUUID} from 'node:crypto';
+import {writeFile} from 'node:fs/promises';
 import {installConsent,readOutbox} from './learning-outbox-fixture.mjs';
 import {muteFootballForTests,expectFootballTestMuted} from './football-test-mute.mjs';
 const clocks=['time-read-one-minute','game-finish-time','time-read-one-second','game-halfway-time'];
@@ -39,6 +40,20 @@ async function geometry(page,testInfo,name){
 for(const playMode of ['quick','season'])test(`#215 normal ${playMode} game interleaves coins and clocks on both sides through final`,async({page},testInfo)=>{
  test.skip(testInfo.project.name!=='ipad-11-landscape','Full normal game evidence runs on primary target; all six layouts have exhaustive coin support states.');
  test.setTimeout(180000);await page.clock.install();await start(page,playMode);
+ // #222 reproducible fixture. The production Start reseeds every stream from
+ // Math.random, so the root seed is set afterwards through the existing test
+ // seam, on the first offense call screen before any football/scheduler/
+ // presentation draw. The Playwright clock is then paused: game time moves
+ // only by the explicit advances below (20 s per verified call screen, plus
+ // the existing 2 s steps), so period expiry points are reproducible too.
+ // Synthetic test input, not learner pace; the clock policy itself does not
+ // promise both-side coin exposure in every random game.
+ const fixture={rootSeed:0x2220215,callAdvanceMs:20000,pauseAdvanceMs:1000};
+ const fresh=await contracts(page);
+ expect(fresh.activePlay).toBeNull();expect(fresh.statsSession.completedPlays).toHaveLength(0);expect(fresh.learning.presented).toBe(0);
+ await page.clock.pauseAt(await page.evaluate(ms=>Date.now()+ms,fixture.pauseAdvanceMs));
+ await page.evaluate(seed=>window.__footballTest.setRootSeed(seed),fixture.rootSeed);
+ fixture.startClock=(await contracts(page)).render.gameClock;
  const seen=[];let last=null,ordinal=0;
  for(let step=0;step<850;step++){
   const m=await mode(page);if(m==='final')break;
@@ -64,9 +79,17 @@ for(const playMode of ['quick','season'])test(`#215 normal ${playMode} game inte
     expect(after.statsSession.completedPlays.find(v=>v.playId===p.playId).question.evidenceClass).toBe(q.evidenceClass);
    }else await page.locator(`#b${q.choices.findIndex(v=>v.id===q.correctChoiceId)}`).tap();
    await page.clock.fastForward(2000);
-  }else if(m==='call')await page.locator('#call-grid .call-btn').last().tap();
+  }else if(m==='call'){
+   // #222: game time passes only while usable choices are shown, through the
+   // production clock and tick. 20 s is synthetic test input, not learner pace.
+   // A call is tapped only if 0:00 did not just end the period.
+   await page.clock.fastForward(fixture.callAdvanceMs);
+   if(await mode(page)==='call')await page.locator('#call-grid .call-btn').last().tap();
+  }
   else {const decision=page.locator('#decision-grid button:visible').first(),overlay=page.locator('.overlay.show .ov-btn:visible').first();if(await decision.count())await decision.tap();else if(await overlay.count())await overlay.tap();else await page.clock.fastForward(2000);}
  }
+ // Exact fixture inputs and coin trace, kept even when an assertion fails.
+ await writeFile(testInfo.outputPath('coin-fixture-trace.json'),JSON.stringify({playMode,fixture,ordinal,seen,final:(await contracts(page)).render.score,mode:await mode(page)},null,2));
  expect(await mode(page)).toBe('final');expect(new Set(seen.map(v=>v.side))).toEqual(new Set(['offense','defense']));
  if(playMode==='season'){
   await expect.poll(()=>page.evaluate(()=>FOOTBALL_SEASON.snapshot().gamesPlayed)).toBe(1);
@@ -75,7 +98,7 @@ for(const playMode of ['quick','season'])test(`#215 normal ${playMode} game inte
   const repeated=await page.evaluate(()=>({snapshot:FOOTBALL_SEASON.snapshot(),bytes:localStorage.getItem('footballMathSeason:v1')}));
   expect(repeated).toEqual(settled);expect(repeated.snapshot.gameNumber).toBe(2);
  }
- await testInfo.attach('normal-game-coin-trace',{body:JSON.stringify({playMode,ordinal,seen,season:await page.evaluate(()=>FOOTBALL_SEASON.snapshot())},null,2),contentType:'application/json'});
+ await testInfo.attach('normal-game-coin-trace',{body:JSON.stringify({playMode,fixture,ordinal,seen,final:(await contracts(page)).render.score,season:await page.evaluate(()=>FOOTBALL_SEASON.snapshot())},null,2),contentType:'application/json'});
 });
 test('#215 every production coin family renders initial retry and worked states with exact contract and geometry',async({page},testInfo)=>{
  test.setTimeout(180000);await start(page);await page.locator('#call-grid .call-btn').first().tap();
