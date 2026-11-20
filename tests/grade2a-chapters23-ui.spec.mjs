@@ -8,7 +8,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {footballMuteTest as test,expect} from './curriculum-fixture.mjs';
 const KEY_2A='math-curriculum:progress:grade2a:v1',BOOK_2A='place-value-practice:book:grade2a:v1',BOOK_KEY='math-curriculum:selected-book:v1';
-const legacy=JSON.parse(fs.readFileSync('tests/fixtures/grade2a223-legacy.json','utf8'));
+// Resolved from this spec's location: the release runner uses a run-local cwd.
+const legacy=JSON.parse(fs.readFileSync(new URL('./fixtures/grade2a223-legacy.json',import.meta.url),'utf8'));
 const escape=text=>text.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
 const dialog=page=>page.locator('.curriculum-dialog');
 async function report(page,book,value){
