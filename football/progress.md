@@ -3176,3 +3176,34 @@ background pause with nothing focused resumes onto the first usable gameplay
 control. A regression reproduces the unfocused-tap condition in any engine.
 Pinned Chromium/WebKit release gates, native lifecycle, fresh review, merge and
 Pages verification remain pending; nothing is released.
+
+## 2026-11-20 — #223 Grade 2-A through Chapter 3 (proposed 1.38.0, release candidate, unreleased)
+
+Original task prompt (Michael, 2026-11-18; issue #223 recorded scope approval
+2026-11-19 America/New_York): extend Math Mammoth Grade 2-A (rev-2025-09-06)
+practice through the end of Chapter 3, printed page 97, using the existing
+completed-page prompt, without claiming James completed it, advancing his
+page, or inferring mastery.
+
+- Football change is one exact gate: `MATH_CURRICULUM_2A.operationPage` places
+  a teen 11-18 minus a one-digit number that crosses ten on page 73, so existing
+  truthful relation families (for example score differences) admit those live
+  operands once the game's frozen Grade 2-A page reaches 73. No new live family,
+  fact pool, reporting tuple, or event; Chapter 3 addition was already page 14.
+- Clock and calendar practice (Chapter 2) runs only in Place by Place Book
+  topics; Time Lab and the #222 quarter clock are unchanged and unread.
+- #220 floor weights, readiness, and constants are unchanged; completion never
+  counts as fluency.
+- Each game still snapshots both books once at start; retries and Options
+  Resume keep that snapshot, and a changed page applies at the next game.
+- Prompt copy says where Grade 2-A practice lives. Version 1.38.0 in
+  `GAME_VERSION`, every cache key, `games.js`, and `version.json` (coordinated
+  with Place by Place 1.11.0; Kayak and Prague unchanged).
+- Tests: `tests/football-difficulty-floor-domain.spec.mjs` adds the page-72/73
+  boundary on a real snap; `tests/grade2a-chapters23-domain.spec.mjs` and
+  `tests/grade2a-chapters23-ui.spec.mjs` are registered in
+  `scripts/run-football-release.mjs`.
+
+No check results are claimed in this entry; the full Chromium and WebKit
+release gates, registry check against the exact base, fresh independent review,
+merge, and Pages verification remain with the coordinator. Nothing is released.

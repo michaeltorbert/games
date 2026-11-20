@@ -1,38 +1,50 @@
 (() => {
   'use strict';
   // Two book lanes share one panel. Grade 1-B keeps its original store and
-  // topics; Grade 2-A (#219) has its own store and Chapter 1 lesson topics.
-  // The lane follows the book chosen in the shared page prompt and is frozen
-  // with its page for the run.
+  // topics; Grade 2-A (#219, #223) has its own store and Chapters 1-3 lesson
+  // topics. The lane follows the book chosen in the shared page prompt.
+  // Grade 2-A runs are frozen: page, topic, and catalog ceiling change only at
+  // an explicit boundary (Start new book session, a topic change, or a
+  // confirmed page that differs from the saved run). Next, retries, reloads at
+  // the same page, and Options never change them.
   const has2A=typeof PLACE_BOOK_2A!=='undefined'&&typeof MATH_CURRICULUM_2A!=='undefined';
+  const C2=has2A?MATH_CURRICULUM_2A:null;
   const LANES={
     '1-B':{api:PLACE_BOOK,key:'place-value-practice:book:v1',field:'chapter',topics:[[0,'All completed lessons'],[5,'Facts and word problems'],[6,'Shapes and fractions'],[7,'Measurement'],[8,'Adding and subtracting'],[9,'Graphs'],[10,'Coins']],
       scope:(page,q)=>`Math Mammoth Grade 1-B (2026) · completed through printed page ${page}${q?` · lesson page ${q.page}`:''}`,
       empty:'No completed lessons in this chapter yet.'},
-    ...(has2A?{'2-A':{api:PLACE_BOOK_2A,key:'place-value-practice:book:grade2a:v1',field:'lesson',topics:[[0,'All completed Chapter 1 lessons'],...MATH_CURRICULUM_2A.LESSONS.map(l=>[l.id,l.title])],
-      scope:(page,q)=>`Math Mammoth Grade 2-A (2025 revision) · completed through printed page ${page}${q?` · lesson page ${q.page}`:''}${page>MATH_CURRICULUM_2A.CHAPTER1_LAST?' · Chapter 1 practice only':''}`,
-      empty:'No completed Grade 2-A Chapter 1 lessons in this topic yet. Lessons start on printed page 10.'}}:{}),
+    ...(has2A?{'2-A':{api:PLACE_BOOK_2A,key:'place-value-practice:book:grade2a:v1',field:'lesson',frozen:true,
+      topics:[[0,'All completed lessons'],...C2.LESSONS.map(l=>[l.id,l.title,['Chapter 1','Chapter 2: Clock','Chapter 3: Facts within 0-18'][(l.chapter??1)-1]])],
+      scope:(page,q,state)=>`Math Mammoth Grade 2-A (2025 revision) · completed through printed page ${page}${q?` · lesson page ${q.page}`:''}`
+        +(state?.catalogThrough===C2.LEGACY_CATALOG_THROUGH&&page>C2.CHAPTER1_LAST?' · Chapter 1 practice only in this saved session. Start a new book session to add Chapters 2 and 3.'
+          :page>C2.CHAPTER3_LAST?' · practice covers Chapters 1-3 (through page 97)':''),
+      empty:'No completed Grade 2-A lessons in this topic yet. Lessons start on printed page 10.'}}:{}),
   };
   // Place by Place context for the shared prompt: where each book's practice lives.
   CURRICULUM_UI.configure?.({notes:{'1-B':'Grade 1-B is used by Addition & subtraction, Number facts, and Book topics.',
-    '2-A':'Grade 2-A Chapter 1 practice is in Book topics (Options, then Book topics). Addition & subtraction and Number facts keep using your Grade 1-B page.'}});
+    '2-A':'Grade 2-A Chapters 1-3 practice (clock, calendar, and facts to 18) is in Book topics (Options, then Book topics). Addition & subtraction and Number facts keep using your Grade 1-B page.'}});
 
-  const lanes={};for(const id of Object.keys(LANES))lanes[id]={state:null,raw:null,writable:true,notice:''};
+  const lanes={};for(const id of Object.keys(LANES))lanes[id]={state:null,raw:null,writable:true,notice:'',conflict:false};
   let lane=null,active=false,busy=false;
   const L=()=>LANES[lane],R=()=>lanes[lane];
   const node=(tag,text,cls)=>{const el=document.createElement(tag);if(text)el.textContent=text;if(cls)el.className=cls;return el;};
   const panel=node('main',null,'book-practice');panel.hidden=true;panel.id='book-practice';
   const title=node('h2','Book topics'),scope=node('p'),setup=node('div',null,'arithmetic-setup'),topic=node('label','Topic ','book-topic'),select=node('select'),restart=node('button','Start new book session','button');
   const topicHelp=node('p','Changing the topic starts a new book session and asks for your page.','book-topic-help');topicHelp.id='book-topic-help';select.setAttribute('aria-describedby',topicHelp.id);topic.append(select);setup.append(topic,restart,topicHelp);
-  function topics(){select.replaceChildren();for(const [value,label] of L().topics){const option=node('option',label);option.value=value;select.append(option);}}
+  // Optional third entry groups lesson topics under a chapter heading.
+  function topics(){select.replaceChildren();let group=null;for(const [value,label,heading] of L().topics){const option=node('option',label);option.value=value;
+    if(heading&&group?.label!==heading){group=document.createElement('optgroup');group.label=heading;select.append(group);}(heading?group:select).append(option);}}
   const field=PLACE_PRACTICE_FIELD.create('book','book-drive'),drive=field.element;
   const question=node('h3'),visual=node('div',null,'book-visual'),choices=node('div',null,'arithmetic-choices'),feedback=node('p'),help=node('p'),next=node('button','Next','button button--primary'),message=node('p');
   question.id='book-question';choices.setAttribute('aria-labelledby',question.id);feedback.setAttribute('role','status');message.setAttribute('role','status');
   const worked=node('section',null,'arithmetic-explanation book-worked');worked.id='book-worked';worked.hidden=true;
   panel.append(title,scope,setup,drive,question,visual,choices,feedback,help,worked,next,message);
   document.getElementById('practice').after(panel);
+  // Dense #223 pictures (calendar grid, several clocks, tables) get full width.
+  const DETAIL=new Set(['calendar','clock-set','day-strip','rainbow','add-table','io-table','code-key','number-line']);
   function svg(v){
     if(!v)return '';
+    if(typeof PLACE_BOOK_2A_VISUALS!=='undefined'&&PLACE_BOOK_2A_VISUALS.has(v.kind))return PLACE_BOOK_2A_VISUALS.svg(v);
     const line=(x1,y1,x2,y2,w=3)=>`<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#233f3b" stroke-width="${w}"/>`;
     const text=(x,y,t,size=18)=>`<text x="${x}" y="${y}" fill="#173f35" font-size="${size}" text-anchor="middle">${t}</text>`;
     const rect=(x,y,w,h,fill='#63ad91')=>`<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${fill}" stroke="#234e42" stroke-width="2"/>`;
@@ -104,8 +116,8 @@
     return `<svg viewBox="0 0 320 215" role="img" aria-label="${descriptions[v.kind]}">${body}</svg>`;
   }
   function render(){
-    const state=R()?.state;if(!state)return;const api=L().api,q=api.current(state);scope.textContent=L().scope(state.page,q);
-    question.textContent=q?.prompt||L().empty;if(q?.skillId==='graph-build'&&state.done)q.visual.values[0]=Number(q.answer);visual.innerHTML=svg(q?.visual);choices.replaceChildren();
+    const state=R()?.state;if(!state)return;const api=L().api,q=api.current(state);scope.textContent=L().scope(state.page,q,state);
+    question.textContent=q?.prompt||L().empty;if(q?.skillId==='graph-build'&&state.done)q.visual.values[0]=Number(q.answer);visual.innerHTML=svg(q?.visual);visual.classList.toggle('book-visual--detail',DETAIL.has(q?.visual?.kind));choices.replaceChildren();
     if(q)for(const value of q.choices){const button=node('button',value,'button arithmetic-answer');button.disabled=state.done||state.misses.includes(value);button.onclick=()=>change(()=>api.answer(R().state,value));choices.append(button);}
     feedback.textContent=state.done?'Correct! Keep moving toward a touchdown.':state.misses.length?'Try again. Use the explanation to help.':'';
     // Remedial help stays available after a miss; once complete, the worked-answer panel replaces it.
@@ -115,14 +127,30 @@
     field.render(yards,points,`${yards} / 100 yards · ${points} points · ${state.completed} completed`);message.textContent=R().notice;
   }
   const reframe=(state,page)=>{state.page=page;state.serial=state.completed;state.done=false;state.misses=[];};
+  // Grade 2-A uses its domain boundary (keeps an eligible pending question and
+  // retains a locked retry); Grade 1-B keeps its released reframe.
+  const rebound=(id,state,page,topic)=>{if(LANES[id].frozen)LANES[id].api.boundary(state,page,topic??state[LANES[id].field]);else{reframe(state,page);if(topic!==undefined)state[LANES[id].field]=topic;}};
   function load(id,page){
     const r=lanes[id],{api,key}=LANES[id];if(r.state)return;
     try{r.raw=localStorage.getItem(key);const parsed=JSON.parse(r.raw);r.state=api.normalize(parsed);if(r.raw!==null&&!r.state){r.writable=false;r.notice='Saved book practice is unavailable or from another version. This visit stays in memory.';}}catch{r.writable=false;}
-    r.state=r.state||api.create(page);if(r.state.page!==page)reframe(r.state,page);
+    // Restoring at the same confirmed page keeps the run exactly; a different
+    // confirmed page is an explicit boundary. Nothing is written until an action.
+    r.state=r.state||api.create(page);if(r.state.page!==page)rebound(id,r.state,page);
   }
   function use(id){if(lane===id)return;lane=id;topics();}
   async function change(action){if(busy||!active)return;busy=true;const r=R(),{api,key}=L();try{
-    const run=()=>{if(r.writable){const fresh=localStorage.getItem(key);if(fresh!==r.raw){let value;try{value=api.normalize(JSON.parse(fresh));}catch{}if(value){const page=r.state.page;r.state=value;r.raw=fresh;if(r.state.page!==page)reframe(r.state,page);r.notice='Book practice changed in another tab. Please try again.';}else{r.writable=false;r.notice='The saved practice cannot be updated. This visit stays in memory.';}render();return;}}if(action()){if(r.writable){r.raw=JSON.stringify(r.state);localStorage.setItem(key,r.raw);}render();}};
+    // A frozen (Grade 2-A) lane adopts another tab's newer run only when it has
+    // the same page, topic, and ceiling, and never re-frames it from this tab's
+    // page. A different-frame save is a conflict, handled below.
+    const frozen=!!L().frozen;
+    const run=()=>{if(r.writable){const fresh=localStorage.getItem(key);if(fresh!==r.raw){let value;try{value=api.normalize(JSON.parse(fresh));}catch{}
+        // Another tab's run with a different frame is never adopted silently: this
+        // tab keeps its own frozen page/topic/ceiling in memory, the other save's
+        // bytes stay untouched, and only an explicit new session here adopts it.
+        if(value&&frozen&&['page','lesson','catalogThrough'].some(k=>value[k]!==r.state[k])){r.writable=false;r.conflict=true;r.notice='Another tab saved a book session with a different page or topic. This tab keeps its own session in memory and leaves that save alone. Start a new book session here to continue from the saved one.';render();return;}
+        if(value){const page=r.state.page;r.state=value;r.raw=fresh;if(!frozen&&r.state.page!==page)reframe(r.state,page);r.notice='Book practice changed in another tab. Please try again.';}else{r.writable=false;r.notice='The saved practice cannot be updated. This visit stays in memory.';}render();return;}}
+      if(action()){if(r.writable&&api.overCapacity?.(r.state)){r.writable=false;r.notice='Too many unfinished retries to save. Your saved practice is kept, and this visit stays in memory.';}
+        if(r.writable){r.raw=JSON.stringify(r.state);localStorage.setItem(key,r.raw);}render();}};
     if(r.writable&&navigator.locks)await navigator.locks.request(key,run);else{r.writable=false;r.notice='This practice stays in memory for this visit.';run();}
   }catch{r.writable=false;r.notice='Practice could not be saved. It stays in memory for this visit.';render();}finally{busy=false;}}
   const laneOf=progress=>progress?.selectedBook==='2-A'&&LANES['2-A']&&progress.grade2a?'2-A':'1-B';
@@ -131,18 +159,20 @@
     const chosen=Number(select.value),before=lane,progress=await CURRICULUM_UI.ask();
     if(!progress){select.value=String(R().state[L().field]);return;}
     const id=laneOf(progress),page=pageOf(id,progress);
+    // After a cross-tab frame conflict, an explicit new session re-reads the saved run.
+    if(lanes[id].conflict)Object.assign(lanes[id],{state:null,raw:null,writable:true,notice:'',conflict:false});
     load(id,page);use(id);
     // A topic chosen from the other book's list does not carry across books.
     const topic=id===before?chosen:0;select.value=String(topic);
-    await change(()=>{const state=R().state;reframe(state,page);state[L().field]=topic;return true;});
+    await change(()=>{rebound(lane,R().state,page,topic);return true;});
   }
   restart.onclick=fresh;select.onchange=fresh;next.onclick=()=>change(()=>L().api.next(R().state));
   globalThis.__bookTest=Object.freeze({snapshot:()=>lanes['1-B'].state&&JSON.parse(JSON.stringify(lanes['1-B'].state)),storageKey:LANES['1-B'].key,
-    book:()=>lane,snapshot2a:()=>lanes['2-A']?.state&&JSON.parse(JSON.stringify(lanes['2-A'].state)),storageKey2a:LANES['2-A']?.key??null});
+    book:()=>lane,snapshot2a:()=>lanes['2-A']?.state&&JSON.parse(JSON.stringify(lanes['2-A'].state)),saved2a:()=>lanes['2-A']?({writable:lanes['2-A'].writable,conflict:lanes['2-A'].conflict}):null,storageKey2a:LANES['2-A']?.key??null});
   globalThis.PLACE_BOOK_UI=Object.freeze({page:()=>lanes['1-B'].state?.page??null,setPresentation(football){drive.hidden=!football;},activate(value,page,football=true){
     active=value;panel.hidden=!value;document.body.classList.toggle('book-active',value);if(!value)return;drive.hidden=!football;
     if(!lane){const progress=CURRICULUM_UI.current(),id=laneOf(progress);load(id,id==='2-A'?pageOf(id,progress):page);use(id);}
     else if(lane==='1-B')load('1-B',page);
     select.value=String(R().state[L().field]);render();},
-    text:()=>{const state=R()?.state,q=state?L().api.current(state):null;const visible=q?{skillId:q.skillId,page:q.page,prompt:q.prompt,visual:q.visual,choices:q.choices,help:state.done||state.misses.length?q.help:null}:null;return {mode:'book',book:lane,page:state?.page,question:visible,completed:state?.completed,yards:state?.yards,done:state?.done,explanation:state?L().api.explain(state):null};}});
+    text:()=>{const state=R()?.state,q=state?L().api.current(state):null;const visible=q?{skillId:q.skillId,page:q.page,prompt:q.prompt,visual:q.visual,choices:q.choices,help:state.done||state.misses.length?q.help:null}:null;return {mode:'book',book:lane,page:state?.page,...(state&&'catalogThrough' in state?{catalogThrough:state.catalogThrough,lesson:state.lesson,retained:state.retained.length}:{}),question:visible,completed:state?.completed,yards:state?.yards,done:state?.done,explanation:state?L().api.explain(state):null};}});
 })();

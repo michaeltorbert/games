@@ -1,4 +1,4 @@
-const GAME_VERSION = '1.37.0';
+const GAME_VERSION = '1.38.0';
 let prevPlayerScore = -1, prevOpponentScore = -1;
 let playerRunTimer = 0, playerCelebrateTimer = 0, playerCelebrateDelayTimer = 0;
 const EZ = 5;
@@ -1433,9 +1433,9 @@ function outcomeMessage(messagesByCall, callKey) {
   return choose(messagesByCall[callKey] || messagesByCall.shortRun);
 }
 
-// #219: Football's context for the shared page prompt's book choice.
+// #219/#223: Football's context for the shared page prompt's book choice.
 CURRICULUM_UI.configure?.({notes:{'1-B':'Grade 1-B sets which Football questions are open, including coins.',
-  '2-A':'In Football, finished Grade 2-A Chapter 1 pages can add some two-digit questions. Coins and other topics still follow your Grade 1-B page.'}});
+  '2-A':'In Football, finished Grade 2-A pages can add some two-digit questions, and from page 73 some teen subtraction across ten. Clock, calendar, and other Grade 2-A practice is in Place by Place. Coins and other topics still follow your Grade 1-B page.'}});
 
 function contextualQuestionProfile() {
   return {

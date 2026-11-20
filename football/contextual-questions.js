@@ -26,9 +26,10 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
     if (request && request.edition !== book.edition) return { included: false, guided: true };
     if(title==='Math Mammoth Grade 1-B' && typeof MATH_CURRICULUM!=='undefined'){
       const page=request?.completedThroughPage??MATH_CURRICULUM.BASELINE.completedThroughPage;
-      // #219: a completed Grade 2-A Chapter 1 lesson may admit an existing
-      // Grade 1-B arithmetic relation family; its derive then checks the
-      // exact operand domain against the Grade 2-A page as well.
+      // #219: a completed Grade 2-A lesson may admit an existing Grade 1-B
+      // arithmetic relation family; its derive then checks the exact operand
+      // domain against the Grade 2-A page as well (#223 adds only teen
+      // subtraction across ten at page 73; no new live family or pool).
       const alternate=meta.tier==='chapter-8-arithmetic'&&grade2aPage(profile)!==null&&grade2aPage(profile)>=MATH_CURRICULUM_2A.CHAPTER1_FIRST;
       return {included:(MATH_CURRICULUM.validPage(page)&&meta.introducedOnPage<=page)||alternate,guided:false};
     }
@@ -54,7 +55,7 @@ const FOOTBALL_CONTEXTUAL_QUESTIONS = (() => {
   }
 
   // An existing relation is completed when Grade 1-B covers its operands, or
-  // when the exact Grade 2-A Chapter 1 page covering them is completed.
+  // when the exact Grade 2-A page covering them is completed.
   // The Grade 1-B path also needs the family's own page, so a family admitted
   // only through Grade 2-A cannot borrow a Grade 1-B operand check.
   function operationCompleted(operation, a, b, profile, familyPage) {

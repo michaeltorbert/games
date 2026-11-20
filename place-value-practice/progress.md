@@ -323,3 +323,98 @@ ordinary variant is reachable in real topic and All completed sessions; the
 halved-shape description states line position only; the page prompt and Place
 options copy say where Grade 2-A practice lives and that Mixed/Facts stay on
 Grade 1-B. Release gates remain pending.
+
+## 2026-11-20 — #223 Grade 2-A Chapters 2-3 book practice (proposed 1.11.0, release candidate, unreleased)
+
+Original task prompt (Michael, 2026-11-18; issue #223 recorded scope approval
+2026-11-19 America/New_York): extend the Grade 2-A practice through the end of
+Chapter 3 (printed page 97) with the existing completed-page prompt, original
+questions, exact page gates, frozen runs, and no claim of completion or mastery.
+
+- 60 new catalog rows (lessons 11-37) cover every ordinary activity on printed
+  pages 37-54 and 59-97, plus the number rainbows. Each row unlocks on its own
+  page; variants first seen later have their own rows (for example +0/+10 facts
+  at 64/66/68/69, +10 minutes and start-plus-hours at 54, elapsed minutes at
+  93). Pages 33-36, 48, and 55-58 unlock nothing; 98+ adds nothing. Inventory,
+  bounds, adaptations, and dispositions are in `shared/curriculum-coverage.md`.
+- New files: `grade2a-chapters23-domain.js` (generators) and
+  `grade2a-book-visuals.js` (clocks, practice calendar, day strip, number line,
+  ten-frames, rainbows with the even-total middle joined to itself, rule and
+  addition tables, groups, a box, a code key). Topics are grouped by chapter.
+- Run state: same key, inner schema 2 for every write (the released reader
+  rejects it and keeps the bytes); schema 1 still restores exactly on the
+  Chapter 1 catalog. Stable pending pointers, retained retries (bounded at 32,
+  never evicted), and explicit boundaries are described in the coverage doc.
+  This intentionally replaces #221's reframe for Grade 2-A: a boundary keeps an
+  eligible pending question instead of discarding it. An old 1.10.0 tab goes
+  memory-only after the first 1.11.0 save. A tab never adopts another tab's run
+  with a different page, topic, or ceiling without its own new session.
+- Grade 1-B lanes, Mixed, Facts, and their stores are unchanged.
+- Version 1.11.0 in `GAME_VERSION`, every cache key, `games.js`, `version.json`.
+- Tests: new `tests/grade2a-chapters23-domain.spec.mjs` (independent inventory,
+  gates, real-session variant reach, Date/minute oracles, Football gate, legacy
+  golden fixture `tests/fixtures/grade2a223-legacy.json`, schema and retry
+  contract) and `tests/grade2a-chapters23-ui.spec.mjs` (six-project pictures by
+  touch with screenshots and an environment record under
+  `tests/artifacts.nosync/issue223/`, legacy restore, retained retry across a
+  lowered page and reload, two tabs, front matter). The #219 specs stay scoped
+  to Chapter 1; the grouped-halves window now starts from a fresh focused
+  session.
+
+No check results are claimed here; release gates in Chromium and WebKit,
+registry, fresh independent review, merge, and Pages verification remain with
+the coordinator. Nothing is released.
+
+Correction round R1 (same 1.11.0 candidate, 2026-11-20): an independent review
+found five ordinary source activities missing, so the earlier "no ordinary
+exercise omitted" claim was premature. Added, each at its own page and keeping
+every earlier variant: unequal gains and durations compared (77); a number
+versus a sum, two subtractions with the same subtrahend, one group changed then
+compared, and two removals in a row (90); the 10 + part families for 12-16
+(81, 84, 85, 87, 89); one two-digit price plus whole-ten prices (88); a whole-ten
+age minus a small age and half then the total (94); close two-digit and
+two-digit-minus-small differences (95); one item to each of several people then
+the remainder (86). The domain spec checks each role's answer, operand range,
+and that the focused lesson topic reaches it at its page and not before.
+Catalog rows, IDs, and Chapter 1 output are unchanged; only these rows gained
+variants, so their variant order shifts within this unreleased candidate. Fresh
+gates and independent review remain pending; nothing is released.
+
+R1 addendum (same candidate, 2026-11-20): a review addendum found that page
+94's ordinary "how many does the other person have, given N more" role was
+still missing from the focused Mixed Review lesson. Added `more-quantity` to
+the page-94 row only, alternating 10 more than a number 10-89 (total at most 99)
+with a one-digit amount more than a one-digit amount (total at most 18). Every
+earlier variant stays. The domain spec checks the answers, both ranges, and
+that lesson 36 reaches both forms at page 94 and neither at 93. This list is
+the record of gaps found so far, not a claim that no ordinary activity is
+missing. Fresh gates and review remain pending; nothing is released.
+
+Correction round R2 (same candidate, 2026-11-20): a second independent review
+found ordinary story roles still missing. Added, each at its own page, keeping
+every earlier variant: unknown start after one or several known removals, and
+the unknown amount spent (70); unknown whole after a part left (72); larger
+amount from "N more" (70, 72, 86, 97) and smaller amount from the larger and the
+difference (72); how many more for a teen against 20 (97); computed wide
+differences at 76 (two-digit minus small without borrowing, 100 minus 1-5, 100
+and a whole ten). The page-76 method choice now asks which way takes fewer
+counting steps. A page-by-page source crosswalk (pages 37-97, in
+`shared/curriculum-coverage.md`) then found and fixed more gaps: noon and 5 AM
+endpoints (46), two spends/two gains (62), missing-number patterns (71), pages
+left and a two-digit comparison plus a teen in three totals (77), missing
+addends for 11 (82), 13 − 10/13 − 11/14 − 11 (83), and half-past elapsed starts
+and doubles to 40 (93). A two-digit parity variant was also added at 96 (see the
+R3 correction below). Tests recompute answers from the
+prompt numbers and check each role is reached in its own lesson at its page and
+not one page earlier. No catalog, Chapter 1, store, or Football change. Fresh
+gates and independent review remain pending; nothing is released.
+
+Documentation correction R3 (same candidate, 2026-11-20): the R2 entry above
+first said the crosswalk found a missing two-digit parity exercise on page 96.
+That was wrong. The source text extraction joined table cells; the page image
+shows small amounts (one-digit, plus one 12), already covered by the
+small-number variants. `two-digit-parity` stays unchanged as an adaptation: a
+bounded two-digit instance (an odd 11-49 plus 10-49, total at most 98) of the
+already-taught odd/even rule and the Chapter 1 last-digit rule, with no general
+regrouping. Only the coverage doc and this log changed; no code, test, asset,
+or version bytes changed. Fresh review remains pending; nothing is released.

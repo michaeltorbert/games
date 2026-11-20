@@ -8,7 +8,7 @@
   const KEY='math-curriculum:progress:v1',KEY_2A='math-curriculum:progress:grade2a:v1',BOOK_KEY='math-curriculum:selected-book:v1';
   const BOOKS={
     '1-B':{api,key:KEY,name:'Math Mammoth Grade 1-B · 2026 edition',fallback:()=>api.BASELINE.completedThroughPage},
-    ...(api2?{'2-A':{api:api2,key:KEY_2A,name:'Math Mammoth Grade 2-A · 2025 revision · practice covers Chapter 1 (pages 10-32)',fallback:()=>0}}:{}),
+    ...(api2?{'2-A':{api:api2,key:KEY_2A,name:'Math Mammoth Grade 2-A · 2025 revision · practice covers Chapters 1-3 (pages 10-97)',fallback:()=>0}}:{}),
   };
   let pending=null,last=null,notes={};
   const sessionOnly={};

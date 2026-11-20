@@ -22,9 +22,11 @@ repository-level `AGENTS.md`.
 - Grade 2-A (#219) has its own authority, `shared/grade2a-curriculum.js`, and
   its own learner-reported record chosen in the same game-start prompt. Both
   books are snapshotted per game. Football adds no Grade 2-A fixture family: a
-  completed Chapter 1 page may only admit an existing Grade 1-B arithmetic
+  completed Grade 2-A page may only admit an existing Grade 1-B arithmetic
   relation family when `MATH_CURRICULUM_2A.operationPage` places the exact live
-  operands on a completed page. Coins, time, and special teams stay on their
+  operands on a completed page (Chapter 1 pages, plus teen subtraction across
+  ten at page 73 from #223). Grade 2-A clock and calendar practice (Chapter 2)
+  lives only in Place by Place Book topics. Coins, time, and special teams stay on their
   Grade 1-B and existing gates. The reported 2026-11-11 Grade 1 finish is dated
   context only, never completion or mastery.
 - Do not infer that the learner completed two pages on every calendar day.

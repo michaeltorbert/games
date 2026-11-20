@@ -84,7 +84,7 @@ test('Grade 2-A book choices, help after a miss, worked answers, persistence, to
  expect((await page.evaluate(()=>__bookTest.snapshot2a())).completed).toBe(14);
  // A later lesson topic is empty until its page is reported; starting the book unlocks nothing early.
  await panel.getByLabel('Topic').selectOption({label:'Fact Families'});await report(page);
- await expect(page.locator('#book-question')).toHaveText('No completed Grade 2-A Chapter 1 lessons in this topic yet. Lessons start on printed page 10.');
+ await expect(page.locator('#book-question')).toHaveText('No completed Grade 2-A lessons in this topic yet. Lessons start on printed page 10.');
  await panel.getByRole('button',{name:'Start new book session',exact:true}).tap();await report(page,undefined,16);
  await expect(page.locator('#book-question')).not.toContainText('No completed');
  expect((await page.evaluate(()=>PLACE_BOOK_2A.current(__bookTest.snapshot2a()))).lesson).toBe(3);
@@ -135,7 +135,14 @@ test('Grade 2-A diagrams render unsolved, help, and worked states across topics 
  const panel=page.locator('#book-practice'),captured=new Set(),shapes=new Set(),halves=new Set();
  const label=v=>v.kind==='ordinal-row'?(v.balls?'ordinal-balls':'ordinal-letters'):v.kind==='base-ten'?(v.add?'base-ten-add':'base-ten'):v.kind;
  for(const [topic,count] of [['100-chart and More Review',8],['Fact Families',4],['Ordinal Numbers',9],['Even and Odd',6],['Doubling',6],['One-Half',26],['Adding Whole Tens',6],['Subtracting Whole Tens',4],['Chapter 1 Review',10]]){
-  await panel.getByLabel('Topic').selectOption({label:topic});await report(page);
+  // #223 keeps the run's cursor across explicit topic boundaries, so the
+  // grouped-halves window starts from a deterministic fresh focused session
+  // (production create(32, 7), saved and restored at the same page).
+  if(topic==='One-Half'){
+   await page.evaluate(k=>localStorage.setItem(k,JSON.stringify(PLACE_BOOK_2A.create(32,7))),BOOK_2A);
+   await page.reload();await report(page);
+   await expect(panel.getByLabel('Topic')).toHaveValue('7');
+  }else{await panel.getByLabel('Topic').selectOption({label:topic});await report(page);}
   for(let i=0;i<count;i++){
    const q=await page.evaluate(()=>PLACE_BOOK_2A.current(__bookTest.snapshot2a()));
    const half=q.prompt.match(/^What is half of (\d+)/);if(half)halves.add(Number(half[1]));
