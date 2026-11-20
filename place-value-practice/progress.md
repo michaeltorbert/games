@@ -364,3 +364,28 @@ questions, exact page gates, frozen runs, and no claim of completion or mastery.
 No check results are claimed here; release gates in Chromium and WebKit,
 registry, fresh independent review, merge, and Pages verification remain with
 the coordinator. Nothing is released.
+
+Correction round R1 (same 1.11.0 candidate, 2026-11-20): an independent review
+found five ordinary source activities missing, so the earlier "no ordinary
+exercise omitted" claim was premature. Added, each at its own page and keeping
+every earlier variant: unequal gains and durations compared (77); a number
+versus a sum, two subtractions with the same subtrahend, one group changed then
+compared, and two removals in a row (90); the 10 + part families for 12-16
+(81, 84, 85, 87, 89); one two-digit price plus whole-ten prices (88); a whole-ten
+age minus a small age and half then the total (94); close two-digit and
+two-digit-minus-small differences (95); one item to each of several people then
+the remainder (86). The domain spec checks each role's answer, operand range,
+and that the focused lesson topic reaches it at its page and not before.
+Catalog rows, IDs, and Chapter 1 output are unchanged; only these rows gained
+variants, so their variant order shifts within this unreleased candidate. Fresh
+gates and independent review remain pending; nothing is released.
+
+R1 addendum (same candidate, 2026-11-20): a review addendum found that page
+94's ordinary "how many does the other person have, given N more" role was
+still missing from the focused Mixed Review lesson. Added `more-quantity` to
+the page-94 row only, alternating 10 more than a number 10-89 (total at most 99)
+with a one-digit amount more than a one-digit amount (total at most 18). Every
+earlier variant stays. The domain spec checks the answers, both ranges, and
+that lesson 36 reaches both forms at page 94 and neither at 93. This list is
+the record of gaps found so far, not a claim that no ordinary activity is
+missing. Fresh gates and review remain pending; nothing is released.

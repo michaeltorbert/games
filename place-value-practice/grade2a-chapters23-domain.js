@@ -460,6 +460,11 @@ const PLACE_BOOK_2A_CH23=(()=>{
     ['near-count-up',({r})=>{const y=10*(3+r(7))+1+r(3,1),d=y%10+1+r(3,2),x=y-d;
       return ask(`${y} − ${x} = ? Count up from ${x}.`,d,near(d,y%10),`Count up from ${x} to ${y-y%10}, then to ${y}: ${d}.`);}],
   ];
+  // "Who has more, and how many more?" for two named quantities (never equal).
+  // Wrong choices name the other side, or the right side with a nearby amount.
+  const whoMore=(A,B,na,nb,unit,extra=[])=>{const [w,l,d]=A>B?[na,nb,A-B]:[nb,na,B-A],say=(who,n)=>`${who}, ${unit(n)} more`;
+    return {answer:say(w,d),options:[say(l,d),say(w,d+1),say(w,d>1?d-1:d+2),...extra.map(([who,n])=>say(who,n))],winner:w,d};};
+  const dollars=n=>`$${n}`,plainN=n=>`${n}`,hours=n=>`${n} hour${n===1?'':'s'}`;
   V['2a-compare-stories']=[
     ['compare',({r,name,other})=>{const [a,b]=crossSub(r);
       return ask(`${name} has ${a} crayons and ${other} has ${b}. How many fewer crayons does ${other} have?`,a-b,near(a-b,b),`${b} + ? = ${a}. The difference is ${a-b}.`);}],
@@ -471,6 +476,16 @@ const PLACE_BOOK_2A_CH23=(()=>{
       return ask(`${name} has ${a} red beads, ${b} blue beads, and ${c} green beads. How many beads are there in all?`,a+b+c,near(a+b+c),`${a} + ${b} = ${a+b}, then ${a+b} + ${c} = ${a+b+c}.`);}],
     ['both-updated',({r,name,other})=>{const b=3+r(6),d=2+r(7,1),c=2+r(5,2);
       return ask(`${name} has ${b+d} cards and ${other} has ${b}. Then each of them gets ${c} more cards. Now how many more cards does ${name} have than ${other}?`,d,near(d,d+c),`Now ${name} has ${b+d+c} and ${other} has ${b+c}. ${b+d+c} − ${b+c} = ${d}. Both got the same amount, so the difference stays ${d}.`);}],
+    // Page 77: both people gain different amounts; recompute who has more and by how much.
+    ['unequal-gains',({r,name,other})=>{const a=8+r(6),b=3+r(5,1);let ga=2+r(6,2),gb=2+(ga-2+1+r(7,3))%8;if(a+ga===b+gb)gb=gb===9?gb-1:gb+1;
+      const A=a+ga,B=b+gb,x=whoMore(A,B,name,other,dollars,[[name,a-b]]);
+      return ask(`In this story, ${name} had $${a} and ${other} had $${b}. Then ${name} earned $${ga} and ${other} earned $${gb}. Now who has more money, and how much more?`,x.answer,x.options,
+        `Now ${name} has $${a} + $${ga} = $${A} and ${other} has $${b} + $${gb} = $${B}. ${x.winner} has more: $${Math.max(A,B)} − $${Math.min(A,B)} = $${x.d}.`,null,{a,b,ga,gb});}],
+    // Page 77: add two times first, then compare the total with a third time.
+    ['durations-compare',({r,name,other})=>{const d1=1+r(4),d2=1+r(4,1);let d3=3+r(8,2);if(d3===d1+d2)d3++;
+      const x=whoMore(d1+d2,d3,name,other,hours,[[name,d1+d2]]);
+      return ask(`In this story, ${name} reads for ${d1} hour${d1>1?'s':''} in the morning and ${d2} hour${d2>1?'s':''} in the evening. ${other} reads for ${d3} hours on a long train ride. Who reads more hours, and how many more?`,x.answer,x.options,
+        `${name}: ${d1} + ${d2} = ${d1+d2} hours. ${other}: ${d3} hours. ${x.winner} reads more: ${Math.max(d1+d2,d3)} − ${Math.min(d1+d2,d3)} = ${x.d}.`,null,{d1,d2,d3});}],
   ];
   // A hidden middle number (6 for 12, 7 for 14) hides the second copy below
   // the self-paired middle, never the number the prompt names.
@@ -492,6 +507,14 @@ const PLACE_BOOK_2A_CH23=(()=>{
     return form===0?ask(`${a} + ? = ${T}`,b,near(b,a),`${a} + ${b} = ${T}.`)
       :form===1?ask(`${T} − ${a} = ?`,b,near(b,a),`${a} + ${b} = ${T}, so ${T} − ${a} = ${b}.`)
       :ask(`${T} − ? = ${a}`,b,near(b,a),`${T} − ${b} = ${a}, because ${a} + ${b} = ${T}.`);};
+  // Pages 81/84/85/87/89 open each family with 10 and its part (10, 2, 12 …
+  // 10, 6, 16): both addition orders and both subtractions, cycled in turn.
+  const tenFamily=T=>({t})=>{const p=T-10,form=['10+p','p+10','T-10','T-p'][t%4];
+    const data={T,form};
+    return form==='10+p'?ask(`10 + ${p} = ?`,T,near(T,p,20),`10 and ${p} more make ${T}.`,{kind:'fact-family',numbers:[10,p,null]},data)
+      :form==='p+10'?ask(`${p} + 10 = ?`,T,near(T,p,20),`Adding 10 gives one ten and ${p} ones: ${T}.`,{kind:'fact-family',numbers:[p,10,null]},data)
+      :form==='T-10'?ask(`${T} − 10 = ?`,p,near(p,T,10),`Take away the ten from ${T}: ${p} ones are left.`,null,data)
+      :ask(`${T} − ${p} = ?`,10,near(10,T,p),`Take away the ${p} ones from ${T}: one ten is left, 10.`,null,data);};
   const directQ=(T,lo,hi)=>({t})=>{const n=lo+t%(hi-lo+1);return ask(`${T} − ${n} = ?`,T-n,near(T-n,n),`${T-n} + ${n} = ${T}, so ${T} − ${n} = ${T-n}.`);};
   const explainQ=T=>({r})=>{const b=T-9+r(9-(T-9)+1),c=T-b;
     return ask(`Which addition shows that ${T} − ${b} = ${c} is right?`,`${c} + ${b} = ${T}`,[`${T} + ${b} = ${T+b}`,`${b} + ${b} = ${2*b}`,`${c} + ${c} = ${2*c}`],`Subtraction is checked by adding back: ${c} + ${b} = ${T}.`);};
@@ -509,6 +532,7 @@ const PLACE_BOOK_2A_CH23=(()=>{
     ['review-11',directQ(11,2,9)],
     ['double-six',()=>ask('How many different number sentences are in the fact family of 6, 6, and 12?',2,[1,3,4],'Both parts are 6, so there are only two: 6 + 6 = 12 and 12 − 6 = 6.',{kind:'fact-family',numbers:[6,6,12]})],
     ['direct',directQ(12,3,9)],
+    ['ten-family',tenFamily(12)],
   ];
   V['2a-family-12-more']=[
     ['missing-first',({r})=>{const b=3+r(7);return ask(`? + ${b} = 12`,12-b,near(12-b,b),`${12-b} + ${b} = 12.`);}],
@@ -530,6 +554,7 @@ const PLACE_BOOK_2A_CH23=(()=>{
     ['match',({r})=>{const a=4+r(6),b=13-a;
       return ask(`Which subtraction goes with ${a} + ${b} = 13?`,`13 − ${a} = ${b}`,[`13 − ${a} = ${b+1}`,`14 − ${a} = ${b}`,`${a} − ${b} = 13`],`The same three numbers, ${a}, ${b}, and 13: 13 − ${a} = ${b}.`,{kind:'fact-family',numbers:[a,b,13]});}],
     ['direct',directQ(13,4,9)],
+    ['ten-family',tenFamily(13)],
   ];
   V['2a-family-14']=[
     ['related',familyQ(14,5,9)],
@@ -539,6 +564,7 @@ const PLACE_BOOK_2A_CH23=(()=>{
       return ask(`? − ${b} = ${c}`,b+c,near(b+c,c),`The missing number is the total: ${c} + ${b} = ${b+c}.`);}],
     ['missing-subtrahend',({r})=>{const a=11+r(4),c=a-9+r(8,1),b=a-c;
       return ask(`${a} − ? = ${c}`,b,near(b,c),`${c} + ${b} = ${a}, so ${a} − ${b} = ${c}.`);}],
+    ['ten-family',tenFamily(14)],
   ];
   V['2a-family-14-stories']=[
     ['three-term',({r})=>{const x=2+r(8),y=2+r(8,1),z=2+r(6,2);
@@ -552,11 +578,15 @@ const PLACE_BOOK_2A_CH23=(()=>{
       return ask(`Count by 8s: ${terms.map((x,i)=>i===blank?'?':x).join(', ')}. What number is missing?`,terms[blank],near(terms[blank],terms[blank]-2,terms[blank]+2),`Each number is 8 more: ${terms[blank-1]} + 8 = ${terms[blank]}.`,{kind:'sequence',terms:terms.map((x,i)=>i===blank?null:x)},{terms});}],
     ['plus-four',({r})=>{const start=9+4*r(6),blank=2+r(4,1),terms=Array.from({length:6},(_,i)=>start+4*i);
       return ask(`Count by 4s: ${terms.map((x,i)=>i===blank?'?':x).join(', ')}. What number is missing?`,terms[blank],near(terms[blank],terms[blank]-2,terms[blank]+2),`Each number is 4 more: ${terms[blank-1]} + 4 = ${terms[blank]}.`,{kind:'sequence',terms:terms.map((x,i)=>i===blank?null:x)},{terms});}],
+    // Page 86: a known removal (one item to each of several people), then the remainder.
+    ['share-one-each',({r})=>{const T=12+r(9),k=2+r(5,1);
+      return ask(`In this story, a baker has ${T} rolls. Before closing, the baker gives each of ${k} helpers one roll. How many rolls are left?`,T-k,near(T-k,T+k,k),`${k} helpers get 1 roll each, so ${k} rolls are given away. ${T} − ${k} = ${T-k}.`,null,{T,k});}],
   ];
   V['2a-family-15']=[
     ['related',familyQ(15,6,9)],
     ['direct',directQ(15,6,9)],
     ['explanation',explainQ(15)],
+    ['ten-family',tenFamily(15)],
     ['skip-three',({r})=>{const start=9+3*r(4),blank=2+r(4,1),terms=Array.from({length:6},(_,i)=>start+3*i);
       return ask(`Count by 3s: ${terms.map((x,i)=>i===blank?'?':x).join(', ')}. What number is missing?`,terms[blank],near(terms[blank],terms[blank]+1,terms[blank]-1),`Each number is 3 more: ${terms[blank-1]} + 3 = ${terms[blank]}.`,{kind:'sequence',terms:terms.map((x,i)=>i===blank?null:x)},{terms});}],
   ];
@@ -574,12 +604,17 @@ const PLACE_BOOK_2A_CH23=(()=>{
     ['parity',({t})=>{const n=t%21;return ask(`Is ${n} even or odd?`,evenOdd(n),['even','odd'],`Even numbers end in 0, 2, 4, 6, or 8. ${n} ends in ${n%10}.`);}],
     ['dollars',({r})=>{const three=r(2)===1,p=[2+r(6,1),2+r(6,2),2+r(5,3)].slice(0,three?3:2),total=p.reduce((a,b)=>a+b,0);
       return ask(`In a pretend shop, ${three?`a ball costs $${p[0]}, a cap costs $${p[1]}, and a book costs $${p[2]}`:`a ball costs $${p[0]} and a cap costs $${p[1]}`}. How much do they cost together?`,total,near(total),`Add the prices: ${p.map(x=>`$${x}`).join(' + ')} = $${total}.`);}],
+    // Page 88: one two-digit price plus whole-ten prices (adding whole tens, page 26), total at most $99.
+    ['dollars-tens',({r})=>{const three=r(2)===1,p=[10*(1+r(4))+1+r(9,1),10*(1+r(three?3:4,2)),...(three?[10*(1+r(2,3))]:[])],total=p.reduce((a,b)=>a+b,0);
+      return ask(`In a pretend shop, ${three?`a bike costs $${p[0]}, a tent costs $${p[1]}, and a ball costs $${p[2]}`:`a bike costs $${p[0]} and a tent costs $${p[1]}`}. How much do they cost together?`,total,near(total,total-10,total+1),
+        `Add the whole tens to the tens of $${p[0]}; the ones stay ${p[0]%10}: ${p.map(x=>`$${x}`).join(' + ')} = $${total}.`,null,{prices:p});}],
   ];
   V['2a-family-16']=[
     ['related',familyQ(16,7,9)],
     ['double-eight',({t})=>t%2?ask('8 + 8 = 16. So 16 − 8 = ?',8,[7,9,16],'Both parts are 8: 16 − 8 = 8.'):ask('How many different number sentences are in the fact family of 8, 8, and 16?',2,[1,3,4],'Both parts are 8, so there are only two: 8 + 8 = 16 and 16 − 8 = 8.',{kind:'fact-family',numbers:[8,8,16]})],
     ['mixed',({t,r})=>{const a=11+t%9,k=Math.floor(t/9)%3,b=k===0?9:k===1?10:2+r(7);
       return ask(`${a} − ${b} = ?`,a-b,near(a-b,b),b===10?`Taking away 10 takes away the ten: ${a} − 10 = ${a-10}.`:a%10>=b?`Take away the ones: ${a} − ${b} = ${a-b}.`:`${a} − ${a-10} = 10, then 10 − ${b-(a-10)} = ${a-b}.`,null,{a,b});}],
+    ['ten-family',tenFamily(16)],
   ];
   V['2a-family-16-stories']=[
     ['skip-three',({r})=>{const start=2+r(9),blank=2+r(4,1),terms=Array.from({length:6},(_,i)=>start+3*i);
@@ -595,6 +630,24 @@ const PLACE_BOOK_2A_CH23=(()=>{
     ['compare-expr',({r,t})=>{const a=2+r(8),b=2+r(8,1),diff=t%3-1,c=Math.min(9,Math.max(1,a+diff)),d=b;
       const left=a+b,right=c+d,sign=left<right?'<':left>right?'>':'=';
       return ask(`Which sign makes this true? ${a} + ${b} ? ${c} + ${d}`,sign,['<','>','='],`${a} + ${b} = ${left} and ${c} + ${d} = ${right}, so ${left} ${sign} ${right}.`);}],
+    // Page 90 also compares a number with a sum (facts to 18, or a whole ten plus ones).
+    ['compare-number-sum',({r,t})=>{const tens=t%2===1,a=tens?10*(2+r(5)):2+r(8),b=tens?1+r(9,1):2+r(8,1),s=a+b,n=s+(tens?[-1,0,1,10]:[-1,0,1])[r(tens?4:3,2)];
+      const sign=n<s?'<':n>s?'>':'=';
+      return ask(`Which sign makes this true? ${n} ? ${a} + ${b}`,sign,['<','>','='],`${a} + ${b} = ${s}, so ${n} ${sign} ${s}.`,null,{n,a,b});}],
+    // … and two subtractions that take the same number from different teens.
+    ['compare-subtract',({r})=>{const s=5+r(5),m1=11+r(8,1),d=[1,-1,2,-2][r(4,2)],m2=m1+d>=11&&m1+d<=18?m1+d:m1-d;
+      const left=m1-s,right=m2-s,sign=left<right?'<':left>right?'>':'=';
+      return ask(`Which sign makes this true? ${m1} − ${s} ? ${m2} − ${s}`,sign,['<','>','='],`Both take away ${s}. ${m1} ${m1<m2?'is less than':'is more than'} ${m2}, so ${m1} − ${s} ${sign} ${m2} − ${s} (${left} ${sign} ${right}).`,null,{m1,m2,s});}],
+    // Page 90: one group changes, then compare the two groups.
+    ['one-changed-compare',({r})=>{const x=3+r(7),leave=r(2,1)===0,c=1+r(2,2);let y=3+r(7,3);
+      if((leave?y-c:y+c)===x)y++;const after=leave?y-c:y+c,red='Red shirts',blue='Blue shirts';
+      const s=whoMore(x,after,red,blue,plainN,y!==x?[[y>x?blue:red,Math.abs(y-x)]]:[]);
+      return ask(`At a pretend park, ${x} players in red shirts came to play. Then ${y} players in blue shirts came. Then ${c} ${leave?`of the blue-shirt player${c>1?'s':''} went home`:`more player${c>1?'s':''} in blue shirts came`}. Now are there more red shirts or blue shirts, and how many more?`,s.answer,s.options,
+        `Blue shirts now: ${y} ${leave?'−':'+'} ${c} = ${after}. Red shirts: ${x}. ${s.winner} have more: ${Math.max(x,after)} − ${Math.min(x,after)} = ${s.d}.`,null,{x,y,c,leave});}],
+    // Page 90: two removals in a row from one starting group.
+    ['two-removals',({r})=>{const o=4+r(6),start=10*(1+r(3,1))+o,r1=1+r(3,2),r2=1+r(Math.min(4,o-r1),3);
+      return ask(`A pretend class has ${start} children. ${r1} went home early, and then ${r2} more left for a music lesson. How many children are still in class?`,start-r1-r2,near(start-r1-r2,start-r1,start+r1+r2),
+        `${start} − ${r1} = ${start-r1}, then ${start-r1} − ${r2} = ${start-r1-r2}.`,null,{start,r1,r2});}],
   ];
   V['2a-family-17-18']=[
     ['related-17',({t})=>{const pairs=[[8,9],[9,8],[7,10],[10,7]],[a,b]=pairs[t%4],form=Math.floor(t/4)%3;
@@ -649,6 +702,19 @@ const PLACE_BOOK_2A_CH23=(()=>{
     ['age-difference',({r,name,other})=>{const [a,b]=crossSub(r);return ask(`In this story, ${name} is ${a} years old and ${other} is ${b}. How many years older is ${name}?`,a-b,near(a-b,b),`Count up from ${b} to ${a}: ${a-b} years.`);}],
     ['update-compare',({r,name,other})=>{const b=3+r(6),d=2+r(5,1),c=2+r(5,2);
       return ask(`${name} has ${b+d} shells and ${other} has ${b}. Then ${name} finds ${c} more. Now how many more shells does ${name} have than ${other}?`,d+c,near(d+c,d),`Now ${name} has ${b+d+c}. ${b+d+c} − ${b} = ${d+c}.`);}],
+    // Page 94: an older whole-ten age minus a small age (whole tens minus one digit, page 10).
+    ['age-tens',({r,name,other})=>{const a=10*(2+r(4)),b=2+r(8,1);
+      return ask(`In this story, ${name} is ${a} years old and ${other} is ${b}. How many years older is ${name}?`,a-b,near(a-b,a-b+10,a-b-10),`Break one ten: ${a} − ${b} = ${a-b}.`,null,{a,b});}],
+    // Page 94: find half of the first amount, then the two amounts together.
+    ['half-then-total',({r,name,other})=>{const x=[10,12,14,16,18,20,30,40][r(8)];
+      return ask(`${name} picked ${x} berries, and ${other} picked half as many. How many berries did they pick together?`,x+x/2,near(x+x/2,x/2,2*x),`Half of ${x} is ${x/2}, because ${x/2} + ${x/2} = ${x}. Together: ${x} + ${x/2} = ${x+x/2}.`,null,{x});}],
+    // Page 94: the larger amount from a known amount and "more". Alternates a
+    // whole-ten increase (10 more than 10-89, total at most 99) with a
+    // single-digit increase (a fact with total at most 18).
+    ['more-quantity',({r,t,name,other})=>{const tens=t%2===0,base=tens?10*(1+r(8))+r(10,1):2+r(8,1),more=tens?10:2+r(8,2),total=base+more;
+      return ask(tens?`In this story, ${other} read ${base} pages. ${name} read 10 more pages than ${other}. How many pages did ${name} read?`
+        :`In this story, ${other} has $${base}. ${name} has $${more} more than ${other}. How much money does ${name} have?`,
+        total,near(total,Math.abs(base-more),tens?total+1:more),tens?`10 more than ${base} adds one ten: ${base} + 10 = ${total}.`:`"$${more} more than $${base}" means add: $${base} + $${more} = $${total}.`,null,{base,more});}],
   ];
   V['2a-review-95']=[
     ['fact',({t})=>{const [a,b]=FACTS20[(t*3)%20];return ask(`${a} + ${b} = ?`,a+b,near(a+b),`${a} + ${10-a} = 10, and ${b-(10-a)} more makes ${a+b}.`);}],
@@ -656,6 +722,12 @@ const PLACE_BOOK_2A_CH23=(()=>{
       return ask(`Which number sentence is in the same fact family as ${a} + ${b} = ${a+b}?`,`${a+b} − ${b} = ${a}`,[`${a+b} − ${a} = ${a===b?a+1:a}`,`${a} − ${b} = ${a+b}`,`${a+b} + ${b} = ${a}`],`A fact family uses the same three numbers: ${a}, ${b}, and ${a+b}. ${a+b} − ${b} = ${a}.`);}],
     ['difference',({r,t})=>{const wide=t%2===0,x=wide?1+r(5):5+r(9),y=wide?x+8+r(8,1):x+1+r(3,1);
       return ask(`What is the difference between ${x} and ${y}?`,y-x,near(y-x,y),`${wide?'Subtract':'Count up'}: ${y} − ${x} = ${y-x}.`,null,{x,y});}],
+    // Page 95: a close two-digit pair (count up, as on page 75) …
+    ['difference-close',({r})=>{const y=10*(2+r(8))+r(10,1),d=2+r(8,2),x=y-d;
+      return ask(`What is the difference between ${x} and ${y}?`,d,near(d,d+10),`The numbers are close. Count up from ${x} to ${y}: ${d}.`,null,{x,y});}],
+    // … and a two-digit number and a small number with no borrowing (page 11).
+    ['difference-wide',({r})=>{const y=10*(2+r(8))+2+r(8,1),x=1+r(y%10,2);
+      return ask(`What is the difference between ${y} and ${x}?`,y-x,near(y-x,y-x-10,y),`Take ${x} from the ones of ${y}: ${y} − ${x} = ${y-x}.`,null,{x,y});}],
   ];
   V['2a-review-96']=[
     ['missing',({t,r})=>{const [a,b]=FACTS20[r(20)],s=a+b,k=t%4;

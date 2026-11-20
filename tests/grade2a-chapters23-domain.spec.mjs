@@ -59,26 +59,26 @@ const INVENTORY = [
   ['2a-subtract-to-ten-more', 74, 26, ['direct', 'twenties', 'missing-takeaway']],
   ['2a-difference-line', 75, 27, ['line', 'equation', 'whole-tens', 'neighbors']],
   ['2a-how-many-more', 76, 27, ['missing-addend', 'how-many-more', 'strategy', 'near-count-up']],
-  ['2a-compare-stories', 77, 27, ['compare', 'left', 'dozen', 'three-total', 'both-updated']],
+  ['2a-compare-stories', 77, 27, ['compare', 'left', 'dozen', 'three-total', 'both-updated', 'unequal-gains', 'durations-compare']],
   ['2a-rainbow-11-12', 78, 28, ['partner', 'subtract']],
   ['2a-rainbow-11-12-fill', 79, 28, ['endpoint', 'related']],
   ['2a-family-11', 80, 29, ['belongs', 'missing-part', 'groups', 'direct']],
-  ['2a-family-12', 81, 30, ['related', 'review-11', 'double-six', 'direct']],
+  ['2a-family-12', 81, 30, ['related', 'review-11', 'double-six', 'direct', 'ten-family']],
   ['2a-family-12-more', 82, 30, ['missing-first', 'missing-second', 'explanation', 'pattern-17', 'pattern-odd']],
   ['2a-rainbow-13-14', 83, 31, ['endpoint', 'subtract']],
-  ['2a-family-13', 84, 32, ['related', 'match', 'direct']],
-  ['2a-family-14', 85, 32, ['related', 'double-seven', 'direct', 'missing-minuend', 'missing-subtrahend']],
-  ['2a-family-14-stories', 86, 32, ['three-term', 'compare-story', 'change-story', 'plus-eight', 'plus-four']],
-  ['2a-family-15', 87, 33, ['related', 'direct', 'explanation', 'skip-three']],
-  ['2a-family-15-review', 88, 33, ['bigger-unknown', 'smaller-unknown', 'difference-unknown', 'even-double', 'combine-half', 'parity', 'dollars']],
-  ['2a-family-16', 89, 34, ['related', 'double-eight', 'mixed']],
-  ['2a-family-16-stories', 90, 34, ['skip-three', 'skip-four', 'afford', 'money-left', 'shortfall', 'compare-expr']],
+  ['2a-family-13', 84, 32, ['related', 'match', 'direct', 'ten-family']],
+  ['2a-family-14', 85, 32, ['related', 'double-seven', 'direct', 'missing-minuend', 'missing-subtrahend', 'ten-family']],
+  ['2a-family-14-stories', 86, 32, ['three-term', 'compare-story', 'change-story', 'plus-eight', 'plus-four', 'share-one-each']],
+  ['2a-family-15', 87, 33, ['related', 'direct', 'explanation', 'ten-family', 'skip-three']],
+  ['2a-family-15-review', 88, 33, ['bigger-unknown', 'smaller-unknown', 'difference-unknown', 'even-double', 'combine-half', 'parity', 'dollars', 'dollars-tens']],
+  ['2a-family-16', 89, 34, ['related', 'double-eight', 'mixed', 'ten-family']],
+  ['2a-family-16-stories', 90, 34, ['skip-three', 'skip-four', 'afford', 'money-left', 'shortfall', 'compare-expr', 'compare-number-sum', 'compare-subtract', 'one-changed-compare', 'two-removals']],
   ['2a-family-17-18', 91, 35, ['related-17', 'related-18', 'count-sentences', 'mixed']],
   ['2a-family-17-18-review', 92, 35, ['compare-expr', 'missing-position', 'durations', 'packages', 'journey']],
   ['2a-elapsed-minutes', 93, 36, ['same-hour']],
   ['2a-mixed-review-93', 93, 36, ['late-read', 'plus-five', 'sets-halved', 'inverse-double']],
-  ['2a-mixed-review-94', 94, 36, ['journey', 'half-total', 'inverse-half', 'age-difference', 'update-compare']],
-  ['2a-review-95', 95, 37, ['fact', 'same-family', 'difference']],
+  ['2a-mixed-review-94', 94, 36, ['journey', 'half-total', 'inverse-half', 'age-difference', 'update-compare', 'age-tens', 'half-then-total', 'more-quantity']],
+  ['2a-review-95', 95, 37, ['fact', 'same-family', 'difference', 'difference-close', 'difference-wide']],
   ['2a-review-96', 96, 37, ['missing', 'journey', 'odd-odd', 'odd-even', 'share']],
   ['2a-review-97', 97, 37, ['decode', 'compare-role', 'shortfall', 'board-remaining', 'finishing-pair']],
 ];
@@ -404,6 +404,148 @@ test('Football gate: only teen subtraction across ten gains page 73; every other
     assert.equal(c.operationPage(op, a, x), crossTeen ? 73 : releasedOperationPage(op, a, x), `${op} ${a} ${x}`);
   }
   for (const [a, x] of [[19, 9], [24, 6], [52, 18], [20, 7]]) assert.equal(c.operationPage('subtract', a, x), releasedOperationPage('subtract', a, x));
+});
+
+// Review R1 (source pages 77, 81, 84-90, 94, 95). These expectations come from
+// the source activities' roles and number ranges, checked by recomputing each
+// answer, and from what a learner in the focused lesson topic actually meets.
+const focused = (page, lesson, steps = 240) => { const qs = []; const out = run(page, lesson, steps, q => qs.push(q)); return { qs, empty: out.empty }; };
+const parseWho = answer => { const m = answer.match(/^(.+), \$?(\d+)(?: hours?)? more$/); return m && { who: m[1], n: Number(m[2]) }; };
+
+test('R1-01: changed comparisons recompute who has more at pages 77 and 90; the equal-gain form stays', () => {
+  const winners = new Set();
+  for (const q of sample('2a-compare-stories', 700).filter(q => q.variant === 'unequal-gains')) {
+    const [, p1, , p2] = q.prompt.match(/^In this story, (\w+) had \$(\d+) and (\w+) had/), { a, b, ga, gb } = q.data;
+    assert.notEqual(ga, gb, 'different gains'); assert.ok(a > b);
+    const A = a + ga, B = b + gb, w = parseWho(q.answer);
+    assert.notEqual(A, B);
+    assert.deepEqual(w, { who: A > B ? p1 : p2, n: Math.abs(A - B) }, q.prompt);
+    winners.add(A > B ? 'first' : 'second');
+    assert.ok(q.choices.filter(ch => { const c = parseWho(ch); return c && c.who === w.who && c.n === w.n; }).length === 1);
+  }
+  assert.deepEqual([...winners].sort(), ['first', 'second'], 'the lead can change hands');
+  for (const q of sample('2a-compare-stories', 700).filter(q => q.variant === 'durations-compare')) {
+    const [, p1] = q.prompt.match(/^In this story, (\w+) reads/), p2 = q.prompt.match(/\. (\w+) reads for \d+ hours on/)[1], { d1, d2, d3 } = q.data;
+    assert.notEqual(d1 + d2, d3);
+    assert.deepEqual(parseWho(q.answer), { who: d1 + d2 > d3 ? p1 : p2, n: Math.abs(d1 + d2 - d3) });
+  }
+  assert.ok(sample('2a-compare-stories', 200).some(q => q.variant === 'both-updated'));
+  const seen = { leave: new Set(), who: new Set() };
+  for (const q of sample('2a-family-16-stories', 1000).filter(q => q.variant === 'one-changed-compare')) {
+    const { x, y, c, leave } = q.data, after = leave ? y - c : y + c;
+    assert.notEqual(after, x); assert.ok(after >= 1 && c >= 1 && c <= 2);
+    assert.deepEqual(parseWho(q.answer), { who: after > x ? 'Blue shirts' : 'Red shirts', n: Math.abs(after - x) });
+    seen.leave.add(leave); seen.who.add(after > x);
+  }
+  assert.equal(seen.leave.size, 2); assert.equal(seen.who.size, 2);
+  // Learners focused on these lessons meet the activities at exactly those pages.
+  assert.ok(focused(77, 27).qs.some(q => q.variant === 'unequal-gains') && focused(77, 27).qs.some(q => q.variant === 'durations-compare'));
+  assert.ok(focused(90, 34).qs.some(q => q.variant === 'one-changed-compare'));
+  assert.ok(!focused(89, 34).qs.some(q => q.skillId === '2a-family-16-stories'), 'no page-90 work at 89');
+});
+
+test('R1-02: page 90 compares a number with a sum and two subtractions with the same subtrahend; page 92 forms stay', () => {
+  const signs = { sum: new Set(), sub: new Set() }; let tens = 0;
+  const sign = (l, r) => (l < r ? '<' : l > r ? '>' : '=');
+  for (const q of sample('2a-family-16-stories', 1200)) {
+    if (q.variant === 'compare-number-sum') {
+      const [, n, a, b] = q.prompt.match(/(\d+) \? (\d+) \+ (\d+)$/).map(Number);
+      assert.equal(q.answer, sign(n, a + b)); signs.sum.add(q.answer);
+      if (a % 10 === 0 && a >= 20) tens++; else assert.ok(a <= 9 && b <= 9);
+      assert.ok(n <= 100);
+    }
+    if (q.variant === 'compare-subtract') {
+      const [, m1, s1, m2, s2] = q.prompt.match(/(\d+) − (\d+) \? (\d+) − (\d+)$/).map(Number);
+      assert.equal(s1, s2, 'same subtrahend'); assert.notEqual(m1, m2);
+      assert.ok(m1 >= 11 && m1 <= 18 && m2 >= 11 && m2 <= 18);
+      assert.equal(q.answer, sign(m1 - s1, m2 - s2)); signs.sub.add(q.answer);
+    }
+    if (q.variant === 'compare-expr') assert.match(q.prompt, /\d \+ \d \? \d \+ \d$/);
+  }
+  assert.deepEqual([...signs.sum].sort(), ['<', '=', '>']); assert.deepEqual([...signs.sub].sort(), ['<', '>']);
+  assert.ok(tens > 10, 'whole ten plus ones against a number');
+  // Page 92 keeps its common-minuend form.
+  assert.ok(sample('2a-family-17-18-review', 300).some(q => /(\d+) − \d \? \1 − \d$/.test(q.prompt)));
+  assert.ok(focused(90, 34).qs.some(q => q.variant === 'compare-number-sum') && focused(90, 34).qs.some(q => q.variant === 'compare-subtract'));
+});
+
+test('R1-03: the ten-plus-part family for 12-16 in both orders and both subtractions, in the focused lesson, at its page', () => {
+  for (const [T, page, lesson] of [[12, 81, 30], [13, 84, 32], [14, 85, 32], [15, 87, 33], [16, 89, 34]]) {
+    const p = T - 10, want = { [`10 + ${p} = ?`]: T, [`${p} + 10 = ?`]: T, [`${T} − 10 = ?`]: p, [`${T} − ${p} = ?`]: 10 };
+    const { qs } = focused(page, lesson, 260), got = new Map(qs.filter(q => q.prompt in want).map(q => [q.prompt, q.answer]));
+    assert.deepEqual([...got.keys()].sort(), Object.keys(want).sort(), `total ${T} in lesson ${lesson} at ${page}`);
+    for (const [prompt, ans] of got) assert.equal(ans, String(want[prompt]), prompt);
+    // Not before its own page, even in its own lesson.
+    assert.ok(!focused(page - 1, lesson, 120).qs.some(q => q.data?.T === T && q.variant === 'ten-family'), `total ${T} before ${page}`);
+  }
+  // The released ten-plus forms of 11, 17, and 18 are unchanged, and page 87 has 15 − 5, 15 − 10, 10 + 5.
+  const p87 = focused(87, 33).qs.map(q => q.prompt);
+  for (const prompt of ['15 − 5 = ?', '15 − 10 = ?', '10 + 5 = ?', '5 + 10 = ?']) assert.ok(p87.includes(prompt), prompt);
+});
+
+test('R1-04: two-digit and whole-ten review domains at pages 88, 94, and 95', () => {
+  const forms = new Set();
+  for (const q of sample('2a-family-15-review', 800).filter(q => q.variant === 'dollars-tens')) {
+    const p = q.data.prices, total = p.reduce((x, y) => x + y, 0);
+    assert.ok(p[0] >= 11 && p[0] <= 49 && p[0] % 10 !== 0, 'one two-digit price');
+    assert.ok(p.slice(1).every(x => x % 10 === 0 && x >= 10), 'the others are whole tens');
+    assert.ok(total <= 99); assert.equal(q.answer, String(total));
+    assert.ok(q.prompt.includes(`$${p[0]}`) && p.every(x => q.prompt.includes(`$${x}`)));
+    forms.add(p.length);
+  }
+  assert.deepEqual([...forms].sort(), [2, 3]);
+  for (const q of sample('2a-mixed-review-94', 700).filter(q => q.variant === 'age-tens')) {
+    const { a, b } = q.data; assert.ok(a % 10 === 0 && a >= 20 && a <= 50 && b >= 2 && b <= 9); assert.equal(q.answer, String(a - b));
+  }
+  let crossing = 0, same = 0;
+  for (const q of sample('2a-review-95', 1000)) {
+    if (q.variant === 'difference-close') {
+      const { x, y } = q.data; assert.ok(x >= 10 && y <= 99 && y - x >= 2 && y - x <= 9); assert.equal(q.answer, String(y - x));
+      if (Math.floor(x / 10) !== Math.floor(y / 10)) crossing++; else same++;
+    }
+    if (q.variant === 'difference-wide') {
+      const { x, y } = q.data; assert.ok(y >= 22 && y <= 99 && x >= 1 && x <= y % 10, 'two-digit minus a small number, no borrowing'); assert.equal(q.answer, String(y - x));
+    }
+  }
+  assert.ok(crossing > 5 && same > 5);
+  assert.ok(focused(88, 33).qs.some(q => q.variant === 'dollars-tens'));
+  assert.ok(focused(94, 36).qs.some(q => q.variant === 'age-tens'));
+  assert.ok(!focused(93, 36).qs.some(q => q.skillId === '2a-mixed-review-94'), 'no page-94 work at 93');
+  const p95 = focused(95, 37).qs; assert.ok(p95.some(q => q.variant === 'difference-close') && p95.some(q => q.variant === 'difference-wide'));
+});
+
+test('R1-05: known removals at pages 86 and 90, and half then the total at page 94; inverse and simple-half forms stay', () => {
+  for (const q of sample('2a-family-14-stories', 700).filter(q => q.variant === 'share-one-each')) {
+    const { T, k } = q.data; assert.ok(k >= 2 && k <= 6 && T >= 12 && T <= 20); assert.equal(q.answer, String(T - k));
+    assert.match(q.prompt, new RegExp(`has ${T} .* each of ${k} .* one`));
+  }
+  for (const q of sample('2a-family-16-stories', 1000).filter(q => q.variant === 'two-removals')) {
+    const { start, r1, r2 } = q.data; assert.ok(r1 >= 1 && r2 >= 1 && r1 + r2 <= start % 10); assert.equal(q.answer, String(start - r1 - r2));
+    assert.ok(q.prompt.includes(`${start} children. ${r1} `) && q.prompt.includes(`then ${r2} more`));
+  }
+  for (const q of sample('2a-mixed-review-94', 700).filter(q => q.variant === 'half-then-total')) {
+    const { x } = q.data; assert.equal(x % 2, 0); assert.equal(q.answer, String(x + x / 2));
+    assert.ok(q.choices.includes(String(x / 2)), 'stopping at the half is a listed misstep');
+  }
+  // Page 94 (addendum): the larger amount from a known amount plus "more",
+  // with a whole-ten increase and with a single-digit increase.
+  const moreForms = new Set();
+  for (const q of sample('2a-mixed-review-94', 1000).filter(q => q.variant === 'more-quantity')) {
+    const known = Number(q.prompt.match(/(?:read |has \$)(\d+)/)[1]), more = Number(q.prompt.match(/(?:\$|read )(\d+) more/)[1]);
+    assert.equal(q.answer, String(known + more), q.prompt);
+    assert.ok(!q.prompt.includes(`${known + more}`), 'the answer is not in the prompt');
+    if (more === 10) { assert.ok(known >= 10 && known <= 89 && known + more <= 99); moreForms.add('ten'); }
+    else { assert.ok(known >= 2 && known <= 9 && more >= 2 && more <= 9 && known + more <= 18); moreForms.add('one'); }
+    assert.ok(q.choices.includes(String(Math.abs(known - more))), 'subtracting instead is a listed misstep');
+  }
+  assert.deepEqual([...moreForms].sort(), ['one', 'ten']);
+  const l36 = focused(94, 36, 300).qs.filter(q => q.variant === 'more-quantity');
+  assert.ok(l36.some(q => / 10 more /.test(q.prompt)) && l36.some(q => !/ 10 more /.test(q.prompt)), 'focused lesson 36 reaches both forms at 94');
+  assert.ok(!focused(93, 36, 120).qs.some(q => q.variant === 'more-quantity'), 'not before page 94');
+  for (const [id, variant] of [['2a-family-14-stories', 'change-story'], ['2a-mixed-review-94', 'half-total'], ['2a-mixed-review-94', 'update-compare']]) assert.ok(sample(id, 200).some(q => q.variant === variant));
+  assert.ok(focused(86, 32).qs.some(q => q.variant === 'share-one-each') && !focused(85, 32).qs.some(q => q.variant === 'share-one-each'));
+  assert.ok(focused(90, 34).qs.some(q => q.variant === 'two-removals'));
+  assert.ok(focused(94, 36).qs.some(q => q.variant === 'half-then-total'));
 });
 
 // ---- Run state ----
