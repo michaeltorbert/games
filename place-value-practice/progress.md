@@ -402,8 +402,19 @@ counting steps. A page-by-page source crosswalk (pages 37-97, in
 `shared/curriculum-coverage.md`) then found and fixed more gaps: noon and 5 AM
 endpoints (46), two spends/two gains (62), missing-number patterns (71), pages
 left and a two-digit comparison plus a teen in three totals (77), missing
-addends for 11 (82), 13 − 10/13 − 11/14 − 11 (83), half-past elapsed starts and
-doubles to 40 (93), and two-digit parity (96). Tests recompute answers from the
+addends for 11 (82), 13 − 10/13 − 11/14 − 11 (83), and half-past elapsed starts
+and doubles to 40 (93). A two-digit parity variant was also added at 96 (see the
+R3 correction below). Tests recompute answers from the
 prompt numbers and check each role is reached in its own lesson at its page and
 not one page earlier. No catalog, Chapter 1, store, or Football change. Fresh
 gates and independent review remain pending; nothing is released.
+
+Documentation correction R3 (same candidate, 2026-11-20): the R2 entry above
+first said the crosswalk found a missing two-digit parity exercise on page 96.
+That was wrong. The source text extraction joined table cells; the page image
+shows small amounts (one-digit, plus one 12), already covered by the
+small-number variants. `two-digit-parity` stays unchanged as an adaptation: a
+bounded two-digit instance (an odd 11-49 plus 10-49, total at most 98) of the
+already-taught odd/even rule and the Chapter 1 last-digit rule, with no general
+regrouping. Only the coverage doc and this log changed; no code, test, asset,
+or version bytes changed. Fresh review remains pending; nothing is released.

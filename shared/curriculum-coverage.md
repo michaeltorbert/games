@@ -206,7 +206,8 @@ topic and in All completed. Row IDs carry the `2a-` prefix.
 
 This lesson table is a summary. The page-by-page crosswalk below is the
 coverage record; it lists the review-R2 additions (pages 46, 62, 70-72, 76-77,
-82-83, 86, 93, 96-97) with their bounds.
+82-83, 86, 93, 97) with their bounds, and the page-96 two-digit parity
+adaptation.
 
 Pages with no practice: 33 (teacher introduction), 34 (optional home games),
 35 (external resources), 36 (blank), 48 (reference year calendar), 55-56
@@ -231,8 +232,13 @@ missing story roles: inverse removals (70, 72), comparative quantities (70, 72,
 was then written from the source and found further gaps, also added: noon and
 5 AM endpoints (46), two spends and two gains (62), missing-number patterns
 (71), pages left and a two-digit comparison (77), missing addends for 11 (82),
-13 − 10 and 13 − 11 (83), half-past elapsed starts and doubles to 40 (93), and
-two-digit parity (96). These two-digit reviews
+13 − 10 and 13 − 11 (83), and half-past elapsed starts and doubles to 40 (93).
+Correction (review R3, 2026-11-20): an earlier version of this record said the
+crosswalk found a missing two-digit parity exercise on page 96. That was wrong:
+the text extraction ran table cells together, and the page image shows small
+one-digit amounts (and one 12). Page 96 was already covered by the small-number
+variants. The `two-digit-parity` variant stays as a bounded adaptation of the
+already-taught parity rule, not as a source gap. These two-digit reviews
 use only Chapter 1 methods (adding whole tens, whole tens minus one digit,
 subtracting without borrowing, counting up between close numbers); they add no
 general borrowing.
@@ -356,7 +362,8 @@ match, or a personal fact), or **excluded** (with reason). Pages 33-36, 48, and
 | 94 · 7a-f | half then total; inverse half; N more (+10 or one digit); whole-ten age minus small; changed comparison | mixed-review-94.half-then-total, .half-total, .inverse-half, .more-quantity, .age-tens, .age-difference, .update-compare | runnable |
 | 95 · 1-3 | crossing facts; same family; close, wide, and small differences | review-95.* | adapted (matching as one item) |
 | 96 · 4-5 | missing numbers; a subtraction path | review-96.missing, .journey | runnable |
-| 96 · 6 | odd + odd and odd + even, small and two-digit (≤ 98): parity and fair sharing | review-96.odd-odd, .odd-even, .share, .two-digit-parity | runnable |
+| 96 · 6 | odd + odd and odd + even with small amounts (the source table uses one-digit amounts and one 12): total, parity, fair sharing | review-96.odd-odd, .odd-even, .share | runnable |
+| 96 · 6 (extension) | the same parity and sharing question for two-digit amounts (generator range: an odd 11-49 plus 10-49, total ≤ 98) | review-96.two-digit-parity | adapted: a bounded instance of the already-taught odd/even rule and the Chapter 1 last-digit rule (p20) with Chapter 1 two-digit addition; not a source exercise and no general regrouping |
 | 97 · 7 | solve facts and decode with a key | review-97.decode | adapted (original key and word) |
 | 97 · 8a | how many more: a teen against 20 | review-97.compare-both | runnable |
 | 97 · 8b-c | smaller from larger and "N more"; larger from smaller and "N more" | review-97.compare-role, .more-than | runnable |
