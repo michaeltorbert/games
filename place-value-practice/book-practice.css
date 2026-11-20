@@ -4,4 +4,8 @@
 .book-practice .book-topic{display:flex;flex:1;align-items:center;gap:8px;min-width:0;font-weight:700}.book-practice .book-topic select{min-width:0}.book-practice .book-topic-help{flex-basis:100%;margin:0;font-size:13px;color:#3f5249}
 /* WebKit sizes a menulist select to its text and ignores min-height; as in Mixed, dropping only the drawn appearance keeps the native picker and label while honoring the 44px target. */
 #book-practice .arithmetic-setup select{-webkit-appearance:none;appearance:none;min-height:44px;padding:8px 40px 8px 12px;border:1px solid #8c9a93;border-radius:8px;color:inherit;line-height:1.5;background:#fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' fill='none' stroke='%2324342d' stroke-width='2'/%3E%3C/svg%3E") no-repeat right 14px center/12px 8px}
+/* #223: calendars, clock sets, strips, rainbows, and tables need room to read. */
+.book-practice>.book-visual.book-visual--detail{grid-column:1/-1;grid-row:auto}.book-practice>.book-visual.book-visual--detail svg{width:min(100%,440px);max-height:300px}
+.book-practice .arithmetic-choices button{overflow-wrap:anywhere}
+@media(max-width:620px){.book-practice>.book-visual.book-visual--detail svg{width:100%;max-height:none}}
 @media(max-width:620px){.book-practice{display:flex;flex-direction:column;padding:12px;gap:6px}.book-practice>.book-visual svg{max-height:140px;width:210px}.book-practice>h3{font-size:20px}.book-practice>.arithmetic-choices button{min-width:80px;flex-basis:40%}.book-active .practice-modes button{font-size:13px;padding:8px}.book-practice>.arithmetic-setup button{font-size:12px}.book-practice>.arithmetic-setup select{font-size:13px}.book-practice>p:first-of-type{font-size:12px}}

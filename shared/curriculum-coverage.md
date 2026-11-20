@@ -146,12 +146,113 @@ unchanged; Grade 2-A uses `math-curriculum:progress:grade2a:v1` with the same
 schema, revision, provenance, future/corrupt preservation, and session-only
 fallback. A new Grade 2-A record starts at 0. Valid pages are 0-161; decreases,
 raises over ten pages, and entering or leaving Chapter 1 need an extra
-confirmation. Only Chapter 1's boundaries are verified, so later pages share one
-"after Chapter 1" bucket. Every answer snapshots both books for the run, so
+confirmation. Chapter boundaries are 10-32, 33-54, and 55-97 (#223); pages
+98-161 share one "after Chapter 3" bucket. Every answer snapshots both books for the run, so
 Grade 1-B availability (coins, facts, Mixed) survives a Grade 2-A report.
 Football snapshots both before each game and before Season mutation; Place by
 Place freezes the selected book and page for each Book topics run. Grade 2-A
 book practice and rewards live at `place-value-practice:book:grade2a:v1`.
+
+# Grade 2-A Chapters 2-3 coverage (#223)
+
+Scope: Math Mammoth Grade 2-A, revision `rev-2025-09-06` (same PDF hash as
+above), printed pages 33-97. Chapter 2 (Clock) has a teacher introduction on 33
+and learner pages 37-54; Chapter 3 (Addition and Subtraction Facts Within 0-18)
+has a teacher introduction on 55 and learner pages 59-97. Chapter 4 starts on
+98 and is outside scope. The full lesson text and figures of 33-98 were
+inspected by two independent planners; the inventory below is the reconciled
+result. Adding this scope does not change any reported page, history, or
+mastery; a learner's page still unlocks each row only when that row's own
+printed page is reported complete.
+
+Runnable surface: Place by Place, Book topics, Grade 2-A, grouped under
+"Chapter 2: Clock" and "Chapter 3: Facts within 0-18" (one topic per lesson,
+plus All completed lessons). Time Lab and the #222 quarter clock are unchanged
+and separate; no clock or calendar work enters live Football. All questions,
+names, events, routines, numbers, and figures are original. People, routines,
+and events are fictional and stated in the prompt; calendars are fixed
+Gregorian practice months in 2026-2029 with the year shown. Nothing reads the
+device date or clock. Choose/select activities adapt draw/mark/color tasks and
+claim no drawing assessment. Clock work stays in five-minute steps (no
+one-minute or seconds precision).
+
+A row's page is the printed page that introduces all of its variants; a
+variant first seen later has its own later row. Variants are picked by each
+row's own occurrence count, so every variant below is reached in its lesson
+topic and in All completed. Row IDs carry the `2a-` prefix.
+
+| Lesson (pages) | Rows (unlock page): variants | Bounds and adaptations |
+| --- | --- | --- |
+| Review—Whole and Half Hours (37) | clock-whole-half 37: read analog, words to digital, +1 hour, +30 minutes | :00/:30 only; crossing 12 to 1 |
+| The Minutes (38-40) | minutes-hand 38: numeral to minutes, minutes to numeral, 60/30 facts; minutes-read 39: labeled and standard faces; minutes-match 40: choose clock A/B/C, +5 minutes | p38 asks minutes only (no full late-hour time); p39-40 minutes :00-:30 |
+| The Minutes, Part 2 (41-42) | late-read 41: read :35-:55, choose the clock with the minute hand set; late-plus-five 42: +5 with hour rollover (:55), +5 late | "Set the hand" adapted as choosing the matching clock; hour hand drawn between numerals |
+| Past and Till (43-45) | past 43 (5-30 past, half past, +5 in words); till 44 (:35-:55 as minutes till the next hour); time-forms 45 (words↔digital, clock to digital/words) | "till" only for :35-:55, "past" only up to 30; 12 → 1 |
+| How Many Hours Pass? (46-47) | hours-am-pm 46: AM/PM of stated routines, noon/midnight, same-half intervals, across noon, 12-hour span; hours-overnight 47: to midnight (from 7 AM-11 PM), overnight sleep (bed 7 PM-12 midnight, wake 5-9 AM), two durations summed, 24/48 hours, start time from end and duration, bedtime from wake time and sleep length | Whole hours; fictional routines replace the book's personal questions (no learner schedule asked) |
+| Weekdays and Months (48-50) | page 48 is a reference year calendar (no row); weekdays 49: abbreviations, before/after with wrap, +1-7 days, weekday lookup in a calendar; months 50: 30/31 days, February 28/29 with the four-year rule, month before/after with wrap, months until a fictional event | 2024 stated as a leap year; years 2025-2032 |
+| Dates (51-53) | dates-weekly 51: all dates of a weekday, next weekly meeting, Month Day format; dates-events 52: date of a starred fictional event, its weekday, Month Day, Year form, tomorrow (month/year end), first and last weekday of a month, +3-12 days, +1-6 months with year wrap; dates-weeks 53: ±1 and ±2 weeks with month/year rollover, every-two-weeks meetings | The book's holiday table becomes a fictional event calendar; "today"/birthday become a stated reference date |
+| Review Chapter 2 (54) | plus-ten-min 54 (+10 minutes, never crossing the hour); hours-later 54 (end time from a morning start plus 2-6 hours, across noon); ch2-review 54 (rotates every Chapter 2 row above) | +10 introduced here without rollover; +5 rollover stays from 42 |
+| Completing the Next Ten (59-60) | nearest-ten 59: which two tens, nearer ten with "Both are equally near" for midpoints; next-ten-review 59: missing addend to the next ten, helping problem, even number, inverse double; next-ten-plus 60: next ten plus one, pick the whole-ten sum, missing middle of three terms, 90 + ? + ? = 100 pair | Two-digit 11-99 |
+| Going Over Ten (61-62) | make-ten-visual 61: ten-frame totals, split the second addend, 10 + ?; make-ten-split 62: decomposition without pictures, targets 10/11/12, parity, two-step money story and its matching number sentence | Sums 11-18 |
+| Adding with 9, 8 (63-66) | add-nine 63 / add-eight 65: make ten by moving 1/2, facts with 1-9, doubles 2-10; add-nine-more 64 / add-eight-more 66: +0 and +10, swapped order, missing either addend; p66 also "more than" and "years older" stories, the 8+2… and 18+2… patterns (to 32), half-of-even pattern | +0 and +10 gated at 64 and 66 |
+| Adding with 7, 6 (67-70) | add-seven 67: 7 + 4…10, near doubles (1+2 … 9+10), doubles; add-seven-more 68: 7+0/0+7/7+10, swapped, missing addend, add-7/8/9 rule tables; add-six 69: 6+0…10 both orders, 6 + 4 + ?, near doubles, missing addend with 6-9; add-six-more 70: three/four addends with a ten pair, missing start, missing change, comparison, multistep | 7+0 at 68; 6+0/6+10 at 69 |
+| Review—Facts with 6, 7, 8 (71-72) | facts-crossing 71: all 20 unordered single-digit crossing facts in both orders, cycled exhaustively; +1 patterns; facts-table-stories 72: addition-table cell, inverse and comparison stories, three addends with no ten pair, four addends | — |
+| Subtract to Ten (73-74) | subtract-to-ten 73: 11-19 − ? = 10, split across ten (second part), split result with ten-frames; subtract-to-ten-more 74: direct facts, the same fact in the 20s (2 tens and ones), missing take-away | Crossing subtraction: minuend 11-18, one-digit subtrahend; 19 appears only in "− ? = 10" |
+| Difference and How Many More (75-77) | difference-line 75: distance on a 0-17 number line, pick the subtraction, whole-ten differences, near neighbors across a ten to 100; how-many-more 76: missing addend, how many more, choose count up versus count back, count-up differences; compare-stories 77: fewer, left, a defined dozen plus more, three totals, both updated | Subtraction templates are restricted to these forms (not general 0-100 borrowing) |
+| Number Rainbows (78-79, 83) | rainbow-11-12 78: read a partner, subtract with the full rainbow; rainbow-11-12-fill 79: hidden endpoint, related missing addend/subtrahend; rainbow-13-14 83: hidden endpoint, subtraction | Included although the book marks them optional. Even totals show the middle number joined to a second copy below it (6 + 6, 7 + 7); a hidden middle hides that copy |
+| Fact Families 11-16 (80-90) | family-11 80; family-12 81 (+11 review, 6/6/12 family, direct); family-12-more 82 (missing either addend, addition that checks a subtraction, the 17 pattern, subtracting odd numbers from 15/16); family-13 84; family-14 85 (7/7/14, direct 11-14, missing minuend/subtrahend); family-14-stories 86 (three addends, comparison and change stories, count by 8s to 104, count by 4s); family-15 87 (skip 3s, 9-33); family-15-review 88 (all three comparison roles, even as a double to 20, combine then halve, parity 0-20, two/three whole-dollar prices); family-16 89 (8/8/16, mixed 11-19 minus 2-10 including 19 − 9); family-16-stories 90 (count by 3s/4s, can you afford, money left, shortfall, compare sums with <, >, =) | 13 gated at 84 and 14 at 85. The +8 sequence is Book-only and reaches exactly 104 |
+| Fact Families 17/18 (91-92) | family-17-18 91: related facts for 17 and 18, sentence counts (9/9/18 has two), mixed facts; family-17-18-review 92: compare without calculating, missing term in any position, four nap durations, boxes needed and pencils left over, a subtraction path from 100 | Boxes of 6/8/10/12, 2-3 boxes, found by repeated addition; no division notation |
+| Mixed Review Chapter 3 (93-94) | elapsed-minutes 93 (minutes between two times in the same hour, 5-30); mixed-review-93 (late reading, +5 minutes, halves of two sets, inverse double); mixed-review-94 (subtraction path across tens, half, inverse half, age difference, update then compare) | Elapsed minutes have their own page-93 gate |
+| Review Chapter 3 (95-97) | review-95 (crossing facts, same fact family, small and wide differences); review-96 (missing term anywhere, subtraction path, odd + odd and odd + even totals with parity and equal sharing); review-97 (an original code key and word, comparison roles, two-step shortfall, board squares left, the one dice pair that finishes exactly) | The code puzzle uses original words and keys, no copied joke |
+
+Pages with no practice: 33 (teacher introduction), 34 (optional home games),
+35 (external resources), 36 (blank), 48 (reference year calendar), 55-56
+(teacher introduction and pacing with an optional card game), 57 (optional
+card games), 58 (external resources). Reporting any of these pages unlocks
+exactly what the previous learner page unlocks. Omitted as labeled optional
+Puzzle Corners: 42 (working backward through several elapsed rounds), 64
+(generalized sums ending in 9), 74 (subtraction patterns in larger decades), 82
+(missing middle term of three). No ordinary exercise is omitted; optional
+chapter tests are outside the source excerpt and the requested scope.
+
+Football: the only change is `MATH_CURRICULUM_2A.operationPage`, which now
+places a teen 11-18 minus a one-digit number that crosses ten on page 73. That
+admits existing, truthful Grade 1-B relation families (such as score
+differences) with those exact live operands once page 73 is completed in the
+game's frozen snapshot. Chapter 3 addition facts were already covered by page
+14. No live family, fact pool, event family, or reporting tuple is added, and
+the #220 floor weights, readiness, and constants are unchanged; trivial facts
+do not gain weight.
+
+## Grade 2-A run state (#223)
+
+The Book store keeps its key and reads two inner schemas. Schema 1 (#219) is
+read only: a missing catalog ceiling means page 32, and its pending question is
+rebuilt from the released Chapter 1 catalog order and generators, including
+saved misses at any reported page. Every write is schema 2, which the released
+reader rejects as unknown and leaves byte-for-byte (verified against the base
+code before any new history row). An old open tab therefore goes memory-only
+after the first new save; that is intended. Reading never writes.
+
+Schema 2 stores `catalogThrough` (32 or 97), the frozen page and topic, a
+cursor, a stable pending pointer (skill ID, its printed page, generator
+occurrence; the question is regenerated and saved misses must match it), and
+up to 32 retained retries. Eligibility is page × ceiling × topic × each row's
+own page; saved scores and history are never inputs. Boundaries: `create()`,
+Start new book session, a topic change, or a confirmed page at load that
+differs from the saved run. Next, retries, Options, background, and reloading
+at the same page keep the frame; only a boundary moves a legacy run to the
+full catalog. At a boundary an unfinished question that is still eligible
+stays exactly (misses and help). One that is locked and has misses moves to
+the retained list: hidden, unrewarded, never deleted, and resumed exactly once
+it is eligible again (retained retries are served before fresh work). A locked
+question with no misses carries no evidence and is not kept. History above a
+lowered page is kept. Retained entries are deduplicated only by exact pointer;
+a 33rd distinct retry never evicts one: the visit becomes memory-only and the
+last durable save stays. If another tab saves a run with a different page,
+topic, or ceiling, this tab keeps its own frame in memory, leaves those bytes
+alone, and adopts the saved run only at its next explicit new session; a
+same-frame change is adopted as before. Writes keep the existing Web Lock with
+a callback-time fresh read.
 
 # Football difficulty floor (#220)
 

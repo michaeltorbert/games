@@ -64,7 +64,7 @@ test('Options describe each focus truthfully: missed small facts return in Addit
  const described=async(name,text)=>expect(dialog.getByRole('radio',{name,exact:true})).toHaveAccessibleDescription(text);
  await described(ROUTES.mixed,'Mixed questions from your finished Grade 1-B pages, from small facts to bigger numbers. Missed small facts return in later practice. Kinds of bigger problems that needed help come up a little more often.');
  await described(ROUTES.facts,'Type answers to addition facts up to 9 + 9 and their matching subtraction facts. Missed facts come back later.');
- await described(ROUTES.book,'Goes through each finished lesson in turn: Grade 1-B shapes, measurement, graphs and coins, or Grade 2-A Chapter 1. Pick the book when asked for your page, then a topic on the book screen.');
+ await described(ROUTES.book,'Goes through each finished lesson in turn: Grade 1-B shapes, measurement, graphs and coins, or Grade 2-A Chapters 1-3, including clocks, calendars and facts to 18. Pick the book when asked for your page, then a topic on the book screen.');
  await expect(dialog).not.toContainText(/master|fluent|seconds|deadline/i);
  await dialog.getByRole('button',{name:'Cancel',exact:true}).click();expect(await stores(page)).toEqual(before);
 });

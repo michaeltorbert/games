@@ -323,3 +323,44 @@ ordinary variant is reachable in real topic and All completed sessions; the
 halved-shape description states line position only; the page prompt and Place
 options copy say where Grade 2-A practice lives and that Mixed/Facts stay on
 Grade 1-B. Release gates remain pending.
+
+## 2026-11-20 — #223 Grade 2-A Chapters 2-3 book practice (proposed 1.11.0, release candidate, unreleased)
+
+Original task prompt (Michael, 2026-11-18; issue #223 recorded scope approval
+2026-11-19 America/New_York): extend the Grade 2-A practice through the end of
+Chapter 3 (printed page 97) with the existing completed-page prompt, original
+questions, exact page gates, frozen runs, and no claim of completion or mastery.
+
+- 60 new catalog rows (lessons 11-37) cover every ordinary activity on printed
+  pages 37-54 and 59-97, plus the number rainbows. Each row unlocks on its own
+  page; variants first seen later have their own rows (for example +0/+10 facts
+  at 64/66/68/69, +10 minutes and start-plus-hours at 54, elapsed minutes at
+  93). Pages 33-36, 48, and 55-58 unlock nothing; 98+ adds nothing. Inventory,
+  bounds, adaptations, and dispositions are in `shared/curriculum-coverage.md`.
+- New files: `grade2a-chapters23-domain.js` (generators) and
+  `grade2a-book-visuals.js` (clocks, practice calendar, day strip, number line,
+  ten-frames, rainbows with the even-total middle joined to itself, rule and
+  addition tables, groups, a box, a code key). Topics are grouped by chapter.
+- Run state: same key, inner schema 2 for every write (the released reader
+  rejects it and keeps the bytes); schema 1 still restores exactly on the
+  Chapter 1 catalog. Stable pending pointers, retained retries (bounded at 32,
+  never evicted), and explicit boundaries are described in the coverage doc.
+  This intentionally replaces #221's reframe for Grade 2-A: a boundary keeps an
+  eligible pending question instead of discarding it. An old 1.10.0 tab goes
+  memory-only after the first 1.11.0 save. A tab never adopts another tab's run
+  with a different page, topic, or ceiling without its own new session.
+- Grade 1-B lanes, Mixed, Facts, and their stores are unchanged.
+- Version 1.11.0 in `GAME_VERSION`, every cache key, `games.js`, `version.json`.
+- Tests: new `tests/grade2a-chapters23-domain.spec.mjs` (independent inventory,
+  gates, real-session variant reach, Date/minute oracles, Football gate, legacy
+  golden fixture `tests/fixtures/grade2a223-legacy.json`, schema and retry
+  contract) and `tests/grade2a-chapters23-ui.spec.mjs` (six-project pictures by
+  touch with screenshots and an environment record under
+  `tests/artifacts.nosync/issue223/`, legacy restore, retained retry across a
+  lowered page and reload, two tabs, front matter). The #219 specs stay scoped
+  to Chapter 1; the grouped-halves window now starts from a fresh focused
+  session.
+
+No check results are claimed here; release gates in Chromium and WebKit,
+registry, fresh independent review, merge, and Pages verification remain with
+the coordinator. Nothing is released.

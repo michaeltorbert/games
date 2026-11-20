@@ -7,21 +7,28 @@ import vm from 'node:vm';
 function load() {
   const scope = vm.createContext({ console });
   for (const file of ['shared/curriculum.js', 'shared/grade2a-curriculum.js', 'place-value-practice/arithmetic-domain.js',
-    'place-value-practice/book-practice-domain.js', 'place-value-practice/grade2a-book-domain.js']) {
+    'place-value-practice/book-practice-domain.js', 'place-value-practice/grade2a-chapters23-domain.js', 'place-value-practice/grade2a-book-domain.js']) {
     vm.runInContext(fs.readFileSync(file, 'utf8'), scope, { filename: file });
   }
   return scope;
 }
 const { MATH_CURRICULUM: c1, MATH_CURRICULUM_2A: c, PLACE_BOOK: b1, PLACE_BOOK_2A: b } = load();
 const plain = value => JSON.parse(JSON.stringify(value));
+// #223 extends the catalog; these #219 checks stay scoped to the released
+// Chapter 1 rows and lessons (Chapters 2-3 have their own spec).
+const CH1 = c.CATALOG.filter(skill => skill.chapter === 1);
+const CH1_LESSONS = c.LESSONS.filter(lesson => lesson.id <= 10);
 
 test('source identity, Chapter 1 boundaries, and every lesson mapped to runnable families', () => {
   assert.equal(c.BOOK, 'Math Mammoth Grade 2-A');
   assert.deepEqual(plain(c.SOURCE), { copyright: '2012-2025', created: '2025-09-06', sha256: 'ff96fc64c6d05a4b961ab4ea46920be86de06cb0af15c84cb311b3445a7a6bf2' });
   assert.equal(c.LAST_PAGE, 161);
   assert.equal(c.CHAPTER1_FIRST, 10); assert.equal(c.CHAPTER1_LAST, 32);
-  assert.equal(c.LESSONS.length, 10);
-  for (const lesson of c.LESSONS) {
+  assert.equal(CH1_LESSONS.length, 10);
+  assert.equal(CH1.length, 32);
+  // The released rows keep their exact IDs and order at the front of the catalog.
+  assert.deepEqual(plain(c.CATALOG.slice(0, 32)), plain(CH1));
+  for (const lesson of CH1_LESSONS) {
     const rows = c.CATALOG.filter(skill => skill.lesson === lesson.id);
     assert.ok(rows.length >= 1, lesson.title);
     assert.ok(rows.every(skill => skill.page >= lesson.pages[0] && skill.page <= lesson.pages.at(-1)), lesson.title);
@@ -30,7 +37,7 @@ test('source identity, Chapter 1 boundaries, and every lesson mapped to runnable
   for (const page of [10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32]) {
     assert.ok(c.CATALOG.some(skill => skill.page === page), `page ${page}`);
   }
-  assert.ok(c.CATALOG.every(skill => skill.chapter === 1 && skill.page >= 10 && skill.page <= 32 && skill.optional === false));
+  assert.ok(CH1.every(skill => skill.chapter === 1 && skill.page >= 10 && skill.page <= 32 && skill.optional === false));
   assert.deepEqual(plain(c.OMITTED_OPTIONAL.map(item => item.page)), [16, 18, 23, 28, 30]);
   // The Grade 1-B authority and baseline are untouched.
   assert.equal(c1.BASELINE.completedThroughPage, 113); assert.equal(c1.LAST_PAGE, 187);
@@ -43,7 +50,8 @@ test('completion gating is page-exact; starting the book unlocks nothing; later 
     assert.equal(c.available(skill.page - 1).some(x => x.id === skill.id), false, skill.id);
     assert.equal(c.available(skill.page).some(x => x.id === skill.id), true, skill.id);
   }
-  assert.equal(c.available(32).length, c.CATALOG.length);
+  assert.equal(c.available(32).length, CH1.length);
+  assert.equal(c.available(161, c.LEGACY_CATALOG_THROUGH).length, CH1.length);
   assert.equal(c.available(161).length, c.CATALOG.length);
   for (const bad of [-1, 162, NaN, 1.5, '10']) assert.equal(c.validPage(bad), false);
   assert.equal(c.needsConfirmation(0, 5), false);
@@ -59,7 +67,7 @@ test('completion gating is page-exact; starting the book unlocks nothing; later 
 });
 
 test('every generator is answerable, bounded to Chapter 1 content, and explains itself', () => {
-  for (const skill of c.CATALOG) {
+  for (const skill of CH1) {
     for (let n = 0; n < 60; n++) {
       const q = b.question(skill, n);
       const label = `${skill.id}#${n}`;
@@ -87,14 +95,14 @@ test('every generator is answerable, bounded to Chapter 1 content, and explains 
 
 test('page-specific scope: no general borrowing, no carrying before page 14, halving forms by page', () => {
   const bySkill = id => c.CATALOG.find(skill => skill.id === id);
-  const early = c.CATALOG.filter(skill => skill.page < 14 && skill.id !== '2a-tens-minus-digit');
+  const early = CH1.filter(skill => skill.page < 14 && skill.id !== '2a-tens-minus-digit');
   for (const skill of early) for (let n = 0; n < 60; n++) {
     const q = b.question(skill, n);
     if (q.math?.op === 'add' && q.math.answerRow === null && q.math.operands.length === 2) {
       const [x, y] = q.math.operands; assert.ok(x % 10 + y % 10 <= 9, `${skill.id}#${n} carries before p14`);
     }
   }
-  for (const skill of c.CATALOG) for (let n = 0; n < 60; n++) {
+  for (const skill of CH1) for (let n = 0; n < 60; n++) {
     const q = b.question(skill, n);
     if (q.math?.op === 'sub' && q.math.operands.length === 2) {
       const [x, y] = q.math.operands;
@@ -227,7 +235,7 @@ function run(page, lesson, steps) {
 const missing = (seen, ids) => plain([...ids].flatMap(id => (EXPECTED[id] ?? ['one']).filter(k => !seen.get(id)?.has(k)).map(k => `${id}:${k}`)));
 
 test('R1: every lesson topic reaches every ordinary variant of each family through real sessions', () => {
-  for (const lesson of c.LESSONS) {
+  for (const lesson of CH1_LESSONS) {
     const ids = c.CATALOG.filter(s => s.lesson === lesson.id).map(s => s.id);
     const { seen, halves } = run(32, lesson.id, lesson.id === 10 ? 1200 : 240);
     assert.deepEqual(missing(seen, ids), [], lesson.title);
@@ -238,7 +246,7 @@ test('R1: every lesson topic reaches every ordinary variant of each family throu
 
 test('R1: All completed reaches every variant at page 32, and page boundaries only show completed families', () => {
   const { seen } = run(32, 0, 32 * 40);
-  assert.deepEqual(missing(seen, c.CATALOG.map(s => s.id).filter(id => id !== '2a-chapter-review')), []);
+  assert.deepEqual(missing(seen, CH1.map(s => s.id).filter(id => id !== '2a-chapter-review')), []);
   assert.deepEqual(missing(seen, ['2a-chapter-review']).length < b.REVIEWED.length, true);
   for (const page of [9, 10, 11, 13, 14, 16, 18, 20, 23, 25, 28, 30, 31, 32, 33, 161]) {
     const allowed = c.available(page).map(s => s.id);

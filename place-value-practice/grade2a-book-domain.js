@@ -1,4 +1,6 @@
-// Grade 2-A Chapter 1 book practice (issue #219). Original, source-bounded
+// Grade 2-A book practice: Chapter 1 generators (issue #219, unchanged) and the
+// run state for Chapters 1-3 (#223; Chapters 2-3 generators live in
+// grade2a-chapters23-domain.js). Original, source-bounded
 // generators for Math Mammoth Grade 2-A printed pages 10-32; no workbook
 // wording, figures, or exercises are copied. Digital choose/select activities
 // adapt draw/color tasks and do not claim to assess drawing or cutting.
@@ -196,7 +198,10 @@ const PLACE_BOOK_2A = (()=>{
         const target=C.CATALOG.find(k=>k.id===REVIEWED[s%REVIEWED.length]);
         const q=question(target,Math.floor(s/REVIEWED.length));
         ({prompt,answer,visual,help,math}=q);options=q.choices;reviewOf=target.id;break;}
-      default:throw new RangeError(`Unknown Grade 2-A skill ${skill.id}`);
+      default:
+        // #223: Chapters 2-3 live in their own module and do their own choices.
+        if(skill.chapter>1&&typeof PLACE_BOOK_2A_CH23!=='undefined')return PLACE_BOOK_2A_CH23.question(skill,serial);
+        throw new RangeError(`Unknown Grade 2-A skill ${skill.id}`);
     }
     options=[...new Set([String(answer),...options.map(String)])].slice(0,4);
     const rotate=s%options.length;options=[...options.slice(rotate),...options.slice(0,rotate)];
@@ -212,20 +217,99 @@ const PLACE_BOOK_2A = (()=>{
     }
     return {kind:'text',heading:'Worked answer',lines:[q.help,`Answer: ${q.answer}.`]};
   }
+  // ---- Run state (#223) ----
+  // One store, two inner schemas. Schema 1 (released #219) is read only: its
+  // pending question is rebuilt from the frozen Chapter 1 catalog and order
+  // (a missing ceiling means page 32). Every write is schema 2, which a
+  // schema-1 reader rejects as unknown, leaving the bytes alone. Reading never
+  // writes. Schema 2 keeps a stable pointer to the pending question (skill,
+  // its printed page, and the generator occurrence), so the exact question is
+  // regenerated rather than stored, plus a bounded list of retained retries.
+  //
+  // Eligibility is frozen per run: completed page x catalog ceiling x topic x
+  // each skill's own page. Saved scores and history never unlock a page. Only
+  // create() and boundary() (an explicit new session, confirmed page change,
+  // or topic change) start a new frame; answer/next/reload keep it.
+  const LEGACY_LESSONS=[0,...C.LESSONS.filter(l=>l.id<=C.LEGACY_LESSON_LAST).map(l=>l.id)];
   const LESSON_IDS=[0,...C.LESSONS.map(l=>l.id)];
-  const create=(page,lesson=0)=>({schemaVersion:1,worktext:C.BOOK,edition:C.EDITION,page,lesson,serial:0,completed:0,firstTry:0,yards:0,misses:[],done:false,history:[]});
-  const skills=s=>C.available(s.page).filter(k=>!s.lesson||k.lesson===s.lesson);
-  // The run cycles through its completed families in order. Each family's own
-  // occurrence count (not the global serial) picks its variant, so every
-  // ordinary variant is reached whatever the number of families in the run.
-  const current=s=>{const all=skills(s);return all.length?question(all[s.serial%all.length],Math.floor(s.serial/all.length)):null;};
-  function normalize(s){
-    if(!s||s.schemaVersion!==1||s.worktext!==C.BOOK||s.edition!==C.EDITION||!C.validPage(s.page)||!LESSON_IDS.includes(s.lesson)||!['serial','completed','firstTry','yards'].every(k=>Number.isSafeInteger(s[k])&&s[k]>=0&&s[k]<1e9)||s.firstTry>s.completed||s.completed!==s.serial+Number(s.done)||s.yards>s.completed*5||!Array.isArray(s.misses)||s.misses.length>3||!s.misses.every(v=>typeof v==='string')||typeof s.done!=='boolean'||!Array.isArray(s.history)||s.history.length>100||s.history.some(r=>!r||!C.CATALOG.some(k=>k.id===r.skillId&&k.page===r.page)||!Number.isInteger(r.serial)||r.serial<1||r.serial>s.completed||!Number.isInteger(r.misses)||r.misses<0||r.misses>3))return null;
-    const q=current(s);if(q&&s.misses.some(v=>v===q.answer||!q.choices.includes(v)))return null;
-    return {schemaVersion:1,worktext:C.BOOK,edition:C.EDITION,page:s.page,lesson:s.lesson,serial:s.serial,completed:s.completed,firstTry:s.firstTry,yards:s.yards,misses:[...s.misses],done:s.done,history:s.history.map(r=>({skillId:r.skillId,page:r.page,serial:r.serial,misses:r.misses}))};
+  const RETAIN_LIMIT=32;
+  const byId=id=>C.CATALOG.find(k=>k.id===id)||null;
+  const skills=s=>C.available(s.page,s.catalogThrough).filter(k=>!s.lesson||k.lesson===s.lesson);
+  const same=(a,b)=>a.skillId===b.skillId&&a.page===b.page&&a.occurrence===b.occurrence;
+  const eligible=(s,p)=>skills(s).some(k=>k.id===p.skillId&&k.page===p.page);
+  const regenerate=p=>{const k=byId(p.skillId);return k&&k.page===p.page?question(k,p.occurrence):null;};
+  const validMisses=(q,misses,min=0)=>Array.isArray(misses)&&misses.length>=min&&misses.length<=3&&misses.every(v=>typeof v==='string'&&v!==q.answer&&q.choices.includes(v))&&new Set(misses).size===misses.length;
+  // Fresh work: an eligible retained retry first (oldest first), else the next
+  // family in the run's order. Each family's own occurrence count picks its
+  // variant, so every ordinary variant is reached in any run.
+  function select(s){
+    s.active=null;s.misses=[];s.done=false;
+    const i=s.retained.findIndex(p=>eligible(s,p));
+    if(i>=0){const [p]=s.retained.splice(i,1);s.active={skillId:p.skillId,page:p.page,occurrence:p.occurrence};s.misses=[...p.misses];return;}
+    const all=skills(s);if(!all.length)return;
+    const k=all[s.cursor%all.length];s.active={skillId:k.id,page:k.page,occurrence:Math.floor(s.cursor/all.length)};s.cursor++;
   }
+  const blank=(page,lesson,through)=>({schemaVersion:2,worktext:C.BOOK,edition:C.EDITION,catalogThrough:through,page,lesson,cursor:0,completed:0,firstTry:0,yards:0,active:null,misses:[],done:false,history:[],retained:[]});
+  const create=(page,lesson=0)=>{const s=blank(page,lesson,C.CATALOG_THROUGH);select(s);return s;};
+  const current=s=>s&&s.active?regenerate(s.active):null;
+  // An explicit boundary: the new page/topic and the full catalog apply now.
+  // A still-eligible unfinished question stays exactly as it was (misses and
+  // help included). A locked one with misses is retained, hidden, unrewarded,
+  // and never deleted; a locked untouched one simply is not shown. History is
+  // never pruned by page.
+  function boundary(s,page,lesson=s.lesson){
+    if(!C.validPage(page)||!LESSON_IDS.includes(lesson))return false;
+    const held=s.active&&!s.done?{...s.active,misses:[...s.misses]}:null;
+    s.catalogThrough=C.CATALOG_THROUGH;s.page=page;s.lesson=lesson;
+    if(held&&eligible(s,held))return true;
+    if(held&&held.misses.length&&!s.retained.some(p=>same(p,held)))s.retained.push(held);
+    select(s);return true;
+  }
+  // Retaining beyond the bound never evicts a saved retry; the page keeps the
+  // last durable record and this visit stays in memory instead.
+  const overCapacity=s=>s.retained.length>RETAIN_LIMIT;
+  const counters=s=>['completed','firstTry','yards'].every(k=>Number.isSafeInteger(s[k])&&s[k]>=0&&s[k]<1e9)&&s.firstTry<=s.completed&&s.yards<=s.completed*5;
+  const historyOk=(s,through)=>Array.isArray(s.history)&&s.history.length<=100&&!s.history.some(r=>!r||!C.CATALOG.some(k=>k.id===r.skillId&&k.page===r.page&&k.page<=through)||!Number.isInteger(r.serial)||r.serial<1||r.serial>s.completed||!Number.isInteger(r.misses)||r.misses<0||r.misses>3);
+  const copyHistory=h=>h.map(r=>({skillId:r.skillId,page:r.page,serial:r.serial,misses:r.misses}));
+  function normalizeV1(s){
+    const through=C.LEGACY_CATALOG_THROUGH;
+    if(s.worktext!==C.BOOK||s.edition!==C.EDITION||!C.validPage(s.page)||!LEGACY_LESSONS.includes(s.lesson)||!Number.isSafeInteger(s.serial)||s.serial<0||s.serial>=1e9||!counters(s)||s.completed!==s.serial+Number(s.done)||!Array.isArray(s.misses)||s.misses.length>3||!s.misses.every(v=>typeof v==='string')||typeof s.done!=='boolean'||!historyOk(s,through))return null;
+    const out=blank(s.page,s.lesson,through);
+    Object.assign(out,{completed:s.completed,firstTry:s.firstTry,yards:s.yards,history:copyHistory(s.history),cursor:s.serial});
+    const all=skills(out);
+    if(all.length){const k=all[s.serial%all.length];out.active={skillId:k.id,page:k.page,occurrence:Math.floor(s.serial/all.length)};out.cursor=s.serial+1;
+      const q=current(out);if(s.misses.some(v=>v===q.answer||!q.choices.includes(v)))return null;out.misses=[...s.misses];out.done=s.done;}
+    // No question in this frame (as in the released reader): nothing pending.
+    else out.cursor=s.serial+Number(s.done);
+    return out;
+  }
+  const pointerOk=(p,through)=>p&&typeof p.skillId==='string'&&Number.isSafeInteger(p.occurrence)&&p.occurrence>=0&&p.occurrence<1e9&&Number.isInteger(p.page)&&p.page<=through&&!!regenerate(p);
+  function normalizeV2(s){
+    const through=s.catalogThrough;
+    if(s.worktext!==C.BOOK||s.edition!==C.EDITION||![C.LEGACY_CATALOG_THROUGH,C.CATALOG_THROUGH].includes(through)||!C.validPage(s.page)||!(through===C.CATALOG_THROUGH?LESSON_IDS:LEGACY_LESSONS).includes(s.lesson)
+      ||!Number.isSafeInteger(s.cursor)||s.cursor<0||s.cursor>=1e9||!counters(s)||typeof s.done!=='boolean'||!historyOk(s,through)||!Array.isArray(s.retained)||s.retained.length>RETAIN_LIMIT)return null;
+    const out=blank(s.page,s.lesson,through);
+    Object.assign(out,{cursor:s.cursor,completed:s.completed,firstTry:s.firstTry,yards:s.yards,history:copyHistory(s.history)});
+    if(s.active===null){if(s.done||!Array.isArray(s.misses)||s.misses.length)return null;}
+    else{if(!pointerOk(s.active,through)||!eligible(out,s.active))return null;
+      const q=regenerate(s.active);if(!validMisses(q,s.misses))return null;
+      out.active={skillId:s.active.skillId,page:s.active.page,occurrence:s.active.occurrence};out.misses=[...s.misses];out.done=s.done;}
+    for(const p of s.retained){
+      if(!pointerOk(p,through)||!validMisses(regenerate(p),p.misses,1)||out.retained.some(x=>same(x,p))||(out.active&&same(out.active,p)))return null;
+      out.retained.push({skillId:p.skillId,page:p.page,occurrence:p.occurrence,misses:[...p.misses]});
+    }
+    return out;
+  }
+  function normalize(s){
+    if(!s||typeof s!=='object')return null;
+    if(s.schemaVersion===1)return normalizeV1(s);
+    if(s.schemaVersion===2)return normalizeV2(s);
+    return null;
+  }
+  // Counting a completed answer happens here only, once per pending question.
   function answer(s,value){const q=current(s);if(!q||s.done||!q.choices.includes(value)||s.misses.includes(value)||s.completed>=1e8)return false;if(value===q.answer){s.done=true;s.completed++;if(!s.misses.length)s.firstTry++;s.yards+=s.misses.length?1:5;s.history.push({skillId:q.skillId,page:q.page,serial:s.completed,misses:s.misses.length});s.history=s.history.slice(-100);}else{s.misses.push(value);s.yards-=Math.min(5,s.yards%100);}return true;}
-  function next(s){if(!s.done)return false;s.serial++;s.done=false;s.misses=[];return true;}
-  return Object.freeze({question,create,normalize,current,answer,next,skills,explain,REVIEWED});
+  // Selecting the next question; never changes the page, topic, or ceiling.
+  function next(s){if(!s.done)return false;select(s);return true;}
+  return Object.freeze({question,create,normalize,current,answer,next,boundary,overCapacity,skills,explain,REVIEWED,RETAIN_LIMIT});
 })();
 globalThis.PLACE_BOOK_2A=PLACE_BOOK_2A;

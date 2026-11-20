@@ -226,6 +226,19 @@ test('Grade 2-A completion admits existing arithmetic only at its exact page; co
   assert.ok(coinIds(profile(187, 0)) > 0);
 });
 
+test('#223: teen subtraction across ten opens only at Grade 2-A page 73, in the existing score-difference family', () => {
+  const ids = (play, p) => Q.inspect(play, p).eligible.map(e => e.familyId);
+  const teen = snap({ scores: { player: 15, opponent: 8 } });
+  for (const page of [0, 32, 54, 72]) assert.ok(!ids(teen, profile(50, page)).includes('score-difference-ch8'), `page ${page}`);
+  for (const page of [73, 97, 161]) assert.ok(ids(teen, profile(50, page)).includes('score-difference-ch8'), `page ${page}`);
+  assert.equal(C2.operationPage('subtract', 15, 8), 73);
+  // No new live family: the eligible family IDs at page 97 are a subset of those already registered.
+  const registered = new Set(families.map(e => e.familyId));
+  assert.ok(ids(teen, profile(50, 97)).every(id => registered.has(id)));
+  // Borrowing beyond the teens and Book-only 20s facts stay closed.
+  for (const [a, b] of [[24, 6], [52, 18], [31, 7]]) assert.equal(C2.operationPage('subtract', a, b), Infinity);
+});
+
 test('stats keep only a valid difficulty projection and pass it to learning history', () => {
   const values = new Map();
   const storage = { getItem: k => values.get(k) ?? null, setItem: (k, v) => values.set(k, String(v)), removeItem: k => values.delete(k) };
