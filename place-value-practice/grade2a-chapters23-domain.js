@@ -165,8 +165,9 @@ const PLACE_BOOK_2A_CH23=(()=>{
       return ask(p,a,o,h);}],
     ['same-half',({r})=>{const pm=r(2,1)===1,a=1+r(9),b=a+1+r(11-a,2),H1=pm?a+12:a,H2=pm?b+12:b;
       return ask(`From ${hr(H1)} to ${hr(H2)} on the same day, how many hours pass?`,b-a,near(b-a),`Count the hours from ${a} to ${b}: ${b} − ${a} = ${b-a} hours.`,{kind:'day-strip',start:H1,end:H2},{H1,H2});}],
-    ['across-noon',({r})=>{const H1=7+r(5),H2=13+r(6,1);
-      return ask(`From ${hr(H1)} to ${hr(H2)} on the same day, how many hours pass?`,H2-H1,near(H2-H1),`From ${hr(H1)} to 12 noon is ${12-H1} hours. From noon to ${hr(H2)} is ${H2-12} hours. ${12-H1} + ${H2-12} = ${H2-H1}.`,{kind:'day-strip',start:H1,end:H2},{H1,H2});}],
+    // Page 46: morning starts 5-11 AM, ends from 12 noon to 6 PM.
+    ['across-noon',({r})=>{const H1=5+r(7),H2=12+r(7,1);
+      return ask(`From ${hr(H1)} to ${hr(H2)} on the same day, how many hours pass?`,H2-H1,near(H2-H1),H2===12?`Count the hours from ${hr(H1)} to 12 noon: ${12-H1} hours.`:`From ${hr(H1)} to 12 noon is ${12-H1} hours. From noon to ${hr(H2)} is ${H2-12} hours. ${12-H1} + ${H2-12} = ${H2-H1}.`,{kind:'day-strip',start:H1,end:H2},{H1,H2});}],
     ['twelve',({r})=>{const H=1+r(11);
       return ask(`From ${hr(H)} to ${hr(H+12)} on the same day, how many hours pass?`,12,[6,24,10],`From ${hr(H)} to 12 noon is ${12-H} hours, and from noon to ${hr(H+12)} is ${H} more: 12 hours, half a day.`,{kind:'day-strip',start:H,end:H+12},{H1:H,H2:H+12});}],
   ];
@@ -331,6 +332,12 @@ const PLACE_BOOK_2A_CH23=(()=>{
     ['match',({r,name})=>{const x=5+r(5),y=3+r(7,1),z=1+r(Math.min(9,x+y-1),2);
       return ask(`${name} has $${x}, earns $${y}, and then spends $${z}. Which number sentence finds how much money ${name} has now?`,`$${x} + $${y} − $${z}`,[`$${x} − $${y} + $${z}`,`$${x} + $${y} + $${z}`,`$${y} − $${x} − $${z}`],
         `Earning adds and spending takes away: $${x} + $${y} − $${z}.`);}],
+    // Page 62 also has two purchases in a row, two gifts in a row, and spending then finding money.
+    ['money-events',({r,t,name})=>{const k=t%3,x=6+r(4),a=1+r(Math.min(5,x-1),1),b=1+r(Math.min(4,Math.max(1,x-a-1)),2);
+      const [p,ans,sentence]=k===0?[`${name} has $${x}, buys a pretend toy for $${a}, and then buys a snack for $${b}.`,x-a-b,`$${x} − $${a} − $${b}`]
+        :k===1?[`${name} has $${x}, finds $${a} in a pocket, and then gets $${b} as a gift.`,x+a+b,`$${x} + $${a} + $${b}`]
+        :[`${name} has $${x}, spends $${a} on juice, and later finds $${b}.`,x-a+b,`$${x} − $${a} + $${b}`];
+      return ask(`${p} How much money does ${name} have now?`,ans,near(ans,k===1?x-a-b:x+a+b),`${sentence} = $${ans}.`,null,{x,a,b,k});}],
   ];
   const factSet=(base,first)=>[
     ['move',({t})=>{const k=10-base,n=k+1+t%(9-k);
@@ -401,12 +408,34 @@ const PLACE_BOOK_2A_CH23=(()=>{
       return ask(`${name} has ${b+d} marbles and ${other} has ${b}. How many more marbles does ${name} have?`,d,near(d,b),`${b} + ? = ${b+d}. Count up from ${b} to ${b+d}: ${d} more.`);}],
     ['multistep',({r,name})=>{const x=2+r(8),y=2+r(6,1),z=1+r(5,2);
       return ask(`${name} has ${x} cards. ${name} gets ${y} more, and then ${z} more. How many cards does ${name} have now?`,x+y+z,near(x+y+z,x+y),`${x} + ${y} = ${x+y}, then ${x+y} + ${z} = ${x+y+z}.`);}],
+    // Page 70: unknown start before a known removal, known remainder (inverse by adding back).
+    ['removal-start',({r})=>{const gone=2+r(8),left=2+r(8,1);
+      return ask(`There were some apples in a basket. Children ate ${gone} of them. Now ${left} apples are left. How many apples were in the basket at first?`,gone+left,near(gone+left,Math.abs(left-gone)),
+        `Put the eaten apples back: ${left} + ${gone} = ${gone+left}.`,null,{gone,left});}],
+    // Page 70: known start and remainder; the unknown is what was spent.
+    ['removal-cost',({r,name})=>{const left=2+r(8),cost=2+r(8,1),start=left+cost;
+      return ask(`${name} had $${start}. ${name} bought a pretend kite, and then had $${left} left. How much did the kite cost?`,cost,near(cost,start),
+        `$${left} + ? = $${start}. Count up from $${left} to $${start}: the kite cost $${cost}.`,null,{start,left});}],
+    // Page 70: several known removals and a remainder; the unknown is the start.
+    ['removals-start',({r,name})=>{const n=2+r(2),takes=Array.from({length:n},(_,i)=>1+r(3,2+i)),left=2+r(6,9),start=takes.reduce((a,b)=>a+b,left);
+      const who=['a parent','a friend','the twins'].slice(0,n);
+      return ask(`In this story, ${name} bought some pears. ${who.map((w,i)=>`${i?w:w[0].toUpperCase()+w.slice(1)} ate ${takes[i]}`).join(', ')}. Then ${left} pears were left. How many pears did ${name} buy?`,start,near(start,start-left,left),
+        `Add back everything that was eaten: ${[left,...takes].join(' + ')} = ${start}.`,null,{takes,left});}],
+    // Page 70: a known smaller amount and "N more" gives the larger amount.
+    ['more-than',({r,name,other})=>{const a=3+r(7),d=2+r(8,1);
+      return ask(`${other} solved ${a} puzzles. ${name} solved ${d} more than ${other}. How many puzzles did ${name} solve?`,a+d,near(a+d,Math.abs(a-d)),`"${d} more than ${a}" means add: ${a} + ${d} = ${a+d}.`,null,{known:a,more:d});}],
   ];
   V['2a-facts-crossing']=[
     ['fact',({t})=>{const [a,b]=FACTS20[t%20],swap=Math.floor(t/20)%2===1,[x,y]=swap?[b,a]:[a,b];
       return ask(`${x} + ${y} = ?`,x+y,near(x+y),`${Math.max(x,y)} + ${10-Math.max(x,y)} = 10, and ${Math.min(x,y)-(10-Math.max(x,y))} more makes ${x+y}.`,null,{a:x,b:y});}],
     ['pattern',({r})=>{const a=6+r(4),b0=11-a+r(a-3,1);
       return ask(`${a} + ${b0} = ${a+b0}, ${a} + ${b0+1} = ${a+b0+1}, ${a} + ${b0+2} = ?`,a+b0+2,near(a+b0+2),`Adding one more each time makes the sum one more: ${a+b0+2}.`);}],
+    // Page 71: missing-number patterns (adding 10; one part up by 2 and the other
+    // down by 2 with the same total; the sum up by 2 each time).
+    ['pattern-missing',({t})=>{const k=t%3,j=3+Math.floor(t/3)%4;
+      if(k===0){const n=6-Math.floor(t/3)%4;return ask(`9 + ? = 19, 8 + ? = 18, 7 + ? = 17. What is the missing number in ${n} + ? = ${n+10}?`,10,near(10,n),`Each time the total is 10 more than the first number, so the missing number is 10: ${n} + 10 = ${n+10}.`,null,{form:'plus-ten',n});}
+      if(k===1)return ask(`1 + 16 = 17, 3 + 14 = 17, 5 + 12 = 17. What is the missing number in ? + ${16-2*j} = 17?`,1+2*j,near(1+2*j,16-2*j),`The first number goes up by 2 and the second goes down by 2: ${1+2*j} + ${16-2*j} = 17.`,null,{form:'same-total',j});
+      return ask(`6 + 0 = 6, 6 + 2 = 8, 6 + 4 = 10. What is the missing number in 6 + ? = ${6+2*j}?`,2*j,near(2*j,6+2*j),`Each total is 2 more, so the missing number is 2 more each time: 6 + ${2*j} = ${6+2*j}.`,null,{form:'step-two',j});}],
   ];
   const noPair=r=>{for(let k=0;k<40;k++){const x=2+r(8,k),y=2+r(8,k+40),z=2+r(8,k+80);if(x+y!==10&&y+z!==10&&x+z!==10)return [x,y,z];}return [2,3,4];};
   V['2a-facts-table-stories']=[
@@ -420,6 +449,15 @@ const PLACE_BOOK_2A_CH23=(()=>{
       return ask(`${x} + ${y} + ${z} = ?`,x+y+z,near(x+y+z),`No two numbers make 10 here. Add two first: ${x} + ${y} = ${x+y}, then ${x+y} + ${z} = ${x+y+z}.`);}],
     ['four-terms',({r})=>{const p=2+r(7),x=1+r(6,1),y=2+r(5,2);
       return ask(`${p} + ${x} + ${y} + ${10-p} = ?`,10+x+y,near(10+x+y),`Find the pair that makes 10: ${p} + ${10-p}. Then 10 + ${x} + ${y} = ${10+x+y}.`);}],
+    // Page 72: unknown whole group from a known part that left and a known part that stayed.
+    ['removal-start',({r})=>{const gone=2+r(8),s=Math.min(4+r(11,1),18-gone),total=gone+s;
+      return ask(`A flock of birds was eating seeds. ${gone} of them flew away, but ${s} stayed. How many birds were in the flock?`,total,near(total,Math.abs(s-gone)),`The flock was the birds that flew away and the birds that stayed: ${gone} + ${s} = ${total}.`,null,{gone,left:s});}],
+    // Page 72: the larger amount and the difference are known; find the smaller.
+    ['fewer-unknown',({r,name,other})=>{const d=2+r(8),small=2+r(9,1),big=small+d;
+      return ask(`${name} has ${d} more shells than ${other}. ${name} has ${big} shells. How many shells does ${other} have?`,small,near(small,big+d),`${other} has fewer: ${big} − ${d} = ${small}.`,null,{big,d});}],
+    // Page 72: the smaller amount (2-10) and the difference are known; find the larger.
+    ['more-unknown',({r,name,other})=>{const small=2+r(9),d=2+r(8,1);
+      return ask(`${other} ate ${small} grapes. ${name} ate ${d} more than ${other}. How many grapes did ${name} eat?`,small+d,near(small+d,Math.abs(small-d)),`${name} ate more: ${small} + ${d} = ${small+d}.`,null,{known:small,more:d});}],
   ];
   // Page 73: teens 11-18 minus a one-digit number that crosses ten.
   const crossSub=(r,k=0)=>{const a=11+r(8,k),b=a-9+r(19-a,k+1);return [a,b];};
@@ -455,10 +493,19 @@ const PLACE_BOOK_2A_CH23=(()=>{
     ['how-many-more',({r})=>{const a=3+r(7),d=Math.max(2,11-a)+r(10-Math.max(2,11-a),1);
       return ask(`How many more is ${a+d} than ${a}?`,d,near(d,a+d),`${a} + ? = ${a+d}. The difference is ${d}.`);}],
     ['strategy',({r,t})=>{const x=30+r(65),neighbor=t%2===0,y=neighbor?x-(2+r(3,1)):1+r(3,1);
-      return ask(`Which is a sensible way to find ${x} − ${y}?`,neighbor?`Count up from ${y} to ${x}`:`Count back ${y} from ${x}`,[neighbor?`Count back ${y} from ${x}`:`Count up from ${y} to ${x}`],
-        neighbor?`${y} is close to ${x}, so counting up the short distance is quick: ${x-y}.`:`Taking away only ${y} is quick: count back ${y} from ${x} to ${x-y}.`);}],
+      // Both ways give the right answer; the question is which takes fewer counting steps.
+      return ask(`Both ways work to find ${x} − ${y}. Which way takes fewer counting steps?`,neighbor?`Count up from ${y} to ${x}`:`Count back ${y} from ${x}`,[neighbor?`Count back ${y} from ${x}`:`Count up from ${y} to ${x}`],
+        neighbor?`Counting up from ${y} to ${x} takes only ${x-y} steps. Counting back ${y} would take ${y} steps.`:`Counting back ${y} takes only ${y} steps. Counting up from ${y} to ${x} would take ${x-y} steps.`,null,{x,y,steps:neighbor?x-y:y});}],
     ['near-count-up',({r})=>{const y=10*(3+r(7))+1+r(3,1),d=y%10+1+r(3,2),x=y-d;
       return ask(`${y} − ${x} = ? Count up from ${x}.`,d,near(d,y%10),`Count up from ${x} to ${y-y%10}, then to ${y}: ${d}.`);}],
+    // Page 76: a wide difference computed by subtracting: a two-digit number minus a
+    // small number with no borrowing (page 11), 100 minus a small number, or 100
+    // and a whole ten (whole tens minus one digit / whole tens, pages 10 and 29).
+    ['wide-difference',({r,t})=>{const k=t%3;let x,y;
+      if(k===0){y=10*(2+r(8))+2+r(8,1);x=1+r(y%10,2);}else if(k===1){y=100;x=1+r(5,1);}else{y=100;x=10*(1+r(9,1));}
+      const [p,q]=r(2,3)?[x,y]:[y,x];
+      return ask(`What is the difference between ${p} and ${q}?`,y-x,near(y-x,y,y-x+10>100?y-x-10:y-x+10),
+        k===0?`Subtract: take ${x} from the ones of ${y}: ${y} − ${x} = ${y-x}.`:k===1?`Subtract: 100 − ${x} = ${100-x}.`:`Subtract whole tens: 10 tens − ${x/10} tens = ${(100-x)/10} tens, ${100-x}.`,null,{x,y});}],
   ];
   // "Who has more, and how many more?" for two named quantities (never equal).
   // Wrong choices name the other side, or the right side with a nearby amount.
@@ -472,7 +519,8 @@ const PLACE_BOOK_2A_CH23=(()=>{
       return ask(`There were ${a} apples. ${name} ate ${b} of them. How many apples are left?`,a-b,near(a-b,a-10),`${a} − ${b} = ${a-b}.`);}],
     ['dozen',({r,name})=>{const n=1+r(6);
       return ask(`A dozen means 12. ${name} has a dozen eggs and ${n} more. How many eggs does ${name} have?`,12+n,near(12+n,10+n),`A dozen is 12. 12 + ${n} = ${12+n}.`);}],
-    ['three-total',({r,name})=>{const a=2+r(8),b=2+r(8,1),c=2+r(8,2);
+    // Page 77 also totals three groups where one group is a teen (11-19).
+    ['three-total',({r,t,name})=>{const a=2+r(8),b=t%2?11+r(9,1):2+r(8,1),c=2+r(8,2);
       return ask(`${name} has ${a} red beads, ${b} blue beads, and ${c} green beads. How many beads are there in all?`,a+b+c,near(a+b+c),`${a} + ${b} = ${a+b}, then ${a+b} + ${c} = ${a+b+c}.`);}],
     ['both-updated',({r,name,other})=>{const b=3+r(6),d=2+r(7,1),c=2+r(5,2);
       return ask(`${name} has ${b+d} cards and ${other} has ${b}. Then each of them gets ${c} more cards. Now how many more cards does ${name} have than ${other}?`,d,near(d,d+c),`Now ${name} has ${b+d+c} and ${other} has ${b+c}. ${b+d+c} − ${b+c} = ${d}. Both got the same amount, so the difference stays ${d}.`);}],
@@ -486,6 +534,12 @@ const PLACE_BOOK_2A_CH23=(()=>{
       const x=whoMore(d1+d2,d3,name,other,hours,[[name,d1+d2]]);
       return ask(`In this story, ${name} reads for ${d1} hour${d1>1?'s':''} in the morning and ${d2} hour${d2>1?'s':''} in the evening. ${other} reads for ${d3} hours on a long train ride. Who reads more hours, and how many more?`,x.answer,x.options,
         `${name}: ${d1} + ${d2} = ${d1+d2} hours. ${other}: ${d3} hours. ${x.winner} reads more: ${Math.max(d1+d2,d3)} − ${Math.min(d1+d2,d3)} = ${x.d}.`,null,{d1,d2,d3});}],
+    // Page 77: pages left in a book that ends on a whole ten (count up to the ten).
+    ['pages-left',({r,name})=>{const end=10*(3+r(7)),left=2+r(8,1),at=end-left;
+      return ask(`In this story, ${name} is reading a ${end}-page book and is on page ${at}. How many more pages are left to read?`,left,near(left,left+10),`Count up from ${at} to ${end}: ${left} pages.`,null,{x:at,y:end});}],
+    // Page 77: how many more, for a two-digit amount and a small amount (no borrowing).
+    ['wide-compare',({r,name,other})=>{const y=10*(2+r(4))+2+r(8,1),x=1+r(y%10,2);
+      return ask(`In this story, ${name} picked ${y} cherries and ${other} picked ${x}. How many more cherries did ${name} pick than ${other}?`,y-x,near(y-x,y,y-x-10),`Subtract the small number from the ones: ${y} − ${x} = ${y-x}.`,null,{x,y});}],
   ];
   // A hidden middle number (6 for 12, 7 for 14) hides the second copy below
   // the self-paired middle, never the number the prompt names.
@@ -537,6 +591,8 @@ const PLACE_BOOK_2A_CH23=(()=>{
   V['2a-family-12-more']=[
     ['missing-first',({r})=>{const b=3+r(7);return ask(`? + ${b} = 12`,12-b,near(12-b,b),`${12-b} + ${b} = 12.`);}],
     ['missing-second',({r})=>{const a=3+r(7);return ask(`${a} + ? = 12`,12-a,near(12-a,a),`${a} + ${12-a} = 12.`);}],
+    // Page 82 practices the same "how many more" additions for 11 too.
+    ['missing-11',({r,t})=>{const a=2+r(8),first=t%2===1;return ask(first?`? + ${a} = 11`:`${a} + ? = 11`,11-a,near(11-a,a),`${a} + ${11-a} = 11.`);}],
     ['explanation',explainQ(12)],
     ['pattern-17',({t})=>{const j=12+t%5;
       return ask(`9 + 8 = 17, 10 + 7 = 17, 11 + 6 = 17. What is the missing number in ${j} + ? = 17?`,17-j,near(17-j,j-10),`The first number goes up by 1 and the second goes down by 1. ${j} + ${17-j} = 17.`);}],
@@ -546,7 +602,8 @@ const PLACE_BOOK_2A_CH23=(()=>{
   V['2a-rainbow-13-14']=[
     ['endpoint',({t,r})=>{const T=13+t%2,k=r(T+1);
       return ask(endpointPrompt(T,k),T-k,near(T-k,k),`The two joined numbers add to ${T}: ${k} + ${T-k} = ${T}.`,rainbow(T,T-k),{T,k});}],
-    ['subtract',({t,r})=>{const T=13+t%2,k=T-9+r(9-(T-9)+1);
+    // Page 83 subtracts 2-11 from 13 and 3-11 from 14 (including 13 − 10 and 13 − 11).
+    ['subtract',({t,r})=>{const T=13+t%2,k=T-11+r(11-(T-11)+1);
       return ask(`${T} − ${k} = ?`,T-k,near(T-k,k),`${k} and ${T-k} are joined on the rainbow for ${T}, so ${T} − ${k} = ${T-k}.`,rainbow(T,T-k));}],
   ];
   V['2a-family-13']=[
@@ -581,6 +638,9 @@ const PLACE_BOOK_2A_CH23=(()=>{
     // Page 86: a known removal (one item to each of several people), then the remainder.
     ['share-one-each',({r})=>{const T=12+r(9),k=2+r(5,1);
       return ask(`In this story, a baker has ${T} rolls. Before closing, the baker gives each of ${k} helpers one roll. How many rolls are left?`,T-k,near(T-k,T+k,k),`${k} helpers get 1 roll each, so ${k} rolls are given away. ${T} − ${k} = ${T-k}.`,null,{T,k});}],
+    // Page 86: a known smaller amount plus "N more" gives the larger amount (facts to 18).
+    ['more-than',({r,name,other})=>{const a=3+r(7),d=Math.max(2,11-a)+r(10-Math.max(2,11-a),1);
+      return ask(`${other} has ${a} cherries. ${name} has ${d} more than ${other}. How many cherries does ${name} have?`,a+d,near(a+d,Math.abs(a-d)),`"${d} more than ${a}" means add: ${a} + ${d} = ${a+d}.`,null,{known:a,more:d});}],
   ];
   V['2a-family-15']=[
     ['related',familyQ(15,6,9)],
@@ -683,7 +743,8 @@ const PLACE_BOOK_2A_CH23=(()=>{
       return ask(`Start at 100. Take away ${steps.join(', then ')}. Where do you end?`,path.at(-1),near(path.at(-1),path.at(-2)),`${path.map((n,i)=>i?`− ${steps[i-1]} = ${n}`:n).join(' ')}.`,null,{start:100,steps});}],
   ];
   V['2a-elapsed-minutes']=[
-    ['same-hour',({r})=>{const h=1+r(12),m1=5*r(6,1),d=5*(1+r(6,2)),m2=m1+d;
+    // Start minutes :00-:30 (page 93 includes a half-past start), 5-30 minutes, same hour.
+    ['same-hour',({r})=>{const h=1+r(12),m1=5*r(7,1),d=5*(1+r(Math.min(6,(55-m1)/5),2)),m2=m1+d;
       return ask(`How many minutes pass from ${tm(h,m1)} to ${tm(h,m2)}?`,d,near(d,d+5,d-5),`Count by fives from ${m1} minutes to ${m2} minutes: ${d} minutes.`,{kind:'clock-set',clocks:[{label:'Start',hour:h,minute:m1},{label:'End',hour:h,minute:m2}]},{h,m1,m2});}],
   ];
   V['2a-mixed-review-93']=[
@@ -693,6 +754,8 @@ const PLACE_BOOK_2A_CH23=(()=>{
     ['sets-halved',({r,name,other})=>{const x=2*(2+r(8)),y=2*(2+r(5,1));
       return ask(`${name} has ${x} apples and ${y} pears. ${name} gives half of the apples and half of the pears to ${other}. How many pieces of fruit does ${other} get?`,x/2+y/2,near(x/2+y/2,x+y),`Half of ${x} is ${x/2}, and half of ${y} is ${y/2}. ${x/2} + ${y/2} = ${x/2+y/2}.`);}],
     ['inverse-double',({r})=>{const h=6+r(10);return ask(`Half of a number is ${h}. What is the number?`,2*h,near(2*h,h),`The number is double the half: ${h} + ${h} = ${2*h}.`);}],
+    // Page 93: write an even number (to 20, or 30 or 40) as a double.
+    ['double-of',({r})=>{const e=[10,12,14,16,18,20,30,40][r(8)];return ask(`${e} = ? + ?, with the same number twice. What is that number?`,e/2,near(e/2,e,e/2+10>40?e/2-1:e/2+10),`${e/2} + ${e/2} = ${e}.`,null,{e});}],
   ];
   V['2a-mixed-review-94']=[
     ['journey',({r})=>{const start=40+r(56),steps=[2+r(8,1),10,3+r(7,2)],path=steps.reduce((acc,s)=>[...acc,acc.at(-1)-s],[start]);
@@ -742,6 +805,11 @@ const PLACE_BOOK_2A_CH23=(()=>{
       return ask(`${name} has ${x} red blocks (an odd number) and ${y} blue blocks (an even number). ${name} puts them together. Is the total even or odd?`,'odd',['even'],`${x} + ${y} = ${x+y}. Only the odd group has a leftover block, so ${x+y} is odd.`,{kind:'groups',groups:[x,y],paired:true},{x,y});}],
     ['share',({r,t,name})=>{const x=1+2*r(5),y=t%2?1+2*r(5,1):2+2*r(4,1),n=x+y;
       return ask(`${name} puts ${x} red blocks and ${y} blue blocks together. Can the blocks be shared equally by 2 children with none left over?`,n%2?'No':'Yes',['Yes','No'],`${x} + ${y} = ${n}, which is ${evenOdd(n)}. ${n%2?'One block is left over.':`Each child gets ${n/2}.`}`,{kind:'groups',groups:[x,y],paired:true},{x,y});}],
+    // Page 96 uses two-digit amounts too: odd + odd or odd + even, total at most 98
+    // (two-digit addition from Chapter 1), then parity or equal sharing.
+    ['two-digit-parity',({r,t,name,other})=>{const x=11+2*r(20),odd=t%2===0,yy=odd?11+2*r(20,1):10+2*r(20,1),n=x+yy,share=Math.floor(t/2)%2===1;
+      return ask(`${name} has ${x} cookies and ${other} has ${yy}. They put their cookies together. ${share?'Can they share them evenly between the two of them?':'Is the total even or odd?'}`,
+        share?(n%2?'No':'Yes'):evenOdd(n),share?['Yes','No']:['even','odd'],`${x} + ${yy} = ${n}. ${x} is odd and ${yy} is ${evenOdd(yy)}, so the total is ${evenOdd(n)}${share?(n%2?': one cookie is left over.':`: each gets ${n/2}.`):'.'}`,null,{x,y:yy});}],
   ];
   V['2a-review-97']=[
     // Page 97 decode: an original short word and an original letter key.
@@ -764,6 +832,12 @@ const PLACE_BOOK_2A_CH23=(()=>{
       const pair=s=>{const x=Math.max(1,Math.min(6,s-1-r(2,s)));const y=s-x;return y>=1&&y<=6?`${x} and ${y}`:null;};
       const wrong=[q-1,q+1,q+2,q-2].map(pair).filter(Boolean);
       return ask(`You need exactly ${q} more squares to reach the end. Each die shows 1 to 6. Which pair of rolls takes you exactly to the end?`,`${p} and ${q-p}`,wrong,`${p} + ${q-p} = ${q}. The other pairs add to a different number.`,null,{q});}],
+    // Page 97: a known smaller amount plus "N more" gives the larger amount.
+    ['more-than',({r,name,other})=>{const a=2+r(8),d=2+r(8,1);
+      return ask(`In a pretend chess game, ${other} has ${a} pieces left. ${name} has ${d} more than ${other}. How many pieces does ${name} have?`,a+d,near(a+d,Math.abs(a-d)),`"${d} more than ${a}" means add: ${a} + ${d} = ${a+d}.`,null,{known:a,more:d});}],
+    // Page 97: both amounts known, a teen against 20; find how many more (count up to 20).
+    ['compare-both',({r,name,other})=>{const small=11+r(9);
+      return ask(`In this story, ${name} has ${small} tennis balls and ${other} has 20. How many more tennis balls does ${other} have than ${name}?`,20-small,near(20-small,small,30-small),`Count up from ${small} to 20: ${20-small} more.`,null,{x:small,y:20});}],
   ];
 
   function question(skill,serial=0){

@@ -192,17 +192,21 @@ topic and in All completed. Row IDs carry the `2a-` prefix.
 | Dates (51-53) | dates-weekly 51: all dates of a weekday, next weekly meeting, Month Day format; dates-events 52: date of a starred fictional event, its weekday, Month Day, Year form, tomorrow (month/year end), first and last weekday of a month, +3-12 days, +1-6 months with year wrap; dates-weeks 53: ±1 and ±2 weeks with month/year rollover, every-two-weeks meetings | The book's holiday table becomes a fictional event calendar; "today"/birthday become a stated reference date |
 | Review Chapter 2 (54) | plus-ten-min 54 (+10 minutes, never crossing the hour); hours-later 54 (end time from a morning start plus 2-6 hours, across noon); ch2-review 54 (rotates every Chapter 2 row above) | +10 introduced here without rollover; +5 rollover stays from 42 |
 | Completing the Next Ten (59-60) | nearest-ten 59: which two tens, nearer ten with "Both are equally near" for midpoints; next-ten-review 59: missing addend to the next ten, helping problem, even number, inverse double; next-ten-plus 60: next ten plus one, pick the whole-ten sum, missing middle of three terms, 90 + ? + ? = 100 pair | Two-digit 11-99 |
-| Going Over Ten (61-62) | make-ten-visual 61: ten-frame totals, split the second addend, 10 + ?; make-ten-split 62: decomposition without pictures, targets 10/11/12, parity, two-step money story and its matching number sentence | Sums 11-18 |
+| Going Over Ten (61-62) | make-ten-visual 61: ten-frame totals, split the second addend, 10 + ?; make-ten-split 62: decomposition without pictures, targets 10/11/12, parity, two-step money story and its matching number sentence, two spends / two gains / spend then find | Sums 11-18 |
 | Adding with 9, 8 (63-66) | add-nine 63 / add-eight 65: make ten by moving 1/2, facts with 1-9, doubles 2-10; add-nine-more 64 / add-eight-more 66: +0 and +10, swapped order, missing either addend; p66 also "more than" and "years older" stories, the 8+2… and 18+2… patterns (to 32), half-of-even pattern | +0 and +10 gated at 64 and 66 |
-| Adding with 7, 6 (67-70) | add-seven 67: 7 + 4…10, near doubles (1+2 … 9+10), doubles; add-seven-more 68: 7+0/0+7/7+10, swapped, missing addend, add-7/8/9 rule tables; add-six 69: 6+0…10 both orders, 6 + 4 + ?, near doubles, missing addend with 6-9; add-six-more 70: three/four addends with a ten pair, missing start, missing change, comparison, multistep | 7+0 at 68; 6+0/6+10 at 69 |
+| Adding with 7, 6 (67-70) | add-seven 67: 7 + 4…10, near doubles (1+2 … 9+10), doubles; add-seven-more 68: 7+0/0+7/7+10, swapped, missing addend, add-7/8/9 rule tables; add-six 69: 6+0…10 both orders, 6 + 4 + ?, near doubles, missing addend with 6-9; add-six-more 70: three/four addends with a ten pair, missing start, missing change, comparison, multistep, unknown start after one or several removals, unknown amount spent, larger amount from "N more" | 7+0 at 68; 6+0/6+10 at 69 |
 | Review—Facts with 6, 7, 8 (71-72) | facts-crossing 71: all 20 unordered single-digit crossing facts in both orders, cycled exhaustively; +1 patterns; facts-table-stories 72: addition-table cell, inverse and comparison stories, three addends with no ten pair, four addends | — |
 | Subtract to Ten (73-74) | subtract-to-ten 73: 11-19 − ? = 10, split across ten (second part), split result with ten-frames; subtract-to-ten-more 74: direct facts, the same fact in the 20s (2 tens and ones), missing take-away | Crossing subtraction: minuend 11-18, one-digit subtrahend; 19 appears only in "− ? = 10" |
 | Difference and How Many More (75-77) | difference-line 75: distance on a 0-17 number line, pick the subtraction, whole-ten differences, near neighbors across a ten to 100; how-many-more 76: missing addend, how many more, choose count up versus count back, count-up differences; compare-stories 77: fewer, left, a defined dozen plus more, three totals, both updated by the same amount, both updated by different amounts (who has more now, and by how much), two durations added then compared with a third | Subtraction templates are restricted to these forms (not general 0-100 borrowing) |
-| Number Rainbows (78-79, 83) | rainbow-11-12 78: read a partner, subtract with the full rainbow; rainbow-11-12-fill 79: hidden endpoint, related missing addend/subtrahend; rainbow-13-14 83: hidden endpoint, subtraction | Included although the book marks them optional. Even totals show the middle number joined to a second copy below it (6 + 6, 7 + 7); a hidden middle hides that copy |
+| Number Rainbows (78-79, 83) | rainbow-11-12 78: read a partner, subtract with the full rainbow; rainbow-11-12-fill 79: hidden endpoint, related missing addend/subtrahend; rainbow-13-14 83: hidden endpoint, subtraction (2-11 from 13, 3-11 from 14) | Included although the book marks them optional. Even totals show the middle number joined to a second copy below it (6 + 6, 7 + 7); a hidden middle hides that copy |
 | Fact Families 11-16 (80-90) | family-11 80; family-12 81 (+11 review, 6/6/12 family, direct, 10/2/12 family); family-12-more 82 (missing either addend, addition that checks a subtraction, the 17 pattern, subtracting odd numbers from 15/16); family-13 84 (with 10/3/13); family-14 85 (7/7/14, direct 11-14, missing minuend/subtrahend, 10/4/14); family-14-stories 86 (three addends, comparison and change stories, count by 8s to 104, count by 4s, one item to each of 2-6 people then the remainder); family-15 87 (10/5/15, skip 3s, 9-33); family-15-review 88 (all three comparison roles, even as a double to 20, combine then halve, parity 0-20, two/three whole-dollar prices, one two-digit price 11-49 plus whole-ten prices, total at most $99); family-16 89 (8/8/16, mixed 11-19 minus 2-10 including 19 − 9, 10/6/16); family-16-stories 90 (count by 3s/4s, can you afford, money left, shortfall, compare sums with <, >, =, compare a number with a sum (facts to 18 or a whole ten plus ones), compare two subtractions with the same subtrahend from teens 11-18, one group changes by 1-2 and then the groups are compared, two small removals in a row from 14-39 without borrowing) | 13 gated at 84 and 14 at 85. Each ten-plus-part family (10 + p, p + 10, T − 10, T − p) unlocks with its own total's page. The +8 sequence is Book-only and reaches exactly 104 |
 | Fact Families 17/18 (91-92) | family-17-18 91: related facts for 17 and 18, sentence counts (9/9/18 has two), mixed facts; family-17-18-review 92: compare without calculating, missing term in any position, four nap durations, boxes needed and pencils left over, a subtraction path from 100 | Boxes of 6/8/10/12, 2-3 boxes, found by repeated addition; no division notation |
 | Mixed Review Chapter 3 (93-94) | elapsed-minutes 93 (minutes between two times in the same hour, 5-30); mixed-review-93 (late reading, +5 minutes, halves of two sets, inverse double); mixed-review-94 (subtraction path across tens, half, inverse half, age difference in the teens, a whole-ten age 20-50 minus a small age 2-9, half of an amount then both together, update then compare, the larger amount from a known amount plus "more" (10 more than 10-89, or a one-digit amount more than a one-digit amount, total at most 18)) | Elapsed minutes have their own page-93 gate |
 | Review Chapter 3 (95-97) | review-95 (crossing facts, same fact family, small and wide differences to 20, a close two-digit pair 2-9 apart (count up, sometimes across a ten), a two-digit number minus a small number without borrowing); review-96 (missing term anywhere, subtraction path, odd + odd and odd + even totals with parity and equal sharing); review-97 (an original code key and word, comparison roles, two-step shortfall, board squares left, the one dice pair that finishes exactly) | The code puzzle uses original words and keys, no copied joke |
+
+This lesson table is a summary. The page-by-page crosswalk below is the
+coverage record; it lists the review-R2 additions (pages 46, 62, 70-72, 76-77,
+82-83, 86, 93, 96-97) with their bounds.
 
 Pages with no practice: 33 (teacher introduction), 34 (optional home games),
 35 (external resources), 36 (blank), 48 (reference year calendar), 55-56
@@ -221,7 +225,14 @@ activity: changed-amount comparisons (77, 90), number-versus-sum and
 same-subtrahend comparisons (90), the ten-plus-part fact families for 12-16
 (81, 84, 85, 87, 89), two-digit and whole-ten review domains (88, 94, 95), and
 known-removal, half-then-total, and known-amount-plus-"more" stories (86, 90,
-94; the last was found by a review addendum). These two-digit reviews
+94; the last was found by a review addendum). A second review (R2) found more
+missing story roles: inverse removals (70, 72), comparative quantities (70, 72,
+86, 97), and computed wide differences at 76. The page-by-page crosswalk below
+was then written from the source and found further gaps, also added: noon and
+5 AM endpoints (46), two spends and two gains (62), missing-number patterns
+(71), pages left and a two-digit comparison (77), missing addends for 11 (82),
+13 − 10 and 13 − 11 (83), half-past elapsed starts and doubles to 40 (93), and
+two-digit parity (96). These two-digit reviews
 use only Chapter 1 methods (adding whole tens, whole tens minus one digit,
 subtracting without borrowing, counting up between close numbers); they add no
 general borrowing.
@@ -234,6 +245,129 @@ game's frozen snapshot. Chapter 3 addition facts were already covered by page
 14. No live family, fact pool, event family, or reporting tuple is added, and
 the #220 floor weights, readiness, and constants are unchanged; trivial facts
 do not gain weight.
+
+## Source activity crosswalk, printed pages 37-97 (#223, review R2)
+
+Built page by page from the purchased source text (and page images where a
+figure carries the task), not from the generator list. Exercises with the same
+reasoning are grouped; "ex" is the printed exercise number. Rows omit the `2a-`
+prefix. Bounds are the generator's closed domain. Dispositions: **runnable**
+(practised as stated), **adapted** (choose/select in place of draw, colour,
+match, or a personal fact), or **excluded** (with reason). Pages 33-36, 48, and
+55-58 have no learner exercises (see above).
+
+| Page · ex | Role and bounds | Row.variant(s) | Disposition |
+| --- | --- | --- | --- |
+| 37 · 1-2 | read o'clock/half past, write as digits | clock-whole-half.read, .digital | runnable |
+| 37 · 3-4 | +1 hour, +30 minutes from :00/:30, 12 → 1 | clock-whole-half.plus-hour, .plus-half | runnable |
+| 38 · 1 | minutes the minute hand travels (5-55), 60/30 facts | minutes-hand.* | runnable |
+| 39 · 2-3 | read :00-:30 on labelled and plain faces | minutes-read.labeled, .standard | runnable |
+| 40 · 4 | find the clock showing a time | minutes-match.clock-match | adapted (choose clock A/B/C) |
+| 40 · 5-6 | read, then +5 minutes (first half hour) | minutes-match.plus-five | runnable |
+| 41 · 1 | choose between hour and next hour at :35-:55 | late-read.read-late | runnable |
+| 41 · 2 | draw the minute hand for a time | late-read.set-hand | adapted (choose the clock) |
+| 42 · 3-4 | read late times, +5 with rollover | late-read.read-late, late-plus-five.* | runnable |
+| 42 · Puzzle Corner | elapsed rounds backward | — | excluded (labelled optional) |
+| 43 · 1-2 | minutes past (5-30), +5 in words | past.* | runnable |
+| 44 · 3 | minutes till the next hour (:35-:55) | till.* | runnable |
+| 45 · 4-6 | clock/words/digits in both directions | time-forms.* | runnable |
+| 46 · 1-2 | whole hours, same half-day, across noon (5-11 AM to 12 noon-6 PM), 12-hour span | hours-am-pm.same-half, .across-noon, .twelve; AM/PM and noon/midnight facts | runnable |
+| 47 · 3 | hours until midnight from 7 AM-11 PM | hours-overnight.to-midnight | runnable |
+| 47 · 4 | overnight sleep, bed 7 PM-12 midnight, wake 5-9 AM | hours-overnight.overnight | runnable |
+| 47 · 5 | your school day / sleep | hours-overnight.two-durations, .overnight | adapted (stated fictional routines; no personal data) |
+| 47 · 6-7 | two durations summed; 24 and 48 hours | hours-overnight.two-durations, .day-hours | runnable |
+| 47 · 8 | start time from end and duration; bedtime from wake time | hours-overnight.start-time, .overnight-start | runnable |
+| 49 · 1-2, 4 | day names/abbreviations, before/after, +1-7 days | weekdays.abbreviation, .before-after, .plus-days | runnable |
+| 49 · 3, 5 | today, birthday, named holidays on a calendar | weekdays.plus-days, .calendar | adapted (stated reference day; fictional practice calendar) |
+| 50 · 6-7 | 30/31 days, February and leap years, month before/after | months.length, .february, .order | runnable |
+| 50 · 8-9 | months until a month (incl. your birthday) | months.count | adapted (fictional event month) |
+| 51 · 1 | all dates of a weekday in Month Day form | dates-weekly.recurring, .format, .next-same | runnable |
+| 52 · 2 | mark listed holidays (single days and ranges) | dates-events.event-date, .event-weekday | adapted (find a starred fictional event; ranges not drawn) |
+| 52 · 3 | Month Day Year, tomorrow, first/last weekday | dates-events.full-date, .tomorrow, .first-weekday, .last-weekday | adapted (stated reference date) |
+| 52 · 4-6 | +days; +months with year wrap | dates-events.plus-days, .plus-months | runnable |
+| 53 · 7-8 | ±1 and ±2 weeks across months/years; every two weeks | dates-weeks.* | runnable |
+| 54 · 1-2 | review reading/words; +5 and +10 later | ch2-review (all Chapter 2 rows), plus-ten-min | runnable |
+| 54 · 3-4 | hours from a start to an end; end time from start plus hours | hours-am-pm (via ch2-review), hours-later.end-time | runnable |
+| 54 · 5-6 | next weekly date; +months | ch2-review → dates-weekly, dates-events | runnable |
+| 59 · 1 | previous/next ten, nearer ten (midpoint: both) | nearest-ten.* | runnable |
+| 59 · 2-5 | to the next ten with a helping fact; even numbers; evens as doubles | next-ten-review.* | runnable |
+| 60 · 6-9 | next ten then one more; pick the whole-ten sum; missing middle; 90 + ? + ? = 100 | next-ten-plus.* | runnable / adapted (maze as pick one sum) |
+| 61 · 1-2 | make ten with ten-frames; fill the ten | make-ten-visual.* | adapted (frames; no colouring) |
+| 62 · 3-5 | split to make ten; targets 10/11/12; evens | make-ten-split.decompose, .pattern, .parity | runnable |
+| 62 · 6 | money stories: two spends, two gains, spend then find, and the number sentence | make-ten-split.money, .money-events, .match | runnable |
+| 63-64 | move 1 to make ten; 9 + 1-9; doubles to 10 + 10; 9 + 0/10, both orders, missing addends | add-nine.*, add-nine-more.* | runnable |
+| 64 · trick with 19, 29, … | — | — | excluded (labelled optional Puzzle Corner) |
+| 65-66 | the same for 8; more-than and older stories; 8 + even and 18 + even patterns; half of evens | add-eight.*, add-eight-more.* | runnable |
+| 67-68 | 7 + 4-10, doubles and near doubles; 7 + 0/10; missing; +7/+8/+9 tables | add-seven.*, add-seven-more.* | runnable |
+| 69 | 6 + 0-10 both orders; missing addends with 6-9 | add-six.* | runnable |
+| 70 · 2 | three or four addends with a ten pair | add-six-more.three-ten, .four-ten | runnable |
+| 70 · 3a, 3c | unknown start after one or several known removals and a remainder (totals ≤ 18) | add-six-more.removal-start, .removals-start | runnable |
+| 70 · 3b | unknown amount spent from start and remainder (start 4-18) | add-six-more.removal-cost | runnable |
+| 70 · 3d | larger amount from a smaller amount and "N more" (≤ 18) | add-six-more.more-than | runnable |
+| 70 · 3e | how many more (both known) | add-six-more.compare | runnable |
+| 71 · 1 | the 20 crossing facts | facts-crossing.fact | adapted (one fact at a time) |
+| 71 · 2 | missing-number patterns: +10, same total, step 2 | facts-crossing.pattern-missing, .pattern | runnable |
+| 72 · 3 | addition-table cells | facts-table-stories.table | runnable |
+| 72 · 4a | unknown whole from a part that left and a part that stayed (≤ 18) | facts-table-stories.removal-start | runnable |
+| 72 · 4b | smaller from the larger and the difference | facts-table-stories.fewer-unknown | runnable |
+| 72 · 4c-d | larger from the smaller (2-10) and the difference | facts-table-stories.more-unknown | runnable |
+| 72 · 5 | three/four addends with and without a ten pair | facts-table-stories.three-no-pair, .four-terms | runnable |
+| 73 · 1-2 | subtract to ten (11-19); split a crossing subtraction | subtract-to-ten.* | runnable |
+| 74 · 3-5 | split and direct teen facts; the same fact in the 20s | subtract-to-ten-more.* | runnable |
+| 74 · larger decades | — | — | excluded (labelled optional Puzzle Corner) |
+| 75 · 1-3 | distance on 0-17; subtraction for a difference; whole tens; close numbers | difference-line.* | runnable |
+| 76 · 4-5 | "how many more" additions; subtraction as distance | how-many-more.missing-addend, .how-many-more, .near-count-up | runnable |
+| 76 · 6 | close differences; wide differences (two-digit minus small, no borrowing; 100 minus 1-5; 100 and a whole ten) | how-many-more.near-count-up, .wide-difference | runnable |
+| 76 · method box | subtract or count up, whichever is fewer steps | how-many-more.strategy | runnable |
+| 77 · 7a, e | how many more: near a whole ten; two-digit vs small | compare-stories.compare, .wide-compare | runnable |
+| 77 · 7b | a dozen plus more | compare-stories.dozen | runnable |
+| 77 · 7c | pages left to a whole-ten end (2-9) | compare-stories.pages-left | runnable |
+| 77 · 7d | two durations added, compared with a third | compare-stories.durations-compare | runnable |
+| 77 · 7f | three groups, one a teen | compare-stories.three-total | runnable |
+| 77 · 7g | both change by different amounts, then who has more | compare-stories.unequal-gains (and equal-gain both-updated) | runnable |
+| 78-79, 83 | number rainbows 11-14, filling and subtracting (incl. 13 − 10, 13 − 11) | rainbow-11-12.*, rainbow-11-12-fill.*, rainbow-13-14.* | runnable (requested; marked optional in the book) |
+| 80 | the 11 families incl. 10/1/11; 11 − 1-10 | family-11.* | adapted (marble colouring as groups) |
+| 81 | the 12 families incl. 10/2/12; 11 and 12 subtraction check | family-12.* | runnable |
+| 82 · 3 | missing addends for 11 and 12 | family-12-more.missing-11, .missing-first, .missing-second | runnable |
+| 82 · 4-5 | explain with addition; patterns | family-12-more.explanation, .pattern-17, .pattern-odd | adapted (choose the addition) |
+| 82 · Puzzle Corner | missing middle of three | — | excluded (labelled optional) |
+| 84-85 | 13 and 14 families incl. 10/3 and 10/4; match a family; mixed subtraction; missing minuend/subtrahend | family-13.*, family-14.* | runnable / adapted (connect lines as choose) |
+| 86 · 6a | three addends | family-14-stories.three-term | runnable |
+| 86 · 6b | how many more (both known) | family-14-stories.compare-story | runnable |
+| 86 · 6c | larger from the smaller and "N more" (11-18) | family-14-stories.more-than | runnable |
+| 86 · 6d | one each to several people, then the remainder | family-14-stories.share-one-each | runnable |
+| 86 · 7 | count by 8 to 104; count by 4 | family-14-stories.plus-eight, .plus-four | runnable |
+| 87 | 15 families incl. 10/5; 15 − n; explain; count by 3 to 33 | family-15.* | runnable |
+| 88 · 5-8 | the three comparison roles; doubles to 20; combine then halve; evens | family-15-review.* | runnable |
+| 88 · 9 | prices: a two-digit price with whole tens (≤ $99) | family-15-review.dollars-tens, .dollars | runnable |
+| 89 | 16 families incl. 10/6; mixed subtraction incl. 19 − 9 | family-16.* | adapted (matching as one fact) |
+| 90 · 4 | count by 3 and 4 | family-16-stories.skip-three, .skip-four | runnable |
+| 90 · 5a | two removals in a row | family-16-stories.two-removals | runnable |
+| 90 · 5b-d | afford, money left, shortfall | family-16-stories.afford, .money-left, .shortfall | runnable |
+| 90 · 5e | one group changes, then who has more | family-16-stories.one-changed-compare | runnable |
+| 90 · 6 | compare sums, a number with a sum, subtractions with one subtrahend | family-16-stories.compare-expr, .compare-number-sum, .compare-subtract | runnable |
+| 91 | 17 and 18 families incl. 10/7, 10/8; mixed facts | family-17-18.* | runnable |
+| 92 · 3-6 | compare without calculating; missing in any place; four durations; boxes and leftovers; path from 100 | family-17-18-review.* | runnable / adapted (repeated addition, no division) |
+| 93 · 1-2 | read late times; +5 | mixed-review-93.late-read, .plus-five | runnable |
+| 93 · 3 | minutes in the same hour (starts :00-:30, 5-30 minutes) | elapsed-minutes.same-hour | runnable |
+| 93 · 4 | share two sets equally | mixed-review-93.sets-halved | adapted (one combined answer) |
+| 93 · 5 | even numbers (to 20, 30, 40) as doubles; inverse | mixed-review-93.double-of, .inverse-double | runnable |
+| 94 · 6 | subtraction path across tens | mixed-review-94.journey | runnable |
+| 94 · 7a-f | half then total; inverse half; N more (+10 or one digit); whole-ten age minus small; changed comparison | mixed-review-94.half-then-total, .half-total, .inverse-half, .more-quantity, .age-tens, .age-difference, .update-compare | runnable |
+| 95 · 1-3 | crossing facts; same family; close, wide, and small differences | review-95.* | adapted (matching as one item) |
+| 96 · 4-5 | missing numbers; a subtraction path | review-96.missing, .journey | runnable |
+| 96 · 6 | odd + odd and odd + even, small and two-digit (≤ 98): parity and fair sharing | review-96.odd-odd, .odd-even, .share, .two-digit-parity | runnable |
+| 97 · 7 | solve facts and decode with a key | review-97.decode | adapted (original key and word) |
+| 97 · 8a | how many more: a teen against 20 | review-97.compare-both | runnable |
+| 97 · 8b-c | smaller from larger and "N more"; larger from smaller and "N more" | review-97.compare-role, .more-than | runnable |
+| 97 · 8d-e | shortfall in two steps; squares left; the dice pair that finishes | review-97.shortfall, .board-remaining, .finishing-pair | runnable |
+
+Known adaptations rather than gaps: matching/connecting exercises become one
+item at a time; drawing, colouring, and marking become choosing; date ranges on
+page 52 are not drawn; personal facts use stated fictional routines and a
+stated reference date. No open ordinary-role gap is known after this crosswalk;
+that is a statement about this page-by-page comparison, which an independent
+review should still check.
 
 ## Grade 2-A run state (#223)
 

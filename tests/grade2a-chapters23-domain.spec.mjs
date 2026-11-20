@@ -44,7 +44,7 @@ const INVENTORY = [
   ['2a-next-ten-review', 59, 19, ['to-next-ten', 'helping', 'even', 'inverse-double']],
   ['2a-next-ten-plus', 60, 19, ['ten-then-one', 'whole-ten-sum', 'missing-middle', 'pair-to-100']],
   ['2a-make-ten-visual', 61, 20, ['frames-total', 'split', 'ten-and']],
-  ['2a-make-ten-split', 62, 20, ['decompose', 'pattern', 'parity', 'money', 'match']],
+  ['2a-make-ten-split', 62, 20, ['decompose', 'pattern', 'parity', 'money', 'match', 'money-events']],
   ['2a-add-nine', 63, 21, ['move', 'fact', 'double']],
   ['2a-add-nine-more', 64, 21, ['zero-ten', 'swapped', 'missing-second', 'missing-first']],
   ['2a-add-eight', 65, 22, ['move', 'fact', 'double']],
@@ -52,23 +52,23 @@ const INVENTORY = [
   ['2a-add-seven', 67, 23, ['fact', 'near-double', 'double']],
   ['2a-add-seven-more', 68, 23, ['zero-ten', 'swapped', 'missing', 'table']],
   ['2a-add-six', 69, 24, ['fact', 'make-ten', 'near-double', 'missing']],
-  ['2a-add-six-more', 70, 24, ['three-ten', 'four-ten', 'missing-start', 'missing-change', 'compare', 'multistep']],
-  ['2a-facts-crossing', 71, 25, ['fact', 'pattern']],
-  ['2a-facts-table-stories', 72, 25, ['table', 'inverse-story', 'compare-story', 'three-no-pair', 'four-terms']],
+  ['2a-add-six-more', 70, 24, ['three-ten', 'four-ten', 'missing-start', 'missing-change', 'compare', 'multistep', 'removal-start', 'removal-cost', 'removals-start', 'more-than']],
+  ['2a-facts-crossing', 71, 25, ['fact', 'pattern', 'pattern-missing']],
+  ['2a-facts-table-stories', 72, 25, ['table', 'inverse-story', 'compare-story', 'three-no-pair', 'four-terms', 'removal-start', 'fewer-unknown', 'more-unknown']],
   ['2a-subtract-to-ten', 73, 26, ['to-ten', 'split-step', 'split-result']],
   ['2a-subtract-to-ten-more', 74, 26, ['direct', 'twenties', 'missing-takeaway']],
   ['2a-difference-line', 75, 27, ['line', 'equation', 'whole-tens', 'neighbors']],
-  ['2a-how-many-more', 76, 27, ['missing-addend', 'how-many-more', 'strategy', 'near-count-up']],
-  ['2a-compare-stories', 77, 27, ['compare', 'left', 'dozen', 'three-total', 'both-updated', 'unequal-gains', 'durations-compare']],
+  ['2a-how-many-more', 76, 27, ['missing-addend', 'how-many-more', 'strategy', 'near-count-up', 'wide-difference']],
+  ['2a-compare-stories', 77, 27, ['compare', 'left', 'dozen', 'three-total', 'both-updated', 'unequal-gains', 'durations-compare', 'pages-left', 'wide-compare']],
   ['2a-rainbow-11-12', 78, 28, ['partner', 'subtract']],
   ['2a-rainbow-11-12-fill', 79, 28, ['endpoint', 'related']],
   ['2a-family-11', 80, 29, ['belongs', 'missing-part', 'groups', 'direct']],
   ['2a-family-12', 81, 30, ['related', 'review-11', 'double-six', 'direct', 'ten-family']],
-  ['2a-family-12-more', 82, 30, ['missing-first', 'missing-second', 'explanation', 'pattern-17', 'pattern-odd']],
+  ['2a-family-12-more', 82, 30, ['missing-first', 'missing-second', 'missing-11', 'explanation', 'pattern-17', 'pattern-odd']],
   ['2a-rainbow-13-14', 83, 31, ['endpoint', 'subtract']],
   ['2a-family-13', 84, 32, ['related', 'match', 'direct', 'ten-family']],
   ['2a-family-14', 85, 32, ['related', 'double-seven', 'direct', 'missing-minuend', 'missing-subtrahend', 'ten-family']],
-  ['2a-family-14-stories', 86, 32, ['three-term', 'compare-story', 'change-story', 'plus-eight', 'plus-four', 'share-one-each']],
+  ['2a-family-14-stories', 86, 32, ['three-term', 'compare-story', 'change-story', 'plus-eight', 'plus-four', 'share-one-each', 'more-than']],
   ['2a-family-15', 87, 33, ['related', 'direct', 'explanation', 'ten-family', 'skip-three']],
   ['2a-family-15-review', 88, 33, ['bigger-unknown', 'smaller-unknown', 'difference-unknown', 'even-double', 'combine-half', 'parity', 'dollars', 'dollars-tens']],
   ['2a-family-16', 89, 34, ['related', 'double-eight', 'mixed', 'ten-family']],
@@ -76,11 +76,11 @@ const INVENTORY = [
   ['2a-family-17-18', 91, 35, ['related-17', 'related-18', 'count-sentences', 'mixed']],
   ['2a-family-17-18-review', 92, 35, ['compare-expr', 'missing-position', 'durations', 'packages', 'journey']],
   ['2a-elapsed-minutes', 93, 36, ['same-hour']],
-  ['2a-mixed-review-93', 93, 36, ['late-read', 'plus-five', 'sets-halved', 'inverse-double']],
+  ['2a-mixed-review-93', 93, 36, ['late-read', 'plus-five', 'sets-halved', 'inverse-double', 'double-of']],
   ['2a-mixed-review-94', 94, 36, ['journey', 'half-total', 'inverse-half', 'age-difference', 'update-compare', 'age-tens', 'half-then-total', 'more-quantity']],
   ['2a-review-95', 95, 37, ['fact', 'same-family', 'difference', 'difference-close', 'difference-wide']],
-  ['2a-review-96', 96, 37, ['missing', 'journey', 'odd-odd', 'odd-even', 'share']],
-  ['2a-review-97', 97, 37, ['decode', 'compare-role', 'shortfall', 'board-remaining', 'finishing-pair']],
+  ['2a-review-96', 96, 37, ['missing', 'journey', 'odd-odd', 'odd-even', 'share', 'two-digit-parity']],
+  ['2a-review-97', 97, 37, ['decode', 'compare-role', 'shortfall', 'board-remaining', 'finishing-pair', 'more-than', 'compare-both']],
 ];
 const CH2_REVIEWED = ['2a-clock-whole-half', '2a-minutes-hand', '2a-minutes-read', '2a-minutes-match', '2a-late-read', '2a-late-plus-five', '2a-past', '2a-till',
   '2a-time-forms', '2a-hours-am-pm', '2a-hours-overnight', '2a-weekdays', '2a-months', '2a-dates-weekly', '2a-dates-events', '2a-dates-weeks'];
@@ -546,6 +546,117 @@ test('R1-05: known removals at pages 86 and 90, and half then the total at page 
   assert.ok(focused(86, 32).qs.some(q => q.variant === 'share-one-each') && !focused(85, 32).qs.some(q => q.variant === 'share-one-each'));
   assert.ok(focused(90, 34).qs.some(q => q.variant === 'two-removals'));
   assert.ok(focused(94, 36).qs.some(q => q.variant === 'half-then-total'));
+});
+
+// Review R2 and the source crosswalk (pages 46, 62, 70-72, 76-77, 82-83, 86,
+// 93, 96-97). Answers are recomputed from the numbers stated in each prompt.
+const nums = s => (s.match(/\d+/g) || []).map(Number);
+const inLesson = (page, lesson, variant, id) => focused(page, lesson, 300).qs.filter(q => q.variant === variant && (!id || q.skillId === id));
+const reachedOnlyAt = (page, lesson, variant, id) => {
+  assert.ok(inLesson(page, lesson, variant, id).length > 0, `${id}:${variant} reached in lesson ${lesson} at ${page}`);
+  assert.equal(inLesson(page - 1, lesson, variant, id).length, 0, `${id}:${variant} not before ${page}`);
+};
+
+test('R2-01: inverse-removal stories at pages 70 and 72; the addition-event inverses stay', () => {
+  for (const q of sample('2a-add-six-more', 1000)) {
+    if (q.variant === 'removal-start') { const [gone, left] = nums(q.prompt); assert.equal(q.answer, String(gone + left)); assert.match(q.prompt, /ate \d+ .* \d+ apples are left/); assert.ok(gone + left <= 18); }
+    if (q.variant === 'removal-cost') { const [start, left] = nums(q.prompt); assert.equal(q.answer, String(start - left)); assert.ok(start <= 18 && start - left >= 2); }
+    if (q.variant === 'removals-start') { const n = nums(q.prompt), left = n.at(-1); assert.ok(n.length >= 3, 'at least two removals'); assert.equal(q.answer, String(n.reduce((a, b) => a + b, 0))); assert.ok(left >= 2); }
+  }
+  for (const q of sample('2a-facts-table-stories', 900).filter(q => q.variant === 'removal-start')) {
+    const [gone, stay] = nums(q.prompt); assert.equal(q.answer, String(gone + stay)); assert.ok(gone + stay <= 18 && stay >= 4);
+  }
+  for (const v of ['removal-start', 'removal-cost', 'removals-start']) reachedOnlyAt(70, 24, v, '2a-add-six-more');
+  reachedOnlyAt(72, 25, 'removal-start', '2a-facts-table-stories');
+  for (const v of ['missing-start', 'missing-change', 'multistep']) assert.ok(inLesson(70, 24, v).length > 0, v);
+  assert.ok(inLesson(72, 25, 'inverse-story').length > 0);
+});
+
+test('R2-02: comparative quantity roles at pages 70, 72, 86, and 97 in their own lessons', () => {
+  const more = q => { const [a, d] = nums(q.prompt); assert.equal(q.answer, String(a + d), q.prompt); assert.match(q.prompt, new RegExp(`${d} more than`)); return [a, d]; };
+  for (const [id, page, lesson] of [['2a-add-six-more', 70, 24], ['2a-family-14-stories', 86, 32], ['2a-review-97', 97, 37]]) {
+    for (const q of sample(id, 900).filter(q => q.variant === 'more-than')) { const [a, d] = more(q); assert.ok(a + d <= 18 && d >= 2); }
+    reachedOnlyAt(page, lesson, 'more-than', id);
+  }
+  for (const q of sample('2a-facts-table-stories', 900)) {
+    if (q.variant === 'more-unknown') { const [a] = more(q); assert.ok(a >= 2 && a <= 10); }
+    if (q.variant === 'fewer-unknown') { const [d, big] = nums(q.prompt); assert.equal(q.answer, String(big - d)); assert.match(q.prompt, /more shells than .* has \d+ shells/); }
+  }
+  assert.ok(sample('2a-facts-table-stories', 900).some(q => q.variant === 'more-unknown' && nums(q.prompt)[0] === 10), 'a whole ten as the smaller amount');
+  for (const v of ['more-unknown', 'fewer-unknown']) reachedOnlyAt(72, 25, v, '2a-facts-table-stories');
+  for (const q of sample('2a-review-97', 900).filter(q => q.variant === 'compare-both')) {
+    const [small, big] = nums(q.prompt); assert.equal(big, 20); assert.ok(small >= 11 && small <= 19); assert.equal(q.answer, String(20 - small));
+  }
+  reachedOnlyAt(97, 37, 'compare-both', '2a-review-97');
+  // The difference and smaller-unknown roles stay.
+  for (const [p, l, v] of [[70, 24, 'compare'], [72, 25, 'compare-story'], [86, 32, 'compare-story'], [97, 37, 'compare-role']]) assert.ok(inLesson(p, l, v).length > 0, v);
+});
+
+test('R2-03: page 76 computes wide differences; the method choice asks for fewer counting steps', () => {
+  const forms = new Set();
+  for (const q of sample('2a-how-many-more', 1000)) {
+    if (q.variant === 'wide-difference') {
+      const [p, r] = nums(q.prompt), y = Math.max(p, r), x = Math.min(p, r);
+      assert.equal(q.answer, String(y - x));
+      if (y === 100 && x % 10 === 0) forms.add('100-tens');
+      else if (y === 100) { assert.ok(x <= 5); forms.add('100-small'); }
+      else { assert.ok(y >= 22 && y <= 99 && x <= y % 10, 'no borrowing'); forms.add('two-digit-small'); }
+    }
+    if (q.variant === 'strategy') {
+      assert.match(q.prompt, /fewer counting steps/); const { x, y } = q.data;
+      const up = x - y, back = y; assert.notEqual(up, back);
+      assert.equal(q.answer, up < back ? `Count up from ${y} to ${x}` : `Count back ${y} from ${x}`);
+    }
+  }
+  assert.deepEqual([...forms].sort(), ['100-small', '100-tens', 'two-digit-small']);
+  reachedOnlyAt(76, 27, 'wide-difference', '2a-how-many-more');
+});
+
+test('crosswalk additions: pages 46, 62, 71, 77, 82, 83, 93, 96 reach their ordinary roles at their pages', () => {
+  // p46: noon as an end time, 5 AM starts.
+  const noon = sample('2a-hours-am-pm', 800).filter(q => q.variant === 'across-noon');
+  assert.ok(noon.some(q => q.data.H2 === 12) && noon.some(q => q.data.H1 === 5)); for (const q of noon) assert.equal(q.answer, String(q.data.H2 - q.data.H1));
+  // p62: two spends, two gains, and spend-then-find, each answer from the stated amounts.
+  const events = new Set();
+  for (const q of sample('2a-make-ten-split', 800).filter(q => q.variant === 'money-events')) {
+    const [x, a, b] = nums(q.prompt), want = /buys .* buys/.test(q.prompt) ? x - a - b : /finds .* gets/.test(q.prompt) ? x + a + b : x - a + b;
+    assert.equal(q.answer, String(want), q.prompt); events.add(/buys .* buys/.test(q.prompt) ? 'spend-spend' : /finds .* gets/.test(q.prompt) ? 'gain-gain' : 'spend-find'); assert.ok(want >= 0);
+  }
+  assert.equal(events.size, 3);
+  reachedOnlyAt(62, 20, 'money-events', '2a-make-ten-split');
+  // p71: missing-number patterns.
+  for (const q of sample('2a-facts-crossing', 600).filter(q => q.variant === 'pattern-missing')) {
+    const total = nums(q.prompt).at(-1), known = q.prompt.match(/in (\?|\d+) \+ (\?|\d+) = \d+\?$/);
+    assert.equal(q.answer, String(known[1] === '?' ? total - Number(known[2]) : total - Number(known[1])), q.prompt);
+  }
+  reachedOnlyAt(71, 25, 'pattern-missing', '2a-facts-crossing');
+  // p77: pages left to a whole ten, two-digit-versus-small comparison, a teen in a three-way total.
+  for (const q of sample('2a-compare-stories', 900)) {
+    if (q.variant === 'pages-left') { const [end, at] = nums(q.prompt); assert.equal(end % 10, 0); assert.equal(q.answer, String(end - at)); assert.ok(end - at <= 9); }
+    if (q.variant === 'wide-compare') { const [y, x] = nums(q.prompt); assert.ok(x <= y % 10 && y >= 22); assert.equal(q.answer, String(y - x)); }
+  }
+  assert.ok(sample('2a-compare-stories', 900).some(q => q.variant === 'three-total' && nums(q.prompt).some(n => n >= 11)));
+  for (const v of ['pages-left', 'wide-compare']) reachedOnlyAt(77, 27, v, '2a-compare-stories');
+  // p82: missing addends for 11.
+  for (const q of sample('2a-family-12-more', 600).filter(q => q.variant === 'missing-11')) { const [a] = nums(q.prompt).filter(n => n !== 11); assert.equal(q.answer, String(11 - a)); }
+  reachedOnlyAt(82, 30, 'missing-11', '2a-family-12-more');
+  // p83: 13 − 10, 13 − 11, 14 − 11 are reachable.
+  const p83 = new Set(sample('2a-rainbow-13-14', 800).filter(q => q.variant === 'subtract').map(q => q.prompt));
+  for (const p of ['13 − 10 = ?', '13 − 11 = ?', '14 − 11 = ?']) assert.ok(p83.has(p), p);
+  // p93: half-past start times for elapsed minutes, and even numbers (to 40) as doubles.
+  assert.ok(sample('2a-elapsed-minutes', 300).some(q => q.data.m1 === 30));
+  for (const q of sample('2a-elapsed-minutes', 300)) assert.ok(q.data.m2 <= 55 && q.data.m2 - q.data.m1 >= 5 && q.data.m2 - q.data.m1 <= 30);
+  const doubles = sample('2a-mixed-review-93', 600).filter(q => q.variant === 'double-of');
+  for (const q of doubles) assert.equal(q.answer, String(q.data.e / 2)); assert.ok(doubles.some(q => q.data.e === 40));
+  reachedOnlyAt(93, 36, 'double-of', '2a-mixed-review-93');
+  // p96: two-digit odd + odd / odd + even, total at most 98.
+  const parity = new Set();
+  for (const q of sample('2a-review-96', 900).filter(q => q.variant === 'two-digit-parity')) {
+    const [x, y] = nums(q.prompt), n = x + y; assert.ok(x % 2 === 1 && x >= 11 && y >= 10 && n <= 98);
+    assert.equal(q.answer, /share/.test(q.prompt) ? (n % 2 ? 'No' : 'Yes') : (n % 2 ? 'odd' : 'even')); parity.add(`${y % 2}:${/share/.test(q.prompt)}`);
+  }
+  assert.equal(parity.size, 4);
+  reachedOnlyAt(96, 37, 'two-digit-parity', '2a-review-96');
 });
 
 // ---- Run state ----

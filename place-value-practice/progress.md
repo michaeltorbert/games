@@ -389,3 +389,21 @@ earlier variant stays. The domain spec checks the answers, both ranges, and
 that lesson 36 reaches both forms at page 94 and neither at 93. This list is
 the record of gaps found so far, not a claim that no ordinary activity is
 missing. Fresh gates and review remain pending; nothing is released.
+
+Correction round R2 (same candidate, 2026-11-20): a second independent review
+found ordinary story roles still missing. Added, each at its own page, keeping
+every earlier variant: unknown start after one or several known removals, and
+the unknown amount spent (70); unknown whole after a part left (72); larger
+amount from "N more" (70, 72, 86, 97) and smaller amount from the larger and the
+difference (72); how many more for a teen against 20 (97); computed wide
+differences at 76 (two-digit minus small without borrowing, 100 minus 1-5, 100
+and a whole ten). The page-76 method choice now asks which way takes fewer
+counting steps. A page-by-page source crosswalk (pages 37-97, in
+`shared/curriculum-coverage.md`) then found and fixed more gaps: noon and 5 AM
+endpoints (46), two spends/two gains (62), missing-number patterns (71), pages
+left and a two-digit comparison plus a teen in three totals (77), missing
+addends for 11 (82), 13 − 10/13 − 11/14 − 11 (83), half-past elapsed starts and
+doubles to 40 (93), and two-digit parity (96). Tests recompute answers from the
+prompt numbers and check each role is reached in its own lesson at its page and
+not one page earlier. No catalog, Chapter 1, store, or Football change. Fresh
+gates and independent review remain pending; nothing is released.
