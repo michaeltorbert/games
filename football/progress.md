@@ -3207,3 +3207,43 @@ page, or inferring mastery.
 No check results are claimed in this entry; the full Chromium and WebKit
 release gates, registry check against the exact base, fresh independent review,
 merge, and Pages verification remain with the coordinator. Nothing is released.
+
+## 2026-11-21 — #218 assisted-retry result copy (Football 1.38.1, supersedes 1.38.0 as the Football version)
+
+Original report (issue #218, from the email "Football math yardage bug",
+2026-10-28): the yardage shown numerically in the math sometimes does not match
+the math shown on the animation graphic. The email names no question, play,
+device, or version, and that original occurrence is still unidentified; nothing
+here claims to reproduce it.
+
+- What a bounded, synthetic investigation on real taps actually showed (base
+  1.38.0): an offered 13-yard Medium Pass on 3rd and 8 at the 30, with the
+  past-marker question 13 − 8 = 5, answered wrong then right, commits the
+  existing assisted retry credit of 6 yards (ball 30 → 36, short of the
+  marker). The committed transition, ball spot, marker, single result event,
+  and RNG use all agreed. The defect was presentation: "Great retry. The
+  assisted play counts for 6 yards." was set and then immediately overwritten
+  by "Correct." (and, on the reduced first-down and fourth-down variants, by
+  "First down!" and "Turnover on downs."), so the conditional 13-yard play label
+  and the 6-yard result were left with no visible reason. The play-context line
+  already showed "6 YDS IN PLAY" and is unchanged.
+- Change: `finishCommittedTransition` now receives the frozen, validated
+  resolution assist and, only for a reduced offensive scrimmage retry whose
+  credited gain equals the committed transition's gain, keeps the reason in the
+  final feedback: the ordinary gain shows the existing assisted-retry sentence;
+  a first down reads "First down! Great retry. The assisted play counts for
+  N yards."; a turnover on downs reads "Turnover on downs. Great retry, but the
+  assisted play counts for only N yards." with its negative tone. First-try,
+  unreduced retry, second-miss, defense, touchdown, and special-teams copy are
+  unchanged.
+- Unchanged: the retry halving policy, projections, questions and prompts,
+  source gates, floor, RNG streams and draw counts, history, timers, effects,
+  clock, labels, field floats, CSS, and markup.
+- Tests: `tests/football-natural-yardage.spec.mjs` adds three real-tap #218
+  cases (short of the marker, still a first down, fourth-down Go turnover on
+  downs) with a source-calibrated scheduler value and no draw search.
+- Version 1.38.1 in `GAME_VERSION`, every Football cache key, `games.js`, and
+  `version.json`; other games' descriptors and versions are unchanged.
+
+No check results are claimed in this entry; regression, release gates, registry,
+independent review, merge, and Pages verification are still required.
