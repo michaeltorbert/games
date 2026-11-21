@@ -1,4 +1,4 @@
-const GAME_VERSION = '1.38.0';
+const GAME_VERSION = '1.38.1';
 let prevPlayerScore = -1, prevOpponentScore = -1;
 let playerRunTimer = 0, playerCelebrateTimer = 0, playerCelebrateDelayTimer = 0;
 const EZ = 5;
@@ -3968,6 +3968,25 @@ function learningQuestionFromState() {
   return state.questionInstance;
 }
 
+// Issue #218: the reason a retried offensive play counts for fewer yards than
+// the call promised. Built only from the frozen, validated resolution assist.
+function assistedRetryCopy(assist) {
+  return `Great retry. The assisted play counts for ${yds(assist.creditedGain)}.`;
+}
+
+// The assist only explains this committed result when it is a reduced
+// offensive scrimmage retry whose credited gain is the validated transition's.
+function reducedRetryAssist(activePlay, transition, policy, assist) {
+  return activePlay.playType === 'scrimmage'
+    && activePlay.context.possession === POSSESSIONS.offense
+    && policy === 'retryCorrect'
+    && assist?.reductionApplied === true
+    && Number.isInteger(assist.creditedGain)
+    && assist.creditedGain === transition.appliedGain
+    ? assist
+    : null;
+}
+
 function completeCorrectAnswer(btn, question) {
   const result = state.questionUi.attempt === 1 ? 'firstTryCorrect' : 'retryCorrect';
   state.pendingResolution = makePendingResolution(result);
@@ -3984,7 +4003,7 @@ function completeCorrectAnswer(btn, question) {
       ? outcomeMessage(PLAY_OUTCOME_COPY.defenseStop, state.opponentCallKey)
       : state.questionUi.attempt > 1
         ? state.pendingResolution.assist?.reductionApplied
-          ? `Great retry. The assisted play counts for ${yds(state.pendingResolution.assist.creditedGain)}.`
+          ? assistedRetryCopy(state.pendingResolution.assist)
           : 'Great retry. The play counts!'
         : 'Correct. Run the play!';
   state.outcomeMessage = msg;
@@ -4348,8 +4367,11 @@ function applyCommittedOutcomeBookkeeping(activePlay, outcome) {
 function finishCommittedTransition(activePlay, transition, policy, outcome, {
   focusNextCall = false,
   specialResultPresentation = null,
+  assist = null,
 } = {}) {
   const offense = activePlay.context.possession === POSSESSIONS.offense;
+  // Issue #218: a reduced retry keeps its reason visible in the final result copy.
+  const reducedRetry = reducedRetryAssist(activePlay, transition, policy, assist);
   const source = FOOTBALL_DOMAIN.transitionSource(transitionSnapshot());
   // Issue #189: the staged defender either runs down this play's committed spot
   // or steps away where he stands.
@@ -4387,7 +4409,9 @@ function finishCommittedTransition(activePlay, transition, policy, outcome, {
     return;
   }
   if (outcome === 'turnoverOnDowns') {
-    setFeedback('Turnover on downs.', offense ? 'negative' : 'positive');
+    setFeedback(reducedRetry
+      ? `Turnover on downs. Great retry, but the assisted play counts for only ${yds(reducedRetry.creditedGain)}.`
+      : 'Turnover on downs.', offense ? 'negative' : 'positive');
     if (!offense && (policy === 'firstTryCorrect' || policy === 'retryCorrect')) playCorrect();
     scheduleAdvance(() => routePossessionPresentation(
       offense ? 'Turnover on downs. Time to play defense!' : `${state.outcomeMessage || 'Your defense held!'} Turnover on downs!`,
@@ -4407,7 +4431,7 @@ function finishCommittedTransition(activePlay, transition, policy, outcome, {
     if (offense) {
       showFieldFloat('FIRST DOWN!', 'first-down');
       flashFdLine();
-      setFeedback('First down!', 'positive');
+      setFeedback(reducedRetry ? `First down! ${assistedRetryCopy(reducedRetry)}` : 'First down!', 'positive');
       playFirstDown();
       clearTimeout(playerCelebrateDelayTimer);
       // Issue #169: after a tackle the celebration waits for the held contact and
@@ -4420,7 +4444,10 @@ function finishCommittedTransition(activePlay, transition, policy, outcome, {
     return;
   }
   if (outcome === 'stop') playCorrect();
-  if (offense && policy !== 'secondMiss' && policy !== 'questionBypass') { setFeedback('Correct.', 'positive'); playCorrect(); }
+  if (offense && policy !== 'secondMiss' && policy !== 'questionBypass') {
+    setFeedback(reducedRetry ? assistedRetryCopy(reducedRetry) : 'Correct.', 'positive');
+    playCorrect();
+  }
   scheduleAdvance(
     () => continueAfterCommittedPlay(source, focusNextCall),
     policy === 'secondMiss' ? 1800 : offense ? 1400 : 1500,
@@ -4934,6 +4961,7 @@ function commitPendingResolution({ focusNextCall = false } = {}) {
   finishCommittedTransition(activePlay, validation.value, pending.policy, outcome, {
     focusNextCall,
     specialResultPresentation,
+    assist: pending.assist || null,
   });
   return true;
 }

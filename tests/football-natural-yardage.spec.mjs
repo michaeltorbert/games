@@ -113,3 +113,144 @@ for (const item of CASES) {
     expect(errors).toEqual([]);
   });
 }
+
+// #218: a retried offensive answer credits half the offered gain (#24). The
+// result feedback must keep that credited distance and its retry reason
+// visible instead of replacing it with the generic outcome. Real call, Go and
+// answer taps; no draw search. The scheduler value is the one interior point
+// computed for this exact setup from the public FOOTBALL_LEARNING
+// selectionWeights interval of line-to-gain-surplus-ch8 (issue #218 diagnostic
+// calibration); the unchanged production picker makes the choice.
+const RETRY_SCHEDULER_DRAW = 0.11569957884885353;
+const RETRY_CASES = [
+  { id: 'short of the marker', seed: { ...OFFENSE, down: 3, yardsToGo: 8, firstDownLine: 38 }, answer: 5,
+    outcome: 'gain', resultKind: 'advance', newDown: 4, newYardsToGo: 2, tone: 'positive' },
+  { id: 'still a first down', seed: { ...OFFENSE, down: 3, yardsToGo: 5, firstDownLine: 35 }, answer: 8,
+    outcome: 'firstDown', resultKind: 'firstDown', newDown: 1, newYardsToGo: 10, tone: 'positive' },
+  { id: 'fourth-down Go, turnover on downs', seed: { ...OFFENSE, down: 4, yardsToGo: 8, firstDownLine: 38 }, go: true, answer: 5,
+    outcome: 'turnoverOnDowns', resultKind: 'turnoverOnDowns', newDown: 4, newYardsToGo: 2, tone: 'negative' },
+];
+
+for (const item of RETRY_CASES) {
+  test(`#218 ${item.id}: a reduced retry keeps its credited yards and reason in the result feedback`, async ({ page }) => {
+    test.setTimeout(60_000);
+    const errors = [];
+    page.on('pageerror', error => errors.push(String(error)));
+    page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
+    await page.addInitScript(() => {
+      try { window.localStorage.removeItem('footballMathStats:v1'); } catch (error) {}
+    });
+    await page.goto('/football/?boot=offense-call');
+
+    await page.evaluate(({ seed, draw }) => {
+      const counts = { football: 0, scheduler: 0, presentation: 0 };
+      const streams = counted => ({
+        football: () => { if (counted) counts.football++; return 0.6; },
+        scheduler: () => { if (counted) counts.scheduler++; return draw; },
+        presentation: () => { if (counted) counts.presentation++; return 0.4; },
+      });
+      curriculumSession = Object.freeze({ worktext: 'Math Mammoth Grade 1-B', edition: 2026, completedThroughPage: 187, saved: false });
+      __footballTest.setRngStreams(streams(false));
+      __footballTest.seedDriveState(seed);
+      __footballTest.resetLearning();
+      __footballTest.setRngStreams(streams(true));
+      const record = window.__retry218 = { counts, results: [], resultAt: null, painted: null, settled: null };
+      const snapshot = () => {
+        const feedback = document.getElementById('feedback');
+        const field = document.getElementById('field-wrap');
+        const ball = document.getElementById('ball').getBoundingClientRect();
+        const left = field.getBoundingClientRect().left + field.clientLeft;
+        return {
+          text: feedback.textContent,
+          tone: feedback.dataset.tone ?? null,
+          counts: { ...counts },
+          ballCenterX: ball.left + ball.width / 2,
+          fieldLeft: left,
+          fieldWidth: field.clientWidth,
+          absoluteYard: JSON.parse(render_game_to_text()).absoluteYard,
+        };
+      };
+      window.addEventListener('football:result', event => {
+        record.results.push(event.detail);
+        if (record.resultAt !== null) return;
+        record.resultAt = performance.now();
+        // After the whole tap handler (the committed feedback) and once settled.
+        queueMicrotask(() => { record.painted = snapshot(); });
+        setTimeout(() => { record.settled = snapshot(); }, 800);
+      });
+    }, { seed: item.seed, draw: RETRY_SCHEDULER_DRAW });
+
+    if (item.go) {
+      await expect(page.locator('#ui-desk')).toHaveAttribute('data-phase', 'fourth-down-decision');
+      await page.locator('#decision-grid .decision-btn[data-action="go"]').tap();
+      await expect(page.locator('#ui-desk')).toHaveAttribute('data-phase', 'call');
+    }
+    const index = await page.evaluate(() => __footballTest.callKeys().offense.indexOf('mediumPass'));
+    await page.locator('#call-grid .call-btn').nth(index).tap();
+    await expect(page.locator('#ui-desk')).toHaveAttribute('data-phase', 'question');
+
+    // The frozen play offers 13 yards; the gain-bound question asks past the marker.
+    const before = await page.evaluate(() => __footballTest.activeContracts());
+    const { activePlay: play, questionInstance: question } = before;
+    expect(play.proposal.appliedGain).toBe(13);
+    expect(play.context.yardLine).toBe(30);
+    expect(question.familyId).toBe('line-to-gain-surplus-ch8');
+    expect(question.bindings.find(binding => binding.source?.path === '/proposal/appliedGain')?.value).toBe(13);
+    expect(question.answer.value).toBe(item.answer);
+    expect(question.answer.value).toBe(13 - item.seed.yardsToGo);
+    const questionCounts = await page.evaluate(() => ({ ...window.__retry218.counts }));
+    expect(questionCounts).toEqual({ football: 1, scheduler: 1, presentation: 3 });
+
+    const wrong = question.choices.find(choice => choice.id !== question.correctChoiceId);
+    await page.locator(`[data-choice-id="${wrong.id}"]`).tap();
+    await expect(page.locator('#feedback')).toHaveText(`Good try. ${question.hint.text}`);
+    const retry = await page.evaluate(() => __footballTest.activeContracts());
+    expect(retry.activePlay).toEqual(play);
+    expect(retry.questionInstance).toEqual(question);
+    expect(retry.render.absoluteYard).toBe(30);
+
+    await page.locator(`[data-choice-id="${question.correctChoiceId}"]`).tap();
+    await page.waitForFunction(() => window.__retry218.settled !== null);
+    // Wait past every original routing delay for these branches (the longest
+    // scheduled advance after a scrimmage result is 1800 ms), on the real
+    // clock, so a repeated commit would be visible in the result count.
+    await page.waitForFunction(() => performance.now() - window.__retry218.resultAt >= 2200);
+    const { results, painted, settled } = await page.evaluate(() => window.__retry218);
+
+    // One committed result for the same frozen play and question.
+    expect(results).toHaveLength(1);
+    const [result] = results;
+    expect(result).toMatchObject({
+      playId: play.playId, contextId: play.contextId, possessionId: play.possessionId,
+      familyId: question.familyId, questionInstanceId: question.questionInstanceId,
+      policy: 'retryCorrect', outcome: item.outcome,
+    });
+    expect(result.assist).toMatchObject({ assisted: true, rawGain: 13, creditedGain: 6, reductionApplied: true });
+    expect(result.transition).toMatchObject({
+      requestedGain: 6, appliedGain: 6, startYardLine: 30, endYardLine: 36,
+      resultKind: item.resultKind, newDown: item.newDown, newYardsToGo: item.newYardsToGo,
+    });
+    // Resolution draws nothing from any stream.
+    expect(painted.counts).toEqual(questionCounts);
+    expect(settled.counts).toEqual(questionCounts);
+    // The rendered ball rests on the credited 36, from the page's own yard mapping.
+    expect(settled.absoluteYard).toBe(36);
+    const expectedX = await page.evaluate(({ left, width }) => left + (yardToPct(36) / 100) * width,
+      { left: settled.fieldLeft, width: settled.fieldWidth });
+    expect(Math.abs(settled.ballCenterX - expectedX)).toBeLessThanOrEqual(1.5);
+
+    // The visible result keeps the credited yards and the retry reason, with
+    // this branch's own outcome and tone, both right after the commit and settled.
+    for (const shown of [painted, settled]) {
+      expect(shown.text).toMatch(/\b6 yards\b/);
+      expect(shown.text).not.toMatch(/\b13 yards\b/);
+      expect(shown.text).toMatch(/\bretry\b/i);
+      expect(shown.tone).toBe(item.tone);
+      if (item.outcome === 'firstDown') expect(shown.text).toMatch(/first down/i);
+      else expect(shown.text).not.toMatch(/first down/i);
+      if (item.outcome === 'turnoverOnDowns') expect(shown.text).toMatch(/turnover on downs/i);
+      else expect(shown.text).not.toMatch(/turnover/i);
+    }
+    expect(errors).toEqual([]);
+  });
+}
