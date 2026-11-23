@@ -119,9 +119,16 @@ for (const item of CASES) {
 // visible instead of replacing it with the generic outcome. Real call, Go and
 // answer taps; no draw search. The scheduler value is the one interior point
 // computed for this exact setup from the public FOOTBALL_LEARNING
-// selectionWeights interval of line-to-gain-surplus-ch8 (issue #218 diagnostic
-// calibration); the unchanged production picker makes the choice.
-const RETRY_SCHEDULER_DRAW = 0.11569957884885353;
+// selectionWeights interval of line-to-gain-surplus-ch8; the unchanged
+// production picker makes the choice. Recalibrated for Football 1.39.0
+// (challenge-baseline-v1), which intentionally reweights the fresh ordinary
+// slice: the #218 value 0.11569957884885353 lay in the old interval
+// (0.08048666, 0.15091249) but now selects team-yards-add-ch8. The recorded
+// exact production comparison (selection-comparison-r1, all three cases)
+// gives the new interval (0.17313575625227473, 0.32462954297301516); this is
+// its midpoint. Only the draw changed; every play/answer assertion below is
+// unchanged.
+const RETRY_SCHEDULER_DRAW = 0.24888264961264495;
 const RETRY_CASES = [
   { id: 'short of the marker', seed: { ...OFFENSE, down: 3, yardsToGo: 8, firstDownLine: 38 }, answer: 5,
     outcome: 'gain', resultKind: 'advance', newDown: 4, newYardsToGo: 2, tone: 'positive' },

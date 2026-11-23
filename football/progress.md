@@ -3247,3 +3247,59 @@ here claims to reproduce it.
 
 No check results are claimed in this entry; regression, release gates, registry,
 independent review, merge, and Pages verification are still required.
+
+## 2026-11-23 — Baseline challenge floor `challenge-baseline-v1` (Football 1.39.0 candidate, supersedes the #220 selection rule)
+
+Original request (in chat, 2026-11-23): make Football ask more challenging,
+truthful questions within the pages already completed, so trivial facts such as
+6 + 3 no longer dominate. The user reports scores like 105-0 and rarely
+missing. No learner metrics, pages, or history were available or inferred; the
+reported score and the Grade 1 finish are not mastery evidence. The separate
+private-report "No profiles yet" question is tracked outside this change and
+is not addressed or claimed here.
+
+- Cause in source (a mechanism, not an observed learner mix): the #220 rule
+  lowered only *tiny* entries, only inside one canonical group, and only after
+  that group met a success-history readiness threshold. Neutral work (6 + 3,
+  10 − 4, 63 + 5) was never lowered, and a fresh history never qualified.
+- Change (agreed plan C2): after the existing ladder, tiny and neutral floor
+  entries are lower review and substantial entries higher challenge. Any
+  existing support signal protects the whole canonical group at exact weights
+  (recent retry or miss, due guided support, ladder downshift, refresh, or
+  guided, the ladder's `higher-guided` fallback, or a source-guided entry from
+  the inspected profile). Readiness never protects. On the unprotected slice,
+  b = current post-ladder clamped weight / its direct family recency factor;
+  if lower review exceeds 20% of sum(b) and a higher entry exists, each band is
+  scaled to 20/80, recency is reapplied once, and one common factor restores
+  the slice total. Within-game need boosts stay proportional (N2 option a). No
+  alternative, or review already at or below 20%, means exact current weights.
+- `football.js` adds only a transient, non-persisted `sourceGuided` annotation
+  to the eligible mapping (the same `sourceStatus` and inspected profile as the
+  unchanged post-pick `firstSupport`), plus `GAME_VERSION`. Today no floor
+  family is source-guided; the annotation is a defensive guard.
+- Removed the old 0.25 tiny stage (`FLOOR_POLICY.tinyFactor`), so reductions
+  never stack. `floorStateFor` is kept as a legacy diagnostic; its `active`
+  field no longer changes selection. The v1 projection, classifier, stats,
+  schema, outbox, catalog, reporting, eligibility, families, RNG streams, one
+  scheduler draw, frozen play/outcome, time/coin cadence, special teams,
+  Season, and clock are unchanged.
+- 20% is a transparent initial baseline before recency, not a final share, a
+  share of all questions, or a validated pedagogical optimum. Plays with no
+  truthful substantial alternative still offer easier work.
+- Tests: `tests/football-difficulty-floor-domain.spec.mjs` supersedes the #220
+  0.25-factor assertions (that rule is intentionally replaced) with baseline
+  cap, recency counterexample, protection, budget, and invariance cases;
+  `tests/football-challenge.spec.mjs` adds normal-start Quick Game and Season
+  tapped play on both sides. A bounded external diagnostic compares base and
+  candidate pools; its output is synthetic, not learner frequency.
+- Known seam for the coordinator: `tests/football-natural-yardage.spec.mjs`
+  fixes `RETRY_SCHEDULER_DRAW` from the old weights; it may need a bounded,
+  separately approved recalibration if the diagnostic or the run shows the draw
+  left the family's interval.
+- Version 1.39.0 in `GAME_VERSION`, every Football cache key, `games.js`, and
+  `version.json`; other games' descriptors and versions are unchanged.
+
+No check results are claimed in this entry; focused tests, the full Chromium and
+WebKit release gates, registry, independent review, merge, and Pages
+verification are still required. Actual child challenge or learning benefit is
+feedback-dependent.

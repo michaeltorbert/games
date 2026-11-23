@@ -1,4 +1,4 @@
-const GAME_VERSION = '1.38.1';
+const GAME_VERSION = '1.39.0';
 let prevPlayerScore = -1, prevOpponentScore = -1;
 let playerRunTimer = 0, playerCelebrateTimer = 0, playerCelebrateDelayTimer = 0;
 const EZ = 5;
@@ -1953,7 +1953,12 @@ function pickQuestion(activePlay) {
       : !timeFamilies.includes(entry.familyId) && !coinFamilies.includes(entry.familyId)));
   const eligible = questionFaultMode === 'empty-pool' ? [] : pool.map((entry) => {
     const selection = FOOTBALL_CONTEXTUAL_QUESTIONS.selectionFor(activePlay, entry.familyId);
-    return { ...entry, selectionMultiplier: selection.multiplier };
+    // Trusted, transient, selection-only annotation (challenge-baseline-v1):
+    // the same sourceStatus authority and inspected profile used for
+    // firstSupport below, so whole-group protection can see it before the
+    // draw. Never persisted.
+    const sourceGuided = FOOTBALL_CONTEXTUAL_QUESTIONS.sourceStatus(entry, inspected.profile).guided === true;
+    return { ...entry, selectionMultiplier: selection.multiplier, sourceGuided };
   });
   if (!eligible.length) {
     const error = new Error('No truthful contextual question family is eligible for this valid snap.');

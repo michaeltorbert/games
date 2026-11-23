@@ -250,7 +250,8 @@ differences) with those exact live operands once page 73 is completed in the
 game's frozen snapshot. Chapter 3 addition facts were already covered by page
 14. No live family, fact pool, event family, or reporting tuple is added, and
 the #220 floor weights, readiness, and constants are unchanged; trivial facts
-do not gain weight.
+do not gain weight. (The #220 selection rule was later superseded by
+`challenge-baseline-v1`; see the difficulty floor section.)
 
 ## Source activity crosswalk, printed pages 37-97 (#223, review R2)
 
@@ -407,12 +408,17 @@ alone, and adopts the saved run only at its next explicit new session; a
 same-frame change is adopted as before. Writes keep the existing Web Lock with
 a callback-time fresh read.
 
-# Football difficulty floor (#220)
+# Football difficulty floor (#220, selection superseded by `challenge-baseline-v1`)
 
-Policy `difficulty-floor-v1` changes only how already-eligible ordinary
-scrimmage questions are weighted. It never changes a play, answer, score,
-opponent, outcome, eligibility, support, or retry behavior, and the scheduler
-still makes exactly one draw.
+The difficulty floor changes only how already-eligible ordinary scrimmage
+questions are weighted. It never changes a play, answer, score, opponent,
+outcome, eligibility, support, or retry behavior, and the scheduler still
+makes exactly one draw. Two identities stay separate: the immutable
+classification projection `difficulty-floor-v1` (below, unchanged) and the
+selection policy `challenge-baseline-v1` (Football 1.39.0), which replaces the
+#220 readiness-gated 0.25 tiny factor.
+
+## Classification projection `difficulty-floor-v1` (unchanged)
 
 - Classification happens at the trusted derive boundary from the same live
   operands the family uses (never prompt text). Whole tens act as tens facts.
@@ -424,25 +430,74 @@ still makes exactly one draw.
   (4 + 4, 63 + 5, 10 − 3).
 - Canonical floor groups: `score` (committed and wider score totals and
   differences), `yardage-marker` (line-to-gain and line-remaining work),
-  `goal-distance`, `drive-distance`, `team-yards`. Grouping legacy concepts is
-  intentional: rescaling inside a group changes concept shares within it but
-  preserves the group's budget.
-- Readiness per group: the latest 12 group results within 30 days, at least 8
-  of them, at least 80% first try, at least 5 of the latest 6 first try with no
-  second miss among them, and at least 3 unsupported (not guided) first-try
-  substantial results. Tiny-only, helped, literacy, and unclassified evidence
-  never promote. Grade completion is never evidence.
-- Blocks (whole group stays at baseline): the group's latest result was a
-  retry or miss; any group concept's latest result this game, or saved within
-  30 days, was a retry or miss; guided support is due for an entry; or the
-  line-to-gain/drive-distance ladder is downshifted, guided, or refresh-due.
-- Effect: after the existing ladder redistribution, when a ready, unblocked
-  group has both tiny and substantial entries in the same truthful pool, tiny
-  entries take factor 0.25 and the group is rescaled to its prior budget. With
-  no substantial alternative, the group keeps its baseline mix. Easy review
-  stays possible; no review cadence is invented.
+  `goal-distance`, `drive-distance`, `team-yards`. A group shares one
+  protection decision (below).
 - Evidence: stats rows keep an optional, validated `difficulty`
   `{version, group, magnitude}` projection (no operands). Rows saved before it
-  are inert for readiness, except the immutable crossing-ten-only families
+  are inert for floor evidence, except the immutable crossing-ten-only families
   `score-total-ch8-within-20` and `team-yards-add-ch8-within-20`. History,
-  mastery, retries, and evidence classes are otherwise unchanged.
+  mastery, retries, and evidence classes are otherwise unchanged. The
+  selection policy adds no stats, schema, outbox, catalog, or reporting change.
+
+## Selection policy `challenge-baseline-v1` (Football 1.39.0)
+
+The #220 rule lowered only tiny entries, only inside one group, and only after
+that group met a success-history readiness threshold. Neutral facts such as
+6 + 3 or 10 − 4 were never lowered and a fresh history never qualified, so
+easy work could keep most of an ordinary mix. The baseline policy needs no
+success history and never infers mastery from grade or page completion.
+
+- **Bands.** In each ordinary pool, the independent graded floor entries (a
+  valid v1 projection, or an immutable substantial family) form the floor
+  slice. Tiny and neutral entries are *lower-challenge review*; substantial
+  entries are *higher challenge*. Literacy, no-stakes, non-floor, time, coin,
+  and special-team entries are outside the slice and keep exact weights.
+- **Protection (whole canonical group).** Every entry of a group keeps its
+  exact current weight when any existing support signal applies: the group's
+  latest floor result, or any group concept's latest result this game or
+  saved within 30 days, was a retry or miss; existing guided support is due
+  for an entry; the line-to-gain/drive-distance ladder is downshifted, guided,
+  or refresh-due, or would present an entry guided (`higher-guided`); or the
+  inspected game-start profile makes an entry source-guided
+  (`sourceStatus(...).guided`, carried into the pick as a transient,
+  non-persisted annotation computed before the draw). Readiness, or not being
+  ready, never protects. A latest first-try result still clears a retry block
+  exactly as before. Within-game need boosts are not protection; they remain
+  proportional inside their band. No current floor family is source-guided
+  under today's sources; that path is a defensive guard.
+- **Cap (unprotected slice only).** Let *w* be each entry's current weight
+  after purpose, call affinity, need, family recency, the 0.0001 clamp, and the
+  ladder redistribution, and *r* its existing same-class family recency factor
+  (1, or 0.18 for one of the last three same-class families). The baseline
+  weight is *b* = *w* / *r* (the current weight with only that direct factor
+  removed, not a replay of the ladder without recency). With *U* the
+  unprotected baseline sum and *L* / *H* its lower/higher parts: if either band
+  is empty, or *L* / *U* ≤ 20%, weights are returned exactly. Otherwise lower
+  entries are scaled in proportion to 20% of *U* and higher entries to 80%,
+  *r* is applied once more, and one common factor returns the unprotected
+  slice to its original total. Equivalently, each entry's final weight is a
+  common factor times a band factor times its current weight. Protected
+  entries never enter these sums, so protected higher entries cannot trigger
+  the cap.
+- **What 20% means.** A transparent initial product baseline *before family
+  recency*: not a final share, not a share of all questions, and not a
+  demonstrated pedagogical optimum. Recency still acts. If the only higher
+  family was just seen, review can stay well above 20% on that play; if a
+  review family was just seen, review falls below 20%. Within each band current
+  relative weights are kept, review's share never increases, and review stays
+  possible whenever it is eligible.
+- **No truthful alternative.** A slice without an unprotected substantial
+  entry is unchanged. Football never advances pages, substitutes literacy or a
+  bypass, or invents a harder question, so some plays (for example lopsided
+  scores outside the score families' operand domains, or small marker gaps)
+  still offer only easier work. Not every question becomes harder.
+- **Diagnostics.** `floorStateFor` keeps its #220 readiness and block fields
+  as a legacy diagnostic; `active` now means only that the retired #220 tiny
+  factor would have applied, and it changes nothing. The old 0.25 stage is
+  removed, so the reductions never stack. Diagnostics are never persisted.
+
+| Example (live computation) | v1 magnitude | Baseline band |
+| --- | --- | --- |
+| 6 + 3, 4 + 4, 10 − 4, 10 − 3, 63 + 5 | neutral | lower review |
+| 3 + 10, 40 + 10, 43 + 1, 9 − 9, 21 − 0, drive 72 → 75 | tiny | lower review |
+| 8 + 7, 7 + 7, 9 + 9, 15 − 8, 40 − 3, 23 + 45, drive 26 → 34 | substantial | higher |

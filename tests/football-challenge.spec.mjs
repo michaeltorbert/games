@@ -120,3 +120,125 @@ test('coach stretch summary uses latest completion and retains unrelated practic
     { label: 'Practice next', value: 'Adding within 10' },
   ]);
 });
+
+// challenge-baseline-v1 (Football 1.39.0): an ordinary start and tapped play,
+// with no forced family, RNG stream, or draw search. Synthetic completion is
+// explicit: a valid learner-reported Grade 1-B record (page 187) is seeded
+// before load and confirmed through the normal start prompt. Read-only seams:
+// `__footballTest.activeContracts()`, `contextualQuestionProfile()`,
+// `FOOTBALL_CONTEXTUAL_QUESTIONS.inspect`, `state.possession`, and the
+// `football:result` event. The first ordinary scrimmage question takes a
+// retry, the second a worked explanation; others are answered correctly.
+const SYNTHETIC_COMPLETION = { schemaVersion: 1, worktext: 'Math Mammoth Grade 1-B', edition: 2026, completedThroughPage: 187,
+  revision: 1, updatedAt: '2026-11-23T00:00:00.000Z', provenance: 'learner-reported' };
+
+for (const mode of ['quick', 'season']) {
+  test(`baseline floor: normal ${mode} start plays truthful questions on both sides with retry, worked, and one commit`, async ({ page }, testInfo) => {
+    test.setTimeout(240_000);
+    const errors = [];
+    page.on('pageerror', error => errors.push(String(error)));
+    page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
+    await page.addInitScript(record => {
+      localStorage.removeItem('footballMathStats:v1');
+      localStorage.removeItem('footballMathSeason:v1');
+      localStorage.setItem('math-curriculum:progress:v1', JSON.stringify(record));
+      window.__baselineResults = [];
+      window.addEventListener('football:result', event => window.__baselineResults.push({
+        playId: event.detail?.playId ?? null, familyId: event.detail?.familyId ?? null }));
+    }, SYNTHETIC_COMPLETION);
+    await page.goto('/football/');
+    if (mode === 'season') await page.locator('.play-mode-option', { hasText: '3-Game Season' }).tap();
+    await page.locator('#start-game-btn').tap();
+    await expect(page.locator('#ui-desk')).toHaveAttribute('data-phase', /^(call|fourth-down-decision)$/);
+    expect(await page.evaluate(() => contextualQuestionProfile().worktexts['Math Mammoth Grade 1-B'].completedThroughPage)).toBe(187);
+
+    const log = [];
+    const sides = new Set();
+    let scrimmages = 0;
+    const shot = async name => {
+      const path = testInfo.outputPath(`${mode}-${name}.png`);
+      await page.screenshot({ path });
+      await testInfo.attach(`${mode}-${name}`, { path, contentType: 'image/png' });
+    };
+    const commitCount = playId => page.evaluate(id => window.__baselineResults.filter(r => r.playId === id).length, playId);
+    for (let step = 0; step < 500; step++) {
+      if (sides.has('offense') && sides.has('defense') && scrimmages >= 4) break;
+      const view = await page.evaluate(() => ({ phase: document.getElementById('ui-desk').dataset.phase,
+        overlay: document.querySelector('.overlay.show')?.dataset.overlay ?? null }));
+      if (view.overlay === 'final') break;
+      if (view.overlay && view.overlay !== 'start') {
+        const action = page.locator('.overlay.show [data-slot="action"]').first();
+        if (await action.isVisible() && await action.isEnabled()) { await action.tap(); continue; }
+      }
+      if (view.phase === 'call') {
+        const calls = page.locator('#call-grid .call-btn:not([disabled])');
+        if (await calls.count()) { await calls.nth(step % await calls.count()).tap(); continue; }
+      }
+      if (view.phase === 'fourth-down-decision' || view.phase === 'conversion-decision') {
+        const punt = page.locator('#decision-grid .decision-btn[data-action="punt"]:not([disabled])');
+        const any = page.locator('#decision-grid .decision-btn:not([disabled])');
+        if (await punt.count()) { await punt.first().tap(); continue; }
+        if (await any.count()) { await any.first().tap(); continue; }
+      }
+      if (view.phase === 'question') {
+        const q = await page.evaluate(() => {
+          const { activePlay, questionInstance: question } = __footballTest.activeContracts();
+          const inspected = FOOTBALL_CONTEXTUAL_QUESTIONS.inspect(activePlay, contextualQuestionProfile());
+          return { playId: activePlay.playId, playType: activePlay.playType, possession: state.possession,
+            familyId: question.familyId, questionInstanceId: question.questionInstanceId,
+            inPool: inspected.eligible.some(e => e.familyId === question.familyId),
+            evidenceClass: question.evidenceClass, magnitude: question.difficulty?.magnitude ?? null,
+            support: question.support, correct: question.correctChoiceId, hint: question.hint?.text ?? null,
+            wrong: question.choices.filter(c => c.id !== question.correctChoiceId).map(c => c.id),
+            prompt: document.getElementById('question').textContent, play: JSON.stringify(activePlay) };
+        });
+        expect(q.inPool, `${q.familyId} comes from the truthful inspected pool`).toBe(true);
+        expect(q.prompt.trim().length).toBeGreaterThan(0);
+        sides.add(q.possession);
+        const ordinary = q.playType === 'scrimmage';
+        const path = ordinary && scrimmages === 0 ? 'retry' : ordinary && scrimmages === 1 ? 'worked' : 'correct';
+        if (ordinary) scrimmages++;
+        log.push({ possession: q.possession, playType: q.playType, familyId: q.familyId, evidenceClass: q.evidenceClass,
+          magnitude: q.magnitude, support: q.support, path, prompt: q.prompt });
+        if (log.length === 1 || (q.possession === 'defense' && !log.slice(0, -1).some(e => e.possession === 'defense'))) await shot(`question-${log.length}`);
+        if (path === 'retry' || path === 'worked') {
+          await page.locator(`[data-choice-id="${q.wrong[0]}"]`).tap();
+          if (q.hint) await expect(page.locator('#feedback')).toContainText(q.hint);
+          const held = await page.evaluate(() => { const c = __footballTest.activeContracts();
+            return { play: JSON.stringify(c.activePlay), id: c.questionInstance.questionInstanceId }; });
+          expect(held).toEqual({ play: q.play, id: q.questionInstanceId });
+          expect(await commitCount(q.playId)).toBe(0);
+          await shot(`${path}-after-first-miss`);
+        }
+        if (path === 'worked') {
+          await page.locator(`[data-choice-id="${q.wrong[1]}"]`).tap();
+          await expect(page.locator('#ui-desk')).toHaveAttribute('data-phase', 'explanation');
+          expect(await commitCount(q.playId)).toBe(0);
+          await page.locator('#question-learn-why').tap();
+          await shot('worked-review');
+          await page.locator('#worked-review-back').tap();
+          await page.locator('#question-continue').tap();
+        } else {
+          await page.locator(`[data-choice-id="${q.correct}"]`).tap();
+        }
+        for (let wait = 0; wait < 40 && await commitCount(q.playId) === 0; wait++) {
+          const next = page.locator('#question-continue:not(.hidden)');
+          if (await next.isVisible()) await next.tap(); else await page.waitForTimeout(150);
+        }
+        expect(await commitCount(q.playId), `${q.familyId} commits once`).toBe(1);
+        continue;
+      }
+      await page.waitForTimeout(150);
+    }
+
+    await testInfo.attach(`${mode}-questions.json`, { body: JSON.stringify(log, null, 2), contentType: 'application/json' });
+    expect([...sides].sort()).toEqual(['defense', 'offense']);
+    expect(log.some(e => e.path === 'retry')).toBe(true);
+    expect(log.some(e => e.path === 'worked')).toBe(true);
+    // Each play commits once, even across repeated taps and routing delays.
+    await page.waitForTimeout(2200);
+    const results = await page.evaluate(() => window.__baselineResults.filter(r => r.playId));
+    expect(new Set(results.map(r => r.playId)).size).toBe(results.length);
+    expect(errors).toEqual([]);
+  });
+}

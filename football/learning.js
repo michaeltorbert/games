@@ -96,8 +96,17 @@ const FOOTBALL_LEARNING = (() => {
   // canonical family map. Its magnitude comes from the validated, versioned
   // projection recorded at the trusted derive boundary; rows saved before that
   // projection are inert unless their immutable family domain is substantial.
+  // FLOOR_POLICY.version names the immutable v1 classification projection
+  // and the legacy #220 readiness diagnostic. Its old 0.25 tiny factor is
+  // retired: selection now follows BASELINE_POLICY, a separate identity.
   const FLOOR_POLICY = Object.freeze({ version: 'difficulty-floor-v1', window: 12, days: 30, minResults: 8,
-    minFirstTryRate: 0.8, recent: 6, recentFirstTry: 5, minSubstantial: 3, tinyFactor: 0.25 });
+    minFirstTryRate: 0.8, recent: 6, recentFirstTry: 5, minSubstantial: 3 });
+  // challenge-baseline-v1: in the unprotected floor slice, lower-challenge
+  // review (tiny and neutral) is capped at 20% of the recency-neutral slice
+  // weight when a substantial alternative exists. 20% is a baseline before
+  // family recency, not a final share or a share of all questions.
+  const BASELINE_POLICY = Object.freeze({ version: 'challenge-baseline-v1', lowerCap: 0.2,
+    lowerMagnitudes: Object.freeze(['tiny', 'neutral']) });
 
   function floorMeta(entry) {
     const Q = typeof FOOTBALL_CONTEXTUAL_QUESTIONS === 'undefined' ? null : FOOTBALL_CONTEXTUAL_QUESTIONS;
@@ -200,24 +209,14 @@ const FOOTBALL_LEARNING = (() => {
       refreshDue: stretchRun >= 4 };
   }
 
-  // #220 group readiness: the latest 12 group results from the last 30 days,
-  // at least 8 of them, 80% first try, 5 of the latest 6 first try with no
-  // second miss there, and at least 3 unsupported first-try substantial
-  // results. Tiny-only, helped, literacy, and unclassified work never promote.
-  // Any recent retry or miss, due support, downshift, or refresh in the group
-  // keeps its baseline mix. Grade completion is never evidence.
-  function floorStateFor(session, group, entries = []) {
+  // Existing whole-group support blocks (#220), independent of readiness:
+  // the group's latest floor result, or any group concept's latest result
+  // this game or saved within 30 days, was a retry or miss; the ladder is
+  // downshifted, refresh-due, or guided; or guided support is due for an
+  // entry. A latest first-try result clears a retry block as before.
+  function floorBlockFor(session, group, entries = []) {
     const evidence = Array.isArray(session.floorEvidence) ? session.floorEvidence : [];
     const rows = evidence.filter(row => floorMeta(row)?.group === group).slice(-FLOOR_POLICY.window);
-    const firsts = rows.filter(row => row.resolution === 'firstTryCorrect');
-    const recent = rows.slice(-FLOOR_POLICY.recent);
-    const substantial = firsts.filter(row => floorMeta(row).magnitude === 'substantial'
-      && row.attempts[0].support !== 'guided').length;
-    const ready = rows.length >= FLOOR_POLICY.minResults
-      && firsts.length / rows.length >= FLOOR_POLICY.minFirstTryRate
-      && recent.filter(row => row.resolution === 'firstTryCorrect').length >= FLOOR_POLICY.recentFirstTry
-      && !recent.some(row => row.resolution === 'secondMiss')
-      && substantial >= FLOOR_POLICY.minSubstantial;
     // Every legacy concept in the group counts, not only those in this pool.
     const Q = typeof FOOTBALL_CONTEXTUAL_QUESTIONS === 'undefined' ? null : FOOTBALL_CONTEXTUAL_QUESTIONS;
     const concepts = [...new Set([...entries.map(entry => entry.concept || entry.skill),
@@ -241,6 +240,28 @@ const FOOTBALL_LEARNING = (() => {
       }
     }
     if (!block && entries.some(entry => supportFor(session, entry, 'initial') === 'guided')) block = 'support-due';
+    return block;
+  }
+
+  // Legacy #220 diagnostic, kept for existing consumers: readiness is the
+  // latest 12 group results from the last 30 days, at least 8 of them, 80%
+  // first try, 5 of the latest 6 first try with no second miss there, and at
+  // least 3 unsupported first-try substantial results. `active` now means
+  // only that the retired #220 tiny factor would have applied; selection
+  // ignores it (see BASELINE_POLICY). Grade completion is never evidence.
+  function floorStateFor(session, group, entries = []) {
+    const evidence = Array.isArray(session.floorEvidence) ? session.floorEvidence : [];
+    const rows = evidence.filter(row => floorMeta(row)?.group === group).slice(-FLOOR_POLICY.window);
+    const firsts = rows.filter(row => row.resolution === 'firstTryCorrect');
+    const recent = rows.slice(-FLOOR_POLICY.recent);
+    const substantial = firsts.filter(row => floorMeta(row).magnitude === 'substantial'
+      && row.attempts[0].support !== 'guided').length;
+    const ready = rows.length >= FLOOR_POLICY.minResults
+      && firsts.length / rows.length >= FLOOR_POLICY.minFirstTryRate
+      && recent.filter(row => row.resolution === 'firstTryCorrect').length >= FLOOR_POLICY.recentFirstTry
+      && !recent.some(row => row.resolution === 'secondMiss')
+      && substantial >= FLOOR_POLICY.minSubstantial;
+    const block = floorBlockFor(session, group, entries);
     return Object.freeze({ policyVersion: FLOOR_POLICY.version, group, ready, active: ready && !block,
       reason: block || (ready ? 'ready' : 'not-ready'), results: rows.length, substantialFirstTry: substantial });
   }
@@ -534,14 +555,16 @@ const FOOTBALL_LEARNING = (() => {
         throw new TypeError('selectionMultiplier must be a finite number greater than 0 and at most 2');
       }
       const normalized = purposeWeight(entry) * ((entry.weight || 1) / purposeTotals[entry.purpose]);
+      const recency = session.recentFamilyIdsByClass[entry.evidenceClass]?.includes(entry.familyId || entry.id)
+        ? PROFILE.recencyMultiplier : 1;
       return {
         entry,
-        diagnostic, guided, factor,
+        diagnostic, guided, factor, recency,
         weight: Math.max(
           0.0001,
           (multiplier === 1 ? normalized : normalized * multiplier)
             * adaptiveNeedMultiplier(session, entry)
-            * (session.recentFamilyIdsByClass[entry.evidenceClass]?.includes(entry.familyId || entry.id) ? PROFILE.recencyMultiplier : 1)
+            * recency
         ),
       };
     });
@@ -553,23 +576,53 @@ const FOOTBALL_LEARNING = (() => {
       const adjusted = group.reduce((sum, item) => sum + item.weight * item.factor, 0);
       if (adjusted > 0) group.forEach(item => { item.weight *= item.factor * budget / adjusted; });
     }
-    // #220: after the baseline ladder, a ready, unblocked floor group lowers
-    // its tiny entries and rescales so the group keeps its budget. A group
-    // with no substantial alternative in this truthful pool stays baseline.
-    const groups = [...new Set(weighted.map(item => floorMeta(item.entry)?.group).filter(Boolean))];
-    for (const group of groups) {
-      const items = weighted.filter(item => floorMeta(item.entry)?.group === group);
-      const tiny = items.filter(item => floorMeta(item.entry).magnitude === 'tiny');
-      if (!tiny.length || !items.some(item => floorMeta(item.entry).magnitude === 'substantial')) continue;
-      const state = floorStateFor(session, group, items.map(item => item.entry));
-      items.forEach(item => { item.floor = state; });
-      if (!state.active) continue;
-      const budget = items.reduce((sum, item) => sum + item.weight, 0);
-      tiny.forEach(item => { item.weight *= FLOOR_POLICY.tinyFactor; });
-      const adjusted = items.reduce((sum, item) => sum + item.weight, 0);
-      items.forEach(item => { item.weight *= budget / adjusted; });
-    }
+    applyBaselineFloor(weighted, session);
     return weighted;
+  }
+
+  // challenge-baseline-v1, applied once after the ladder. Any existing
+  // support signal protects a whole canonical group at exact weights;
+  // readiness never protects. For the unprotected slice, b = current weight
+  // / its direct family recency factor (the current post-ladder, clamped
+  // weight with that factor removed, not a ladder replay). When lower review
+  // exceeds 20% of sum(b) and a higher entry exists, each band is scaled in
+  // proportion to 20/80, recency is reapplied once, and one common factor
+  // restores the slice's original total. Literacy and non-floor entries are
+  // untouched. The per-item diagnostic is never persisted.
+  function applyBaselineFloor(weighted, session) {
+    const floorItems = weighted.filter(item => floorMeta(item.entry));
+    const groupOf = item => floorMeta(item.entry).group;
+    const isLower = item => BASELINE_POLICY.lowerMagnitudes.includes(floorMeta(item.entry).magnitude);
+    const protection = new Map();
+    for (const group of new Set(floorItems.map(groupOf))) {
+      const items = floorItems.filter(item => groupOf(item) === group);
+      protection.set(group, floorBlockFor(session, group, items.map(item => item.entry))
+        || (items.some(item => item.guided) ? 'challenge-guided' : null)
+        || (items.some(item => item.entry.sourceGuided === true) ? 'source-guided' : null));
+    }
+    const before = new Map(floorItems.map(item => [item, item.weight]));
+    const open = floorItems.filter(item => !protection.get(groupOf(item)));
+    const base = open.map(item => item.weight / item.recency);
+    const total = values => values.reduce((sum, value) => sum + value, 0);
+    const U = total(base);
+    const L = total(base.filter((_, i) => isLower(open[i])));
+    const H = total(base.filter((_, i) => !isLower(open[i])));
+    const reason = !(H > 0) ? 'no-higher-alternative' : !(L > 0) ? 'no-lower-review'
+      : L / U <= BASELINE_POLICY.lowerCap ? 'within-cap' : 'capped';
+    if (reason === 'capped') {
+      const fLower = BASELINE_POLICY.lowerCap * U / L;
+      const fHigher = (1 - BASELINE_POLICY.lowerCap) * U / H;
+      const budget = total(open.map(item => item.weight));
+      const adjusted = open.map((item, i) => base[i] * (isLower(item) ? fLower : fHigher) * item.recency);
+      const common = budget / total(adjusted);
+      open.forEach((item, i) => { item.weight = adjusted[i] * common; });
+    }
+    for (const item of floorItems) {
+      const blocked = protection.get(groupOf(item));
+      item.baseline = Object.freeze({ policyVersion: BASELINE_POLICY.version, group: groupOf(item),
+        magnitude: floorMeta(item.entry).magnitude, band: isLower(item) ? 'lower' : 'higher',
+        protected: Boolean(blocked), reason: blocked || reason, recency: item.recency, before: before.get(item) });
+    }
   }
 
   function weightedPick(entries, session, rng) {
@@ -626,6 +679,7 @@ const FOOTBALL_LEARNING = (() => {
     CHALLENGE_POLICY,
     normalizeChallengeEvidence,
     FLOOR_POLICY,
+    BASELINE_POLICY,
     normalizeFloorEvidence,
     floorStateFor,
     selectionWeights,

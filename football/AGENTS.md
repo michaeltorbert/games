@@ -165,7 +165,8 @@ repository-level `AGENTS.md`.
   among the latest six without a second miss, and three unsupported core
   successes. A second miss or two retries among three downshifts; three later
   consecutive first-try results recover. One retry guides the next question.
-- Preserve the concept's selection budget when applying challenge weights.
+- Preserve the concept's ladder budget when applying challenge weights; the
+  later baseline floor may then move mass inside the floor slice.
   Four consecutive stretch completions require an eligible lower refresh;
   higher-only availability stays guided and leaves refresh due. Recency is
   class-partitioned. Independent evidence cannot reduce literacy probability.
@@ -181,11 +182,20 @@ repository-level `AGENTS.md`.
   derive boundary and attaches `difficulty {version, group, magnitude}`;
   `football.js` recomputes it before accepting a question. Policy details and
   representative cases live in `shared/curriculum-coverage.md`.
-- `learning.js` applies the floor after ladder redistribution: a ready,
-  unblocked canonical group lowers tiny entries by 0.25 and rescales to its
-  budget, only when the same truthful pool has a substantial alternative.
-  Readiness mirrors the challenge thresholds per group; any recent retry or
-  miss, due support, downshift, or refresh blocks the whole group. One draw.
+- Selection policy `challenge-baseline-v1` (1.39.0) supersedes the #220
+  readiness-gated 0.25 tiny factor; the v1 projection is unchanged and its
+  version stays separate. After ladder redistribution, tiny and neutral floor
+  entries are lower review and substantial entries higher challenge. Any
+  existing support signal (recent retry or miss, due guided support, ladder
+  downshift/refresh/guided, or the trusted pre-pick `sourceGuided` annotation
+  from `sourceStatus` on the inspected profile) protects the whole canonical
+  group at exact weights; readiness never protects. On the unprotected slice
+  only, with b = current weight / direct family recency factor, lower review
+  is capped at 20% of the baseline sum when it exceeds that and a higher
+  entry exists; recency is reapplied once and one common factor restores the
+  slice total. 20% is a baseline before recency, not a final share. No
+  alternative means no change. `floorStateFor` is a legacy diagnostic only.
+  One draw.
 - Stats keep the optional validated projection; older rows are inert except the
   crossing-ten-only `*-within-20` families. Never parse prompts or report
   operands for this policy.
