@@ -43,9 +43,25 @@ for (const possession of ['offense', 'defense']) test(`completed arithmetic keep
 });
 
 // These use the ordinary positive-weight selector and call button, never a forced family.
+// Every sweep draw and every replay sees the same independent state: no saved Football
+// history (resetLearning() loads FOOTBALL_STATS.learningSnapshot()), the in-memory Grade
+// 1-B page-187 completion, and a fresh seeded drive. Each replay ends with a committed
+// second miss; without a fresh page and cleared history, that saved miss would make the
+// next replay's group protected by the floor (challenge-baseline-v1) and move its draw.
 test('Chapter 8 families are ordinarily selected with hidden results and working retry/Continue', async ({ page }) => {
-  await page.goto('/football/?boot=offense-call');
-  await page.evaluate(()=>{curriculumSession=Object.freeze({worktext:'Math Mammoth Grade 1-B',edition:2026,completedThroughPage:187});});
+  await page.addInitScript(() => {
+    try { window.localStorage.removeItem('footballMathStats:v1'); } catch (error) {}
+  });
+  const freshPage = async () => {
+    await page.goto('/football/?boot=offense-call');
+    await page.evaluate(()=>{curriculumSession=Object.freeze({worktext:'Math Mammoth Grade 1-B',edition:2026,completedThroughPage:187});});
+    const history = await page.evaluate(() => {
+      const snapshot = FOOTBALL_STATS.learningSnapshot();
+      return { evidence: snapshot.challengeEvidence.length, resolved: Object.keys(snapshot.lastResolvedByConcept).length };
+    });
+    expect(history, 'each case starts with no saved Football history').toEqual({ evidence: 0, resolved: 0 });
+  };
+  await freshPage();
   const draws = await page.evaluate(() => {
     const found = {};
     for (let i = 0; i < 500; i++) {
@@ -62,6 +78,7 @@ test('Chapter 8 families are ordinarily selected with hidden results and working
   });
   expect(Object.keys(draws).sort()).toEqual(['goal-remaining-ch8','line-remaining-ch8-ones-subtract','score-difference-ch8','score-total-ch8','team-yards-add-ch8-ones-add']);
   for (const [familyId, draw] of Object.entries(draws)) {
+    await freshPage();
     const q = await page.evaluate(({ draw }) => {
       __footballTest.resetLearning();
       __footballTest.setRngStreams({ football: () => .2, scheduler: () => draw, presentation: () => .4 });
