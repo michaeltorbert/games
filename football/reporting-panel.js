@@ -42,6 +42,9 @@ const FOOTBALL_REPORTING_PANEL = (() => {
     'not-configured': COPY.notConfigured,
   });
   const FALLBACK_ERROR = `This game could not be connected here. Any waiting practice is kept. ${ASK}`;
+  // Outcomes worth retrying with the same form. Every other refusal keeps this
+  // document's view read-only (below).
+  const RETRYABLE = new Set(['code-format', 'invalid-code', 'timeout', 'network', 'service', 'not-configured']);
 
   let bound = false;
   let open = false;
@@ -53,6 +56,13 @@ const FOOTBALL_REPORTING_PANEL = (() => {
   let view = null;
   let picker = null;
   let hooks = { onConnectionChange() {}, onPlayerChange() {} };
+  // Set when the authoritative enroll refuses for any reason that is not a plain
+  // retry (for example an older unsent practice record). The reason alone does
+  // not say whether the code exchange already happened. For the rest of this document the code form is not
+  // offered again: the view stays read-only across close, reopen and background.
+  // Nothing is read, repaired or removed here; a later connected or partial state
+  // from the API is still shown.
+  let refusedLocally = false;
 
   const sync = () => (typeof LEARNING_SYNC === 'undefined' ? null : LEARNING_SYNC);
   const overlay = () => $('ov-options');
@@ -100,7 +110,7 @@ const FOOTBALL_REPORTING_PANEL = (() => {
     }
     if (health?.state === 'disabled') {
       const partial = await S.partialEnrollment();
-      if (partial?.state === 'none') return { kind: 'form' };
+      if (partial?.state === 'none') return refusedLocally ? { kind: 'readonly', copy: COPY.paused } : { kind: 'form' };
       if (partial?.state === 'partial' && partial.originMatches === true) return { kind: 'finish' };
       return { kind: 'readonly', copy: COPY.paused };
     }
@@ -244,14 +254,21 @@ const FOOTBALL_REPORTING_PANEL = (() => {
     let result;
     try { result = await S.enroll(input ? input.value : ''); } catch (error) { result = { ok: false, reason: 'service' }; }
     inFlight = null;
+    const reason = result?.ok ? null : result?.reason;
+    // hint-failed leaves a verified partial, which the API offers to Finish.
+    if (!result?.ok && !RETRYABLE.has(reason) && reason !== 'hint-failed') refusedLocally = true;
     if (result?.ok && input) input.value = '';
+    if (refusedLocally && input) input.value = '';
     try { hooks.onConnectionChange(); } catch (error) { /* reporting never participates in play */ }
     if (!open) return;
     const fresh = current(started);
     await render();
     if (!fresh || !current(started)) return;
     if (result?.ok) setText('ov-report-status', 'Connected. Practice from now on is reported.');
-    else setText('ov-report-form-status', ERRORS[result?.reason] ?? FALLBACK_ERROR);
+    else if (RETRYABLE.has(reason)) setText('ov-report-form-status', ERRORS[reason]);
+    // The same reasons can come before or after the code exchange, so the
+    // message never says whether a code was used or anything changed.
+    else setText('ov-report-status', FALLBACK_ERROR);
   }
 
   async function finish() {

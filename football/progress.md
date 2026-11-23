@@ -3352,3 +3352,56 @@ real Home Screen app can use the new view. Until a real new answer appears in
 the private report with device health, the state is exactly "client released;
 intended-device receipt pending", reporting is not called working, and task
 cleanup waits. No check results are claimed in this entry.
+
+## 2026-11-23 — Football 1.39.0 release CANDIDATE (supersedes both entries above as the candidate record)
+
+This is the release record for the 1.39.0 candidate: the `challenge-baseline-v1`
+floor plus Learning reports in Options. It is not published. The test updates
+listed as pending in the two entries above are now made:
+
+- `tests/football-overlay-contract.spec.mjs`: the Options characterization now
+  pins the Learning reports entry, the subview's ids and its two inline actions;
+  every other assertion is unchanged.
+- `tests/football-contextual-questions.spec.mjs` (#51 retired comparison) and
+  `tests/football-natural-yardage.spec.mjs` (#218 scheduler draw) were updated
+  earlier, as recorded in the floor entry.
+- `tests/football-arithmetic-ui.spec.mjs` (Chapter 8 ordinary selection): each
+  replay now reloads with no saved Football history, matching the sweep that
+  found its draw. A replay's committed second miss had leaked into the next
+  replay's history, and under the new floor that correctly protects its group
+  and moves the draw. The ordinary selector, five-family coverage and the
+  retry/worked/Continue assertions are unchanged.
+
+Corrections made after the combined entry:
+
+- Send now (CF1): the engine also records a successful status-only contact
+  that carries no practice, so a changed "last contact" time alone is never
+  called a send. The panel says practice was sent only when waiting practice
+  left the queue on a successful contact, minus any the service held back.
+  Otherwise it says the service was reached but sent nothing, or that nothing
+  new was confirmed. The stat is labelled "Last contact with the report
+  service".
+- Protected refusal (CF2): when the existing enroll refuses for any reason other
+  than a plain retry, the view becomes read-only for the rest of that page and
+  no longer offers the code form. It shows the generic curated message ("This
+  game could not be connected here. Any waiting practice is kept. Ask the
+  grown-up who set up reports.") and never says whether a code was used, because
+  the same reasons can occur before or after the code exchange. The panel reads,
+  repairs and removes nothing. The tested concrete case is an older unsent
+  practice record: there, the focused test shows no request and unchanged local
+  bytes. Other protected refusals are not claimed to be pre-request. A bad
+  format, an expired code, a network or service failure still keep the form for
+  a retry.
+
+Unchanged: the floor policy and its source, sync, outbox, service,
+configuration, schema, catalog, curriculum, stats and contextual-question code,
+and every other game's descriptor and version.
+
+Not yet reached for this exact frozen candidate, and not claimed here: the full
+Chromium and WebKit Football release runs, the registry check, Apple Simulator
+or physical-iPad keyboard proof, and a fresh independent review. Earlier full
+and focused runs on superseded heads, and their failures, are kept as they
+were and are not evidence for this head. Publishing, deployment checks, the
+real Home Screen iPad receipt and task cleanup follow the RO1 order above, and
+their evidence is recorded outside this tracked tree. Child challenge and
+learning effects depend on feedback after release.

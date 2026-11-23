@@ -562,7 +562,9 @@ test('protected and unrecognized local states stay read-only with bytes unchange
   }
   expect(service.requests).toEqual([]);
 
-  // A legacy local outbox may reach the form; enroll refuses before any request.
+  // A legacy local outbox (real API, no double) may first reach the form, because the
+  // panel never reads raw records. The authoritative enroll refuses before any request;
+  // the resulting view is read-only for the rest of this document.
   await reset();
   await page.evaluate(() => localStorage.setItem(LEARNING_OUTBOX.LEGACY_OUTBOX_KEY, '{"synthetic":"legacy"}'));
   await openStartOptions(page);
@@ -571,8 +573,29 @@ test('protected and unrecognized local states stay read-only with bytes unchange
   await expect(page.locator('#ov-report-form')).toBeVisible();
   await page.locator('#ov-report-code').fill(CODE);
   await page.locator('#ov-report-connect').click();
-  await expect(page.locator('#ov-report-form-status')).toHaveText(COPY.fallback);
+  await expect(page.locator('#ov-report-status')).toHaveText(COPY.fallback);
+  const readOnly = async label => {
+    await expect(page.locator('#ov-report-summary'), label).toHaveText(COPY.paused);
+    await expect(page.locator('#ov-report-form'), label).toBeHidden();
+    await expect(page.locator('#ov-report-finish'), label).toBeHidden();
+    await expect(page.locator('#ov-report-health'), label).toBeHidden();
+    await expect(page.locator('#ov-report-code'), label).toHaveValue('');
+  };
+  await readOnly('after the refusal');
+  // Back and reopen, a fresh Options entry, and a visibility reread keep it read-only.
+  await page.locator('#ov-report-back').click();
+  await openReport(page);
+  await readOnly('reopened');
+  await page.locator('#ov-report-back').click();
+  await page.locator('#ov-options-btn').click();
+  await openStartOptions(page);
+  await openReport(page);
+  await readOnly('fresh Options entry');
+  await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+  await settled(page);
+  await readOnly('visibility reread');
   expect(enrollRequests(service)).toBe(0);
+  expect(service.requests).toEqual([]);
   expect(await rawState(page)).toEqual(legacy);
   await page.locator('#ov-report-back').click();
   await page.locator('#ov-options-btn').click();
@@ -691,6 +714,21 @@ test('Options and learning-report views fit with 44px controls and no horizontal
       if (control.fontSize !== null) expect(control.fontSize, `${label} ${control.id} font`).toBeGreaterThanOrEqual(16);
     }
   };
+  // Locally refused connection (synthetic legacy record): read-only for this document,
+  // so it is captured first and the page is then reloaded without the record.
+  await page.evaluate(() => localStorage.setItem(LEARNING_OUTBOX.LEGACY_OUTBOX_KEY, '{"synthetic":"legacy"}'));
+  await page.locator('#start-options-btn').tap();
+  await page.locator('#ov-options-report-entry').tap();
+  await settled(page);
+  await page.locator('#ov-report-code').tap();
+  await page.locator('#ov-report-code').fill(CODE);
+  await page.locator('#ov-report-connect').tap();
+  await expect(page.locator('#ov-report-status')).toHaveText(COPY.fallback);
+  await expect(page.locator('#ov-report-form')).toBeHidden();
+  await capture('report-refused-locally');
+  expect(service.requests).toEqual([]);
+  await page.evaluate(() => localStorage.removeItem(LEARNING_OUTBOX.LEGACY_OUTBOX_KEY));
+  await page.goto('/football/');
   await page.locator('#start-options-btn').tap();
   await expect(page.locator('#ov-options')).toHaveClass(/(^|\s)show(\s|$)/);
   await capture('options-collapsed');
