@@ -78,6 +78,7 @@ const BROWSER = [
   'tests/football-learning-outbox.spec.mjs',
   'tests/learning-reporting-sync.spec.mjs',
   'tests/learning-reporting-ui.spec.mjs',
+  'tests/football-reporting-panel.spec.mjs',
   'tests/football-release-matrix.spec.mjs',
 ];
 const PLANNED = ['enumerate', 'prepare', 'domain', ...BROWSER, 'case-union', 'verify'];

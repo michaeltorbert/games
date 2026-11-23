@@ -200,6 +200,30 @@ repository-level `AGENTS.md`.
   crossing-ten-only `*-within-20` families. Never parse prompts or report
   operands for this policy.
 
+## Learning Reports in Options (1.39.0)
+
+- `reporting-panel.js` (plain global `FOOTBALL_REPORTING_PANEL`) is a compact
+  subview of the same `#ov-options` modal; `football.js` keeps the Options
+  pause, Resume and focus. It is lazy (no storage, IndexedDB, request or timer
+  until opened) and calls only the current `LEARNING_SYNC` APIs. No iframe,
+  navigation, external report link, Stop, reset or deletion control.
+- Fail-closed allowlist: configured + `health` `disabled` + `partialEnrollment`
+  `none` shows the one-time code form; a verified partial whose origin matches
+  shows Finish only; `health` `ok` shows neutral status and Send now (origin
+  match only, rereading health, never claiming an unconfirmed send). Every
+  other state is read-only with data unchanged. Curated copy never recommends
+  Stop. Keep only non-secret view fields; never store, log or render the code.
+- `data-view` is separate from `data-context`. A fresh Options entry and every
+  explicit exit (Back, Done, Resume) reset the view and clear the code; a
+  background re-entry keeps both. An operation in flight survives close and
+  reopen and is never repeated; stale results update no UI and never reopen,
+  focus, resume or change the game.
+- Connecting, finishing, sending and player choices never change the paused
+  play, question, pending resolution, clock, RNG, stats, Season or curriculum
+  snapshot. Attribution keeps the existing first-actual-observation pinning in
+  `reportLearningEvent`; there is no backfill. Both neutral pickers (Start
+  `#player-picker`, subview `#ov-report-player-picker`) refresh together.
+
 ## Play Integrity and Recovery
 
 - Complete and freeze one tagged `activePlay` (`scrimmage`, `punt`, `fieldGoal`,

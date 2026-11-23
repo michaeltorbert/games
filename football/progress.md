@@ -3303,3 +3303,52 @@ No check results are claimed in this entry; focused tests, the full Chromium and
 WebKit release gates, registry, independent review, merge, and Pages
 verification are still required. Actual child challenge or learning benefit is
 feedback-dependent.
+
+## 2026-11-23 — Combined 1.39.0 candidate: baseline floor plus in-game learning-report connection (supersedes the entry above as the candidate record)
+
+Owner facts behind this addition (reported, not device-verified): the private
+report's Safari device page asks for a one-time code the owner did not know
+about, and Football is normally launched from the Home Screen icon. The
+installed app's own reporting state is unknown; nothing here assumes that
+Safari and the Home Screen app share or isolate storage. The game previously
+offered no way to check or connect reporting from inside the app. That is a
+demonstrated discoverability gap, not proof that upload is broken.
+
+- Floor: unchanged from the entry above (`challenge-baseline-v1`). Its focused
+  checks were run by the coordinator on the floor savepoint; that result is not
+  restated here as a release pass.
+- New `football/reporting-panel.js`: a Learning reports subview of the same
+  Options modal, reachable from the start screen and from a paused game. It is
+  lazy and delegates to the current `LEARNING_SYNC` APIs. Fail-closed states:
+  code form only for configured + not enrolled + no owned records; Finish only
+  for a verified partial on this service; connected status with Send now on
+  origin match; everything else read-only with data unchanged and copy that
+  never recommends Stop. The plain code-origin note says a grown-up creates the
+  code in the private report's Setup (on another device if possible) and types
+  it here within 10 minutes. No link, navigation, iframe, Stop, reset or delete.
+- `football.js` only resets the subview on fresh Options entry and explicit
+  exits, adds the two inline handlers, and refreshes both neutral pickers after
+  a connection or choice. Paused play, question, pending resolution, clock, RNG,
+  stats, Season and curriculum snapshots are untouched; attribution keeps the
+  existing first-actual-observation pinning, with no backfill.
+- `football.css` adds styles scoped to the subview and lets the Options card
+  scroll internally; the call grid is untouched. `index.html` adds the markup
+  and the cached script (1.39.0).
+- Tests: new `tests/football-reporting-panel.spec.mjs`, registered in the
+  release runner list. Behavior uses the real page, sync, outbox and storage
+  against a loopback synthetic service, with one labelled health-only test
+  double for states the API cannot yet produce; layout runs on the six device
+  projects by tap. Synthetic engine emulation is not native-keyboard or real
+  iPad evidence.
+- Known required test update outside the author scope:
+  `tests/football-overlay-contract.spec.mjs` characterizes the exact
+  `#ov-options` markup and must be updated for the new subview.
+- No shared, sync, outbox, service, config, schema, catalog, curriculum, stats or
+  contextual-question change. Other games are unchanged.
+
+Ordering (both planners, RO1): after every code, automated and native gate and a
+fresh independent review of the exact head, the client may be published so the
+real Home Screen app can use the new view. Until a real new answer appears in
+the private report with device health, the state is exactly "client released;
+intended-device receipt pending", reporting is not called working, and task
+cleanup waits. No check results are claimed in this entry.
