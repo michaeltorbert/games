@@ -689,15 +689,27 @@ test.describe('issue 49 overlay characterization', () => {
       },
       {
         // #222: the shared Options/paused modal (quarter length and Resume).
+        // Football 1.39.0 adds the Learning reports entry and its same-modal
+        // subview (reporting-panel.js); the existing Resume/Done action is unchanged.
         id: 'ov-options', role: 'dialog', modal: 'true', labelledBy: 'ov-options-title', describedBy: 'ov-options-sub',
         rootChildren: ['div.overlay-card.ov-options-card'],
         card: [
           'span.ov-broadcast-badge.ov-badge-info', 'div#ov-options-title.ov-title', 'div#ov-options-sub.ov-sub',
           'button#ov-options-btn.ov-btn', 'fieldset#quarter-length-picker.quarter-length-picker',
           'p#ov-options-note.ov-options-note',
+          'button#ov-options-report-entry.ov-options-report-entry', 'section#ov-report.ov-report',
         ],
-        ids: ['ov-options-title', 'ov-options-sub', 'ov-options-btn', 'quarter-length-picker', 'quarter-length-status', 'ov-options-note'],
-        actions: [{ id: 'ov-options-btn', onclick: 'closeOptions()' }],
+        ids: ['ov-options-title', 'ov-options-sub', 'ov-options-btn', 'quarter-length-picker', 'quarter-length-status', 'ov-options-note',
+          'ov-options-report-entry', 'ov-report', 'ov-report-back', 'ov-report-heading', 'ov-report-summary', 'ov-report-status',
+          'ov-report-form', 'ov-report-code', 'ov-report-code-help', 'ov-report-connect', 'ov-report-form-status',
+          'ov-report-finish', 'ov-report-finish-btn', 'ov-report-finish-status',
+          'ov-report-health', 'ov-report-players', 'ov-report-last', 'ov-report-waiting', 'ov-report-held', 'ov-report-lost',
+          'ov-report-picker-host', 'ov-report-send-row', 'ov-report-send', 'ov-report-send-status'],
+        actions: [
+          { id: 'ov-options-btn', onclick: 'closeOptions()' },
+          { id: 'ov-options-report-entry', onclick: 'openReportingPanel()' },
+          { id: 'ov-report-back', onclick: 'closeReportingPanel()' },
+        ],
       },
       {
         id: 'ov-td', role: 'dialog', modal: 'true', labelledBy: 'ov-td-title', describedBy: 'ov-td-sub',

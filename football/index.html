@@ -4,14 +4,14 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <title>Football Math!</title>
-<link rel="apple-touch-icon" href="apple-touch-icon.png?v=1.38.1">
-<link rel="icon" type="image/png" href="apple-touch-icon.png?v=1.38.1">
+<link rel="apple-touch-icon" href="apple-touch-icon.png?v=1.39.0">
+<link rel="icon" type="image/png" href="apple-touch-icon.png?v=1.39.0">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow+Condensed:wght@600;700;800&display=swap">
-<link rel="stylesheet" href="../shared/fonts.css?v=1.38.1">
-<link rel="stylesheet" href="../shared/reset.css?v=1.38.1">
-<link rel="stylesheet" href="football.css?v=1.38.1">
+<link rel="stylesheet" href="../shared/fonts.css?v=1.39.0">
+<link rel="stylesheet" href="../shared/reset.css?v=1.39.0">
+<link rel="stylesheet" href="football.css?v=1.39.0">
 </head>
 <body>
 <div id="broadcast-shell">
@@ -349,6 +349,45 @@
       <p class="quarter-length-status" id="quarter-length-status" data-slot="quarter-status" role="status" aria-live="polite" aria-atomic="true">Your next game uses 5-minute quarters.</p>
     </fieldset>
     <p class="ov-options-note" id="ov-options-note" data-slot="clock-note"></p>
+    <button class="ov-options-report-entry" id="ov-options-report-entry" type="button" onclick="openReportingPanel()">
+      <span class="ov-report-entry-title">Learning reports</span>
+      <span class="ov-report-entry-copy">Connect this game or check sending</span>
+    </button>
+    <section class="ov-report" id="ov-report" aria-labelledby="ov-report-heading" data-state="loading">
+      <div class="ov-report-head">
+        <button class="ov-report-back" id="ov-report-back" type="button" onclick="closeReportingPanel()">Back to Options</button>
+        <h2 class="ov-report-heading" id="ov-report-heading">Learning reports</h2>
+      </div>
+      <p class="ov-report-summary" id="ov-report-summary" role="status" aria-live="polite" aria-atomic="true"></p>
+      <p class="ov-report-note" id="ov-report-status" role="status" aria-live="polite" aria-atomic="true"></p>
+      <form class="ov-report-form" id="ov-report-form" novalidate hidden>
+        <label class="ov-report-label" for="ov-report-code">One-time code</label>
+        <input class="ov-report-code" id="ov-report-code" name="code" type="text" inputmode="text" enterkeyhint="go"
+          autocomplete="off" autocapitalize="characters" autocorrect="off" spellcheck="false" maxlength="40"
+          aria-describedby="ov-report-code-help ov-report-form-status">
+        <p class="ov-report-note" id="ov-report-code-help">A grown-up makes this code. On another device if possible, open the private learning report, go to Setup and create a code for this game. Then type it here within 10 minutes.</p>
+        <button class="ov-report-action" id="ov-report-connect" type="submit">Connect this game</button>
+        <p class="ov-report-note" id="ov-report-form-status" role="status" aria-live="polite" aria-atomic="true"></p>
+      </form>
+      <div class="ov-report-finish" id="ov-report-finish" hidden>
+        <button class="ov-report-action" id="ov-report-finish-btn" type="button">Finish connecting</button>
+        <p class="ov-report-note" id="ov-report-finish-status" role="status" aria-live="polite" aria-atomic="true"></p>
+      </div>
+      <div class="ov-report-health" id="ov-report-health" hidden>
+        <dl class="ov-report-stats">
+          <div><dt>Players</dt><dd id="ov-report-players"></dd></div>
+          <div><dt>Last contact with the report service</dt><dd id="ov-report-last"></dd></div>
+          <div><dt>Waiting to send</dt><dd id="ov-report-waiting"></dd></div>
+          <div><dt>Kept here</dt><dd id="ov-report-held"></dd></div>
+          <div><dt>Lost on this device</dt><dd id="ov-report-lost"></dd></div>
+        </dl>
+        <div id="ov-report-picker-host"></div>
+        <div class="ov-report-send-row" id="ov-report-send-row" hidden>
+          <button class="ov-report-action" id="ov-report-send" type="button">Send now</button>
+          <p class="ov-report-note" id="ov-report-send-status" role="status" aria-live="polite" aria-atomic="true"></p>
+        </div>
+      </div>
+    </section>
   </div>
 </div>
 <div class="overlay" id="ov-td" data-overlay="td" data-side="offense" role="dialog" aria-modal="true" aria-labelledby="ov-td-title" aria-describedby="ov-td-sub" aria-hidden="true" inert>
@@ -442,27 +481,28 @@
   </div>
 </div>
 
-<link rel="stylesheet" href="../shared/curriculum.css?v=1.38.1">
-<script src="../shared/curriculum.js?v=1.38.1"></script>
-<script src="../shared/grade2a-curriculum.js?v=1.38.1"></script>
-<script src="../shared/curriculum-ui.js?v=1.38.1"></script>
-<script src="copy.js?v=1.38.1"></script>
-<script src="learning.js?v=1.38.1"></script>
-<script src="stats.js?v=1.38.1"></script>
-<script src="opponent.js?v=1.38.1"></script>
-<script src="season.js?v=1.38.1"></script>
-<script src="football-domain.js?v=1.38.1"></script>
-<script src="contextual-questions.js?v=1.38.1"></script>
-<script src="time-lab.js?v=1.38.1"></script>
-<script src="../shared/learning-outbox.js?v=1.38.1"></script>
-<script src="../shared/learning-reporting/config.js?v=1.38.1"></script>
-<script src="../shared/learning-sync.js?v=1.38.1"></script>
-<script src="../shared/home-screen-install/home-screen-install.js?v=1.38.1"></script>
-<script src="coins-view.js?v=1.38.1"></script>
-<script src="football.js?v=1.38.1"></script>
+<link rel="stylesheet" href="../shared/curriculum.css?v=1.39.0">
+<script src="../shared/curriculum.js?v=1.39.0"></script>
+<script src="../shared/grade2a-curriculum.js?v=1.39.0"></script>
+<script src="../shared/curriculum-ui.js?v=1.39.0"></script>
+<script src="copy.js?v=1.39.0"></script>
+<script src="learning.js?v=1.39.0"></script>
+<script src="stats.js?v=1.39.0"></script>
+<script src="opponent.js?v=1.39.0"></script>
+<script src="season.js?v=1.39.0"></script>
+<script src="football-domain.js?v=1.39.0"></script>
+<script src="contextual-questions.js?v=1.39.0"></script>
+<script src="time-lab.js?v=1.39.0"></script>
+<script src="../shared/learning-outbox.js?v=1.39.0"></script>
+<script src="../shared/learning-reporting/config.js?v=1.39.0"></script>
+<script src="../shared/learning-sync.js?v=1.39.0"></script>
+<script src="../shared/home-screen-install/home-screen-install.js?v=1.39.0"></script>
+<script src="coins-view.js?v=1.39.0"></script>
+<script src="reporting-panel.js?v=1.39.0"></script>
+<script src="football.js?v=1.39.0"></script>
 <script>
   document.getElementById('version-display').textContent = `v${GAME_VERSION}`;
 </script>
-<script src="../shared/updater.js?v=1.38.1"></script>
+<script src="../shared/updater.js?v=1.39.0"></script>
 </body>
 </html>

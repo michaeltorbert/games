@@ -3247,3 +3247,161 @@ here claims to reproduce it.
 
 No check results are claimed in this entry; regression, release gates, registry,
 independent review, merge, and Pages verification are still required.
+
+## 2026-11-23 — Baseline challenge floor `challenge-baseline-v1` (Football 1.39.0 candidate, supersedes the #220 selection rule)
+
+Original request (in chat, 2026-11-23): make Football ask more challenging,
+truthful questions within the pages already completed, so trivial facts such as
+6 + 3 no longer dominate. The user reports scores like 105-0 and rarely
+missing. No learner metrics, pages, or history were available or inferred; the
+reported score and the Grade 1 finish are not mastery evidence. The separate
+private-report "No profiles yet" question is tracked outside this change and
+is not addressed or claimed here.
+
+- Cause in source (a mechanism, not an observed learner mix): the #220 rule
+  lowered only *tiny* entries, only inside one canonical group, and only after
+  that group met a success-history readiness threshold. Neutral work (6 + 3,
+  10 − 4, 63 + 5) was never lowered, and a fresh history never qualified.
+- Change (agreed plan C2): after the existing ladder, tiny and neutral floor
+  entries are lower review and substantial entries higher challenge. Any
+  existing support signal protects the whole canonical group at exact weights
+  (recent retry or miss, due guided support, ladder downshift, refresh, or
+  guided, the ladder's `higher-guided` fallback, or a source-guided entry from
+  the inspected profile). Readiness never protects. On the unprotected slice,
+  b = current post-ladder clamped weight / its direct family recency factor;
+  if lower review exceeds 20% of sum(b) and a higher entry exists, each band is
+  scaled to 20/80, recency is reapplied once, and one common factor restores
+  the slice total. Within-game need boosts stay proportional (N2 option a). No
+  alternative, or review already at or below 20%, means exact current weights.
+- `football.js` adds only a transient, non-persisted `sourceGuided` annotation
+  to the eligible mapping (the same `sourceStatus` and inspected profile as the
+  unchanged post-pick `firstSupport`), plus `GAME_VERSION`. Today no floor
+  family is source-guided; the annotation is a defensive guard.
+- Removed the old 0.25 tiny stage (`FLOOR_POLICY.tinyFactor`), so reductions
+  never stack. `floorStateFor` is kept as a legacy diagnostic; its `active`
+  field no longer changes selection. The v1 projection, classifier, stats,
+  schema, outbox, catalog, reporting, eligibility, families, RNG streams, one
+  scheduler draw, frozen play/outcome, time/coin cadence, special teams,
+  Season, and clock are unchanged.
+- 20% is a transparent initial baseline before recency, not a final share, a
+  share of all questions, or a validated pedagogical optimum. Plays with no
+  truthful substantial alternative still offer easier work.
+- Tests: `tests/football-difficulty-floor-domain.spec.mjs` supersedes the #220
+  0.25-factor assertions (that rule is intentionally replaced) with baseline
+  cap, recency counterexample, protection, budget, and invariance cases;
+  `tests/football-challenge.spec.mjs` adds normal-start Quick Game and Season
+  tapped play on both sides. A bounded external diagnostic compares base and
+  candidate pools; its output is synthetic, not learner frequency.
+- Known seam for the coordinator: `tests/football-natural-yardage.spec.mjs`
+  fixes `RETRY_SCHEDULER_DRAW` from the old weights; it may need a bounded,
+  separately approved recalibration if the diagnostic or the run shows the draw
+  left the family's interval.
+- Version 1.39.0 in `GAME_VERSION`, every Football cache key, `games.js`, and
+  `version.json`; other games' descriptors and versions are unchanged.
+
+No check results are claimed in this entry; focused tests, the full Chromium and
+WebKit release gates, registry, independent review, merge, and Pages
+verification are still required. Actual child challenge or learning benefit is
+feedback-dependent.
+
+## 2026-11-23 — Combined 1.39.0 candidate: baseline floor plus in-game learning-report connection (supersedes the entry above as the candidate record)
+
+Owner facts behind this addition (reported, not device-verified): the private
+report's Safari device page asks for a one-time code the owner did not know
+about, and Football is normally launched from the Home Screen icon. The
+installed app's own reporting state is unknown; nothing here assumes that
+Safari and the Home Screen app share or isolate storage. The game previously
+offered no way to check or connect reporting from inside the app. That is a
+demonstrated discoverability gap, not proof that upload is broken.
+
+- Floor: unchanged from the entry above (`challenge-baseline-v1`). Its focused
+  checks were run by the coordinator on the floor savepoint; that result is not
+  restated here as a release pass.
+- New `football/reporting-panel.js`: a Learning reports subview of the same
+  Options modal, reachable from the start screen and from a paused game. It is
+  lazy and delegates to the current `LEARNING_SYNC` APIs. Fail-closed states:
+  code form only for configured + not enrolled + no owned records; Finish only
+  for a verified partial on this service; connected status with Send now on
+  origin match; everything else read-only with data unchanged and copy that
+  never recommends Stop. The plain code-origin note says a grown-up creates the
+  code in the private report's Setup (on another device if possible) and types
+  it here within 10 minutes. No link, navigation, iframe, Stop, reset or delete.
+- `football.js` only resets the subview on fresh Options entry and explicit
+  exits, adds the two inline handlers, and refreshes both neutral pickers after
+  a connection or choice. Paused play, question, pending resolution, clock, RNG,
+  stats, Season and curriculum snapshots are untouched; attribution keeps the
+  existing first-actual-observation pinning, with no backfill.
+- `football.css` adds styles scoped to the subview and lets the Options card
+  scroll internally; the call grid is untouched. `index.html` adds the markup
+  and the cached script (1.39.0).
+- Tests: new `tests/football-reporting-panel.spec.mjs`, registered in the
+  release runner list. Behavior uses the real page, sync, outbox and storage
+  against a loopback synthetic service, with one labelled health-only test
+  double for states the API cannot yet produce; layout runs on the six device
+  projects by tap. Synthetic engine emulation is not native-keyboard or real
+  iPad evidence.
+- Known required test update outside the author scope:
+  `tests/football-overlay-contract.spec.mjs` characterizes the exact
+  `#ov-options` markup and must be updated for the new subview.
+- No shared, sync, outbox, service, config, schema, catalog, curriculum, stats or
+  contextual-question change. Other games are unchanged.
+
+Ordering (both planners, RO1): after every code, automated and native gate and a
+fresh independent review of the exact head, the client may be published so the
+real Home Screen app can use the new view. Until a real new answer appears in
+the private report with device health, the state is exactly "client released;
+intended-device receipt pending", reporting is not called working, and task
+cleanup waits. No check results are claimed in this entry.
+
+## 2026-11-23 — Football 1.39.0 release CANDIDATE (supersedes both entries above as the candidate record)
+
+This is the release record for the 1.39.0 candidate: the `challenge-baseline-v1`
+floor plus Learning reports in Options. It is not published. The test updates
+listed as pending in the two entries above are now made:
+
+- `tests/football-overlay-contract.spec.mjs`: the Options characterization now
+  pins the Learning reports entry, the subview's ids and its two inline actions;
+  every other assertion is unchanged.
+- `tests/football-contextual-questions.spec.mjs` (#51 retired comparison) and
+  `tests/football-natural-yardage.spec.mjs` (#218 scheduler draw) were updated
+  earlier, as recorded in the floor entry.
+- `tests/football-arithmetic-ui.spec.mjs` (Chapter 8 ordinary selection): each
+  replay now reloads with no saved Football history, matching the sweep that
+  found its draw. A replay's committed second miss had leaked into the next
+  replay's history, and under the new floor that correctly protects its group
+  and moves the draw. The ordinary selector, five-family coverage and the
+  retry/worked/Continue assertions are unchanged.
+
+Corrections made after the combined entry:
+
+- Send now (CF1): the engine also records a successful status-only contact
+  that carries no practice, so a changed "last contact" time alone is never
+  called a send. The panel says practice was sent only when waiting practice
+  left the queue on a successful contact, minus any the service held back.
+  Otherwise it says the service was reached but sent nothing, or that nothing
+  new was confirmed. The stat is labelled "Last contact with the report
+  service".
+- Protected refusal (CF2): when the existing enroll refuses for any reason other
+  than a plain retry, the view becomes read-only for the rest of that page and
+  no longer offers the code form. It shows the generic curated message ("This
+  game could not be connected here. Any waiting practice is kept. Ask the
+  grown-up who set up reports.") and never says whether a code was used, because
+  the same reasons can occur before or after the code exchange. The panel reads,
+  repairs and removes nothing. The tested concrete case is an older unsent
+  practice record: there, the focused test shows no request and unchanged local
+  bytes. Other protected refusals are not claimed to be pre-request. A bad
+  format, an expired code, a network or service failure still keep the form for
+  a retry.
+
+Unchanged: the floor policy and its source, sync, outbox, service,
+configuration, schema, catalog, curriculum, stats and contextual-question code,
+and every other game's descriptor and version.
+
+Not yet reached for this exact frozen candidate, and not claimed here: the full
+Chromium and WebKit Football release runs, the registry check, Apple Simulator
+or physical-iPad keyboard proof, and a fresh independent review. Earlier full
+and focused runs on superseded heads, and their failures, are kept as they
+were and are not evidence for this head. Publishing, deployment checks, the
+real Home Screen iPad receipt and task cleanup follow the RO1 order above, and
+their evidence is recorded outside this tracked tree. Child challenge and
+learning effects depend on feedback after release.

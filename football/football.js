@@ -1,4 +1,4 @@
-const GAME_VERSION = '1.38.1';
+const GAME_VERSION = '1.39.0';
 let prevPlayerScore = -1, prevOpponentScore = -1;
 let playerRunTimer = 0, playerCelebrateTimer = 0, playerCelebrateDelayTimer = 0;
 const EZ = 5;
@@ -747,6 +747,7 @@ function renderPlayerPicker() {
     id: 'player-picker', legend: 'Who’s playing?', fieldsetClass: 'play-mode-picker player-picker',
     optionsClass: 'play-mode-options', optionClass: 'play-mode-option', statusClass: 'team-status',
     status: chosen => chosen ? '' : 'Choose who is playing so practice is reported for the right player.',
+    onChoose: () => { if (typeof FOOTBALL_REPORTING_PANEL !== 'undefined') FOOTBALL_REPORTING_PANEL.refreshPicker(); },
   });
   if (!playerPicker) return;
   const actions = startOverlay().querySelector('.start-action-row');
@@ -1953,7 +1954,12 @@ function pickQuestion(activePlay) {
       : !timeFamilies.includes(entry.familyId) && !coinFamilies.includes(entry.familyId)));
   const eligible = questionFaultMode === 'empty-pool' ? [] : pool.map((entry) => {
     const selection = FOOTBALL_CONTEXTUAL_QUESTIONS.selectionFor(activePlay, entry.familyId);
-    return { ...entry, selectionMultiplier: selection.multiplier };
+    // Trusted, transient, selection-only annotation (challenge-baseline-v1):
+    // the same sourceStatus authority and inspected profile used for
+    // firstSupport below, so whole-group protection can see it before the
+    // draw. Never persisted.
+    const sourceGuided = FOOTBALL_CONTEXTUAL_QUESTIONS.sourceStatus(entry, inspected.profile).guided === true;
+    return { ...entry, selectionMultiplier: selection.multiplier, sourceGuided };
   });
   if (!eligible.length) {
     const error = new Error('No truthful contextual question family is eligible for this valid snap.');
@@ -4757,6 +4763,7 @@ function interruptGame(reason = 'options') {
     focusTarget: previous ? null : interruptionFocusTarget(reason),
   };
   syncGameClock();
+  resetReportingPanel();
   renderOptionsOverlay();
   activateOverlay('ov-options');
   return true;
@@ -4783,6 +4790,7 @@ function resumeGame() {
   if (!gameInterruption || document.visibilityState === 'hidden') return false;
   const { returnOverlayId, focusTarget } = gameInterruption;
   gameInterruption = null;
+  resetReportingPanel();
   if (returnOverlayId) activateOverlay(returnOverlayId);
   else hideOverlays(focusTarget);
   const deferred = deferredAdvance;
@@ -4796,6 +4804,7 @@ function openOptions() {
   if (gameIsActive()) return interruptGame('options');
   if (state.phase !== PHASES.start || timeLabIsOpen() || startOptionsOpen) return false;
   startOptionsOpen = true;
+  resetReportingPanel();
   renderOptionsOverlay();
   activateOverlay('ov-options');
   return true;
@@ -4805,6 +4814,7 @@ function closeOptions() {
   if (gameInterruption) return resumeGame();
   if (!startOptionsOpen) return false;
   startOptionsOpen = false;
+  resetReportingPanel();
   renderStartOptionsSummary();
   activateOverlay('ov-start');
   requestAnimationFrame(() => {
@@ -4851,6 +4861,40 @@ function renderOptionsOverlay() {
   for (const input of overlay.querySelectorAll('input[name="quarter-minutes"]')) {
     input.checked = Number(input.value) === selectedQuarterMinutes;
   }
+}
+
+// Learning-reports subview of this same Options modal (reporting-panel.js). Its
+// data-view is separate from data-context, so renderOptionsOverlay() never
+// resets it. A fresh Options entry and every explicit exit (Back, Done, Resume)
+// reset the view and clear the typed code; a background re-entry keeps both.
+// Connecting, finishing or sending never touches the paused play, question,
+// clock, RNG, stats, Season or curriculum snapshot; Options stays a pause until
+// the explicit Resume.
+function openReportingPanel() {
+  const overlay = document.getElementById('ov-options');
+  if (!overlay?.classList.contains('show') || typeof FOOTBALL_REPORTING_PANEL === 'undefined') return false;
+  return FOOTBALL_REPORTING_PANEL.open();
+}
+
+function closeReportingPanel() {
+  if (typeof FOOTBALL_REPORTING_PANEL === 'undefined' || !FOOTBALL_REPORTING_PANEL.close()) return false;
+  requestAnimationFrame(() => {
+    const entry = document.getElementById('ov-options-report-entry');
+    if (document.getElementById('ov-options')?.classList.contains('show') && entry) entry.focus({ preventScroll: true });
+  });
+  return true;
+}
+
+function resetReportingPanel() {
+  if (typeof FOOTBALL_REPORTING_PANEL !== 'undefined') FOOTBALL_REPORTING_PANEL.close();
+}
+
+// After a connection or a who-is-playing choice, refresh both neutral pickers.
+if (typeof FOOTBALL_REPORTING_PANEL !== 'undefined') {
+  FOOTBALL_REPORTING_PANEL.configure({
+    onConnectionChange: () => renderPlayerPicker(),
+    onPlayerChange: () => renderPlayerPicker(),
+  });
 }
 
 document.addEventListener('visibilitychange', () => {

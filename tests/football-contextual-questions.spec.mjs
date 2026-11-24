@@ -3277,18 +3277,48 @@ test('#51 the retired comparison never reaches the live pool or scheduler, even 
     const baseline = shares(entries, learning.createSession(weak, weakLast, now, [oldRow]));
     const downshifted = shares(entries, learning.createSession(weak, weakLast, now, [oldRow, downshiftRow]));
     for (const counts of [baseline, downshifted]) assert.equal(counts['gain-vs-needed-comparison'], undefined, label);
-    // A downshift redistributes only inside the ladder's own budget, so the
-    // literacy share and the whole line-to-gain share stay put.
     const literacy = counts => sum(entries, counts, entry => entry.evidenceClass === 'literacy');
     const ladder = counts => sum(entries, counts, entry => entry.challenge?.concept === 'line-to-gain');
     assert.ok(literacy(baseline) > 0, label);
     assert.ok(Math.abs(literacy(baseline) - literacy(downshifted)) < 0.002, `${label}: literacy ${literacy(baseline)} vs ${literacy(downshifted)}`);
-    assert.ok(Math.abs(ladder(baseline) - ladder(downshifted)) < 0.002, `${label}: ladder ${ladder(baseline)} vs ${ladder(downshifted)}`);
+    // Superseded (Football 1.39.0, challenge-baseline-v1): this case used to
+    // require equal FINAL line-to-gain shares in both sessions. That held only
+    // while no later stage moved weight across groups. The baseline floor now
+    // intentionally reallocates the unprotected floor slice (fresh session) and
+    // protects the downshifted yardage-marker group at exact pre-floor weights,
+    // so final ladder shares legitimately differ (e.g. 0.230 vs 0.104 on the
+    // 13-yard pass). The ladder invariant still applies at its own stage: the
+    // downshift redistributes only inside the ladder's pre-floor budget.
+    const fresh = learning.selectionWeights(entries, learning.createSession(weak, weakLast, now, [oldRow]));
+    const down = learning.selectionWeights(entries, learning.createSession(weak, weakLast, now, [oldRow, downshiftRow]));
+    const isLadder = item => item.entry.challenge?.concept === 'line-to-gain';
+    const close = (a, b) => Math.abs(a - b) <= 1e-12 * Math.max(1, Math.abs(a), Math.abs(b));
+    const preLadder = items => items.filter(isLadder).reduce((s, item) => s + item.baseline.before, 0);
+    const totalOf = items => items.reduce((s, item) => s + item.weight, 0);
+    assert.ok(fresh.filter(isLadder).length > 0 && fresh.filter(isLadder).every(item => item.baseline), `${label}: ladder entries are floor entries`);
+    assert.ok(close(preLadder(fresh), preLadder(down)), `${label}: pre-floor ladder budget ${preLadder(fresh)} vs ${preLadder(down)}`);
+    // The downshift is an existing support signal: the whole group keeps its exact pre-floor weights.
+    for (const item of down.filter(isLadder)) {
+      assert.equal(item.baseline.protected, true, `${label}: ${item.entry.familyId} protected`);
+      assert.equal(item.baseline.reason, 'downshift', `${label}: ${item.entry.familyId} reason`);
+      assert.equal(item.weight, item.baseline.before, `${label}: ${item.entry.familyId} exact weight`);
+    }
+    // Without a support signal the ladder is part of the ordinary, unprotected slice.
+    assert.ok(fresh.filter(isLadder).every(item => !item.baseline.protected), `${label}: fresh ladder unprotected`);
+    // Both sessions keep the same total, and literacy weights are exact.
+    assert.ok(close(totalOf(fresh), totalOf(down)), `${label}: total ${totalOf(fresh)} vs ${totalOf(down)}`);
+    fresh.forEach((item, k) => { if (item.entry.evidenceClass === 'literacy') assert.equal(item.weight, down[k].weight, `${label}: literacy ${item.entry.familyId}`); });
+    // The sampled pick reproduces the protected ladder's pre-floor share.
+    assert.ok(Math.abs(ladder(downshifted) - preLadder(down) / totalOf(down)) < 0.002, `${label}: protected ladder share ${ladder(downshifted)}`);
     t.diagnostic(`3rd and 8, ${label} at p131 baseline shares: ${JSON.stringify(Object.fromEntries(Object.entries(baseline).map(([id, share]) => [id, Number(share.toFixed(4))])))}`);
     if (label === '5-yard run') {
-      // Inside the ladder, the downshift moves weight from stretch to core.
-      assert.ok(downshifted['line-to-gain-fact-family'] < baseline['line-to-gain-fact-family'], `${label}: stretch share falls`);
-      assert.ok(downshifted['line-to-gain-missing-part'] > baseline['line-to-gain-missing-part'], `${label}: core share rises`);
+      // Inside the ladder, the downshift moves weight from stretch to core,
+      // compared at the ladder's own (pre-floor) stage.
+      const pre = (items, id) => items.find(item => item.entry.familyId === id).baseline.before;
+      assert.ok(pre(down, 'line-to-gain-fact-family') < pre(fresh, 'line-to-gain-fact-family'), `${label}: stretch share falls`);
+      assert.ok(pre(down, 'line-to-gain-missing-part') > pre(fresh, 'line-to-gain-missing-part'), `${label}: core share rises`);
+      // The protected downshifted session shows that preference in the picks themselves.
+      assert.ok(downshifted['line-to-gain-fact-family'] < downshifted['line-to-gain-missing-part'], `${label}: core preferred over stretch`);
     }
   }
 });
